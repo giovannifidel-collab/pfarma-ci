@@ -6,17 +6,22 @@ on:
     paths:
       - 'bundle/pfarma-ci.bundle.json'
       - '.github/workflows/run-encrypted-pfarma.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/run-encrypted-pfarma.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pfarma-encrypted-${{ github.ref }}
+  group: pfarma-encrypted-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   encrypted-pfarma:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
       matrix:
