@@ -21,6 +21,7 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/private-source-ref-ci.yml"),
     PurePosixPath(".github/workflows/poll-private-main.yml"),
     PurePosixPath(".github/workflows/receipt-readiness-contract.yml"),
+    PurePosixPath(".github/workflows/receipt-evidence-id-contract.yml"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
