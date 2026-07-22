@@ -11,9 +11,6 @@ on:
         options:
           - smoke
           - health
-          - quality
-          - migration
-          - postgres
 
 permissions:
   contents: read
