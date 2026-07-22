@@ -1,0 +1,41 @@
+name: PFarma CI Bootstrap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/public_ci_bundle.py'
+      - 'tools/test_public_ci_bundle.py'
+      - '.github/workflows/bootstrap.yml'
+  pull_request:
+    paths:
+      - 'tools/public_ci_bundle.py'
+      - 'tools/test_public_ci_bundle.py'
+      - '.github/workflows/bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pfarma-ci-bootstrap-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  encrypted-transport-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out public CI repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned authenticated-encryption dependency
+        run: python -m pip install --disable-pip-version-check 'cryptography==46.0.4'
+
+      - name: Prove opaque authenticated bundle transport
+        run: python tools/test_public_ci_bundle.py
