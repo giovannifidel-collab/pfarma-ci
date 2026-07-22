@@ -1,0 +1,203 @@
+name: PFarma Private Source Hosted CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'source-ref.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pfarma-private-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-suite:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [smoke, health, quality, migration, backend, goods-receipt, pilot]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: pfarma-ci-trusted
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - name: Check out public control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate requested private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f source-ref.txt
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'source-ref.txt is not a canonical commit SHA.' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Fail closed unless private-source token is configured
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+
+      - name: Check out exact private PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify checkout is exactly the requested commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C private-source rev-parse HEAD)"
+          test "$actual" = '${{ steps.source.outputs.sha }}'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Execute read-only PFarma shard
+        shell: bash
+        working-directory: private-source
+        run: |
+          set -euo pipefail
+          case '${{ matrix.shard }}' in
+            smoke)
+              python -m compileall -q .
+              ;;
+            health)
+              python -m compileall -q .
+              [ ! -f tools/test_inventory_web_router.py ] || python tools/test_inventory_web_router.py
+              [ ! -f tools/test_inventory_dashboard_page.py ] || python tools/test_inventory_dashboard_page.py
+              ;;
+            quality)
+              python -m compileall -q .
+              if [ -f database/schema/0002_core_v1.sql ]; then test -f tools/test_core_schema_contract.py; python tools/test_core_schema_contract.py; fi
+              if [ -f agent/staging/test_normalized_staging.py ]; then python agent/staging/test_normalized_staging.py; elif [ -f tools/test_staging_v2.py ]; then python tools/test_staging_v2.py; else echo 'No staging integrity test found.' >&2; exit 1; fi
+              if [ -f agent/staging/import_supplier_catalog.py ]; then test -f agent/staging/test_supplier_catalog_staging_loader.py; python agent/staging/test_supplier_catalog_staging_loader.py; fi
+              if [ -f agent/staging/reconcile_supplier_catalog.py ]; then test -f agent/staging/test_supplier_catalog_reconciliation.py; python agent/staging/test_supplier_catalog_reconciliation.py; fi
+              if [ -f contracts/supplier-catalog-v1.schema.json ] || [ -f tools/test_supplier_catalog_validator.py ]; then test -f tools/test_supplier_catalog_validator.py; python tools/test_supplier_catalog_validator.py; fi
+              if [ -f integrations/suppliers/catalog_staging.py ]; then test -f tools/test_supplier_catalog_staging.py; python tools/test_supplier_catalog_staging.py; fi
+              if [ -f integrations/suppliers/catalog_matching.py ]; then test -f tools/test_supplier_catalog_matching.py; python tools/test_supplier_catalog_matching.py; fi
+              if [ -f integrations/suppliers/catalog_promotion.py ]; then test -f tools/test_supplier_catalog_promotion.py; python tools/test_supplier_catalog_promotion.py; fi
+              if [ -f integrations/suppliers/catalog_promotion_executor.py ]; then test -f tools/test_supplier_catalog_promotion_executor.py; python tools/test_supplier_catalog_promotion_executor.py; fi
+              if [ -f integrations/suppliers/catalog_import_orchestrator.py ]; then test -f tools/test_supplier_catalog_import_orchestrator.py; python tools/test_supplier_catalog_import_orchestrator.py; fi
+              if [ -f integrations/suppliers/catalog_promotion_postgres.py ]; then test -f tools/test_supplier_catalog_promotion_postgres_store.py; python tools/test_supplier_catalog_promotion_postgres_store.py; fi
+              ;;
+            migration)
+              python agent/staging/test_normalized_staging.py
+              python agent/staging/test_normalized_staging_semantic_audit.py
+              python agent/staging/test_normalized_staging_domain_audit.py
+              python agent/staging/test_normalized_staging_identity_quality_audit.py
+              python agent/staging/test_normalized_staging_expiry_quality_audit.py
+              python agent/staging/test_normalized_staging_quantity_quality_audit.py
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_controlled_migration_dry_run as t; d=tempfile.TemporaryDirectory(); t.test_valid_staging_reaches_existing_finalizer(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_controlled_migration_dry_run as t; d=tempfile.TemporaryDirectory(); t.test_invalid_expiry_blocks_finalizer_without_mutation(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_controlled_migration_dry_run as t; d=tempfile.TemporaryDirectory(); t.test_invalid_persisted_evidence_is_not_reported_ready(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_controlled_migration_dry_run as t; d=tempfile.TemporaryDirectory(); t.test_missing_database_is_not_created(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_migration_dry_run_finalizer as t; d=tempfile.TemporaryDirectory(); t.test_ready_when_all_blockers_are_clear(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_migration_dry_run_finalizer as t; d=tempfile.TemporaryDirectory(); t.test_empty_run_is_not_ready(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_migration_dry_run_finalizer as t; d=tempfile.TemporaryDirectory(); t.test_product_only_run_is_not_ready_without_inventory(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_migration_dry_run_finalizer as t; d=tempfile.TemporaryDirectory(); t.test_validated_when_unresolved_outliers_or_errors_exist(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_migration_dry_run_finalizer as t; d=tempfile.TemporaryDirectory(); t.test_missing_database_is_never_created(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_migration_dry_run_finalizer as t; d=tempfile.TemporaryDirectory(); t.test_incompatible_schema_fails_before_any_write(Path(d.name)); d.cleanup()"
+              python -c "import sys,tempfile; from pathlib import Path; sys.path.insert(0, 'agent/staging'); import test_migration_dry_run_finalizer as t; d=tempfile.TemporaryDirectory(); t.test_failed_run_is_never_resurrected_or_mutated(Path(d.name)); d.cleanup()"
+              python agent/staging/test_migration_dry_run_evidence_verifier.py
+              python agent/staging/test_migration_dry_run_evidence_text_types.py
+              python agent/staging/test_migration_dry_run_product_partition.py
+              python agent/staging/test_verify_migration_sample_acceptance_artifact.py
+              python agent/staging/test_verify_migration_sample_acceptance_envelope.py
+              ;;
+            backend)
+              python -m unittest backend.test_app backend.test_inventory_api backend.test_lot_expiry_risk backend.test_product_api backend.test_product_lookup_api backend.test_product_lookup_route backend.test_product_lookup_asgi backend.test_product_lookup_mount backend.test_product_lookup_postgres backend.test_product_lookup_postgres_composition backend.test_product_stock_snapshot backend.test_product_stock_snapshot_route backend.test_product_stock_snapshot_asgi backend.test_product_stock_snapshot_mount backend.test_product_supplier_decision_snapshot backend.test_inventory_summary_api backend.test_inventory_summary_route backend.test_inventory_summary_asgi backend.test_supplier_catalog_reconciliation backend.test_supplier_catalog_reconciliation_api backend.test_supplier_catalog_reconciliation_route backend.test_supplier_catalog_reconciliation_asgi backend.test_inventory_movement_read backend.test_inventory_movement_read_route_asgi backend.test_inventory_movement_read_mount_composition backend.test_inventory_movement_semantic_audit backend.test_inventory_movement_semantic_audit_route_asgi backend.test_inventory_movement_semantic_audit_mount_composition backend.test_reservation_read -v
+              ;;
+            goods-receipt)
+              python tools/test_goods_receipt_service.py
+              python tools/test_goods_receipt_wsgi.py
+              python tools/test_goods_receipt_postgres.py
+              ;;
+            pilot)
+              python tools/test_pilot_acceptance_contract.py
+              python tools/test_preview_unknown_routes_fail_closed.py
+              python tools/test_pilot_security_headers.py
+              ;;
+          esac
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf private-source
+
+  postgres-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pfarma_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d pfarma_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - name: Check out public control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate requested private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact private PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Execute PostgreSQL schema smoke
+        shell: bash
+        working-directory: private-source
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = '${{ steps.source.outputs.sha }}'
+          if [ -f database/schema/0002_core_v1.sql ]; then test -f tools/test_core_schema_postgres.sql; psql -h localhost -U postgres -d pfarma_test -f tools/test_core_schema_postgres.sql; fi
+          if [ -f database/schema/0004_supplier_catalog_staging.sql ]; then test -f tools/test_supplier_catalog_staging_postgres.sql; psql -h localhost -U postgres -d pfarma_test -f tools/test_supplier_catalog_staging_postgres.sql; fi
+          if [ -f database/schema/0005_supplier_catalog_promotion.sql ]; then test -f tools/test_supplier_catalog_promotion_postgres.sql; psql -h localhost -U postgres -d pfarma_test -f tools/test_supplier_catalog_promotion_postgres.sql; fi
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf private-source
