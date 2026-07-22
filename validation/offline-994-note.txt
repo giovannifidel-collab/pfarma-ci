@@ -1,1 +1,0 @@
-Use an ephemeral validation branch to pin source-ref.txt to 4bbcd0fcfbcf04d8028285b97a5a53c825c5bf63; do not merge the pointer into stable main.
