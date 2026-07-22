@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_EXACT = {
     PurePosixPath("README.md"),
     PurePosixPath("SECURITY.md"),
+    PurePosixPath("source-ref.txt"),
     PurePosixPath("bundle/README.md"),
     PurePosixPath("bundle/pfarma-ci.bundle.json"),
     PurePosixPath("tools/public_ci_bundle.py"),
@@ -17,7 +18,7 @@ ALLOWED_EXACT = {
     PurePosixPath("tools/validate_public_repo.py"),
     PurePosixPath(".github/workflows/bootstrap.yml"),
     PurePosixPath(".github/workflows/run-encrypted-pfarma.yml"),
-    PurePosixPath(".github/workflows/secret-probe.yml"),
+    PurePosixPath(".github/workflows/private-source-ref-ci.yml"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
@@ -57,6 +58,12 @@ def main() -> None:
             raise SystemExit("Encrypted bundle must use the approved authenticated format.")
         if not isinstance(payload.get("ciphertext_b64"), str) or not payload["ciphertext_b64"]:
             raise SystemExit("Encrypted bundle has no ciphertext.")
+
+    source_ref = ROOT / "source-ref.txt"
+    if source_ref.exists():
+        value = source_ref.read_text(encoding="ascii").strip()
+        if len(value) != 40 or any(ch not in "0123456789abcdef" for ch in value):
+            raise SystemExit("source-ref.txt must contain exactly one lowercase 40-character commit SHA.")
 
     print(f"PASS: public repository allowlist contains {len(files)} approved files; no plaintext source path admitted.")
 
