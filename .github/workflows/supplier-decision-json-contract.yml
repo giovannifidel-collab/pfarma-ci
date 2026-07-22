@@ -1,0 +1,49 @@
+name: PFarma Supplier Decision JSON Contract
+
+on:
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/supplier-decision-json-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate requested private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out exact private PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Execute supplier decision JSON contract when present
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+          [ ! -f tools/test_product_supplier_decision_json_contract.py ] || python tools/test_product_supplier_decision_json_contract.py
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf private-source
