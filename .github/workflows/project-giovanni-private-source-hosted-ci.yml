@@ -30,6 +30,7 @@ concurrency:
 jobs:
   validate-private-source:
     runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
     timeout-minutes: 20
     steps:
       - name: Checkout public CI control plane
