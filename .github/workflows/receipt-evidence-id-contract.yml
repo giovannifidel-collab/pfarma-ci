@@ -44,10 +44,21 @@ jobs:
         working-directory: private-source
         shell: bash
         run: '[ ! -f tools/test_receipt_projection_evidence_id_contract.py ] || python tools/test_receipt_projection_evidence_id_contract.py'
-      - name: Receipt JSON projection contract
+      - name: Receipt JSON deterministic model
         working-directory: private-source
         shell: bash
-        run: '[ ! -f tools/test_receipt_projection_json_contract.py ] || python tools/test_receipt_projection_json_contract.py'
+        run: |
+          [ ! -f tools/test_receipt_projection_json_contract.py ] || python -c "import sys; sys.path.insert(0, 'tools'); import test_receipt_projection_json_contract as t; t.test_projection_builder_is_deterministic_and_non_authorizing()"
+      - name: Receipt JSON non-finite rejection
+        working-directory: private-source
+        shell: bash
+        run: |
+          [ ! -f tools/test_receipt_projection_json_contract.py ] || python -c "import sys; sys.path.insert(0, 'tools'); import test_receipt_projection_json_contract as t; t.test_projection_builder_rejects_non_finite_quantity()"
+      - name: Receipt JSON route equivalence
+        working-directory: private-source
+        shell: bash
+        run: |
+          [ ! -f tools/test_receipt_projection_json_contract.py ] || python -c "import sys; sys.path.insert(0, 'tools'); import test_receipt_projection_json_contract as t; t.test_json_representation_matches_human_projection_evidence()"
       - name: Receipt projection chain contract
         working-directory: private-source
         shell: bash
