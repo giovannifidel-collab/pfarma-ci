@@ -1,0 +1,71 @@
+name: PFarma Encrypted Hosted CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      shard:
+        description: 'Trusted CI shard exposed by the encrypted PFarma source entrypoint'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - health
+          - quality
+          - migration
+          - postgres
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pfarma-encrypted-${{ inputs.shard }}
+  cancel-in-progress: true
+
+jobs:
+  encrypted-pfarma:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: pfarma-ci-trusted
+    env:
+      PFARMA_CI_BUNDLE_KEY: ${{ secrets.PFARMA_CI_BUNDLE_KEY }}
+    steps:
+      - name: Check out public ciphertext repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned authenticated-encryption dependency
+        run: python -m pip install --disable-pip-version-check 'cryptography==46.0.4'
+
+      - name: Fail closed unless trusted secret and encrypted bundle exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PFARMA_CI_BUNDLE_KEY" || { echo 'PFARMA_CI_BUNDLE_KEY is not configured.' >&2; exit 1; }
+          test -f bundle/pfarma-ci.bundle.json || { echo 'Encrypted PFarma bundle is not present.' >&2; exit 1; }
+
+      - name: Decrypt PFarma source into ephemeral runner storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/pfarma-source"
+          python tools/public_ci_bundle.py unpack \
+            --bundle bundle/pfarma-ci.bundle.json \
+            --destination "$RUNNER_TEMP/pfarma-source"
+
+      - name: Execute trusted encrypted-source CI entrypoint
+        shell: bash
+        working-directory: ${{ runner.temp }}/pfarma-source
+        run: |
+          set -euo pipefail
+          test -f tools/public_ci_entrypoint.py || { echo 'Encrypted source does not expose tools/public_ci_entrypoint.py.' >&2; exit 1; }
+          python tools/public_ci_entrypoint.py --shard '${{ inputs.shard }}'
+
+      - name: Remove decrypted workspace
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/pfarma-source"
