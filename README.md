@@ -20,4 +20,4 @@ Public forks and pull requests must not receive decryption secrets. Real-source 
 
 ## Status
 
-Bootstrap phase. No real PFarma source is present in this repository yet.
+Bootstrap phase. No real PFarma source is present in this repository yet. The public-boundary and authenticated-transport contracts are validated on every pull request before encrypted-source activation.
