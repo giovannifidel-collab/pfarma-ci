@@ -36,15 +36,22 @@ jobs:
           path: private-source
           fetch-depth: 1
           persist-credentials: false
-      - name: Execute receipt projection evidence contracts when present
+      - name: Verify exact private source
         working-directory: private-source
         shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
-          [ ! -f tools/test_receipt_projection_evidence_id_contract.py ] || python tools/test_receipt_projection_evidence_id_contract.py
-          [ ! -f tools/test_receipt_projection_json_contract.py ] || python tools/test_receipt_projection_json_contract.py
-          [ ! -f tools/test_receipt_projection_chain_contract.py ] || python tools/test_receipt_projection_chain_contract.py
+        run: test "$(git rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - name: Receipt evidence ID compatibility
+        working-directory: private-source
+        shell: bash
+        run: '[ ! -f tools/test_receipt_projection_evidence_id_contract.py ] || python tools/test_receipt_projection_evidence_id_contract.py'
+      - name: Receipt JSON projection contract
+        working-directory: private-source
+        shell: bash
+        run: '[ ! -f tools/test_receipt_projection_json_contract.py ] || python tools/test_receipt_projection_json_contract.py'
+      - name: Receipt projection chain contract
+        working-directory: private-source
+        shell: bash
+        run: '[ ! -f tools/test_receipt_projection_chain_contract.py ] || python tools/test_receipt_projection_chain_contract.py'
       - name: Remove private source checkout
         if: always()
         shell: bash
