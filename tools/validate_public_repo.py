@@ -26,6 +26,7 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/product-snapshot-json-contract.yml"),
     PurePosixPath(".github/workflows/supplier-decision-json-contract.yml"),
     PurePosixPath(".github/workflows/reorder-draft-json-contract.yml"),
+    PurePosixPath(".github/workflows/reorder-approval-json-contract.yml"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
