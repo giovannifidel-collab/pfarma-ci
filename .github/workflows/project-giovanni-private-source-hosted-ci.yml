@@ -27,9 +27,34 @@ jobs:
   validate-private-source:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || 'main' }}
     steps:
+      - name: Checkout public CI control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve exact private source ref
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "${DISPATCH_REF:-}" ]; then
+            ref="$DISPATCH_REF"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            ref="$(tr -d '[:space:]' < project-giovanni-source-ref.txt)"
+          else
+            ref="main"
+          fi
+          if [ -z "$ref" ]; then
+            echo 'Resolved empty Project Giovanni source ref.' >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
       - name: Require private-source token
         shell: bash
         env:
@@ -48,7 +73,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/project-giovanni
-          ref: ${{ env.SOURCE_REF }}
+          ref: ${{ steps.resolve.outputs.ref }}
           token: ${{ env.PRIVATE_SOURCE_TOKEN }}
           path: project-giovanni
           persist-credentials: false
@@ -90,8 +115,8 @@ jobs:
         run: |
           {
             echo '## Project Giovanni private-source hosted CI'
-            echo "- repository: giovannifidel-collab/project-giovanni (private)"
-            echo "- requested ref: ${SOURCE_REF}"
+            echo '- repository: giovannifidel-collab/project-giovanni (private)'
+            echo "- requested ref: ${{ steps.resolve.outputs.ref }}"
             echo "- exact SHA: ${{ steps.source.outputs.sha }}"
             echo '- runner: GitHub-hosted ubuntu-latest'
             echo '- source checkout credentials are not persisted'
