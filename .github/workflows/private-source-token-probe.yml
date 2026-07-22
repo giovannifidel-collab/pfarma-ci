@@ -1,0 +1,137 @@
+name: PFarma Private Source Token Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/private-source-token-probe.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pfarma-private-source-probe-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  python-suite:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [smoke, health, quality, migration, backend, goods-receipt, pilot]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: pfarma-ci-trusted
+    env:
+      SOURCE_SHA: ce69019ad106b26e988902e4010d73e2608fc604
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ env.SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact private commit
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Execute read-only shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          case '${{ matrix.shard }}' in
+            smoke)
+              python -m compileall -q .
+              ;;
+            health)
+              python -m compileall -q .
+              [ ! -f tools/test_inventory_web_router.py ] || python tools/test_inventory_web_router.py
+              [ ! -f tools/test_inventory_dashboard_page.py ] || python tools/test_inventory_dashboard_page.py
+              ;;
+            quality)
+              python -m compileall -q .
+              if [ -f database/schema/0002_core_v1.sql ]; then test -f tools/test_core_schema_contract.py; python tools/test_core_schema_contract.py; fi
+              if [ -f agent/staging/test_normalized_staging.py ]; then python agent/staging/test_normalized_staging.py; elif [ -f tools/test_staging_v2.py ]; then python tools/test_staging_v2.py; else exit 1; fi
+              if [ -f agent/staging/import_supplier_catalog.py ]; then python agent/staging/test_supplier_catalog_staging_loader.py; fi
+              if [ -f agent/staging/reconcile_supplier_catalog.py ]; then python agent/staging/test_supplier_catalog_reconciliation.py; fi
+              if [ -f tools/test_supplier_catalog_validator.py ]; then python tools/test_supplier_catalog_validator.py; fi
+              if [ -f integrations/suppliers/catalog_staging.py ]; then python tools/test_supplier_catalog_staging.py; fi
+              if [ -f integrations/suppliers/catalog_matching.py ]; then python tools/test_supplier_catalog_matching.py; fi
+              if [ -f integrations/suppliers/catalog_promotion.py ]; then python tools/test_supplier_catalog_promotion.py; fi
+              if [ -f integrations/suppliers/catalog_promotion_executor.py ]; then python tools/test_supplier_catalog_promotion_executor.py; fi
+              if [ -f integrations/suppliers/catalog_import_orchestrator.py ]; then python tools/test_supplier_catalog_import_orchestrator.py; fi
+              if [ -f integrations/suppliers/catalog_promotion_postgres.py ]; then python tools/test_supplier_catalog_promotion_postgres_store.py; fi
+              ;;
+            migration)
+              python agent/staging/test_normalized_staging.py
+              python agent/staging/test_normalized_staging_semantic_audit.py
+              python agent/staging/test_normalized_staging_domain_audit.py
+              python agent/staging/test_normalized_staging_identity_quality_audit.py
+              python agent/staging/test_normalized_staging_expiry_quality_audit.py
+              python agent/staging/test_normalized_staging_quantity_quality_audit.py
+              python agent/staging/test_migration_dry_run_evidence_verifier.py
+              python agent/staging/test_migration_dry_run_evidence_text_types.py
+              python agent/staging/test_migration_dry_run_product_partition.py
+              python agent/staging/test_verify_migration_sample_acceptance_artifact.py
+              python agent/staging/test_verify_migration_sample_acceptance_envelope.py
+              ;;
+            backend)
+              python -m unittest backend.test_app backend.test_inventory_api backend.test_lot_expiry_risk backend.test_product_api backend.test_product_lookup_api backend.test_product_lookup_route backend.test_product_lookup_asgi backend.test_product_lookup_mount backend.test_product_lookup_postgres backend.test_product_lookup_postgres_composition backend.test_product_stock_snapshot backend.test_product_stock_snapshot_route backend.test_product_stock_snapshot_asgi backend.test_product_stock_snapshot_mount backend.test_product_supplier_decision_snapshot backend.test_inventory_summary_api backend.test_inventory_summary_route backend.test_inventory_summary_asgi backend.test_supplier_catalog_reconciliation backend.test_supplier_catalog_reconciliation_api backend.test_supplier_catalog_reconciliation_route backend.test_supplier_catalog_reconciliation_asgi backend.test_inventory_movement_read backend.test_inventory_movement_read_route_asgi backend.test_inventory_movement_read_mount_composition backend.test_inventory_movement_semantic_audit backend.test_inventory_movement_semantic_audit_route_asgi backend.test_inventory_movement_semantic_audit_mount_composition backend.test_reservation_read -v
+              ;;
+            goods-receipt)
+              python tools/test_goods_receipt_service.py
+              python tools/test_goods_receipt_wsgi.py
+              python tools/test_goods_receipt_postgres.py
+              ;;
+            pilot)
+              python tools/test_pilot_acceptance_contract.py
+              python tools/test_preview_unknown_routes_fail_closed.py
+              python tools/test_pilot_security_headers.py
+              ;;
+          esac
+
+  postgres-suite:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pfarma_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d pfarma_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      SOURCE_SHA: ce69019ad106b26e988902e4010d73e2608fc604
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ env.SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact private commit
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Execute PostgreSQL schema smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f database/schema/0002_core_v1.sql ]; then psql -h localhost -U postgres -d pfarma_test -f tools/test_core_schema_postgres.sql; fi
+          if [ -f database/schema/0004_supplier_catalog_staging.sql ]; then psql -h localhost -U postgres -d pfarma_test -f tools/test_supplier_catalog_staging_postgres.sql; fi
+          if [ -f database/schema/0005_supplier_catalog_promotion.sql ]; then psql -h localhost -U postgres -d pfarma_test -f tools/test_supplier_catalog_promotion_postgres.sql; fi
