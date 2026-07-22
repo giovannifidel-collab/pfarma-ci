@@ -3,15 +3,7 @@ name: PFarma CI Bootstrap
 on:
   push:
     branches: [main]
-    paths:
-      - 'tools/public_ci_bundle.py'
-      - 'tools/test_public_ci_bundle.py'
-      - '.github/workflows/bootstrap.yml'
   pull_request:
-    paths:
-      - 'tools/public_ci_bundle.py'
-      - 'tools/test_public_ci_bundle.py'
-      - '.github/workflows/bootstrap.yml'
   workflow_dispatch:
 
 permissions:
@@ -22,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  encrypted-transport-contract:
+  public-boundary-and-encryption:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -33,6 +25,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Reject unexpected public files before any other work
+        run: python tools/validate_public_repo.py
 
       - name: Install pinned authenticated-encryption dependency
         run: python -m pip install --disable-pip-version-check 'cryptography==46.0.4'
