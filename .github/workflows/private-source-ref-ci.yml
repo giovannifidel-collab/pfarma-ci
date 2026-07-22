@@ -7,13 +7,17 @@ on:
     branches: [main]
     paths:
       - 'source-ref.txt'
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/private-source-ref-ci.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pfarma-private-source-${{ github.event.client_payload.sha || github.ref }}
+  group: pfarma-private-source-${{ github.event.client_payload.sha || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
