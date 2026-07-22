@@ -1,0 +1,57 @@
+name: PFarma Private Main Poller
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfarma-private-main-poller
+  cancel-in-progress: true
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: pfarma-ci-trusted
+    env:
+      SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out public control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Read private PFarma main SHA
+        id: private
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_TOKEN"
+          auth="$(printf 'x-access-token:%s' "$SOURCE_TOKEN" | base64 -w0)"
+          sha="$(git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" ls-remote https://github.com/giovannifidel-collab/pfarma-cloud.git refs/heads/main | awk '{print $1}')"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Unable to resolve private main SHA.' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Advance public CI source reference only when private main changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="$(tr -d '\r\n' < source-ref.txt)"
+          target='${{ steps.private.outputs.sha }}'
+          if [ "$current" = "$target" ]; then
+            echo "Private main unchanged at $target"
+            exit 0
+          fi
+          blob_sha="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/source-ref.txt --jq .sha)"
+          encoded="$(printf '%s\n' "$target" | base64 -w0)"
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/source-ref.txt \
+            --method PUT \
+            -f message="CI: follow private PFarma main $target" \
+            -f content="$encoded" \
+            -f sha="$blob_sha" >/dev/null
+          echo "Advanced hosted CI source ref from $current to $target"
