@@ -1,0 +1,3 @@
+PFarma canonical offline sentinel #994
+exact_head=4bbcd0fcfbcf04d8028285b97a5a53c825c5bf63
+purpose=hosted exact-head validation pointer
