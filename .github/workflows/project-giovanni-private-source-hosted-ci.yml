@@ -1,6 +1,12 @@
 name: Project Giovanni Private Source Hosted CI
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'project-giovanni-source-ref.txt'
+      - '.github/workflows/project-giovanni-private-source-hosted-ci.yml'
   workflow_dispatch:
     inputs:
       source_ref:
@@ -63,8 +69,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: project-giovanni/package.json
 
       - name: Install dependencies
         working-directory: project-giovanni
