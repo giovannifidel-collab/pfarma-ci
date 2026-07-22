@@ -17,6 +17,7 @@ ALLOWED_EXACT = {
     PurePosixPath("tools/validate_public_repo.py"),
     PurePosixPath(".github/workflows/bootstrap.yml"),
     PurePosixPath(".github/workflows/run-encrypted-pfarma.yml"),
+    PurePosixPath(".github/workflows/secret-probe.yml"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
