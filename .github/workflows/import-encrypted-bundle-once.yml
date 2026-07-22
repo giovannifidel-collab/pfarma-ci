@@ -1,0 +1,69 @@
+name: PFarma One-Time Encrypted Bundle Import
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-encrypted-bundle-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOURCE_URL: 'https://sdmntprnortheu.oaiusercontent.com/files/00000000-203c-81f4-b743-793cacc6e168/raw?se=2026-07-22T10:59:08Z&sp=r&sv=2026-02-06&sr=b&scid=c344b595-24e3-5bac-a326-dd7b26160fa6&skoid=5bfb38a5-43fb-4c63-80a1-6ae1e97e2e16&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-07-22T04:54:13Z&ske=2026-07-24T04:54:13Z&sks=b&skv=2026-02-06&sig=tsYAxK1dGHq4ZoIRK8o211FXgCkkKwQ2sPjdd%2BetdfE%3D'
+      EXPECTED_ZIP_SHA256: '4be5733ccd00798d3da966658a8497f8b07fa34f7822252abc2e3b87a0df7b92'
+      EXPECTED_BUNDLE_SHA256: '39c669c01c83a065ab9df2bfcadc2c0bfe0b0020298c2fb32edd22805efca383'
+      EXPECTED_SOURCE_REF: '428963532f9b9c45781da265c9c3b52d66ea0309'
+    steps:
+      - name: Check out public CI repository
+        uses: actions/checkout@v4
+
+      - name: Download ciphertext artifact only
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$SOURCE_URL" -o "$RUNNER_TEMP/pfarma-ci-bundle.zip"
+          echo "$EXPECTED_ZIP_SHA256  $RUNNER_TEMP/pfarma-ci-bundle.zip" | sha256sum --check --strict
+
+      - name: Extract and validate encrypted envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/pfarma-bundle-import"
+          mkdir -p "$RUNNER_TEMP/pfarma-bundle-import"
+          unzip -q "$RUNNER_TEMP/pfarma-ci-bundle.zip" -d "$RUNNER_TEMP/pfarma-bundle-import"
+          test -f "$RUNNER_TEMP/pfarma-bundle-import/pfarma-ci.bundle.json"
+          echo "$EXPECTED_BUNDLE_SHA256  $RUNNER_TEMP/pfarma-bundle-import/pfarma-ci.bundle.json" | sha256sum --check --strict
+          python - <<'PY'
+          import json, os, pathlib
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'pfarma-bundle-import'/'pfarma-ci.bundle.json'
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['format']=='PFARMA_CI_BUNDLE_V2'
+          assert d['algorithm']=='AES-256-GCM'
+          assert d['source_ref']==os.environ['EXPECTED_SOURCE_REF']
+          assert d['file_count']==728
+          assert isinstance(d['ciphertext_b64'],str) and len(d['ciphertext_b64'])>4_000_000
+          print('Authenticated-ciphertext envelope admitted; no decryption performed.')
+          PY
+
+      - name: Commit ciphertext and remove one-time importer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bundle
+          cp "$RUNNER_TEMP/pfarma-bundle-import/pfarma-ci.bundle.json" bundle/pfarma-ci.bundle.json
+          rm -f .github/workflows/import-encrypted-bundle-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bundle/pfarma-ci.bundle.json .github/workflows/import-encrypted-bundle-once.yml
+          git commit -m 'CI: import encrypted PFarma bundle 42896353'
+          git push origin HEAD:main
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/pfarma-ci-bundle.zip" "$RUNNER_TEMP/pfarma-bundle-import"
