@@ -1,26 +1,26 @@
 name: PFarma Encrypted Hosted CI
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'bundle/pfarma-ci.bundle.json'
+      - '.github/workflows/run-encrypted-pfarma.yml'
   workflow_dispatch:
-    inputs:
-      shard:
-        description: 'Trusted CI shard exposed by the encrypted PFarma source entrypoint'
-        required: true
-        default: 'smoke'
-        type: choice
-        options:
-          - smoke
-          - health
 
 permissions:
   contents: read
 
 concurrency:
-  group: pfarma-encrypted-${{ inputs.shard }}
+  group: pfarma-encrypted-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   encrypted-pfarma:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [smoke, health]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: pfarma-ci-trusted
@@ -43,26 +43,33 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$PFARMA_CI_BUNDLE_KEY" || { echo 'PFARMA_CI_BUNDLE_KEY is not configured.' >&2; exit 1; }
+          python - <<'PY'
+          import base64, os
+          key = base64.b64decode(os.environ['PFARMA_CI_BUNDLE_KEY'].strip(), validate=True)
+          if len(key) != 32:
+              raise SystemExit('PFARMA_CI_BUNDLE_KEY must decode to exactly 32 bytes')
+          print('Trusted AES-256 key is structurally valid; value not printed.')
+          PY
           test -f bundle/pfarma-ci.bundle.json || { echo 'Encrypted PFarma bundle is not present.' >&2; exit 1; }
 
       - name: Decrypt PFarma source into ephemeral runner storage
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf "$RUNNER_TEMP/pfarma-source"
+          rm -rf "$RUNNER_TEMP/pfarma-source-${{ matrix.shard }}"
           python tools/public_ci_bundle.py unpack \
             --bundle bundle/pfarma-ci.bundle.json \
-            --destination "$RUNNER_TEMP/pfarma-source"
+            --destination "$RUNNER_TEMP/pfarma-source-${{ matrix.shard }}"
 
-      - name: Execute trusted encrypted-source CI entrypoint
+      - name: Execute trusted encrypted-source CI shard
         shell: bash
-        working-directory: ${{ runner.temp }}/pfarma-source
+        working-directory: ${{ runner.temp }}/pfarma-source-${{ matrix.shard }}
         run: |
           set -euo pipefail
           test -f tools/public_ci_entrypoint.py || { echo 'Encrypted source does not expose tools/public_ci_entrypoint.py.' >&2; exit 1; }
-          python tools/public_ci_entrypoint.py --shard '${{ inputs.shard }}'
+          python tools/public_ci_entrypoint.py --shard '${{ matrix.shard }}'
 
       - name: Remove decrypted workspace
         if: always()
         shell: bash
-        run: rm -rf "$RUNNER_TEMP/pfarma-source"
+        run: rm -rf "$RUNNER_TEMP/pfarma-source-${{ matrix.shard }}"
