@@ -19,6 +19,7 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/bootstrap.yml"),
     PurePosixPath(".github/workflows/run-encrypted-pfarma.yml"),
     PurePosixPath(".github/workflows/private-source-ref-ci.yml"),
+    PurePosixPath(".github/workflows/poll-private-main.yml"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
