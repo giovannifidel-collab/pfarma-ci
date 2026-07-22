@@ -1,0 +1,94 @@
+name: Project Giovanni Private Source Hosted CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'Private project-giovanni branch/tag/SHA to validate'
+        required: false
+        default: 'main'
+  schedule:
+    - cron: '*/10 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-giovanni-private-source-hosted-ci
+  cancel-in-progress: true
+
+jobs:
+  validate-private-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || 'main' }}
+    steps:
+      - name: Require private-source token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo 'No private-source token is configured.' >&2
+            exit 1
+          fi
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Checkout private Project Giovanni source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ env.SOURCE_REF }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: project-giovanni
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Attest exact private source SHA
+        id: source
+        shell: bash
+        working-directory: project-giovanni
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Validated private source SHA: $sha"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: project-giovanni/package.json
+
+      - name: Install dependencies
+        working-directory: project-giovanni
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript validation
+        working-directory: project-giovanni
+        run: npx --yes tsc --noEmit
+
+      - name: Build application
+        working-directory: project-giovanni
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build
+
+      - name: Hosted CI summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Project Giovanni private-source hosted CI'
+            echo "- repository: giovannifidel-collab/project-giovanni (private)"
+            echo "- requested ref: ${SOURCE_REF}"
+            echo "- exact SHA: ${{ steps.source.outputs.sha }}"
+            echo '- runner: GitHub-hosted ubuntu-latest'
+            echo '- source checkout credentials are not persisted'
+          } >> "$GITHUB_STEP_SUMMARY"
