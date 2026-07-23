@@ -1,0 +1,86 @@
+name: Project Giovanni Trusted Open PR Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/validate-project-giovanni-open-prs-trusted.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pr: '347'
+            sha: '6e66a7b366d5848fa1c482012a409cb679eeb86f'
+            focused_test: 'node tools/test_photo_ai_local_safety_parity.mjs'
+          - pr: '348'
+            sha: '2cc977776cdc4d2f4c13a853999839eca46933f8'
+            focused_test: 'node tools/test_cruise_offline_progress_cache.mjs'
+          - pr: '349'
+            sha: 'b181682d6ccbefec0a5767bcc57153bd720982ac'
+            focused_test: 'node tools/test_p0_journey_continuity.mjs'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Require private-source token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Checkout exact private Project Giovanni head
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ matrix.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: project-giovanni
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Attest exact SHA
+        working-directory: project-giovanni
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = '${{ matrix.sha }}'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: project-giovanni/package-lock.json
+
+      - name: Install dependencies
+        working-directory: project-giovanni
+        run: npm ci --no-audit --no-fund
+
+      - name: Focused PR contract
+        working-directory: project-giovanni
+        shell: bash
+        run: ${{ matrix.focused_test }}
+
+      - name: TypeScript validation
+        working-directory: project-giovanni
+        run: npx tsc --noEmit
+
+      - name: Build application
+        working-directory: project-giovanni
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf project-giovanni
