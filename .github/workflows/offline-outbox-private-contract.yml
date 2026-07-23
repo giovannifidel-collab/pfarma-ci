@@ -57,7 +57,7 @@ jobs:
         run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_invalid_checksum_and_other_input_fail_before_persistence -v
       - name: Payload JSON tamper detection
         working-directory: private-source
-        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_tampered_payload_json_fails_integrity_before_replay -v
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_tampered_payload_json_fails_closed_before_replay -v
       - name: Payload hash tamper detection
         working-directory: private-source
         run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_tampered_payload_hash_fails_before_replay -v
