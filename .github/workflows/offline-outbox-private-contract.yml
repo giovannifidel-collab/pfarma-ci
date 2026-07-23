@@ -37,8 +37,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run canonical offline outbox contract
+      - name: Exact idempotent append
         working-directory: private-source
-        run: python -m unittest api.test_offline_operation_outbox -v
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_append_and_exact_replay_are_idempotent -v
+      - name: Identity mismatch
+        working-directory: private-source
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_identity_mismatch_fails_closed -v
+      - name: Terminal append-only
+        working-directory: private-source
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_terminal_status_is_append_only_and_not_replayable -v
+      - name: Transition chronology
+        working-directory: private-source
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_transition_cannot_precede_pending_event -v
+      - name: FIFO replay order
+        working-directory: private-source
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_fifo_sequence_and_replayable_order -v
+      - name: Invalid input boundaries
+        working-directory: private-source
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_invalid_checksum_and_other_input_fail_before_persistence -v
+      - name: Payload JSON tamper detection
+        working-directory: private-source
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_tampered_payload_json_fails_integrity_before_replay -v
+      - name: Payload hash tamper detection
+        working-directory: private-source
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_tampered_payload_hash_fails_before_replay -v
+      - name: Timeline tamper detection
+        working-directory: private-source
+        run: python -m unittest api.test_offline_operation_outbox.OfflineOperationOutboxTests.test_tampered_pending_reason_and_multiple_terminal_events_fail_closed -v
       - if: always()
         run: rm -rf private-source
