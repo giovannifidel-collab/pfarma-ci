@@ -26,6 +26,7 @@ jobs:
             focused_test: 'node tools/test_p0_journey_continuity.mjs'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    environment: pfarma-ci-trusted
     steps:
       - name: Require private-source token
         shell: bash
