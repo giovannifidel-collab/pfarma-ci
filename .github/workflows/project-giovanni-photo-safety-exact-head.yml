@@ -1,0 +1,54 @@
+name: Project Giovanni Exact Photo Safety Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/project-giovanni-photo-safety-exact-head.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  exact-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require source token
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+      - name: Check out exact Project Giovanni head
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: 3412e1296807d207a8f3a180009ad1bca42b9fc0
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: project-giovanni
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact source head
+        shell: bash
+        run: test "$(git -C project-giovanni rev-parse HEAD)" = '3412e1296807d207a8f3a180009ad1bca42b9fc0'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: project-giovanni/package-lock.json
+      - name: Install dependencies
+        working-directory: project-giovanni
+        run: npm ci
+      - name: Validate local Photo AI safety parity
+        working-directory: project-giovanni
+        run: node tools/test_photo_ai_local_safety_parity.mjs
+      - name: Build exact Project Giovanni head
+        working-directory: project-giovanni
+        run: npm run build
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf project-giovanni
