@@ -58,3 +58,5 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf pfarma-cloud
+
+# Retriggered after repository-native quality/health passed; exact private source SHA remains pinned.
