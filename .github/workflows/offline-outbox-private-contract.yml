@@ -1,0 +1,44 @@
+name: PFarma Offline Outbox Private Contract
+
+on:
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/offline-outbox-private-contract.yml'
+      - '.github/workflows/private-source-ref-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run canonical offline outbox contract
+        working-directory: private-source
+        run: python -m unittest api.test_offline_operation_outbox -v
+      - if: always()
+        run: rm -rf private-source
