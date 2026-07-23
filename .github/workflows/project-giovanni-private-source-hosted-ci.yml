@@ -7,6 +7,10 @@ on:
     paths:
       - 'project-giovanni-source-ref.txt'
       - '.github/workflows/project-giovanni-private-source-hosted-ci.yml'
+  pull_request:
+    paths:
+      - 'project-giovanni-source-ref.txt'
+      - '.github/workflows/project-giovanni-private-source-hosted-ci.yml'
   workflow_dispatch:
     inputs:
       source_ref:
@@ -20,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: project-giovanni-private-source-hosted-ci
+  group: project-giovanni-private-source-hosted-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,7 +48,7 @@ jobs:
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "${DISPATCH_REF:-}" ]; then
             ref="$DISPATCH_REF"
-          elif [ "$EVENT_NAME" = "push" ]; then
+          elif [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "pull_request" ]; then
             ref="$(tr -d '[:space:]' < project-giovanni-source-ref.txt)"
           else
             ref="main"
