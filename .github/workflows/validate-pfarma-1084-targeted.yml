@@ -1,0 +1,48 @@
+name: PFarma 1084 Targeted Hosted Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/validate-pfarma-1084-targeted.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require private-source token
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_TOKEN"
+          echo "PRIVATE_SOURCE_TOKEN=$SOURCE_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Checkout exact PFarma PR head
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: d2764128fa313adc91f5ce6b8ee2b5b15aeea2b0
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Attest exact SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = 'd2764128fa313adc91f5ce6b8ee2b5b15aeea2b0'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Staging primary operator flow contract
+        run: python tools/test_staging_control_center_route.py
+
+      - name: Product lookup handoff contract
+        run: python tools/test_product_lookup_page.py
