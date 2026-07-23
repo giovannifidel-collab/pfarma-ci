@@ -37,7 +37,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-
       - name: Validate requested private source SHA
         id: source
         shell: bash
@@ -50,13 +49,11 @@ jobs:
           fi
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Requested source is not a canonical commit SHA.' >&2; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
       - name: Fail closed unless private-source token is configured
         shell: bash
         env:
           SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: test -n "$SOURCE_TOKEN"
-
       - name: Check out exact private PFarma commit
         uses: actions/checkout@v4
         with:
@@ -66,16 +63,13 @@ jobs:
           path: private-source
           fetch-depth: 1
           persist-credentials: false
-
       - name: Verify checkout is exactly the requested commit
         shell: bash
         run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Execute read-only PFarma shard
         shell: bash
         working-directory: private-source
@@ -116,6 +110,7 @@ jobs:
               python agent/staging/test_migration_dry_run_product_partition.py
               python agent/staging/test_verify_migration_sample_acceptance_artifact.py
               python agent/staging/test_verify_migration_sample_acceptance_envelope.py
+              [ ! -f agent/staging/test_migration_anomaly_report.py ] || python agent/staging/test_migration_anomaly_report.py
               ;;
             backend)
               python -m unittest backend.test_app backend.test_inventory_api backend.test_lot_expiry_risk backend.test_product_api backend.test_product_lookup_api backend.test_product_lookup_route backend.test_product_lookup_asgi backend.test_product_lookup_mount backend.test_product_lookup_postgres backend.test_product_lookup_postgres_composition backend.test_product_stock_snapshot backend.test_product_stock_snapshot_route backend.test_product_stock_snapshot_asgi backend.test_product_stock_snapshot_mount backend.test_product_supplier_decision_snapshot backend.test_inventory_summary_api backend.test_inventory_summary_route backend.test_inventory_summary_asgi backend.test_supplier_catalog_reconciliation backend.test_supplier_catalog_reconciliation_api backend.test_supplier_catalog_reconciliation_route backend.test_supplier_catalog_reconciliation_asgi backend.test_inventory_movement_read backend.test_inventory_movement_read_route_asgi backend.test_inventory_movement_read_mount_composition backend.test_inventory_movement_semantic_audit backend.test_inventory_movement_semantic_audit_route_asgi backend.test_inventory_movement_semantic_audit_mount_composition backend.test_reservation_read -v
@@ -131,7 +126,6 @@ jobs:
               python tools/test_pilot_security_headers.py
               ;;
           esac
-
       - name: Remove private source checkout
         if: always()
         shell: bash
@@ -163,7 +157,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-
       - name: Validate requested private source SHA
         id: source
         shell: bash
@@ -173,7 +166,6 @@ jobs:
           if [ -z "$sha" ]; then sha="$(tr -d '\r\n' < source-ref.txt)"; fi
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
       - name: Check out exact private PFarma commit
         uses: actions/checkout@v4
         with:
@@ -183,7 +175,6 @@ jobs:
           path: private-source
           fetch-depth: 1
           persist-credentials: false
-
       - name: Execute PostgreSQL schema smoke
         shell: bash
         working-directory: private-source
@@ -193,7 +184,6 @@ jobs:
           if [ -f database/schema/0002_core_v1.sql ]; then psql -h localhost -U postgres -d pfarma_test -f tools/test_core_schema_postgres.sql; fi
           if [ -f database/schema/0004_supplier_catalog_staging.sql ]; then psql -h localhost -U postgres -d pfarma_test -f tools/test_supplier_catalog_staging_postgres.sql; fi
           if [ -f database/schema/0005_supplier_catalog_promotion.sql ]; then psql -h localhost -U postgres -d pfarma_test -f tools/test_supplier_catalog_promotion_postgres.sql; fi
-
       - name: Remove private source checkout
         if: always()
         shell: bash
