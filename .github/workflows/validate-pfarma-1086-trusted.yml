@@ -1,0 +1,60 @@
+name: PFarma 1086 Trusted Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/validate-pfarma-1086-trusted.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    env:
+      SOURCE_SHA: 72efa3d9aaa6e8eb1e72e074d83c9b97209c65f6
+    steps:
+      - name: Require private-source token
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_TOKEN"
+          echo "PRIVATE_SOURCE_TOKEN=$SOURCE_TOKEN" >> "$GITHUB_ENV"
+
+      - name: Checkout exact private PFarma head
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ env.SOURCE_SHA }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: pfarma-cloud
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Attest exact SHA
+        working-directory: pfarma-cloud
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile Python sources
+        working-directory: pfarma-cloud
+        run: python -m compileall -q .
+
+      - name: Supplier decision route contract
+        working-directory: pfarma-cloud
+        run: python tools/test_product_supplier_decision_page.py
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf pfarma-cloud
