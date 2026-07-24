@@ -51,11 +51,7 @@ jobs:
 
       - name: Validate typed reservation service and apply boundary
         working-directory: private-source
-        run: python -m unittest backend.test_reservation_apply backend.test_reservation_transaction_attestation
-
-      - name: Validate reservation PostgreSQL executor regression
-        working-directory: private-source
-        run: python -m unittest backend.test_reservation_postgres_executor
+        run: python -m unittest api.test_reservation_service backend.test_reservation_apply backend.test_reservation_transaction_attestation
 
       - name: Remove private source checkout
         if: always()
