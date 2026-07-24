@@ -56,6 +56,9 @@ jobs:
       - name: Validate sales reconciliation runtime
         working-directory: private-source
         run: python tools/test_runtime_sales_reconciliation.py
+      - name: Validate sales reconciliation handoff
+        working-directory: private-source
+        run: python tools/test_sales_reconciliation_handoff.py
       - name: Validate accounting operator handoffs
         working-directory: private-source
         run: python tools/test_accounting_operator_handoffs.py
@@ -67,7 +70,7 @@ jobs:
         run: python tools/test_management_shell_global_search_entry.py
       - name: Compile read-only accounting surfaces
         working-directory: private-source
-        run: python -m compileall -q backend/customer_directory_postgres.py backend/supplier_directory_postgres.py backend/supplier_invoice_read_postgres.py backend/supplier_invoice_payment_reconciliation.py backend/sales_reconciliation.py backend/sales_reconciliation_postgres.py web/customer_directory_page.py web/supplier_directory_page.py web/global_search_customer_reader.py web/global_search_supplier_directory_reader.py web/global_search_supplier_invoice_reader.py web/supplier_invoice_reconciliation_page.py web/sales_reconciliation_page.py web/accounting_balance_page.py application_runtime.py
+        run: python -m compileall -q backend/customer_directory_postgres.py backend/supplier_directory_postgres.py backend/supplier_invoice_read_postgres.py backend/supplier_invoice_payment_reconciliation.py backend/sales_reconciliation.py backend/sales_reconciliation_postgres.py web/customer_directory_page.py web/supplier_directory_page.py web/global_search_customer_reader.py web/global_search_supplier_directory_reader.py web/global_search_supplier_invoice_reader.py web/supplier_invoice_reconciliation_page.py web/sales_reconciliation_page.py web/accounting_balance_page.py web/sales_page.py application_runtime.py
       - name: Remove private source checkout
         if: always()
         run: rm -rf private-source
