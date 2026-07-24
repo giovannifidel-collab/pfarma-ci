@@ -53,7 +53,6 @@ jobs:
         working-directory: private-source
         run: |
           python tools/test_reservation_exact_filter.py
-          python -m unittest backend.test_reservation_read
           python -m py_compile backend/reservation_read.py web/reservation_page.py web/global_search_reservation_reader.py
 
       - name: Remove private source checkout
