@@ -1,0 +1,87 @@
+name: Project Giovanni Exact Heads
+
+on:
+  pull_request:
+    paths:
+      - 'project-giovanni-photo-ref.txt'
+      - 'project-giovanni-cruise-ref.txt'
+      - '.github/workflows/project-giovanni-exact-heads.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  photo-ai-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact Photo AI source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < project-giovanni-photo-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out exact Project Giovanni Photo AI commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact source
+        run: test "$(git -C source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - name: Validate Photo AI local safety parity
+        working-directory: source
+        run: node tools/test_photo_ai_local_safety_parity.mjs
+      - name: Remove private source
+        if: always()
+        run: rm -rf source
+
+  cruise-offline-progress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact Cruise source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < project-giovanni-cruise-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out exact Project Giovanni Cruise commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact source
+        run: test "$(git -C source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - name: Validate Cruise offline progress cache
+        working-directory: source
+        run: node tools/test_cruise_offline_progress_cache.mjs
+      - name: Remove private source
+        if: always()
+        run: rm -rf source
