@@ -1,0 +1,55 @@
+name: PFarma Customer Directory Exact Head
+
+on:
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/pfarma-customer-directory-exact.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  customer-directory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact private source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out exact private PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact source
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate customer directory runtime
+        working-directory: private-source
+        run: python tools/test_runtime_customer_directory.py
+      - name: Validate shell navigation
+        working-directory: private-source
+        run: python tools/test_management_shell_global_search_entry.py
+      - name: Compile changed surfaces
+        working-directory: private-source
+        run: python -m compileall -q backend/customer_directory_postgres.py web/customer_directory_page.py web/global_search_customer_reader.py application_runtime.py
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf private-source
