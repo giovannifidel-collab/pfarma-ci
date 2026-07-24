@@ -53,6 +53,9 @@ jobs:
       - name: Validate sales reconciliation runtime
         working-directory: private-source
         run: python tools/test_runtime_sales_reconciliation.py
+      - name: Validate global search runtime wiring
+        working-directory: private-source
+        run: python tools/test_runtime_global_search_wiring.py
       - name: Validate shell navigation
         working-directory: private-source
         run: python tools/test_management_shell_global_search_entry.py
