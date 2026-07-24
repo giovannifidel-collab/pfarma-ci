@@ -51,7 +51,7 @@ jobs:
 
       - name: Validate operator exceptions cockpit
         working-directory: private-source
-        run: python tools/test_operator_exceptions_cockpit.py
+        run: python tools/test_operator_exceptions_cockpit.py && python tools/test_operator_inventory_exceptions.py
 
       - name: Validate dependent read boundaries
         working-directory: private-source
