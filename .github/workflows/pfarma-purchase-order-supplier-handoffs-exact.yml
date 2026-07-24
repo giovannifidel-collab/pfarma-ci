@@ -49,9 +49,9 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate purchase order supplier handoffs
+      - name: Validate purchase order supplier handoffs and filter
         working-directory: private-source
-        run: python tools/test_purchase_order_supplier_handoffs.py && python -m py_compile web/purchase_order_queue_page.py
+        run: python tools/test_purchase_order_supplier_handoffs.py && python tools/test_purchase_order_supplier_filter.py && python -m py_compile backend/purchase_order_read.py web/purchase_order_queue_page.py web/supplier_directory_page.py
 
       - name: Remove private source checkout
         if: always()
