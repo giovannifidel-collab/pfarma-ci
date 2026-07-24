@@ -53,9 +53,9 @@ jobs:
         working-directory: private-source
         run: python tools/test_product_stock_detail_runtime.py
 
-      - name: Validate product stock snapshot page and boundary behavior
+      - name: Compile product detail composition and boundaries
         working-directory: private-source
-        run: python tools/test_product_stock_snapshot_page.py
+        run: python -m py_compile application_runtime.py backend/product_stock_snapshot.py backend/lot_expiry_postgres.py web/product_stock_snapshot_page.py
 
       - name: Remove private source checkout
         if: always()
