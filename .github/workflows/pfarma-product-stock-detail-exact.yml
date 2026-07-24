@@ -53,9 +53,9 @@ jobs:
         working-directory: private-source
         run: python tools/test_product_stock_detail_runtime.py
 
-      - name: Validate product stock snapshot boundaries
+      - name: Validate product stock snapshot page and boundary behavior
         working-directory: private-source
-        run: python -m unittest backend.test_product_stock_snapshot web.test_product_stock_snapshot_page
+        run: python tools/test_product_stock_snapshot_page.py
 
       - name: Remove private source checkout
         if: always()
