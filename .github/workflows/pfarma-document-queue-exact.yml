@@ -57,7 +57,19 @@ jobs:
         working-directory: private-source
         run: python tools/test_global_search_sales_document_reader.py
 
-      - name: Validate document review runtime
+      - name: Validate document queue root page
+        working-directory: private-source
+        run: python -c "from tools.test_runtime_sales_document_review_search import assert_root_queue,assert_select_only; q=assert_root_queue(); assert_select_only(q)"
+
+      - name: Validate exact document review
+        working-directory: private-source
+        run: python -c "from tools.test_runtime_sales_document_review_search import assert_exact_review,assert_select_only; q=assert_exact_review(); assert_select_only(q)"
+
+      - name: Validate exact document global search
+        working-directory: private-source
+        run: python -c "from tools.test_runtime_sales_document_review_search import assert_exact_global_search,assert_select_only; q=assert_exact_global_search(); assert_select_only(q)"
+
+      - name: Validate complete document review runtime
         working-directory: private-source
         run: python tools/test_runtime_sales_document_review_search.py
 
