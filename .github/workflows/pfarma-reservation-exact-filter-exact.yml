@@ -1,0 +1,58 @@
+name: PFarma Reservation Exact Filter Exact Head
+
+on:
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/pfarma-reservation-exact-filter-exact.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reservation-exact-filter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate requested private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out exact private PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact source
+        shell: bash
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate exact reservation filter
+        working-directory: private-source
+        run: python tools/test_reservation_exact_filter.py
+      - name: Validate expiry exact handoff
+        working-directory: private-source
+        run: python tools/test_reservation_expiry_exact_handoff.py
+      - name: Compile reservation read surfaces
+        working-directory: private-source
+        run: python -m py_compile backend/reservation_read.py web/reservation_page.py web/global_search_reservation_reader.py web/reservation_expiry_candidates_page.py
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf private-source

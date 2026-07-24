@@ -1,0 +1,58 @@
+name: PFarma Purchase Order Supplier Handoffs Exact Head
+
+on:
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/pfarma-purchase-order-supplier-handoffs-exact.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  purchase-order-supplier-handoffs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate requested private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact private PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source
+        shell: bash
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate purchase order supplier handoffs and exact filters
+        working-directory: private-source
+        run: python tools/test_purchase_order_supplier_handoffs.py && python tools/test_purchase_order_supplier_filter.py && python tools/test_purchase_order_exact_filter.py && python -m py_compile backend/purchase_order_read.py web/purchase_order_queue_page.py web/supplier_directory_page.py web/global_search_purchase_order_reader.py
+
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf private-source
