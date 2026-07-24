@@ -49,13 +49,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate typed sale service contract
-        working-directory: private-source
-        run: python api/test_sale_execution_result.py
-
       - name: Validate PostgreSQL sale executor attestation
         working-directory: private-source
-        run: python backend/test_sale_postgres_executor.py
+        run: python -m unittest backend.test_sale_postgres_executor
+
+      - name: Validate typed sale service contract
+        working-directory: private-source
+        run: python -m unittest api.test_sale_execution_result
 
       - name: Remove private source checkout
         if: always()
