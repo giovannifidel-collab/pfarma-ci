@@ -1,4 +1,4 @@
-name: PFarma Customer Directory Exact Head
+name: PFarma Party Directories Exact Head
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  customer-directory:
+  party-directories:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: pfarma-ci-trusted
@@ -44,12 +44,15 @@ jobs:
       - name: Validate customer directory runtime
         working-directory: private-source
         run: python tools/test_runtime_customer_directory.py
+      - name: Validate supplier directory runtime
+        working-directory: private-source
+        run: python tools/test_runtime_supplier_directory.py
       - name: Validate shell navigation
         working-directory: private-source
         run: python tools/test_management_shell_global_search_entry.py
-      - name: Compile changed surfaces
+      - name: Compile party directory surfaces
         working-directory: private-source
-        run: python -m compileall -q backend/customer_directory_postgres.py web/customer_directory_page.py web/global_search_customer_reader.py application_runtime.py
+        run: python -m compileall -q backend/customer_directory_postgres.py backend/supplier_directory_postgres.py web/customer_directory_page.py web/supplier_directory_page.py web/global_search_customer_reader.py web/global_search_supplier_directory_reader.py application_runtime.py
       - name: Remove private source checkout
         if: always()
         run: rm -rf private-source
