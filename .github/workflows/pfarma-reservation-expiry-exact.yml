@@ -53,6 +53,10 @@ jobs:
         working-directory: private-source
         run: python -m unittest backend.test_reservation_expiry_candidates backend.test_reservation_expiry_candidates_postgres
 
+      - name: Validate reservation expiry operator page
+        working-directory: private-source
+        run: python tools/test_reservation_expiry_operator_page.py
+
       - name: Remove private source checkout
         if: always()
         run: rm -rf private-source
