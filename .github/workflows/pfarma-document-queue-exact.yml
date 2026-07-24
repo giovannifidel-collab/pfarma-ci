@@ -65,9 +65,21 @@ jobs:
         working-directory: private-source
         run: python -c "from tools.test_runtime_sales_document_review_search import assert_exact_review,assert_select_only; q=assert_exact_review(); assert_select_only(q)"
 
-      - name: Validate exact document global search
+      - name: Validate exact document search status
         working-directory: private-source
-        run: python -c "from tools.test_runtime_sales_document_review_search import assert_exact_global_search,assert_select_only; q=assert_exact_global_search(); assert_select_only(q)"
+        run: python -c "from tools.test_runtime_sales_document_review_search import assert_exact_global_search_status; assert_exact_global_search_status()"
+
+      - name: Validate exact document search title
+        working-directory: private-source
+        run: python -c "from tools.test_runtime_sales_document_review_search import assert_exact_global_search_title; assert_exact_global_search_title()"
+
+      - name: Validate exact document search href
+        working-directory: private-source
+        run: python -c "from tools.test_runtime_sales_document_review_search import assert_exact_global_search_href; assert_exact_global_search_href()"
+
+      - name: Validate exact document search providers
+        working-directory: private-source
+        run: python -c "from tools.test_runtime_sales_document_review_search import assert_exact_global_search_providers; assert_exact_global_search_providers()"
 
       - name: Validate complete document review runtime
         working-directory: private-source
