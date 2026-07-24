@@ -1,0 +1,72 @@
+name: Project Giovanni Photo Safety Exact Head
+
+on:
+  pull_request:
+    paths:
+      - 'project-giovanni-source-ref.txt'
+      - '.github/workflows/project-giovanni-photo-safety-exact.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  photo-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact private source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < project-giovanni-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Resolve private-source token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - name: Check out exact Project Giovanni commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact source
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: private-source/package-lock.json
+      - name: Install dependencies
+        working-directory: private-source
+        run: npm ci --no-audit --no-fund
+      - name: Validate focused photo safety contract
+        working-directory: private-source
+        run: node tools/test_photo_ai_local_safety_parity.mjs
+      - name: TypeScript validation
+        working-directory: private-source
+        run: npx tsc --noEmit
+      - name: Build application
+        working-directory: private-source
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf private-source
