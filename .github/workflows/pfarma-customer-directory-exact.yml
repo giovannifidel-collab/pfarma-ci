@@ -47,12 +47,15 @@ jobs:
       - name: Validate supplier directory runtime
         working-directory: private-source
         run: python tools/test_runtime_supplier_directory.py
+      - name: Validate supplier invoice reconciliation runtime
+        working-directory: private-source
+        run: python tools/test_runtime_supplier_invoice_reconciliation.py
       - name: Validate shell navigation
         working-directory: private-source
         run: python tools/test_management_shell_global_search_entry.py
-      - name: Compile party directory surfaces
+      - name: Compile party and supplier accounting surfaces
         working-directory: private-source
-        run: python -m compileall -q backend/customer_directory_postgres.py backend/supplier_directory_postgres.py web/customer_directory_page.py web/supplier_directory_page.py web/global_search_customer_reader.py web/global_search_supplier_directory_reader.py application_runtime.py
+        run: python -m compileall -q backend/customer_directory_postgres.py backend/supplier_directory_postgres.py backend/supplier_invoice_read_postgres.py backend/supplier_invoice_payment_reconciliation.py web/customer_directory_page.py web/supplier_directory_page.py web/global_search_customer_reader.py web/global_search_supplier_directory_reader.py web/supplier_invoice_reconciliation_page.py application_runtime.py
       - name: Remove private source checkout
         if: always()
         run: rm -rf private-source
