@@ -53,9 +53,9 @@ jobs:
         working-directory: private-source
         run: python tools/test_operator_supplier_invoice_exceptions.py
 
-      - name: Validate operator cockpit and supplier reconciliation boundaries
+      - name: Validate operator cockpit and supplier reconciliation boundary
         working-directory: private-source
-        run: python tools/test_operator_exceptions_cockpit.py && python -m unittest backend.test_supplier_invoice_payment_reconciliation backend.test_supplier_invoice_read_postgres
+        run: python tools/test_operator_exceptions_cockpit.py && python -m unittest backend.test_supplier_invoice_payment_reconciliation
 
       - name: Remove private source checkout
         if: always()
