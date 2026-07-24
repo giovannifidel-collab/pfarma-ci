@@ -49,11 +49,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate exact reservation filter and read boundary
+      - name: Validate exact reservation filters and handoffs
         working-directory: private-source
         run: |
           python tools/test_reservation_exact_filter.py
-          python -m py_compile backend/reservation_read.py web/reservation_page.py web/global_search_reservation_reader.py
+          python tools/test_reservation_expiry_exact_handoff.py
+          python -m py_compile backend/reservation_read.py web/reservation_page.py web/global_search_reservation_reader.py web/reservation_expiry_candidates_page.py
 
       - name: Remove private source checkout
         if: always()
