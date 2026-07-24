@@ -57,6 +57,10 @@ jobs:
         working-directory: private-source
         run: python tools/test_reservation_expiry_operator_page.py
 
+      - name: Validate reservation expiry navigation
+        working-directory: private-source
+        run: python tools/test_reservation_expiry_navigation.py
+
       - name: Remove private source checkout
         if: always()
         run: rm -rf private-source
