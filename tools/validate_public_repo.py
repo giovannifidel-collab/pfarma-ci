@@ -30,6 +30,13 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/reorder-submission-intent-json-contract.yml"),
     PurePosixPath(".github/workflows/reorder-readiness-json-contract.yml"),
     PurePosixPath(".github/workflows/reorder-preflight-json-contract.yml"),
+    PurePosixPath(".github/photo-ai/preparatore-v2.prompt.md"),
+    PurePosixPath(".github/photo-ai/preparatore-v2.schema.json"),
+    PurePosixPath(".github/workflows/project-giovanni-photo-ai.yml"),
+    PurePosixPath("scripts/cleanup-preparatore-v2-jobs.mjs"),
+    PurePosixPath("scripts/codex-auth-state.mjs"),
+    PurePosixPath("scripts/preparatore-v2-job.mjs"),
+    PurePosixPath("scripts/resolve-preparatore-v2-user.mjs"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
