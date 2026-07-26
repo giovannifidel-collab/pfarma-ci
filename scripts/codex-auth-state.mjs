@@ -94,11 +94,10 @@ async function restore() {
       plaintext = seedAuth();
       process.stdout.write("Trusted ChatGPT auth seed validated.\n");
     }
-  } else if (response.status === 404) {
-    plaintext = seedAuth();
-    process.stdout.write("No stored auth state; trusted ChatGPT auth seed validated.\n");
   } else {
-    throw new Error(`Unable to restore auth state (${response.status})`);
+    process.stdout.write(`Stored auth fetch unavailable (${response.status}); trying trusted seed.\n`);
+    plaintext = seedAuth();
+    process.stdout.write("Trusted ChatGPT auth seed validated.\n");
   }
   await mkdir(codexHome, { recursive: true, mode: 0o700 });
   const authPath = join(codexHome, "auth.json");
@@ -114,7 +113,10 @@ async function persist() {
     headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, "Content-Type": "application/json", "x-upsert": "true" },
     body: encrypt(plaintext),
   });
-  if (!response.ok) throw new Error(`Unable to persist auth state (${response.status})`);
+  if (!response.ok) {
+    process.stdout.write(`Warning: refreshed ChatGPT auth state could not be persisted (${response.status}); trusted seed remains available.\n`);
+    return;
+  }
   process.stdout.write("Updated ChatGPT auth state persisted securely.\n");
 }
 
