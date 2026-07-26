@@ -21,8 +21,16 @@ function stateKey() {
   return key;
 }
 
-function objectUrl(path) {
-  return `${supabaseUrl}/storage/v1/object/preparatore-v2-worker-state/${path.split("/").map(encodeURIComponent).join("/")}`;
+function encodedPath(path) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function uploadObjectUrl(path) {
+  return `${supabaseUrl}/storage/v1/object/preparatore-v2-worker-state/${encodedPath(path)}`;
+}
+
+function downloadObjectUrl(path) {
+  return `${supabaseUrl}/storage/v1/object/authenticated/preparatore-v2-worker-state/${encodedPath(path)}`;
 }
 
 function containsRefreshToken(value) {
@@ -72,7 +80,10 @@ function decrypt(text) {
 }
 
 async function restore() {
-  const response = await fetch(objectUrl(objectPath), { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey }, cache: "no-store" });
+  const response = await fetch(downloadObjectUrl(objectPath), {
+    headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+    cache: "no-store",
+  });
   let plaintext;
   if (response.ok) {
     try {
@@ -98,7 +109,7 @@ async function restore() {
 
 async function persist() {
   const plaintext = validateAuth(await readFile(join(codexHome, "auth.json"), "utf8"), "refreshed ChatGPT auth state");
-  const response = await fetch(objectUrl(objectPath), {
+  const response = await fetch(uploadObjectUrl(objectPath), {
     method: "POST",
     headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, "Content-Type": "application/json", "x-upsert": "true" },
     body: encrypt(plaintext),
