@@ -37,6 +37,12 @@ function validateAuth(text) {
   return text;
 }
 
+function seedAuth() {
+  const seed = process.env.CODEX_AUTH_SEED_B64;
+  if (!seed) throw new Error("Missing CODEX_AUTH_SEED_B64");
+  return validateAuth(Buffer.from(seed, "base64").toString("utf8"));
+}
+
 function encrypt(text) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", stateKey, iv);
@@ -56,13 +62,17 @@ async function restore() {
   const response = await fetch(objectUrl(objectPath), { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey }, cache: "no-store" });
   let plaintext;
   if (response.ok) {
-    plaintext = decrypt(await response.text());
-  } else if (response.status === 404 && process.env.CODEX_AUTH_SEED_B64) {
-    plaintext = Buffer.from(process.env.CODEX_AUTH_SEED_B64, "base64").toString("utf8");
+    try {
+      plaintext = validateAuth(decrypt(await response.text()));
+    } catch {
+      plaintext = seedAuth();
+      process.stdout.write("Stored ChatGPT auth state unavailable; trusted seed restored.\n");
+    }
+  } else if (response.status === 404) {
+    plaintext = seedAuth();
   } else {
     throw new Error(`Unable to restore auth state (${response.status})`);
   }
-  validateAuth(plaintext);
   await mkdir(codexHome, { recursive: true, mode: 0o700 });
   const authPath = join(codexHome, "auth.json");
   await writeFile(authPath, plaintext, { mode: 0o600 });
