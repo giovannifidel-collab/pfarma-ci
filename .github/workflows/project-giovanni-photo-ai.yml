@@ -17,7 +17,7 @@ jobs:
   analyze:
     if: github.event_name == 'repository_dispatch' && github.repository == 'giovannifidel-collab/pfarma-ci' && github.event.client_payload.job_id != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 16
     environment: photo-ai-private
     steps:
       - name: Checkout trusted public worker
@@ -64,6 +64,14 @@ jobs:
           CODEX_AUTH_SEED_B64: ${{ secrets.CODEX_AUTH_SEED_B64 }}
           CODEX_HOME: ${{ steps.dirs.outputs.codex_dir }}
         run: node scripts/codex-auth-state.mjs restore
+      - name: Mark photo analysis phase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PREPARATORE_USER_ID: ${{ steps.owner.outputs.user_id }}
+          PREPARATORE_JOB_ID: ${{ github.event.client_payload.job_id }}
+          PREPARATORE_JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        run: node scripts/preparatore-v2-job.mjs phase "$PREPARATORE_JOB_ID" "$PREPARATORE_JOB_DIR" codex_analysis
       - name: Analyze photos and generate candidate plan
         id: codex
         continue-on-error: true
@@ -96,7 +104,16 @@ jobs:
         shell: bash
         run: |
           node scripts/preparatore-v2-job.mjs complete "$PREPARATORE_JOB_ID" "$PREPARATORE_JOB_DIR" 2> "$PREPARATORE_JOB_DIR/validator-primary.stderr"
-      - name: Repair candidate after strict PLUS audit
+      - name: Mark lightweight repair phase
+        if: steps.codex.outcome == 'success' && steps.complete_primary.outcome != 'success'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PREPARATORE_USER_ID: ${{ steps.owner.outputs.user_id }}
+          PREPARATORE_JOB_ID: ${{ github.event.client_payload.job_id }}
+          PREPARATORE_JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        run: node scripts/preparatore-v2-job.mjs phase "$PREPARATORE_JOB_ID" "$PREPARATORE_JOB_DIR" repair_plan
+      - name: Repair plan only after strict PLUS audit
         id: codex_repair
         if: steps.codex.outcome == 'success' && steps.complete_primary.outcome != 'success'
         continue-on-error: true
@@ -106,26 +123,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp "$JOB_DIR/prompt.txt" "$JOB_DIR/repair-prompt.txt"
-          cat >> "$JOB_DIR/repair-prompt.txt" <<'EOF'
-
-RIPARAZIONE PLUS OBBLIGATORIA
-Il candidato precedente è stato rifiutato dal validatore deterministico. Rigenera da zero il JSON, senza commenti esterni.
-- Ricalcola OGNI giornata matematicamente: reps = sets × repsMax × ~3 s; time = sets × seconds; aggiungi tutti i recuperi prescritti e un margine reale per i cambi esercizio. `timeBudget.work` non può essere inferiore alla somma reale e non può essere gonfiato artificialmente.
-- Se non entra nei minuti disponibili, riduci serie/esercizi/intervalli; non falsificare il budget.
-- Se braccia sono una priorità esplicita, garantisci almeno 4 serie dirette settimanali bicipiti e 4 tricipiti, distribuite quando possibile, usando solo il catalogo e senza ancoraggio porta.
-- Elimina esercizi ridondanti e verifica che ogni affermazione quantitativa del rationale corrisponda davvero alla scheda.
-EOF
+          {
+            echo 'Sei nel PASS DI RIPARAZIONE RAPIDA del Preparatore V2 PLUS.'
+            echo 'NON rieseguire analisi fotografica. L analisi strategica già presente nel candidato va mantenuta salvo incompatibilità di schema.'
+            echo 'Correggi esclusivamente la programmazione necessaria per superare il validatore deterministico, conservando obiettivo, priorità, sicurezza e qualità.'
+            echo 'Regole: timing reale; minimo diretto braccia quando prioritario; nessuna ridondanza inutile; solo catalogo; nessun ancoraggio porta.'
+            echo 'ERRORE DEL VALIDATORE:'
+            cat "$JOB_DIR/validator-primary.stderr" || true
+            echo 'CANDIDATO DA RIPARARE:'
+            cat "$JOB_DIR/result.json"
+            echo 'CATALOGO E VINCOLI ORIGINALI:'
+            cat "$JOB_DIR/prompt.txt"
+          } > "$JOB_DIR/repair-prompt.txt"
           codex exec \
             --skip-git-repo-check \
             --ephemeral \
             --sandbox read-only \
-            -i "$JOB_DIR/front.jpg" \
-            -i "$JOB_DIR/side.jpg" \
-            -i "$JOB_DIR/back.jpg" \
             --output-schema .github/photo-ai/preparatore-v2.schema.json \
             -o "$JOB_DIR/result.json" \
             - < "$JOB_DIR/repair-prompt.txt" > "$JOB_DIR/codex-repair.stdout" 2> "$JOB_DIR/codex-repair.stderr"
+      - name: Mark final validation phase
+        if: steps.codex_repair.outcome == 'success'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PREPARATORE_USER_ID: ${{ steps.owner.outputs.user_id }}
+          PREPARATORE_JOB_ID: ${{ github.event.client_payload.job_id }}
+          PREPARATORE_JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        run: node scripts/preparatore-v2-job.mjs phase "$PREPARATORE_JOB_ID" "$PREPARATORE_JOB_DIR" final_validation
       - name: Validate and publish repaired candidate
         id: complete_repair
         if: steps.codex_repair.outcome == 'success'
