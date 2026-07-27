@@ -31,22 +31,7 @@
             "properties": {
               "area": {
                 "type": "string",
-                "enum": [
-                  "V-taper",
-                  "Contrasto vita / parte alta",
-                  "Larghezza spalle",
-                  "Larghezza dorsali",
-                  "Upper back",
-                  "Torace alto",
-                  "Torace",
-                  "Proporzione braccia / tronco",
-                  "Braccia",
-                  "Core",
-                  "Ricomposizione",
-                  "Simmetria visiva",
-                  "Gambe",
-                  "Equilibrio generale"
-                ]
+                "enum": ["V-taper", "Contrasto vita / parte alta", "Larghezza spalle", "Larghezza dorsali", "Upper back", "Torace alto", "Torace", "Proporzione braccia / tronco", "Braccia", "Core", "Ricomposizione", "Simmetria visiva", "Gambe", "Equilibrio generale"]
               },
               "observation": { "type": "string", "maxLength": 500 },
               "confidence": { "type": "string", "enum": ["low", "medium"] },
@@ -73,13 +58,41 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["day", "title", "durationMinutes", "emphasis", "warmupMinutes", "exercises", "finisher"],
+            "required": ["day", "title", "durationMinutes", "emphasis", "warmupMinutes", "warmupSteps", "timeBudget", "progressionRule", "exercises", "finisher"],
             "properties": {
               "day": { "type": "integer", "minimum": 1, "maximum": 6 },
               "title": { "type": "string", "maxLength": 120 },
               "durationMinutes": { "type": "integer", "minimum": 15, "maximum": 60 },
               "emphasis": { "type": "string", "enum": ["Spinta", "Tirata", "Gambe", "Core", "Cardio", "Mobilità", "Full body"] },
               "warmupMinutes": { "type": "integer", "minimum": 3, "maximum": 10 },
+              "warmupSteps": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 4,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["name", "seconds", "instruction"],
+                  "properties": {
+                    "name": { "type": "string", "maxLength": 100 },
+                    "seconds": { "type": "integer", "minimum": 20, "maximum": 180 },
+                    "instruction": { "type": "string", "maxLength": 240 }
+                  }
+                }
+              },
+              "timeBudget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["warmup", "work", "transitions", "finisher", "total"],
+                "properties": {
+                  "warmup": { "type": "integer", "minimum": 3, "maximum": 10 },
+                  "work": { "type": "integer", "minimum": 5, "maximum": 50 },
+                  "transitions": { "type": "integer", "minimum": 1, "maximum": 10 },
+                  "finisher": { "type": "integer", "minimum": 0, "maximum": 10 },
+                  "total": { "type": "integer", "minimum": 15, "maximum": 60 }
+                }
+              },
+              "progressionRule": { "type": "string", "maxLength": 400 },
               "exercises": {
                 "type": "array",
                 "minItems": 3,
@@ -87,7 +100,7 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["exerciseId", "sets", "repsMin", "repsMax", "seconds", "restSeconds", "reserveReps"],
+                  "required": ["exerciseId", "sets", "repsMin", "repsMax", "seconds", "restSeconds", "reserveReps", "techniqueCue"],
                   "properties": {
                     "exerciseId": { "type": "string", "enum": ["incline_pushup", "floor_pushup", "pike_pushup", "shoulder_tap", "band_lateral_raise", "dumbbell_lateral_raise", "chest_press_machine", "shoulder_press_machine", "cable_chest_press", "smith_shoulder_press", "band_row", "dumbbell_row", "band_reverse_fly", "band_curl", "lat_machine_neutral", "cable_low_row", "bodyweight_isometric_row", "reverse_snow_angel", "bodyweight_squat", "assisted_reverse_lunge", "glute_bridge", "calf_raise", "leg_press_machine", "leg_extension_machine", "leg_curl_machine", "smith_squat", "plank", "side_plank", "hollow_hold", "dead_bug", "cable_pallof_press", "fast_march", "side_step", "rower_intervals", "elliptical_intervals", "treadmill_intervals", "bike_intervals", "thoracic_mobility"] },
                     "sets": { "type": "integer", "minimum": 1, "maximum": 5 },
@@ -95,7 +108,8 @@
                     "repsMax": { "type": ["integer", "null"], "minimum": 1, "maximum": 40 },
                     "seconds": { "type": ["integer", "null"], "minimum": 10, "maximum": 180 },
                     "restSeconds": { "type": "integer", "minimum": 15, "maximum": 180 },
-                    "reserveReps": { "type": ["integer", "null"], "minimum": 0, "maximum": 5 }
+                    "reserveReps": { "type": ["integer", "null"], "minimum": 0, "maximum": 5 },
+                    "techniqueCue": { "type": "string", "maxLength": 240 }
                   }
                 }
               },
