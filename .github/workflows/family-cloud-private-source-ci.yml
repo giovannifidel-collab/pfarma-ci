@@ -47,6 +47,28 @@ jobs:
           SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: test -n "$SOURCE_TOKEN"
 
+      - name: Probe private repository token scope
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          repo_status="$(curl -sS -o /tmp/repo.json -w '%{http_code}' \
+            -H "Authorization: Bearer $SOURCE_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            https://api.github.com/repos/giovannifidel-collab/family-cloud)"
+          commit_status="$(curl -sS -o /tmp/commit.json -w '%{http_code}' \
+            -H "Authorization: Bearer $SOURCE_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/giovannifidel-collab/family-cloud/commits/$SOURCE_SHA")"
+          echo "Family Cloud repository access HTTP $repo_status"
+          echo "Family Cloud commit access HTTP $commit_status"
+          test "$repo_status" = "200"
+          test "$commit_status" = "200"
+
       - name: Check out exact private Family Cloud commit
         uses: actions/checkout@v4
         with:
