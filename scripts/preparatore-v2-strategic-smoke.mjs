@@ -22,7 +22,16 @@ const analysis = schema?.properties?.analysis;
 assert(analysis?.type === "object", "analysis schema missing");
 const priorityAreaEnum = analysis?.properties?.priorities?.items?.properties?.area?.enum;
 assert(Array.isArray(priorityAreaEnum), "strategic priority enum missing");
-for (const area of ["v_taper", "waist_contrast", "shoulder_width", "lat_width", "upper_back", "upper_chest", "recomposition"]) {
+const requiredStrategicLabels = [
+  "V-taper",
+  "Contrasto vita / parte alta",
+  "Larghezza spalle",
+  "Larghezza dorsali",
+  "Upper back",
+  "Torace alto",
+  "Ricomposizione",
+];
+for (const area of requiredStrategicLabels) {
   assert(priorityAreaEnum.includes(area), `Strategic area missing: ${area}`);
 }
 
@@ -37,9 +46,9 @@ const smokeResult = {
     analysisConfidence: "medium",
     imageQuality: { front: "usable", side: "usable", back: "usable" },
     priorities: [
-      { area: "v_taper", observation: "Contrasto parte alta/vita migliorabile rispetto all'obiettivo estetico.", confidence: "medium", trainingImplication: "Aumentare frequenza di lavoro per spalle e dorsali senza promettere riduzione localizzata." },
-      { area: "waist_contrast", observation: "La strategia deve combinare ricomposizione generale e proporzioni della parte alta.", confidence: "medium", trainingImplication: "Usare cardio sostenibile e core di controllo insieme a lavoro ipertrofico mirato." },
-      { area: "recomposition", observation: "L'obiettivo visivo richiede miglioramento complessivo della composizione corporea.", confidence: "medium", trainingImplication: "Programmare densità e aderenza senza eccesso di volume non prioritario." }
+      { area: "V-taper", observation: "Contrasto parte alta/vita migliorabile rispetto all'obiettivo estetico.", confidence: "medium", trainingImplication: "Aumentare frequenza di lavoro per spalle e dorsali senza promettere riduzione localizzata." },
+      { area: "Contrasto vita / parte alta", observation: "La strategia deve combinare ricomposizione generale e proporzioni della parte alta.", confidence: "medium", trainingImplication: "Usare cardio sostenibile e core di controllo insieme a lavoro ipertrofico mirato." },
+      { area: "Ricomposizione", observation: "L'obiettivo visivo richiede miglioramento complessivo della composizione corporea.", confidence: "medium", trainingImplication: "Programmare densità e aderenza senza eccesso di volume non prioritario." }
     ],
     limitations: ["Smoke test tecnico: nessuna inferenza clinica o biometrica."],
     summary: "Smoke test Strategic Trainer: output goal-driven con V-taper, contrasto vita/parte alta e ricomposizione."
