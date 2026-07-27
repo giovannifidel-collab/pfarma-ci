@@ -123,32 +123,43 @@ function normalizeResult(raw, job) {
   if (!Array.isArray(raw.plan.days) || raw.plan.days.length !== profile.daysPerWeek) throw new Error("Invalid day count");
   const days = raw.plan.days.map((day, index) => {
     if (day.day !== index + 1 || day.durationMinutes !== profile.minutesPerSession || !safeText(day.title, 120) || !integer(day.warmupMinutes, 3, 10)) throw new Error("Invalid day");
+    if (!Array.isArray(day.warmupSteps) || day.warmupSteps.length < 2 || day.warmupSteps.length > 4) throw new Error("Invalid warmup");
+    const warmupSteps = day.warmupSteps.map((step) => {
+      if (!safeText(step?.name, 100) || !integer(step?.seconds, 20, 180) || !safeText(step?.instruction, 240)) throw new Error("Invalid warmup step");
+      return { name: step.name, seconds: step.seconds, instruction: step.instruction };
+    });
+    const warmupSeconds = warmupSteps.reduce((sum, step) => sum + step.seconds, 0);
+    if (warmupSeconds < day.warmupMinutes * 60 - 60 || warmupSeconds > day.warmupMinutes * 60 + 60) throw new Error("Warmup duration mismatch");
+    const budget = day.timeBudget;
+    if (!budget || !integer(budget.warmup, 3, 10) || !integer(budget.work, 5, 50) || !integer(budget.transitions, 1, 10) || !integer(budget.finisher, 0, 10) || !integer(budget.total, 15, 60)) throw new Error("Invalid time budget");
+    if (budget.warmup + budget.work + budget.transitions + budget.finisher !== budget.total || budget.total !== day.durationMinutes || budget.warmup !== day.warmupMinutes) throw new Error("Time budget mismatch");
+    if (!safeText(day.progressionRule, 400)) throw new Error("Invalid progression rule");
     if (!Array.isArray(day.exercises) || day.exercises.length < 3 || day.exercises.length > 6) throw new Error("Invalid exercises");
     const exercises = day.exercises.map((exercise) => {
       const definition = catalog[exercise.exerciseId];
       if (!definition) throw new Error("Unknown exercise");
       const [name, focus, mode, requires] = definition;
       if (requires.some((item) => !equipment.has(item))) throw new Error("Unavailable equipment");
-      if (!integer(exercise.sets, 1, 5) || !integer(exercise.restSeconds, 15, 180)) throw new Error("Invalid dose");
+      if (!integer(exercise.sets, 1, 5) || !integer(exercise.restSeconds, 15, 180) || !safeText(exercise.techniqueCue, 240)) throw new Error("Invalid dose");
       if (mode === "time") {
         if (!integer(exercise.seconds, 10, 180) || exercise.repsMin !== null || exercise.repsMax !== null) throw new Error("Invalid time target");
-        return { name, prescription: `${exercise.sets} x ${exercise.seconds} s`, restSeconds: exercise.restSeconds, focus, target: { mode: "time", sets: exercise.sets, secondsMin: exercise.seconds, secondsMax: exercise.seconds }, ...(requires.length ? { requires } : {}) };
+        return { name, prescription: `${exercise.sets} x ${exercise.seconds} s`, restSeconds: exercise.restSeconds, focus, target: { mode: "time", sets: exercise.sets, secondsMin: exercise.seconds, secondsMax: exercise.seconds }, techniqueCue: exercise.techniqueCue, ...(requires.length ? { requires } : {}) };
       }
       if (!integer(exercise.repsMin, 1, 30) || !integer(exercise.repsMax, exercise.repsMin, 40) || exercise.seconds !== null) throw new Error("Invalid rep target");
       const reserveReps = integer(exercise.reserveReps, 0, 5) ? exercise.reserveReps : 2;
-      return { name, prescription: `${exercise.sets} x ${exercise.repsMin}-${exercise.repsMax} · ${reserveReps} RIR`, restSeconds: exercise.restSeconds, focus, target: { mode: "reps", sets: exercise.sets, repsMin: exercise.repsMin, repsMax: exercise.repsMax, reserveReps }, ...(requires.length ? { requires } : {}) };
+      return { name, prescription: `${exercise.sets} x ${exercise.repsMin}-${exercise.repsMax} · ${reserveReps} RIR`, restSeconds: exercise.restSeconds, focus, target: { mode: "reps", sets: exercise.sets, repsMin: exercise.repsMin, repsMax: exercise.repsMax, reserveReps }, techniqueCue: exercise.techniqueCue, ...(requires.length ? { requires } : {}) };
     });
-    return { day: day.day, title: day.title, durationMinutes: day.durationMinutes, emphasis: day.emphasis, warmupMinutes: day.warmupMinutes, exercises, ...(safeText(day.finisher, 400) ? { finisher: day.finisher } : {}) };
+    return { day: day.day, title: day.title, durationMinutes: day.durationMinutes, emphasis: day.emphasis, warmupMinutes: day.warmupMinutes, warmupSteps, timeBudget: { warmup: budget.warmup, work: budget.work, transitions: budget.transitions, finisher: budget.finisher, total: budget.total }, progressionRule: day.progressionRule, exercises, ...(safeText(day.finisher, 400) ? { finisher: day.finisher } : {}) };
   });
   return {
     analysis,
     plan: {
       summary: raw.plan.summary,
-      rationale: [...raw.plan.rationale, "Preparatore V2 Codex: strategia goal-driven con priorità estetiche, ricomposizione e leve di proporzione; adattamento giornaliero attrezzi disponibile senza nuova analisi AI."],
+      rationale: [...raw.plan.rationale, "Preparatore V2 PLUS: strategia goal-driven, audit temporale, riscaldamento eseguibile, cue tecnici e progressione esplicita; adattamento giornaliero attrezzi disponibile senza nuova analisi AI."],
       safetyNote: raw.plan.safetyNote,
       days,
     },
-    model: "Codex ChatGPT · GitHub Actions · Strategic Trainer",
+    model: "Codex ChatGPT · GitHub Actions · Preparatore V2 PLUS",
     persisted: false,
     adaptablePerSession: true,
     automaticPlanChange: false,
