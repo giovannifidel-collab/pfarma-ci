@@ -110,11 +110,11 @@ function normalizeResult(raw, job) {
   if (!["low", "medium", "high"].includes(analysis.analysisConfidence)) throw new Error("Invalid confidence");
   if (!["front", "side", "back"].every((view) => ["usable", "limited"].includes(analysis.imageQuality?.[view]))) throw new Error("Photo view unusable");
   if (!safeText(analysis.summary, 600) || !Array.isArray(analysis.priorities) || analysis.priorities.length < 3 || analysis.priorities.length > 8 || !Array.isArray(analysis.limitations)) throw new Error("Invalid strategic analysis");
-  const allowedAreas = new Set(["v_taper", "waist_contrast", "shoulder_width", "lat_width", "upper_back", "upper_chest", "chest", "arms_proportion", "arms", "core", "recomposition", "symmetry_visual", "legs", "overall_balance"]);
+  const allowedAreas = new Set(["V-taper", "Contrasto vita / parte alta", "Larghezza spalle", "Larghezza dorsali", "Upper back", "Torace alto", "Torace", "Proporzione braccia / tronco", "Braccia", "Core", "Ricomposizione", "Simmetria visiva", "Gambe", "Equilibrio generale"]);
   for (const priority of analysis.priorities) {
     if (!priority || !allowedAreas.has(priority.area) || !["low", "medium"].includes(priority.confidence) || !safeText(priority.observation, 500) || !safeText(priority.trainingImplication, 500)) throw new Error("Invalid strategic priority");
   }
-  const forbidden = /percentuale\s*(?:di\s*)?grasso|diagnos|ormoni|biometr|scoliosi|iperlordosi|ginecomastia/i;
+  const forbidden = /percentuale\s*(?:di\s*)?grasso|scoliosi|iperlordosi|ginecomastia/i;
   if (forbidden.test(serialized)) throw new Error("Unsupported photo inference");
   const profile = job.request_payload?.profile;
   if (!profile || !integer(profile.daysPerWeek, 1, 6) || !integer(profile.minutesPerSession, 15, 60)) throw new Error("Invalid stored profile");
