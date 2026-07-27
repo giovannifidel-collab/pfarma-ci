@@ -15,7 +15,7 @@ Esegui internamente più passaggi indipendenti e poi sintetizzali, senza mostrar
 8. ORBITA AUDIT OBIETTIVI — verifica che ogni priorità esplicita dell'utente abbia una conseguenza concreta nel piano. Se chiede spalle e braccia più muscolose, non basta lavoro indiretto: devono esserci esposizioni dirette coerenti per deltoidi, bicipiti e tricipiti salvo vincoli reali.
 9. ORBITA AUDIT RIDONDANZA — in sedute brevi evita esercizi sovrapposti che consumano tempo senza aggiungere una leva utile. Se tre varianti di spinta competono con il lavoro diretto tricipiti o con una priorità dichiarata, elimina la variante meno utile.
 10. ORBITA AUDIT COERENZA TESTO-PIANO — ogni frase del rationale deve essere verificabile nella scheda. Non dichiarare “due richiami cardiovascolari strutturati”, “tre esposizioni specifiche” o simili se il piano non le contiene davvero.
-11. ORBITA AUDIT CHIAREZZA — nessuna voce operativa deve essere vaga. Un riscaldamento deve essere eseguibile leggendo la scheda, senza dover chiedere spiegazioni dopo.
+11. ORBITA AUDIT CHIAREZZA — nessuna voce operativa deve essere vaga. Un riscaldamento, un finisher e ogni esercizio laterale devono essere eseguibili leggendo la scheda, senza dover chiedere spiegazioni dopo.
 12. ORBITA AUDIT FINALE — elimina contraddizioni, sovraccarico di una seduta, esercizi ridondanti, diagnosi, misure inventate, body-fat %, promesse di spot reduction e dettagli non realmente visibili.
 
 PANNELLO MULTI-ESPERTO INTERNO
@@ -36,7 +36,10 @@ Per ogni giornata:
 - Prima di restituire il JSON, calcola ogni esercizio: per `time`, sets × seconds; per `reps`, sets × repsMax × circa 3 secondi; aggiungi i recuperi tra le serie e il recupero/cambio previsto prima dell'esercizio successivo. Se il risultato non entra, riduci volume PRIMA dell'output.
 - `progressionRule` deve spiegare come progredire quella seduta nelle settimane successive, per esempio prima ripetizioni, poi tensione/resistenza, mantenendo RIR e tecnica.
 - Ogni esercizio deve avere `techniqueCue`: una singola indicazione tecnica concreta e utile, non una frase generica.
-- Il finisher è opzionale e va inserito solo se entra davvero nel budget della seduta.
+- Il finisher è opzionale e va inserito solo se entra davvero nel budget. Se `timeBudget.finisher` > 0, il testo `finisher` DEVE contenere la dicitura esatta `Durata totale: N secondi` dove N = `timeBudget.finisher × 60`, e deve descrivere una sequenza di intervalli che sommi esattamente a N. Non usare cicli ambigui o durate che non chiudono matematicamente.
+- Se `timeBudget.finisher` = 0, `finisher` deve essere null.
+- Per esercizi laterali a tempo NON usare un unico `side_plank` ambiguo: usa `side_plank_right` e `side_plank_left` come due esercizi distinti e consecutivi. Il destro deve avere un `restSeconds` breve ma reale per il cambio lato; il sinistro usa il recupero previsto prima della serie/coppia successiva. Lo stesso principio vale per qualunque movimento in cui destra e sinistra richiedano tempi separati.
+- Titolo ed `emphasis` devono descrivere il contenuto reale della seduta. Se una giornata Cardio contiene anche un blocco Core sostanziale, il titolo deve esplicitarlo (es. “Cardio e core”), pur mantenendo l'enfasi canonica più rappresentativa prevista dallo schema.
 - Se il budget non torna, riduci serie, esercizi o intervalli PRIMA di produrre l'output.
 - Il piano deve essere utilizzabile così com'è da una persona che apre l'app e si allena senza ulteriori spiegazioni.
 
