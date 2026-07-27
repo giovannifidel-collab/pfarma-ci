@@ -16,7 +16,7 @@ const catalog = {
   chest_press_machine: ["Chest press machine", "Spinta", "reps", ["chest_press"]], shoulder_press_machine: ["Shoulder press machine", "Spinta", "reps", ["shoulder_press"]], cable_chest_press: ["Chest press ai cavi", "Spinta", "reps", ["cavi"]], smith_shoulder_press: ["Shoulder press al multipower", "Spinta", "reps", ["multipower"]],
   band_row: ["Rematore con elastico sotto i piedi", "Tirata", "reps", ["elastici"]], dumbbell_row: ["Rematore con manubri", "Tirata", "reps", ["manubri"]], band_reverse_fly: ["Reverse fly con elastico senza ancoraggio", "Tirata", "reps", ["elastici"]], band_curl: ["Curl con elastico sotto i piedi", "Tirata", "reps", ["elastici"]], dumbbell_curl: ["Curl con manubri", "Tirata", "reps", ["manubri"]], self_resisted_curl: ["Curl auto-resistito", "Tirata", "reps", []], lat_machine_neutral: ["Lat machine presa neutra", "Tirata", "reps", ["lat_machine"]], cable_low_row: ["Rematore basso ai cavi", "Tirata", "reps", ["cavi"]], bodyweight_isometric_row: ["Tirata isometrica auto-resistita", "Tirata", "time", []], reverse_snow_angel: ["Reverse snow angel a terra", "Tirata", "reps", []],
   bodyweight_squat: ["Squat a corpo libero controllato", "Gambe", "reps", []], assisted_reverse_lunge: ["Affondo indietro assistito", "Gambe", "reps", []], glute_bridge: ["Glute bridge", "Gambe", "reps", []], calf_raise: ["Calf raise in appoggio", "Gambe", "reps", []], leg_press_machine: ["Leg press", "Gambe", "reps", ["leg_press"]], leg_extension_machine: ["Leg extension", "Gambe", "reps", ["leg_extension"]], leg_curl_machine: ["Leg curl", "Gambe", "reps", ["leg_curl"]], smith_squat: ["Squat al multipower", "Gambe", "reps", ["multipower"]],
-  plank: ["Plank", "Core", "time", []], side_plank: ["Side plank", "Core", "time", []], hollow_hold: ["Hollow hold", "Core", "time", []], dead_bug: ["Dead bug controllato", "Core", "reps", []], cable_pallof_press: ["Pallof press ai cavi", "Core", "reps", ["cavi"]],
+  plank: ["Plank", "Core", "time", []], side_plank_right: ["Side plank destro", "Core", "time", []], side_plank_left: ["Side plank sinistro", "Core", "time", []], hollow_hold: ["Hollow hold", "Core", "time", []], dead_bug: ["Dead bug controllato", "Core", "reps", []], cable_pallof_press: ["Pallof press ai cavi", "Core", "reps", ["cavi"]],
   fast_march: ["Marcia veloce sul posto", "Cardio", "time", []], side_step: ["Side step rapido", "Cardio", "time", []], rower_intervals: ["Intervalli su vogatore", "Cardio", "time", ["vogatore"]], elliptical_intervals: ["Intervalli su ellittica", "Cardio", "time", ["ellittica"]], treadmill_intervals: ["Camminata sostenuta su tapis roulant", "Cardio", "time", ["tapis_roulant"]], bike_intervals: ["Intervalli su cyclette", "Cardio", "time", ["cyclette"]], thoracic_mobility: ["Mobilità toracica e spalle", "Mobilità", "time", []],
 };
 const directBicepsIds = new Set(["band_curl", "dumbbell_curl", "self_resisted_curl"]);
@@ -31,7 +31,6 @@ async function fetchJob() { const response = await fetch(restUrl(`preparatore_v2
 async function patchJob(query, payload, prefer = "return=minimal") { const response = await fetch(restUrl(`preparatore_v2_jobs?${query}`), { method: "PATCH", headers: headers({ "Content-Type": "application/json", Prefer: prefer }), body: JSON.stringify({ ...payload, updated_at: new Date().toISOString() }) }); if (!response.ok) throw new Error(`Job update failed (${response.status})`); return prefer === "return=representation" ? response.json() : null; }
 async function deletePhotos(paths) { for (const path of Object.values(paths || {})) { if (typeof path !== "string") continue; await fetch(storageUrl("preparatore-v2-jobs", path), { method: "DELETE", headers: headers() }).catch(() => undefined); } }
 function imageLooksValid(bytes) { return bytes.length > 0 && bytes.length <= 2 * 1024 * 1024 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9; }
-
 async function setPhase(phase) { if (!livePhases.has(phase)) throw new Error("Invalid phase"); await patchJob(`id=eq.${jobId}&user_id=eq.${expectedUserId}&status=eq.running`, { error_code: phase, error_message: null }); }
 
 async function prepare() {
@@ -62,7 +61,30 @@ function hasExplicitArmsPriority(profile, analysis) { const profileText = JSON.s
 function estimateExerciseBlockSeconds(rawExercises) { return rawExercises.reduce((total, exercise, index) => { const definition = catalog[exercise.exerciseId]; if (!definition) return total; const mode = definition[2]; const executionSeconds = mode === "time" ? exercise.sets * exercise.seconds : exercise.sets * exercise.repsMax * 3; const programmedRecoveries = index < rawExercises.length - 1 ? exercise.sets : Math.max(0, exercise.sets - 1); return total + executionSeconds + programmedRecoveries * exercise.restSeconds; }, 0); }
 function minimumTransitionSeconds(exerciseCount) { return Math.max(60, Math.max(0, exerciseCount - 1) * 20); }
 function safetyScanText(raw) { return [raw?.analysis?.summary, ...(raw?.analysis?.priorities || []).flatMap((p) => [p?.observation, p?.trainingImplication])].filter((value) => typeof value === "string").join(" "); }
-
+function assertSidePairing(exercises, dayNumber) {
+  for (let i = 0; i < exercises.length; i += 1) {
+    const current = exercises[i];
+    if (current.exerciseId === "side_plank_right") {
+      const next = exercises[i + 1];
+      if (!next || next.exerciseId !== "side_plank_left") throw new Error(`Side audit failed on day ${dayNumber}: right side must be followed by left side`);
+      if (next.sets !== current.sets || next.seconds !== current.seconds) throw new Error(`Side audit failed on day ${dayNumber}: right/left dose mismatch`);
+      if (current.restSeconds < 15 || current.restSeconds > 30) throw new Error(`Side audit failed on day ${dayNumber}: side-change rest must be 15-30s`);
+    }
+    if (current.exerciseId === "side_plank_left" && exercises[i - 1]?.exerciseId !== "side_plank_right") throw new Error(`Side audit failed on day ${dayNumber}: left side lacks matching right side`);
+  }
+}
+function assertFinisher(day) {
+  const minutes = day.timeBudget?.finisher;
+  if (!integer(minutes, 0, 10)) throw new Error("Invalid finisher budget");
+  if (minutes === 0) {
+    if (day.finisher !== null && day.finisher !== undefined && String(day.finisher).trim() !== "") throw new Error(`Finisher audit failed on day ${day.day}: text present with zero budget`);
+    return;
+  }
+  if (!safeText(day.finisher, 400)) throw new Error(`Finisher audit failed on day ${day.day}: missing executable finisher`);
+  const requiredSeconds = minutes * 60;
+  const match = day.finisher.match(/Durata totale:\s*(\d+)\s*secondi/i);
+  if (!match || Number(match[1]) !== requiredSeconds) throw new Error(`Finisher audit failed on day ${day.day}: exact duration marker must be ${requiredSeconds}s`);
+}
 function normalizeTimeBudget(day, warmupSeconds) {
   const budget = day.timeBudget;
   if (!budget || !integer(budget.warmup, 3, 10) || !integer(budget.work, 5, 50) || !integer(budget.transitions, 1, 10) || !integer(budget.finisher, 0, 10) || !integer(budget.total, 15, 60)) throw new Error("Invalid time budget");
@@ -104,6 +126,8 @@ function normalizeResult(raw, job) {
     const warmupSeconds = warmupSteps.reduce((sum, step) => sum + step.seconds, 0);
     if (warmupSeconds < day.warmupMinutes * 60 - 60 || warmupSeconds > day.warmupMinutes * 60 + 60) throw new Error("Warmup duration mismatch");
     if (!safeText(day.progressionRule, 400) || !Array.isArray(day.exercises) || day.exercises.length < 3 || day.exercises.length > 6) throw new Error("Invalid day details");
+    assertSidePairing(day.exercises, day.day);
+    assertFinisher(day);
     for (const exercise of day.exercises) {
       const definition = catalog[exercise.exerciseId]; if (!definition) throw new Error("Unknown exercise");
       const [, , mode, requires] = definition; if (requires.some((item) => !equipment.has(item))) throw new Error("Unavailable equipment");
@@ -123,7 +147,7 @@ function normalizeResult(raw, job) {
     return { day: day.day, title: day.title, durationMinutes: day.durationMinutes, emphasis: day.emphasis, warmupMinutes: day.warmupMinutes, warmupSteps, timeBudget: budget, progressionRule: day.progressionRule, exercises, ...(safeText(day.finisher, 400) ? { finisher: day.finisher } : {}) };
   });
   if (hasExplicitArmsPriority(profile, analysis) && (directBicepsSets < 4 || directTricepsSets < 4)) throw new Error(`Direct arms audit failed: biceps=${directBicepsSets} sets, triceps=${directTricepsSets} sets`);
-  return { analysis, plan: { summary: raw.plan.summary, rationale: [...raw.plan.rationale, "Preparatore V2 PLUS 10/10: strategia goal-driven, audit temporale matematico fail-closed, riscaldamento eseguibile, cue tecnici, volume diretto sulle priorità e progressione esplicita; adattamento giornaliero attrezzi disponibile senza nuova analisi AI."], safetyNote: raw.plan.safetyNote, days }, model: "Codex ChatGPT · GitHub Actions · Preparatore V2 PLUS 10/10", persisted: false, adaptablePerSession: true, automaticPlanChange: false };
+  return { analysis, plan: { summary: raw.plan.summary, rationale: [...raw.plan.rationale, "Preparatore V2 PLUS 10/10: strategia goal-driven, audit temporale matematico fail-closed, finisher a durata esatta, lateralità esplicita, cue tecnici, volume diretto sulle priorità e progressione esplicita; adattamento giornaliero attrezzi disponibile senza nuova analisi AI."], safetyNote: raw.plan.safetyNote, days }, model: "Codex ChatGPT · GitHub Actions · Preparatore V2 PLUS 10/10", persisted: false, adaptablePerSession: true, automaticPlanChange: false };
 }
 
 async function complete() {
