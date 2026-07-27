@@ -17,7 +17,7 @@ jobs:
   analyze:
     if: github.event_name == 'repository_dispatch' && github.repository == 'giovannifidel-collab/pfarma-ci' && github.event.client_payload.job_id != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 18
     environment: photo-ai-private
     steps:
       - name: Checkout trusted public worker
@@ -83,16 +83,8 @@ jobs:
             --output-schema .github/photo-ai/preparatore-v2.schema.json \
             -o "$JOB_DIR/result.json" \
             - < "$JOB_DIR/prompt.txt" > "$JOB_DIR/codex.stdout" 2> "$JOB_DIR/codex.stderr"
-      - name: Persist refreshed ChatGPT authentication
-        if: always() && steps.restore.outcome == 'success'
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
-          CODEX_HOME: ${{ steps.dirs.outputs.codex_dir }}
-        run: node scripts/codex-auth-state.mjs persist
-      - name: Validate and publish candidate result
-        id: complete
+      - name: Validate and publish primary candidate
+        id: complete_primary
         if: steps.codex.outcome == 'success'
         continue-on-error: true
         env:
@@ -101,9 +93,60 @@ jobs:
           PREPARATORE_USER_ID: ${{ steps.owner.outputs.user_id }}
           PREPARATORE_JOB_ID: ${{ github.event.client_payload.job_id }}
           PREPARATORE_JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        shell: bash
+        run: |
+          node scripts/preparatore-v2-job.mjs complete "$PREPARATORE_JOB_ID" "$PREPARATORE_JOB_DIR" 2> "$PREPARATORE_JOB_DIR/validator-primary.stderr"
+      - name: Repair candidate after strict PLUS audit
+        id: codex_repair
+        if: steps.codex.outcome == 'success' && steps.complete_primary.outcome != 'success'
+        continue-on-error: true
+        env:
+          CODEX_HOME: ${{ steps.dirs.outputs.codex_dir }}
+          JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$JOB_DIR/prompt.txt" "$JOB_DIR/repair-prompt.txt"
+          cat >> "$JOB_DIR/repair-prompt.txt" <<'EOF'
+
+RIPARAZIONE PLUS OBBLIGATORIA
+Il candidato precedente è stato rifiutato dal validatore deterministico. Rigenera da zero il JSON, senza commenti esterni.
+- Ricalcola OGNI giornata matematicamente: reps = sets × repsMax × ~3 s; time = sets × seconds; aggiungi tutti i recuperi prescritti e un margine reale per i cambi esercizio. `timeBudget.work` non può essere inferiore alla somma reale e non può essere gonfiato artificialmente.
+- Se non entra nei minuti disponibili, riduci serie/esercizi/intervalli; non falsificare il budget.
+- Se braccia sono una priorità esplicita, garantisci almeno 4 serie dirette settimanali bicipiti e 4 tricipiti, distribuite quando possibile, usando solo il catalogo e senza ancoraggio porta.
+- Elimina esercizi ridondanti e verifica che ogni affermazione quantitativa del rationale corrisponda davvero alla scheda.
+EOF
+          codex exec \
+            --skip-git-repo-check \
+            --ephemeral \
+            --sandbox read-only \
+            -i "$JOB_DIR/front.jpg" \
+            -i "$JOB_DIR/side.jpg" \
+            -i "$JOB_DIR/back.jpg" \
+            --output-schema .github/photo-ai/preparatore-v2.schema.json \
+            -o "$JOB_DIR/result.json" \
+            - < "$JOB_DIR/repair-prompt.txt" > "$JOB_DIR/codex-repair.stdout" 2> "$JOB_DIR/codex-repair.stderr"
+      - name: Validate and publish repaired candidate
+        id: complete_repair
+        if: steps.codex_repair.outcome == 'success'
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PREPARATORE_USER_ID: ${{ steps.owner.outputs.user_id }}
+          PREPARATORE_JOB_ID: ${{ github.event.client_payload.job_id }}
+          PREPARATORE_JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
         run: node scripts/preparatore-v2-job.mjs complete "$PREPARATORE_JOB_ID" "$PREPARATORE_JOB_DIR"
+      - name: Persist refreshed ChatGPT authentication
+        if: always() && steps.restore.outcome == 'success'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
+          CODEX_HOME: ${{ steps.dirs.outputs.codex_dir }}
+        run: node scripts/codex-auth-state.mjs persist
       - name: Fail safely and delete temporary photos
-        if: always() && steps.prepare.outcome == 'success' && (steps.codex.outcome != 'success' || steps.complete.outcome != 'success')
+        if: always() && steps.prepare.outcome == 'success' && (steps.codex.outcome != 'success' || (steps.complete_primary.outcome != 'success' && (steps.codex_repair.outcome != 'success' || steps.complete_repair.outcome != 'success')))
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -122,7 +165,7 @@ jobs:
           test -n "$JOB_DIR" && test "$JOB_DIR" != "/" && rm -rf -- "$JOB_DIR"
           test -n "$CODEX_DIR" && test "$CODEX_DIR" != "/" && rm -rf -- "$CODEX_DIR"
       - name: Mark failed analysis
-        if: always() && (steps.owner.outcome != 'success' || steps.prepare.outcome != 'success' || steps.codex.outcome != 'success' || steps.complete.outcome != 'success')
+        if: always() && (steps.owner.outcome != 'success' || steps.prepare.outcome != 'success' || steps.codex.outcome != 'success' || (steps.complete_primary.outcome != 'success' && (steps.codex_repair.outcome != 'success' || steps.complete_repair.outcome != 'success')))
         run: exit 1
 
   cleanup-expired:
