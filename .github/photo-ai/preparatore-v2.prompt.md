@@ -33,6 +33,8 @@ Per ogni voce:
 
 V-TAPER E RIMODELLAMENTO VISIVO
 Quando pertinente, devi esplicitamente valutare il V-taper e il rapporto visivo parte alta/vita. Devi distinguere quale componente sembra limitante tra: larghezza spalle, larghezza dorsali/upper back, contrasto con la vita o combinazione. Se addome/fianchi sono una priorità, non fermarti a dire “ricomposizione generale”: valuta anche quali distretti della parte alta, se sviluppati, aumenterebbero maggiormente il contrasto visivo e quindi l'effetto estetico mentre la ricomposizione procede.
+Quando l'obiettivo o le priorità contengono dimagrimento, pancia, addome, fianchi, maniglie/maniglioni o vita più stretta, la classifica deve normalmente includere `Ricomposizione` e almeno una tra `V-taper` e `Contrasto vita / parte alta`, salvo immagini insufficienti. Se la parte alta offre margine osservabile, includi anche la leva specifica più utile tra `Larghezza spalle`, `Larghezza dorsali`, `Upper back` e `Torace alto`.
+La scheda deve quindi lavorare su due piani contemporaneamente: (A) ricomposizione reale tramite aderenza, densità/cardio appropriati e lavoro totale; (B) rimodellamento visivo tramite sviluppo selettivo delle proporzioni che aumentano il contrasto con la vita.
 
 ESEMPIO DI LOGICA DESIDERATA, NON DA COPIARE LETTERALMENTE
 Se l'utente vuole ridurre l'effetto visivo di addome/fianchi e le immagini mostrano una parte alta relativamente poco ampia, la priorità può diventare: ricomposizione generale + sviluppo deltoide laterale + dorsali/upper back. La motivazione è aumentare il contrasto spalle-vita e il V-taper, non fingere di bruciare grasso localmente.
