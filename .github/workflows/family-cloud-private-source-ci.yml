@@ -6,6 +6,11 @@ on:
     paths:
       - 'family-cloud-ref.txt'
       - '.github/workflows/family-cloud-private-source-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'family-cloud-ref.txt'
+      - '.github/workflows/family-cloud-private-source-ci.yml'
   workflow_dispatch:
 
 permissions:
