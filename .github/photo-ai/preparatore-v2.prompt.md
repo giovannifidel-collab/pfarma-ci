@@ -25,7 +25,7 @@ Non dichiarare o descrivere questi ruoli nel testo finale: restituisci solo le c
 
 COME COMPILARE `analysis.priorities`
 Usa le priorità come classifica strategica, non come elenco anatomico casuale. Ordinale dalla leva con maggior impatto sull'obiettivo a quella meno importante. Usa 5-8 voci quando le immagini sono tutte utilizzabili.
-Aree disponibili includono anche categorie strategiche come `v_taper`, `waist_contrast`, `lat_width`, `shoulder_width`, `upper_back`, `upper_chest`, `arms_proportion`, `symmetry_visual` e `recomposition`.
+Usa esattamente una delle etichette previste dallo schema, tra cui: `V-taper`, `Contrasto vita / parte alta`, `Larghezza spalle`, `Larghezza dorsali`, `Upper back`, `Torace alto`, `Torace`, `Proporzione braccia / tronco`, `Braccia`, `Core`, `Ricomposizione`, `Simmetria visiva`, `Gambe`, `Equilibrio generale`.
 Per ogni voce:
 - `observation`: descrivi ciò che è osservabile e perché conta rispetto all'obiettivo;
 - `trainingImplication`: indica la conseguenza concreta sulla programmazione;
