@@ -35,10 +35,12 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/photo-ai/preparatore-v2.prompt.md"),
     PurePosixPath(".github/photo-ai/preparatore-v2.schema.json"),
     PurePosixPath(".github/workflows/project-giovanni-photo-ai.yml"),
+    PurePosixPath(".github/workflows/project-giovanni-photo-ai-smoke.yml"),
     PurePosixPath("scripts/cleanup-preparatore-v2-jobs.mjs"),
     PurePosixPath("scripts/codex-auth-state.mjs"),
     PurePosixPath("scripts/preparatore-v2-job.mjs"),
     PurePosixPath("scripts/resolve-preparatore-v2-user.mjs"),
+    PurePosixPath("scripts/preparatore-v2-strategic-smoke.mjs"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
