@@ -12,7 +12,7 @@ const requiredPromptMarkers = [
   "PANNELLO MULTI-ESPERTO INTERNO",
   "V-TAPER E RIMODELLAMENTO VISIVO",
   "ricomposizione",
-  "waist",
+  "vita",
 ];
 for (const marker of requiredPromptMarkers) {
   assert(prompt.toLowerCase().includes(marker.toLowerCase()), `Prompt marker missing: ${marker}`);
