@@ -22,13 +22,32 @@
         },
         "priorities": {
           "type": "array",
-          "maxItems": 5,
+          "minItems": 3,
+          "maxItems": 8,
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["area", "observation", "confidence", "trainingImplication"],
             "properties": {
-              "area": { "type": "string", "enum": ["shoulders", "chest", "arms", "back", "core", "legs", "overall_balance"] },
+              "area": {
+                "type": "string",
+                "enum": [
+                  "v_taper",
+                  "waist_contrast",
+                  "shoulder_width",
+                  "lat_width",
+                  "upper_back",
+                  "upper_chest",
+                  "chest",
+                  "arms_proportion",
+                  "arms",
+                  "core",
+                  "recomposition",
+                  "symmetry_visual",
+                  "legs",
+                  "overall_balance"
+                ]
+              },
               "observation": { "type": "string", "maxLength": 500 },
               "confidence": { "type": "string", "enum": ["low", "medium"] },
               "trainingImplication": { "type": "string", "maxLength": 500 }
@@ -36,7 +55,7 @@
           }
         },
         "limitations": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "type": "string", "maxLength": 300 } },
-        "summary": { "type": "string", "maxLength": 800 }
+        "summary": { "type": "string", "maxLength": 600 }
       }
     },
     "plan": {
@@ -45,7 +64,7 @@
       "required": ["summary", "rationale", "safetyNote", "days"],
       "properties": {
         "summary": { "type": "string", "maxLength": 800 },
-        "rationale": { "type": "array", "minItems": 2, "maxItems": 8, "items": { "type": "string", "maxLength": 500 } },
+        "rationale": { "type": "array", "minItems": 3, "maxItems": 8, "items": { "type": "string", "maxLength": 500 } },
         "safetyNote": { "type": "string", "maxLength": 800 },
         "days": {
           "type": "array",
