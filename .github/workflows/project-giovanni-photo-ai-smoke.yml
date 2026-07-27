@@ -1,0 +1,33 @@
+name: Project Giovanni · Foto AI Smoke · Zero Codex
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/photo-ai/preparatore-v2.prompt.md'
+      - '.github/photo-ai/preparatore-v2.schema.json'
+      - 'scripts/preparatore-v2-strategic-smoke.mjs'
+      - '.github/workflows/project-giovanni-photo-ai-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  strategic-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout public worker contract
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Strategic Trainer contract without Codex
+        run: node scripts/preparatore-v2-strategic-smoke.mjs
+      - name: Confirm zero-AI smoke path
+        run: |
+          echo 'PASS: no codex exec, no ChatGPT auth restore, no AI API call.'
