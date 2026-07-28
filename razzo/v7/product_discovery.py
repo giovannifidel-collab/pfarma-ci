@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
+MAX_LOGICAL_WORKER_POOL = 1000
+MAX_DISCOVERY_PAGES = 10
 
 RISK_TERMS = (
     "destructive-production", "user-data-write", "irreplaceable-data",
@@ -93,18 +96,33 @@ def api(token: str, url: str) -> Any:
         return json.loads(response.read().decode("utf-8"))
 
 
+def api_pages(token: str, base_url: str, max_pages: int = MAX_DISCOVERY_PAGES) -> list[dict[str, Any]]:
+    """Read enough GitHub pages to let the elastic pool search beyond the first 100 items."""
+    results: list[dict[str, Any]] = []
+    separator = "&" if "?" in base_url else "?"
+    for page in range(1, max_pages + 1):
+        url = f"{base_url}{separator}per_page=100&page={page}"
+        payload = api(token, url)
+        if not isinstance(payload, list):
+            raise RuntimeError(f"Expected list payload from {url}")
+        results.extend(payload)
+        if len(payload) < 100:
+            break
+    return results
+
+
 def discover(token: str, limit: int = 3) -> list[dict[str, Any]]:
     registry = load_json(ROOT / "razzo" / "projects.json")
     state = {p["id"]: p for p in load_json(ROOT / "razzo" / "project-state.json")["projects"]}
     global_cap = max(1, int(registry.get("totalBurstSlots", limit)))
-    requested = max(0, min(limit, global_cap, 220))
+    requested = max(0, min(limit, global_cap, MAX_LOGICAL_WORKER_POOL))
     found: list[dict[str, Any]] = []
     for project in [p for p in registry["projects"] if p.get("enabled")]:
         pid = project["id"]
         repo = project["repository"]
         project_cap = max(1, int(project.get("burstConcurrency", requested)))
-        issues = api(token, f"https://api.github.com/repos/{repo}/issues?state=open&sort=updated&direction=desc&per_page=100")
-        pulls = api(token, f"https://api.github.com/repos/{repo}/pulls?state=open&per_page=100")
+        issues = api_pages(token, f"https://api.github.com/repos/{repo}/issues?state=open&sort=updated&direction=desc")
+        pulls = api_pages(token, f"https://api.github.com/repos/{repo}/pulls?state=open")
         candidates: list[tuple[int, dict[str, Any]]] = []
         for issue in issues:
             if "pull_request" in issue or risky(issue):
