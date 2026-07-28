@@ -1,0 +1,86 @@
+name: PFarma Pilot Surface Routes
+
+on:
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/pfarma-pilot-surface-routes.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  route:
+    name: surface-${{ matrix.id }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: root, path: '/' }
+          - { id: pilot, path: '/pilot' }
+          - { id: inventory-dashboard, path: '/inventory/dashboard' }
+          - { id: product, path: '/products/ENTEROGERMINA-20' }
+          - { id: anomalies, path: '/inventory/anomalies' }
+          - { id: movements, path: '/inventory/movements' }
+          - { id: movement-audit, path: '/inventory/movements/semantic-audit' }
+          - { id: expiry, path: '/inventory/expiry-cases' }
+          - { id: reservations, path: '/reservations' }
+          - { id: sales, path: '/sales' }
+          - { id: suppliers, path: '/suppliers' }
+          - { id: supplier-product, path: '/suppliers?product_id=ENTEROGERMINA-20' }
+          - { id: reorder, path: '/reorder-proposal?product_id=ENTEROGERMINA-20' }
+          - { id: receipt, path: '/staging/inventory/goods-receipts/apply' }
+          - { id: health, path: '/health' }
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: pfarma-ci-trusted
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Attest exact SHA
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify route
+        working-directory: private-source
+        env:
+          ROUTE: ${{ matrix.path }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'tools')
+          from test_visual_preview_routes import request
+          route = os.environ['ROUTE']
+          status, body = request(route)
+          print(f'route={route} status={status} bytes={len(body)}')
+          if not status.startswith('200') or not body:
+              raise SystemExit(1)
+          PY
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf private-source
