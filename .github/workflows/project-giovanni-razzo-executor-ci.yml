@@ -1,0 +1,89 @@
+name: Project Giovanni RAZZO Executor CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'project-giovanni-source-ref.txt'
+      - '.github/workflows/project-giovanni-razzo-executor-ci.yml'
+  pull_request:
+    paths:
+      - 'project-giovanni-source-ref.txt'
+      - '.github/workflows/project-giovanni-razzo-executor-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-giovanni-razzo-executor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  executor:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve exact Project Giovanni source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < project-giovanni-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve trusted private-source token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out exact private Project Giovanni commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout
+        shell: bash
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: private-source
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript validation
+        working-directory: private-source
+        run: npx --yes tsc --noEmit
+
+      - name: Validate executor
+        working-directory: private-source
+        run: |
+          npm run test:factory --if-present
+          npm run factory:plan --if-present
+
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf private-source
