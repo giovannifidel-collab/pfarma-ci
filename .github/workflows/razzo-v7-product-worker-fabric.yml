@@ -136,10 +136,10 @@ jobs:
             echo 'has_changes=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "$changed" | grep -E '(^|/)(\.github/workflows|migrations|infra|secrets)(/|$)|factory/(policy|task[-_]graph)' && {
+          if echo "$changed" | grep -E '(^|/)(\.github/workflows|migrations|infra|secrets)(/|$)|factory/(policy|task[-_]graph)'; then
             echo 'Forbidden product-worker change surface detected.' >&2
             exit 1
-          } || true
+          fi
           echo 'has_changes=true' >> "$GITHUB_OUTPUT"
           printf '%s\n' "$changed"
       - name: Run project factory tests
@@ -157,6 +157,7 @@ jobs:
         env:
           SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          ISSUE_TITLE: ${{ matrix.issue_title }}
         shell: bash
         run: |
           set -euo pipefail
@@ -167,14 +168,13 @@ jobs:
           git add -A
           git commit -m "RAZZO V7: advance #${{ matrix.issue_number }}"
           git push "https://x-access-token:${SOURCE_TOKEN}@github.com/${{ matrix.repository }}.git" "HEAD:${branch}"
+          export BRANCH="$branch"
+          export PR_TITLE="RAZZO V7: advance #${{ matrix.issue_number }} — ${ISSUE_TITLE}"
+          export PR_BASE='${{ matrix.integration_lane }}'
+          export PR_BODY='Automated bounded product worker for #${{ matrix.issue_number }}. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and review/integration policy; no direct main write.'
           payload="$(python - <<'PY'
-          import json
-          print(json.dumps({
-            'title': 'RAZZO V7: advance #${{ matrix.issue_number }} — ${{ matrix.issue_title }}',
-            'head': '${{ matrix.project_id == 'project-giovanni' && 'razzo/v7/project-giovanni/issue-' || matrix.project_id == 'pfarma-cloud' && 'razzo/v7/pfarma-cloud/issue-' || 'razzo/v7/family-cloud/issue-' }}${{ matrix.issue_number }}-${{ github.run_id }}',
-            'base': '${{ matrix.integration_lane }}',
-            'body': 'Automated bounded product worker for #${{ matrix.issue_number }}. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and review/integration policy; no direct main write.'
-          }))
+          import json, os
+          print(json.dumps({"title": os.environ["PR_TITLE"], "head": os.environ["BRANCH"], "base": os.environ["PR_BASE"], "body": os.environ["PR_BODY"]}))
           PY
           )"
           response="$(curl -fsS -X POST \
@@ -199,7 +199,7 @@ jobs:
         run: |
           mkdir -p receipts
           python - <<'PY'
-          import hashlib, json, os
+          import hashlib, json
           data = {
             'project_id': '${{ matrix.project_id }}',
             'repository': '${{ matrix.repository }}',
@@ -225,3 +225,38 @@ jobs:
         shell: bash
         run: |
           rm -rf product-source "${RUNNER_TEMP}/razzo-codex-${{ matrix.project_id }}" "${RUNNER_TEMP}/product-work.txt"
+
+  aggregate:
+    needs: [plan, workers]
+    if: always() && needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: razzo-v7-product-receipt-*
+          path: receipts
+          merge-multiple: true
+      - name: Verify aggregate product-worker receipts
+        shell: bash
+        env:
+          EXPECTED: ${{ needs.plan.outputs.count }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          files = sorted(Path('receipts').glob('*.json'))
+          expected = int(os.environ['EXPECTED'])
+          assert len(files) == expected, (len(files), expected)
+          receipts = [json.loads(p.read_text()) for p in files]
+          ids = [r['worker_id'] for r in receipts]
+          assert len(ids) == len(set(ids)), 'duplicate worker receipt'
+          prs = [r['pr_number'] for r in receipts if r.get('pr_number')]
+          print(json.dumps({
+            'cycle_type': 'PRODUCT_WORK',
+            'workstreams_dispatched': expected,
+            'receipts': len(receipts),
+            'product_prs_created': len(prs),
+            'duplicate_execution': False,
+            'generation_promoted': False,
+          }, indent=2))
+          PY
