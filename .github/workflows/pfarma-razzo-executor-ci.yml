@@ -65,7 +65,9 @@ jobs:
         run: |
           set -euo pipefail
           python -m compileall -q factory tools/test_razzo_executor.py
-          if [ -f tools/test_razzo_executor.py ]; then python tools/test_razzo_executor.py; fi
+          python tools/test_razzo_executor.py
+          python -m unittest factory.test_razzo_executor -v
+          python -m factory.plan
 
       - name: Remove private source checkout
         if: always()
