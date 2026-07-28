@@ -143,6 +143,9 @@ jobs:
       - name: Invoice series routing preview regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_invoice_series_routing_preview.py || PYTHONPATH=. python tests/test_invoice_series_routing_preview.py
+      - name: Composite warehouse routing preview regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_composite_warehouse_routing_preview.py || PYTHONPATH=. python tests/test_composite_warehouse_routing_preview.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
