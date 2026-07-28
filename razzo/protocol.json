@@ -1,6 +1,15 @@
 {
   "protocol": "RAZZO",
-  "protocolVersion": 2,
+  "protocolVersion": 3,
+  "architecture": "HOMO_NOVUS",
+  "architectureVersion": 1,
+  "architectureSpec": "razzo/HOMO_NOVUS.md",
+  "compatibility": {
+    "operatorCommand": "AVANZA TUTTO",
+    "executionEngine": "RAZZO_V6_V7",
+    "preserveExistingDataPlane": true,
+    "rule": "HOMO NOVUS is the recursive product-development architecture above the existing RAZZO operational engine. Existing exact-SHA, receipts, collision domains, leases, gates, backpressure and worker-fabric guarantees remain authoritative."
+  },
   "controlPlaneRepository": "giovannifidel-collab/pfarma-ci",
   "portfolioRegistry": "razzo/projects.json",
   "portfolioState": "razzo/project-state.json",
@@ -17,6 +26,49 @@
     ],
     "rule": "Never hard-code the active project set in an operator prompt. Load enabled projects from the portfolio registry on every cycle."
   },
+  "homoNovus": {
+    "recursiveDecomposition": true,
+    "recursiveComposition": true,
+    "adaptiveDepth": true,
+    "homeostasis": true,
+    "differentiation": true,
+    "feedbackControl": true,
+    "emergenceVerification": true,
+    "computeMetabolism": true,
+    "hierarchy": [
+      "energy",
+      "primitive",
+      "atom",
+      "molecule",
+      "macromolecule",
+      "cell",
+      "tissue",
+      "organ",
+      "system",
+      "organism",
+      "ecosystem"
+    ],
+    "softwareMapping": {
+      "energy": "compute, tokens, CI capacity and wall-clock budget",
+      "primitive": "language/runtime/tool primitive",
+      "atom": "predicate, type, constant, schema field or indivisible operation",
+      "molecule": "small pure rule or composable logic unit",
+      "macromolecule": "function, handler, adapter or bounded implementation unit",
+      "cell": "independently testable component",
+      "tissue": "coherent capability",
+      "organ": "user-visible vertical slice",
+      "system": "complete user journey or subsystem",
+      "organism": "human-usable product",
+      "ecosystem": "interoperating portfolio/product environment"
+    },
+    "decompositionStopRule": "Descend only until work is independently executable, safely parallelizable, interface-bounded and verifiable. Do not atomize further when additional decomposition increases coordination cost without increasing verified throughput.",
+    "compositionRule": "After lower-level units verify, compose upward and verify the emergent behavior at every parent level. Lower-level green tests never substitute for user-journey, system and human-testability evidence.",
+    "bottleneckRule": "Allocate execution toward the highest-level non-gated functional deficit that prevents the next useful organism state; decompose that deficit recursively to expose safe parallel work.",
+    "metabolismRule": "Treat compute, tokens, concurrency and CI capacity as finite metabolic resources and allocate them to maximize verified increase in product utility per unit of cost, time and risk.",
+    "homeostasisRule": "Every wave must preserve or restore repository integrity, exact-SHA verification, security, compatibility, recoverability and resumability.",
+    "differentiationRule": "Workers specialize by bounded role and collision domain while sharing the same canonical goal, interfaces, repository state and verification contract.",
+    "phenotypeRule": "The operator supplies the desired phenotype: goals, priorities, acceptance boundaries and human-gate decisions. HOMO NOVUS infers the hierarchy, missing structures and next safe work without requiring routine task enumeration."
+  },
   "execution": {
     "productFirst": true,
     "outcomeDrivenAutonomy": true,
@@ -32,7 +84,8 @@
     "failClosed": true,
     "readyZeroMeansStop": false,
     "nextUsefulStateRule": "After each verified integration, infer the next user-meaningful bottleneck or missing journey and immediately discover/plan safe work toward that state without waiting for the operator to name the next task.",
-    "testabilityRule": "When enough capabilities exist for meaningful human use, prioritize making the product runnable, observable and testable by the user before accumulating lower-value isolated features."
+    "testabilityRule": "When enough capabilities exist for meaningful human use, prioritize making the product runnable, observable and testable by the user before accumulating lower-value isolated features.",
+    "recursiveExecutionRule": "For the selected highest-level deficit, descend through the HOMO NOVUS hierarchy only as far as needed to expose safe independent work; execute in parallel where the DAG allows; verify bottom-up and then verify emergent behavior top-down."
   },
   "humanGateClasses": [
     "real-secrets",
@@ -44,6 +97,6 @@
     "irreplaceable-data"
   ],
   "generationRule": "A generation advances only when new real work is produced or verified: code, capability, bug fix, UX, integration, functional test, performance, resilience, security or another concrete product improvement. Administrative ref/checkpoint churn alone is not a generation.",
-  "autonomyRule": "The operator supplies goals, priorities and human-gate decisions. RAZZO owns routine project-management reasoning: identify the next useful state, expose bottlenecks, create safe workstreams, execute, verify, integrate and replan continuously. Do not wait for the operator to enumerate obvious next steps.",
-  "onboardingRule": "A new project joins RAZZO by adding one enabled entry to razzo/projects.json. The universal operator command and scheduled tasks must not be edited for project onboarding."
+  "autonomyRule": "The operator supplies goals, priorities and human-gate decisions. HOMO NOVUS, using the RAZZO engine, owns routine project-management reasoning: identify the next useful organism state, expose the highest-level bottleneck, recursively decompose it, create safe workstreams, execute, verify, compose, integrate and replan continuously. Do not wait for the operator to enumerate obvious next steps.",
+  "onboardingRule": "A new project joins by adding one enabled entry to razzo/projects.json. HOMO NOVUS applies automatically; the universal operator command and scheduled tasks must not be edited for project onboarding."
 }
