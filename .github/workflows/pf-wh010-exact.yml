@@ -1,0 +1,62 @@
+name: PF-WH-010 Exact Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/pfarma-ref.txt'
+      - '.github/workflows/pf-wh010-exact.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pf-wh010:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/pfarma-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - env:
+          TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: pfarma-cloud
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C pfarma-cloud rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile relevant modules
+        working-directory: pfarma-cloud
+        run: python -m compileall -q factory api
+      - name: Factory regressions
+        working-directory: pfarma-cloud
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Proposal chain regressions
+        working-directory: pfarma-cloud
+        run: |
+          PYTHONPATH=. python tests/test_replenishment_proposal_preview.py
+          PYTHONPATH=. python tests/test_replenishment_proposal_integrity.py
+          PYTHONPATH=. python tests/test_replenishment_proposal_verification.py
+          PYTHONPATH=. python tests/test_replenishment_approval_packet.py
+      - name: Factory planner
+        working-directory: pfarma-cloud
+        run: python -m factory.plan
+      - if: always()
+        run: rm -rf pfarma-cloud
