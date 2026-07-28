@@ -1,0 +1,53 @@
+name: Validate PF-WH-009 Exact Head
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/pf-wh009-ref.txt'
+      - '.github/workflows/validate-pf-wh009.yml'
+permissions:
+  contents: read
+jobs:
+  pf-wh009:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/pf-wh009-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.ref.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: pfarma
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C pfarma rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Compile
+        working-directory: pfarma
+        run: python -m compileall -q factory api tests
+      - name: Factory core regressions
+        working-directory: pfarma
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: PF-WH-009 focused regression
+        working-directory: pfarma
+        run: PYTHONPATH=. python tests/test_replenishment_proposal_verification.py
+      - name: Planner
+        working-directory: pfarma
+        run: python -m factory.plan
+      - if: always()
+        run: rm -rf pfarma
