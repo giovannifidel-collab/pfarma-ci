@@ -1,0 +1,148 @@
+name: RAZZO Wave 0550 Exact Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/wave-0550-project-ref.txt'
+      - 'razzo/wave-0550-pfarma-ref.txt'
+      - 'razzo/wave-0550-family-ref.txt'
+      - '.github/workflows/razzo-wave-0550.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  project-export-integrity:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/wave-0550-project-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.ref.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: project
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C project rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: project
+        run: npm install --no-audit --no-fund
+      - name: TypeScript
+        working-directory: project
+        run: npx --yes tsc --noEmit
+      - name: Factory regressions
+        working-directory: project
+        run: npm run test:factory
+      - name: Planner
+        working-directory: project
+        run: npm run factory:plan
+      - name: Build
+        working-directory: project
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_SUPABASE_URL: 'https://ci-placeholder.supabase.co'
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_ci_placeholder'
+        run: npm run build
+      - if: always()
+        run: rm -rf project
+
+  pfarma-replenishment:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/wave-0550-pfarma-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.ref.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: pfarma
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C pfarma rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Compile
+        working-directory: pfarma
+        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_cart_replenishment_preview.py
+      - name: Factory core regressions
+        working-directory: pfarma
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Replenishment preview regression
+        working-directory: pfarma
+        run: PYTHONPATH=. python tests/test_cart_replenishment_preview.py
+      - name: Planner
+        working-directory: pfarma
+        run: python -m factory.plan
+      - if: always()
+        run: rm -rf pfarma
+
+  family-target-eligibility:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/wave-0550-family-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ steps.ref.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: family
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C family rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: family
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        working-directory: family
+        run: npm run typecheck
+      - name: Full tests
+        working-directory: family
+        run: npm test
+      - name: Planner
+        working-directory: family
+        run: npm run factory:plan
+      - if: always()
+        run: rm -rf family
