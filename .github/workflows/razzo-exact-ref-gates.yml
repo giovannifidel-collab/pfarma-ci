@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: project-and-pfarma-runtime-adapters
+# validation-wave: product-regression-0348
 
 on:
   pull_request:
@@ -138,6 +138,9 @@ jobs:
       - name: GitHub worker runtime tests
         working-directory: pfarma-cloud
         run: python -m unittest factory.test_github_worker_runtime -v
+      - name: Inventory read-only regression
+        working-directory: pfarma-cloud
+        run: python -m unittest tests.test_inventory_readonly_regression -v
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
