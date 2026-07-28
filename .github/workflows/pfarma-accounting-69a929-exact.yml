@@ -48,6 +48,8 @@ jobs:
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
       - name: Accounting staging regression
         working-directory: source
+        env:
+          PYTHONPATH: .
         run: python -m unittest discover -s tests -p 'test_razzo_accounting_staging_regression.py' -v
       - name: Planner
         working-directory: source
