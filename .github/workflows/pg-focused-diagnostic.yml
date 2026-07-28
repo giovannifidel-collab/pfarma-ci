@@ -1,0 +1,55 @@
+name: Project Giovanni focused diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pg-focused-diagnostic.yml'
+      - 'razzo/project-giovanni-ref.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        shell: bash
+        run: |
+          sha="$(tr -d '\r\n' < razzo/project-giovanni-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: project-giovanni
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: project-giovanni
+        run: npm install --no-audit --no-fund
+      - name: Run focused regression and capture output
+        id: focused
+        working-directory: project-giovanni
+        shell: bash
+        run: |
+          set +e
+          node --test factory/history-import-conflict-resolution-integrity-verification.test.mjs > ../pg-focused.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+      - name: Upload focused diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg-focused-${{ steps.source.outputs.sha }}
+          path: pg-focused.log
+          retention-days: 1
