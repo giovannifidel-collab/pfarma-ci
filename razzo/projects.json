@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "totalNormalSlots": 32,
+  "totalBurstSlots": 128,
+  "projects": [
+    {
+      "id": "project-giovanni",
+      "repository": "giovannifidel-collab/project-giovanni",
+      "normalConcurrency": 16,
+      "burstConcurrency": 32,
+      "protectMain": true,
+      "sourceRefFile": "project-giovanni-source-ref.txt",
+      "factoryTest": "npm run test:factory --if-present",
+      "factoryPlan": "npm run factory:plan --if-present"
+    },
+    {
+      "id": "pfarma-cloud",
+      "repository": "giovannifidel-collab/pfarma-cloud",
+      "normalConcurrency": 16,
+      "burstConcurrency": 32,
+      "protectMain": true,
+      "sourceRefFile": "source-ref.txt",
+      "factoryTest": "python -m unittest factory.test_razzo_executor",
+      "factoryPlan": "python -m factory.plan"
+    },
+    {
+      "id": "family-cloud",
+      "repository": "giovannifidel-collab/family-cloud",
+      "normalConcurrency": 32,
+      "burstConcurrency": 128,
+      "protectMain": true,
+      "sourceRefFile": "family-cloud-ref.txt",
+      "factoryTest": "npm test",
+      "factoryPlan": "npm run factory:plan"
+    }
+  ]
+}
