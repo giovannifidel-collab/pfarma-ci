@@ -61,13 +61,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate executor
+      - name: Validate RAZZO factory
         working-directory: private-source
         shell: bash
         run: |
           set -euo pipefail
           python -m compileall -q factory
-          python -m unittest factory.test_razzo_executor -v
+          python -m unittest factory.test_razzo_executor factory.test_continuous_loop -v
           python -m factory.plan
 
       - name: Remove private source checkout
