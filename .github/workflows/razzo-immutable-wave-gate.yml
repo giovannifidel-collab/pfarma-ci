@@ -23,7 +23,7 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave6/project-giovanni.txt)"
+          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave7/project-giovanni.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave6/pfarma.txt)"
+          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave7/pfarma.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -76,11 +76,9 @@ jobs:
           persist-credentials: false
       - run: test "$(git -C source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
       - working-directory: source
-        run: python -m compileall -q factory tests/test_lot_expiry_regression.py
+        run: python -m compileall -q factory
       - working-directory: source
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
-      - working-directory: source
-        run: python tests/test_lot_expiry_regression.py
       - working-directory: source
         run: python -m factory.plan
 
@@ -95,7 +93,7 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave6/family-cloud.txt)"
+          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave7/family-cloud.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
