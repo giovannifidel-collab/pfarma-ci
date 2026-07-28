@@ -6,6 +6,8 @@ on:
     paths:
       - 'razzo/v7/product_discovery.py'
       - 'razzo/v7/test_product_discovery.py'
+      - 'razzo/projects.json'
+      - 'razzo/project-state.json'
       - '.github/workflows/razzo-v7-product-worker-fabric.yml'
       - 'tools/validate_public_repo.py'
   workflow_dispatch:
@@ -14,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  PRODUCT_WORKER_CAP: '3'
+  PRODUCT_WORKER_CAP: '220'
 
 jobs:
   plan:
@@ -46,14 +48,14 @@ jobs:
           count="$(python -c 'import json,sys; print(len(json.load(sys.stdin)["include"]))' <<< "$matrix")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "Discovered $count safe product work item(s)."
+          echo "Discovered $count collision-safe product work item(s), cap=${PRODUCT_WORKER_CAP}."
 
   workers:
     needs: plan
     if: needs.plan.outputs.count != '0'
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 220
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -91,13 +93,14 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
           CODEX_AUTH_SEED_B64: ${{ secrets.CODEX_AUTH_SEED_B64 }}
-          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}
+          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}
         run: node scripts/codex-auth-state.mjs restore
       - name: Create bounded product-work prompt
         shell: bash
         env:
           ISSUE_TITLE: ${{ matrix.issue_title }}
           ISSUE_BODY: ${{ matrix.issue_body }}
+          COLLISION_DOMAIN: ${{ matrix.collision_domain }}
         run: |
           cat > "${RUNNER_TEMP}/product-work.txt" <<'EOF'
           You are a RAZZO V7 product worker operating on one real GitHub issue.
@@ -110,16 +113,13 @@ jobs:
           - Prefer executable product code plus focused regression tests; do not produce documentation-only or governance-only changes.
           - Do not commit or push; the outer worker owns Git operations.
           - Run no network commands.
-          ISSUE TITLE:
           EOF
-          printf '%s\n' "$ISSUE_TITLE" >> "${RUNNER_TEMP}/product-work.txt"
-          printf '%s\n' 'ISSUE BODY:' >> "${RUNNER_TEMP}/product-work.txt"
-          printf '%s\n' "$ISSUE_BODY" >> "${RUNNER_TEMP}/product-work.txt"
+          printf 'COLLISION DOMAIN: %s\nISSUE TITLE:\n%s\nISSUE BODY:\n%s\n' "$COLLISION_DOMAIN" "$ISSUE_TITLE" "$ISSUE_BODY" >> "${RUNNER_TEMP}/product-work.txt"
       - name: Execute real product worker
         id: codex
         working-directory: product-source
         env:
-          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}
+          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -171,18 +171,13 @@ jobs:
           export BRANCH="$branch"
           export PR_TITLE="RAZZO V7: advance #${{ matrix.issue_number }} — ${ISSUE_TITLE}"
           export PR_BASE='${{ matrix.integration_lane }}'
-          export PR_BODY='Automated bounded product worker for #${{ matrix.issue_number }}. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and review/integration policy; no direct main write.'
+          export PR_BODY='Automated bounded product worker for #${{ matrix.issue_number }}. Collision domain `${{ matrix.collision_domain }}`. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and integration policy; no direct main write.'
           payload="$(python - <<'PY'
           import json, os
           print(json.dumps({"title": os.environ["PR_TITLE"], "head": os.environ["BRANCH"], "base": os.environ["PR_BASE"], "body": os.environ["PR_BODY"]}))
           PY
           )"
-          response="$(curl -fsS -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H 'Accept: application/vnd.github+json' \
-            -H 'Content-Type: application/json' \
-            "https://api.github.com/repos/${{ matrix.repository }}/pulls" \
-            -d "$payload")"
+          response="$(curl -fsS -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' "https://api.github.com/repos/${{ matrix.repository }}/pulls" -d "$payload")"
           pr="$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' <<< "$response")"
           echo "pr=$pr" >> "$GITHUB_OUTPUT"
       - name: Persist refreshed ChatGPT authentication
@@ -191,7 +186,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
-          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}
+          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}
         run: node scripts/codex-auth-state.mjs persist
       - name: Write execution receipt
         if: always()
@@ -204,6 +199,7 @@ jobs:
             'project_id': '${{ matrix.project_id }}',
             'repository': '${{ matrix.repository }}',
             'issue_number': ${{ matrix.issue_number }},
+            'collision_domain': '${{ matrix.collision_domain }}',
             'input_exact_sha': '${{ matrix.exact_sha }}',
             'worker_id': 'product-${{ matrix.project_id }}-${{ matrix.issue_number }}',
             'codex_outcome': '${{ steps.codex.outcome }}',
@@ -223,8 +219,7 @@ jobs:
       - name: Remove private source and auth state
         if: always()
         shell: bash
-        run: |
-          rm -rf product-source "${RUNNER_TEMP}/razzo-codex-${{ matrix.project_id }}" "${RUNNER_TEMP}/product-work.txt"
+        run: rm -rf product-source "${RUNNER_TEMP}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}" "${RUNNER_TEMP}/product-work.txt"
 
   aggregate:
     needs: [plan, workers]
@@ -249,7 +244,9 @@ jobs:
           assert len(files) == expected, (len(files), expected)
           receipts = [json.loads(p.read_text()) for p in files]
           ids = [r['worker_id'] for r in receipts]
+          domains = [r['collision_domain'] for r in receipts]
           assert len(ids) == len(set(ids)), 'duplicate worker receipt'
+          assert len(domains) == len(set(domains)), 'collision domain dispatched twice in one wave'
           prs = [r['pr_number'] for r in receipts if r.get('pr_number')]
           print(json.dumps({
             'cycle_type': 'PRODUCT_WORK',
@@ -257,6 +254,8 @@ jobs:
             'receipts': len(receipts),
             'product_prs_created': len(prs),
             'duplicate_execution': False,
+            'collision_domains_unique': True,
+            'configured_worker_cap': 220,
             'generation_promoted': False,
           }, indent=2))
           PY
