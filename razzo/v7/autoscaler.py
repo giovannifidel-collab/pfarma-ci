@@ -15,6 +15,7 @@ class ScaleInput:
     burst_concurrency: int
     backpressure: bool = False
     human_gate_only: bool = False
+    provider_cap: int | None = None
 
 
 @dataclass(frozen=True)
@@ -32,13 +33,16 @@ class ScaleDecision:
 def decide(inp: ScaleInput) -> ScaleDecision:
     """Return a deterministic, bounded autoscaling decision.
 
-    V7 never interprets 'elastic' as unbounded. The registry's burst limit is a
-    hard ceiling. Backpressure and elevated failure rate force scale-down.
-    Human-gate-only queues do not consume workers.
+    V7 never interprets 'elastic' as unbounded. The registry burst limit is a
+    hard logical ceiling. When measured provider capacity is available it is a
+    second, lower operational ceiling. Backpressure and elevated failure rate
+    force scale-down. Human-gate-only queues do not consume workers.
     """
     current = max(1, inp.current_concurrency)
     normal = max(1, inp.normal_concurrency)
-    burst = max(normal, inp.burst_concurrency)
+    registry_burst = max(normal, inp.burst_concurrency)
+    provider_cap = registry_burst if inp.provider_cap is None else max(normal, inp.provider_cap)
+    burst = min(registry_burst, provider_cap)
     queued = max(0, inp.queued)
     running = max(0, inp.running)
     attempts = max(1, inp.completed + inp.failed)
@@ -55,19 +59,23 @@ def decide(inp: ScaleInput) -> ScaleDecision:
     if queued == 0 and running == 0:
         return ScaleDecision(1, "scale_down", "idle", pressure, failure_rate)
 
+    if current > burst:
+        return ScaleDecision(burst, "scale_down", "provider-cap", pressure, failure_rate)
+
     if queued > current * 2:
         desired = min(burst, max(normal, current * 2))
         action = "scale_up" if desired > current else "hold"
-        reason = "queue-pressure" if action == "scale_up" else "burst-cap"
+        reason = "queue-pressure" if action == "scale_up" else "operational-cap"
         return ScaleDecision(desired, action, reason, pressure, failure_rate)
 
     if queued > current:
         desired = min(burst, max(normal, current + max(1, current // 2)))
         action = "scale_up" if desired > current else "hold"
-        return ScaleDecision(desired, action, "moderate-queue-pressure", pressure, failure_rate)
+        reason = "moderate-queue-pressure" if action == "scale_up" else "operational-cap"
+        return ScaleDecision(desired, action, reason, pressure, failure_rate)
 
     floor = min(normal, max(1, queued + running))
-    desired = max(1, min(current, floor))
+    desired = max(1, min(current, floor, burst))
     action = "scale_down" if desired < current else "hold"
     return ScaleDecision(desired, action, "balanced", pressure, failure_rate)
 

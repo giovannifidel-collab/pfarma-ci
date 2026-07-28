@@ -24,6 +24,21 @@ class AutoscalerTests(unittest.TestCase):
         self.assertEqual(d3.desired_concurrency, 220)
         self.assertEqual(d3.action, "scale_up")
 
+    def test_provider_cap_is_lower_than_registry_burst(self):
+        d = decide(ScaleInput(queued=10000, running=180, completed=1000, failed=0,
+                              current_concurrency=180, normal_concurrency=64,
+                              burst_concurrency=1000, provider_cap=140))
+        self.assertEqual(d.desired_concurrency, 140)
+        self.assertEqual(d.action, "scale_down")
+        self.assertEqual(d.reason, "provider-cap")
+
+    def test_provider_cap_blocks_blind_scale_up(self):
+        d = decide(ScaleInput(queued=10000, running=64, completed=1000, failed=0,
+                              current_concurrency=64, normal_concurrency=64,
+                              burst_concurrency=1000, provider_cap=96))
+        self.assertEqual(d.desired_concurrency, 96)
+        self.assertEqual(d.reason, "queue-pressure")
+
     def test_backpressure_forces_scale_down(self):
         d = decide(ScaleInput(queued=1000, running=64, completed=100, failed=0,
                               current_concurrency=64, normal_concurrency=16, burst_concurrency=220,
