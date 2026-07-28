@@ -15,7 +15,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [acceptance, unknown-routes, security-headers]
+        shard:
+          - surface
+          - markers
+          - product-detail
+          - supplier-drilldown
+          - reorder
+          - staging-handoff
+          - goods-receipt
+          - reconciliation
+          - projection
+          - shell-demo
+          - health
+          - forbidden-mutations
+          - unknown-contract
+          - non-read-methods
+          - pilot-boundary
+          - unknown-routes
+          - security-headers
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: pfarma-ci-trusted
@@ -67,8 +84,50 @@ jobs:
         run: |
           set -euo pipefail
           case '${{ matrix.shard }}' in
-            acceptance)
-              python tools/test_pilot_acceptance_contract.py
+            surface)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_read_only_pilot_surface_is_reachable()"
+              ;;
+            markers)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_contract_only_operations_do_not_claim_real_data_access()"
+              ;;
+            product-detail)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_product_detail_preserves_vertical_slice_navigation()"
+              ;;
+            supplier-drilldown)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_supplier_drilldown_stays_on_selected_product()"
+              ;;
+            reorder)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_reorder_proposal_is_review_only_ranked_and_hands_off_explicitly()"
+              ;;
+            staging-handoff)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_staging_handoff_is_prefilled_but_preview_remains_get_only()"
+              ;;
+            goods-receipt)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_goods_receipt_staging_is_visible_but_preview_remains_get_only()"
+              ;;
+            reconciliation)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_demo_order_reconciliation_prefills_only_remaining_receipt_quantity()"
+              ;;
+            projection)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_receipt_projection_shows_only_residual_delta_without_inventing_lot_or_expiry()"
+              ;;
+            shell-demo)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_shell_exposes_deterministic_order_to_receipt_demo()"
+              ;;
+            health)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_health_endpoint_is_exact_and_cache_safe()"
+              ;;
+            forbidden-mutations)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_mutation_routes_remain_unavailable()"
+              ;;
+            unknown-contract)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_unknown_routes_fail_closed()"
+              ;;
+            non-read-methods)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_non_read_methods_fail_closed_everywhere()"
+              ;;
+            pilot-boundary)
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_pilot_declares_read_only_boundary()"
               ;;
             unknown-routes)
               python tools/test_preview_unknown_routes_fail_closed.py
