@@ -59,15 +59,21 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate executor
+      - name: Compile Factory
         working-directory: private-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m compileall -q factory tools/test_razzo_executor.py
-          python tools/test_razzo_executor.py
-          python -m unittest factory.test_razzo_executor -v
-          python -m factory.plan
+        run: python -m compileall -q factory tools/test_razzo_executor.py
+
+      - name: Compatibility wave tests
+        working-directory: private-source
+        run: python tools/test_razzo_executor.py
+
+      - name: Advanced multi-wave tests
+        working-directory: private-source
+        run: python -m unittest factory.test_razzo_executor -v
+
+      - name: Factory planner smoke
+        working-directory: private-source
+        run: python -m factory.plan
 
       - name: Remove private source checkout
         if: always()
