@@ -140,6 +140,9 @@ jobs:
       - name: Dual warehouse sale routing regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_dual_warehouse_sale_routing.py || PYTHONPATH=. python tests/test_dual_warehouse_sale_routing.py
+      - name: Invoice series routing preview regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_invoice_series_routing_preview.py || PYTHONPATH=. python tests/test_invoice_series_routing_preview.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
