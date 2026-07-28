@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: project-and-pfarma-runtime-adapters
+# validation-wave: aggregate-accounting-regression
 
 on:
   pull_request:
@@ -138,6 +138,15 @@ jobs:
       - name: GitHub worker runtime tests
         working-directory: pfarma-cloud
         run: python -m unittest factory.test_github_worker_runtime -v
+      - name: POS staging regression tests
+        working-directory: pfarma-cloud
+        run: python tests/test_pos_staging_regression.py
+      - name: Lots-expiry regression tests
+        working-directory: pfarma-cloud
+        run: python tests/test_lot_expiry_regression.py
+      - name: Accounting staging regression tests
+        working-directory: pfarma-cloud
+        run: python tests/test_razzo_accounting_staging_regression.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
