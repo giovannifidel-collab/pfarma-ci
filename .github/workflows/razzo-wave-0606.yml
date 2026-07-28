@@ -38,7 +38,25 @@ jobs:
       - name: PG-H-008 focused regression
         working-directory: project
         run: node --experimental-strip-types --test factory/history-export-download-verification.test.mjs
+      - id: diagnose
+        name: Diagnose Factory files
+        working-directory: project
+        shell: bash
+        run: |
+          set -u
+          failed=""
+          for f in factory/*.test.mjs; do
+            if ! node --experimental-strip-types --test "$f" >/dev/null 2>&1; then
+              failed="$f"
+              break
+            fi
+          done
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+      - name: "Factory failing file ${{ steps.diagnose.outputs.failed }}"
+        if: steps.diagnose.outputs.failed != ''
+        run: exit 1
       - name: Factory suite
+        if: steps.diagnose.outputs.failed == ''
         working-directory: project
         run: npm run test:factory
       - working-directory: project
