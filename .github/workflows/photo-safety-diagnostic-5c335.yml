@@ -1,0 +1,53 @@
+name: Project Giovanni Photo Safety Diagnostic 5c335
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'validation/photo-safety-5c335/**'
+      - '.github/workflows/photo-safety-diagnostic-5c335.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        run: |
+          sha="$(tr -d '\r\n' < validation/photo-safety-5c335/project.ref)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - run: test -n "$TOKEN"
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: source
+        run: npm install --no-audit --no-fund
+      - name: Direct P0 Photo AI safety vectors
+        working-directory: source
+        run: node tools/test_photo_analysis_output_safety.cjs lib/photoAnalysisOutputSafety.ts
+      - name: RAZZO factory suite
+        working-directory: source
+        run: npm run test:factory
+      - name: Planner
+        if: success()
+        working-directory: source
+        run: npm run factory:plan
+      - if: always()
+        run: rm -rf source
