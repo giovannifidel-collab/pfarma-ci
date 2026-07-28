@@ -12,11 +12,14 @@ ALLOWED_EXACT = {
     PurePosixPath("SECURITY.md"),
     PurePosixPath("source-ref.txt"),
     PurePosixPath("project-giovanni-source-ref.txt"),
+    PurePosixPath("family-cloud-ref.txt"),
     PurePosixPath("bundle/README.md"),
     PurePosixPath("bundle/pfarma-ci.bundle.json"),
     PurePosixPath("tools/public_ci_bundle.py"),
     PurePosixPath("tools/test_public_ci_bundle.py"),
     PurePosixPath("tools/validate_public_repo.py"),
+    PurePosixPath("tools/razzo_portfolio.py"),
+    PurePosixPath("tools/test_razzo_portfolio.py"),
     PurePosixPath(".github/workflows/bootstrap.yml"),
     PurePosixPath(".github/workflows/run-encrypted-pfarma.yml"),
     PurePosixPath(".github/workflows/private-source-ref-ci.yml"),
@@ -32,6 +35,12 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/reorder-readiness-json-contract.yml"),
     PurePosixPath(".github/workflows/reorder-preflight-json-contract.yml"),
     PurePosixPath(".github/workflows/project-giovanni-private-source-hosted-ci.yml"),
+    PurePosixPath(".github/workflows/family-cloud-private-source-ci.yml"),
+    PurePosixPath(".github/workflows/pfarma-razzo-executor-ci.yml"),
+    PurePosixPath(".github/workflows/razzo-exact-ref-gates.yml"),
+    PurePosixPath(".github/workflows/razzo-pfarma-product-workstreams.yml"),
+    PurePosixPath(".github/workflows/razzo-portfolio-ci.yml"),
+    PurePosixPath(".github/workflows/razzo-project-product-workstreams.yml"),
     PurePosixPath(".github/photo-ai/preparatore-v2.prompt.md"),
     PurePosixPath(".github/photo-ai/preparatore-v2.schema.json"),
     PurePosixPath(".github/workflows/project-giovanni-photo-ai.yml"),
@@ -41,6 +50,14 @@ ALLOWED_EXACT = {
     PurePosixPath("scripts/preparatore-v2-job.mjs"),
     PurePosixPath("scripts/resolve-preparatore-v2-user.mjs"),
     PurePosixPath("scripts/preparatore-v2-strategic-smoke.mjs"),
+    PurePosixPath("razzo/pfarma-accounting-ref.txt"),
+    PurePosixPath("razzo/pfarma-migration-ref.txt"),
+    PurePosixPath("razzo/pfarma-ref.txt"),
+    PurePosixPath("razzo/pfarma-supplier-ref.txt"),
+    PurePosixPath("razzo/project-giovanni-ref.txt"),
+    PurePosixPath("razzo/project-history-ref.txt"),
+    PurePosixPath("razzo/project-offline-ref.txt"),
+    PurePosixPath("razzo/projects.json"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
@@ -52,6 +69,27 @@ BUNDLE_REQUIRED_FIELDS = {
     "nonce_b64",
     "ciphertext_b64",
 }
+REF_FILES = (
+    "source-ref.txt",
+    "project-giovanni-source-ref.txt",
+    "family-cloud-ref.txt",
+    "razzo/pfarma-accounting-ref.txt",
+    "razzo/pfarma-migration-ref.txt",
+    "razzo/pfarma-ref.txt",
+    "razzo/pfarma-supplier-ref.txt",
+    "razzo/project-giovanni-ref.txt",
+    "razzo/project-history-ref.txt",
+    "razzo/project-offline-ref.txt",
+)
+
+
+def _validate_ref_file(filename: str) -> None:
+    ref_file = ROOT / filename
+    if not ref_file.exists():
+        return
+    value = ref_file.read_text(encoding="ascii").strip()
+    if len(value) != 40 or any(ch not in "0123456789abcdef" for ch in value):
+        raise SystemExit(f"{filename} must contain exactly one lowercase 40-character commit SHA.")
 
 
 def main() -> None:
@@ -81,11 +119,8 @@ def main() -> None:
         if not isinstance(payload.get("ciphertext_b64"), str) or not payload["ciphertext_b64"]:
             raise SystemExit("Encrypted bundle has no ciphertext.")
 
-    source_ref = ROOT / "source-ref.txt"
-    if source_ref.exists():
-        value = source_ref.read_text(encoding="ascii").strip()
-        if len(value) != 40 or any(ch not in "0123456789abcdef" for ch in value):
-            raise SystemExit("source-ref.txt must contain exactly one lowercase 40-character commit SHA.")
+    for filename in REF_FILES:
+        _validate_ref_file(filename)
 
     print(f"PASS: public repository allowlist contains {len(files)} approved files; no plaintext source path admitted.")
 
