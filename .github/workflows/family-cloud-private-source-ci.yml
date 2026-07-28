@@ -1,5 +1,5 @@
 name: Family Cloud Private Source Hosted CI
-# validation-wave: dynamic-squads
+# validation-wave: pwa-bootstrap-0348
 
 on:
   push:
@@ -93,6 +93,17 @@ jobs:
       - name: Tests
         working-directory: private-source
         run: npm test
+
+      - name: PWA install/offline shell regression
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f apps/web/manifest.webmanifest
+          test -f apps/web/sw.js
+          grep -q 'manifest.webmanifest' apps/web/index.html
+          grep -q 'serviceWorker' apps/web/src/app.ts
+          grep -q 'fetch' apps/web/sw.js
 
       - name: Factory planner smoke
         working-directory: private-source
