@@ -108,7 +108,7 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          for test_file in tests/test_dual_warehouse_allocation.py tests/test_dual_warehouse_sale_routing.py; do
+          for test_file in tests/test_dual_warehouse_allocation.py tests/test_dual_warehouse_sale_routing.py tests/test_invoice_series_routing_preview.py; do
             if [ -f "$test_file" ]; then python "$test_file"; fi
           done
       - working-directory: source
