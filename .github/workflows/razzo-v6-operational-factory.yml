@@ -1,0 +1,68 @@
+name: RAZZO V6 Operational Factory
+
+on:
+  pull_request:
+    paths:
+      - 'razzo/v6/**'
+      - 'razzo/protocol.json'
+      - 'razzo/projects.json'
+      - 'razzo/project-state.json'
+      - '.github/workflows/razzo-v6-operational-factory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: razzo-v6-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  unit-and-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact SHA guard
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Runtime contract tests
+        run: python -m unittest razzo.v6.test_runtime -v
+
+  operational-proof:
+    runs-on: ubuntu-latest
+    needs: unit-and-contract
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact SHA guard
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Dispatch V6 operational proof wave
+        run: python razzo/v6/runtime.py operational-proof --concurrency 4 --out razzo/v6/out
+      - name: Verify aggregate receipt
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path('razzo/v6/out/cycle-receipt.json').read_text())
+          assert p['workstreams_dispatched'] >= 4
+          assert p['parallel_peak'] >= 2
+          assert p['workstreams_failed'] == 0
+          assert p['duplicate_execution'] is False
+          assert p['generation_promoted'] is False
+          print(json.dumps(p, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-v6-operational-proof-${{ github.event.pull_request.head.sha || github.sha }}
+          path: razzo/v6/out/*.json
+          if-no-files-found: error
