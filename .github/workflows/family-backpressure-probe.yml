@@ -1,0 +1,67 @@
+name: Family Cloud Backpressure Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'family-backpressure-ref.txt'
+      - '.github/workflows/family-backpressure-probe.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: family-backpressure-probe-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact Family Cloud SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < family-backpressure-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+      - name: Checkout exact Family Cloud commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: private-source
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        working-directory: private-source
+        run: npm run typecheck
+      - name: Tests
+        working-directory: private-source
+        run: npm test
+      - name: Factory planner smoke
+        working-directory: private-source
+        run: npm run factory:plan
