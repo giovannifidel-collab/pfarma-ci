@@ -1,0 +1,64 @@
+name: PFarma Dual Warehouse Exact Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/pfarma-dual-warehouse-ref.txt'
+      - '.github/workflows/pfarma-dual-warehouse-exact.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  dual-warehouse:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact PFarma SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/pfarma-dual-warehouse-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env:
+          TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$TOKEN"
+      - name: Checkout exact private PFarma candidate
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: pfarma-cloud
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        run: test "$(git -C pfarma-cloud rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile candidate
+        working-directory: pfarma-cloud
+        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_dual_warehouse_allocation.py
+      - name: Factory core regressions
+        working-directory: pfarma-cloud
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Dual warehouse allocation regression
+        working-directory: pfarma-cloud
+        run: PYTHONPATH=. python tests/test_dual_warehouse_allocation.py
+      - name: Factory planner smoke
+        working-directory: pfarma-cloud
+        run: python -m factory.plan
+      - name: Cleanup private source
+        if: always()
+        run: rm -rf pfarma-cloud
