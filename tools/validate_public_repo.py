@@ -81,6 +81,8 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/v7/test_product_discovery.py"),
     PurePosixPath("razzo/v7/provider_capacity.py"),
     PurePosixPath("razzo/v7/test_provider_capacity.py"),
+    PurePosixPath("razzo/v7/dispatcher_pool.py"),
+    PurePosixPath("razzo/v7/test_dispatcher_pool.py"),
     PurePosixPath("razzo/v7/README-1000-pool.md"),
     PurePosixPath("razzo/v7/worker-pool-config.json"),
 }
