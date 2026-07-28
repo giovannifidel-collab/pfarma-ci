@@ -121,19 +121,19 @@ jobs:
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
       - name: Inventory read-only regression
         working-directory: pfarma-cloud
-        run: test ! -f tests/test_inventory_readonly_regression.py || python tests/test_inventory_readonly_regression.py
+        run: test ! -f tests/test_inventory_readonly_regression.py || PYTHONPATH=. python tests/test_inventory_readonly_regression.py
       - name: Lots-expiry regression
         working-directory: pfarma-cloud
-        run: test ! -f tests/test_lot_expiry_regression.py || python tests/test_lot_expiry_regression.py
+        run: test ! -f tests/test_lot_expiry_regression.py || PYTHONPATH=. python tests/test_lot_expiry_regression.py
       - name: POS staging regression
         working-directory: pfarma-cloud
-        run: test ! -f tests/test_pos_staging_regression.py || python tests/test_pos_staging_regression.py
+        run: test ! -f tests/test_pos_staging_regression.py || PYTHONPATH=. python tests/test_pos_staging_regression.py
       - name: Accounting staging regression
         working-directory: pfarma-cloud
-        run: test ! -f tests/test_razzo_accounting_staging_regression.py || python tests/test_razzo_accounting_staging_regression.py
+        run: test ! -f tests/test_razzo_accounting_staging_regression.py || PYTHONPATH=. python tests/test_razzo_accounting_staging_regression.py
       - name: Supplier staging regression
         working-directory: pfarma-cloud
-        run: test ! -f tests/test_razzo_supplier_staging_regression.py || python tests/test_razzo_supplier_staging_regression.py
+        run: test ! -f tests/test_razzo_supplier_staging_regression.py || PYTHONPATH=. python tests/test_razzo_supplier_staging_regression.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
