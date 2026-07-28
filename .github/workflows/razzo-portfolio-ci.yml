@@ -1,0 +1,54 @@
+name: RAZZO Portfolio Control Plane CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/**'
+      - 'tools/razzo_portfolio.py'
+      - 'tools/test_razzo_portfolio.py'
+      - '.github/workflows/razzo-portfolio-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'razzo/**'
+      - 'tools/razzo_portfolio.py'
+      - 'tools/test_razzo_portfolio.py'
+      - '.github/workflows/razzo-portfolio-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: razzo-portfolio-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portfolio:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Portfolio unit tests
+        run: python -m unittest tools.test_razzo_portfolio
+      - name: Planner smoke
+        run: python tools/razzo_portfolio.py
+      - name: Validate project configuration
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('razzo/projects.json').read_text())
+          ids = [p['id'] for p in data['projects']]
+          assert ids == ['project-giovanni', 'pfarma-cloud', 'family-cloud']
+          assert data['totalNormalSlots'] > 0
+          assert all(p['protectMain'] for p in data['projects'])
+          print('RAZZO portfolio configuration valid:', ', '.join(ids))
+          PY
