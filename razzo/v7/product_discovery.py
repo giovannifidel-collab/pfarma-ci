@@ -15,6 +15,25 @@ RISK_TERMS = (
     "irreversible-migration", "crypto-release",
 )
 
+DOMAIN_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"\b(catalog|catalogo|mins[a-z]*|ean|product|prodott)", "catalog"),
+    (r"\b(sales|sale|vendit|pos|cassa)", "sales"),
+    (r"\b(inventory|stock|giacenz|magazzin|lot|expiry|scadenz)", "inventory"),
+    (r"\b(receiv|ricezion|carico merce|goods receipt)", "receiving"),
+    (r"\b(supplier|fornitor|reorder|riordin)", "suppliers"),
+    (r"\b(account|contabil|invoice|fattur)", "accounting"),
+    (r"\b(fiscal|epson|rt\b)", "fiscal"),
+    (r"\b(photo|foto|image|immagin)", "photo-ai"),
+    (r"\b(workout|allenament|scheda|trainer|preparatore)", "workout"),
+    (r"\b(history|storico|progress)", "history"),
+    (r"\b(offline|pwa|service worker|sync)", "offline"),
+    (r"\b(dashboard|ui|ux|navigation|navigaz|sidebar)", "ui"),
+    (r"\b(security|sicurezza|auth|rls)", "security"),
+    (r"\b(performance|latency|throughput|prestaz)", "performance"),
+    (r"\b(storage|repair|chunk|vault)", "storage"),
+    (r"\b(sharing|album|timeline)", "sharing"),
+)
+
 
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -42,6 +61,19 @@ def references_issue(pr: dict[str, Any], number: int) -> bool:
     return bool(re.search(rf"(?<!\d)#{number}(?!\d)", text))
 
 
+def collision_domain(project_id: str, issue: dict[str, Any]) -> str:
+    text = f"{issue.get('title','')}\n{issue.get('body','')}".lower()
+    module = re.search(r"(?:modulo|module)\s*:\s*([^\n\r]{2,80})", text)
+    if module:
+        slug = re.sub(r"[^a-z0-9]+", "-", module.group(1).strip()).strip("-")[:48]
+        if slug:
+            return f"{project_id}/module/{slug}"
+    for pattern, domain in DOMAIN_PATTERNS:
+        if re.search(pattern, text):
+            return f"{project_id}/{domain}"
+    return f"{project_id}/issue-{int(issue['number'])}"
+
+
 def api(token: str, url: str) -> Any:
     req = urllib.request.Request(
         url,
@@ -54,13 +86,16 @@ def api(token: str, url: str) -> Any:
 def discover(token: str, limit: int = 3) -> list[dict[str, Any]]:
     registry = load_json(ROOT / "razzo" / "projects.json")
     state = {p["id"]: p for p in load_json(ROOT / "razzo" / "project-state.json")["projects"]}
+    global_cap = max(1, int(registry.get("totalBurstSlots", limit)))
+    requested = max(0, min(limit, global_cap, 220))
     found: list[dict[str, Any]] = []
     for project in [p for p in registry["projects"] if p.get("enabled")]:
         pid = project["id"]
         repo = project["repository"]
+        project_cap = max(1, int(project.get("burstConcurrency", requested)))
         issues = api(token, f"https://api.github.com/repos/{repo}/issues?state=open&sort=updated&direction=desc&per_page=100")
         pulls = api(token, f"https://api.github.com/repos/{repo}/pulls?state=open&per_page=100")
-        candidates = []
+        candidates: list[tuple[int, dict[str, Any]]] = []
         for issue in issues:
             if "pull_request" in issue or risky(issue):
                 continue
@@ -71,24 +106,32 @@ def discover(token: str, limit: int = 3) -> list[dict[str, Any]]:
             if score <= 0:
                 continue
             candidates.append((score, issue))
-        if not candidates:
-            continue
         candidates.sort(key=lambda pair: (-pair[0], -int(pair[1]["number"])))
-        score, issue = candidates[0]
-        found.append({
-            "project_id": pid,
-            "repository": repo,
-            "issue_number": int(issue["number"]),
-            "issue_title": str(issue.get("title") or "")[:240],
-            "issue_body": str(issue.get("body") or "")[:7000],
-            "priority_score": score,
-            "exact_sha": state[pid]["exactSha"],
-            "integration_lane": project.get("integrationLane", "integration/razzo"),
-            "factory_test": project.get("factoryTest", ""),
-            "factory_plan": project.get("factoryPlan", ""),
-        })
-    found.sort(key=lambda x: (-x["priority_score"], x["project_id"]))
-    return found[: max(0, limit)]
+        used_domains: set[str] = set()
+        admitted = 0
+        for score, issue in candidates:
+            domain = collision_domain(pid, issue)
+            if domain in used_domains:
+                continue
+            used_domains.add(domain)
+            found.append({
+                "project_id": pid,
+                "repository": repo,
+                "issue_number": int(issue["number"]),
+                "issue_title": str(issue.get("title") or "")[:240],
+                "issue_body": str(issue.get("body") or "")[:7000],
+                "priority_score": score,
+                "collision_domain": domain,
+                "exact_sha": state[pid]["exactSha"],
+                "integration_lane": project.get("integrationLane", "integration/razzo"),
+                "factory_test": project.get("factoryTest", ""),
+                "factory_plan": project.get("factoryPlan", ""),
+            })
+            admitted += 1
+            if admitted >= project_cap:
+                break
+    found.sort(key=lambda x: (-x["priority_score"], x["project_id"], x["collision_domain"], -x["issue_number"]))
+    return found[:requested]
 
 
 def main() -> int:
