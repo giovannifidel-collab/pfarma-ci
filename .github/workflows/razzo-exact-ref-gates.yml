@@ -31,7 +31,8 @@ jobs:
     steps:
       - name: Checkout public control plane
         uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with:
+          persist-credentials: false
       - name: Resolve exact Project Giovanni SHA
         id: source
         shell: bash
@@ -41,7 +42,9 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Require private-source token
-        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: test -n "$TOKEN"
       - name: Checkout exact private Project Giovanni commit
         uses: actions/checkout@v4
@@ -54,9 +57,12 @@ jobs:
           persist-credentials: false
       - name: Verify exact checkout
         run: test "$(git -C project-giovanni rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
-      - uses: actions/setup-node@v4
-        with: {node-version: '22'}
-      - working-directory: project-giovanni
+      - name: Run actions/setup-node@v4
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run npm install --no-audit --no-fund
+        working-directory: project-giovanni
         run: npm install --no-audit --no-fund
       - name: TypeScript validation
         working-directory: project-giovanni
@@ -85,7 +91,8 @@ jobs:
     steps:
       - name: Checkout public control plane
         uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with:
+          persist-credentials: false
       - name: Resolve exact PFarma SHA
         id: source
         shell: bash
@@ -95,7 +102,9 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Require private-source token
-        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: test -n "$TOKEN"
       - name: Checkout exact private PFarma commit
         uses: actions/checkout@v4
@@ -108,11 +117,13 @@ jobs:
           persist-credentials: false
       - name: Verify exact checkout
         run: test "$(git -C pfarma-cloud rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+      - name: Run actions/setup-python@v5
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Compile Factory
         working-directory: pfarma-cloud
-        run: python -m compileall -q factory tools/test_razzo_executor.py
+        run: python -m compileall -q factory tools/test_razzo_executor.py api tests
       - name: Compatibility wave tests
         working-directory: pfarma-cloud
         run: python tools/test_razzo_executor.py
@@ -137,6 +148,9 @@ jobs:
       - name: Replenishment proposal verification regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_replenishment_proposal_verification.py || PYTHONPATH=. python tests/test_replenishment_proposal_verification.py
+      - name: Replenishment approval packet regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_replenishment_approval_packet.py || PYTHONPATH=. python tests/test_replenishment_approval_packet.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
