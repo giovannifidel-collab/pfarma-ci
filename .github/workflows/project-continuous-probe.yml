@@ -64,9 +64,12 @@ jobs:
       - name: TypeScript validation
         working-directory: private-source
         run: npx --yes tsc --noEmit
-      - name: Factory tests
+      - name: Executor tests
         working-directory: private-source
-        run: npm run test:factory
+        run: node --test factory/executor.test.mjs
+      - name: Continuous-loop tests
+        working-directory: private-source
+        run: node --test factory/continuous-loop.test.mjs
       - name: Factory planner smoke
         working-directory: private-source
         run: npm run factory:plan
