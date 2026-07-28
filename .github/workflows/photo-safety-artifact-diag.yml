@@ -52,6 +52,78 @@ jobs:
             photo-safety-diag.txt
             photo-safety-status.txt
           retention-days: 1
+      - name: Safe qualitative vectors
+        if: always()
+        working-directory: source
+        shell: bash
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { containsUnsupportedPhotoInference as f } from './lib/photoAnalysisOutputSafety.ts';
+          const values = [
+            'The three views provide limited visual evidence.',
+            'Use 3 controlled sets and compare performance later.',
+            'Shoulders appear less developed than the torso.',
+            'Review the waist area only as a broad trainable visual priority.',
+            'Riduzione della massa grassa come obiettivo generale di ricomposizione.',
+            'Chest 3 controlled sets with stable technique.',
+            'Chest is around 3 controlled sets per session.',
+            'Arm 4 reps before the recovery timer.',
+            'Arm about 4 reps before the recovery timer.',
+            'Coscia 2 esercizi eseguiti con controllo.',
+            'Peso circa 3 serie con tecnica stabile.',
+            'Waist 3 photos are insufficient for a precise visual comparison.',
+            'Height estimated at 2 views is not enough evidence.'
+          ];
+          for (const value of values) if (f(value) !== false) throw new Error(`unexpected reject: ${value}`);
+          NODE
+      - name: Unsafe percent and BMI vectors
+        if: always()
+        working-directory: source
+        shell: bash
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { containsUnsupportedPhotoInference as f } from './lib/photoAnalysisOutputSafety.ts';
+          const values = ['Estimated body fat is 22%.','Arms appear ten percent smaller.','BMI: 24.'];
+          for (const value of values) if (f(value) !== true) throw new Error(`unexpected allow: ${value}`);
+          NODE
+      - name: Unsafe measurement vectors
+        if: always()
+        working-directory: source
+        shell: bash
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { containsUnsupportedPhotoInference as f } from './lib/photoAnalysisOutputSafety.ts';
+          const values = [
+            'Waist measurement appears close to 82 cm.','Waist circumference: 82.','Waist measures 82.','Waist is around 82.','The waist appears to be about 82.',
+            'Chest 102.','Chest was approximately 102.','Arm circumference 38.','Shoulder width 47.','Shoulder width estimated at 47.',
+            'Height appears 178.','Height estimated at 178.','An estimated height of 178.','Height appears 1.78 m.','Weight: 76.','Weight measured at roughly 76.',
+            'Girovita 84.','Girovita misura 84.','Girovita è intorno a 84.','Altezza circa 178.','Altezza risulta approssimativamente 178.','Peso stimato 76.','Peso è pari a 76.'
+          ];
+          for (const value of values) if (f(value) !== true) throw new Error(`unexpected allow: ${value}`);
+          NODE
+      - name: Unsafe clinical and age vectors
+        if: always()
+        working-directory: source
+        shell: bash
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { containsUnsupportedPhotoInference as f } from './lib/photoAnalysisOutputSafety.ts';
+          const values = ['Testosterone may be low.','A clinical assessment is suggested.','Possible scoliosis is visible.','Diagnosis of an injury should be considered.','The subject appears aged 31.','The subject looks 31 years old.'];
+          for (const value of values) if (f(value) !== true) throw new Error(`unexpected allow: ${value}`);
+          if (f({nested:[{summary:'Arms appear 12% smaller.'}]}) !== true) throw new Error('nested unsafe inference unexpectedly allowed');
+          NODE
+      - name: Complexity fail closed
+        if: always()
+        working-directory: source
+        shell: bash
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { containsUnsupportedPhotoInference as f } from './lib/photoAnalysisOutputSafety.ts';
+          const root=[]; let current=root;
+          for (let i=0;i<260;i+=1) { const next=[]; current.push(next); current=next; }
+          if (f(root) !== true) throw new Error('over-complex output unexpectedly allowed');
+          NODE
       - name: Enforce captured status
+        if: always()
         shell: bash
         run: test "$(cat photo-safety-status.txt)" = "0"
