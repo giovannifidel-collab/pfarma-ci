@@ -1,0 +1,62 @@
+name: Validate PG-H-009 Exact Head
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/pg-h009-ref.txt'
+      - '.github/workflows/validate-pg-h009.yml'
+permissions:
+  contents: read
+jobs:
+  pg-h009:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/pg-h009-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.ref.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: project
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C project rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: project
+        run: npm install --no-audit --no-fund
+      - name: TypeScript
+        working-directory: project
+        run: npx --yes tsc --noEmit
+      - name: PG-H-009 focused regression
+        working-directory: project
+        run: node --experimental-strip-types --test factory/history-local-download.test.mjs
+      - name: Factory suite
+        working-directory: project
+        run: npm run test:factory
+      - name: Planner
+        working-directory: project
+        run: npm run factory:plan
+      - name: Build
+        working-directory: project
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_SUPABASE_URL: 'https://ci-placeholder.supabase.co'
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_ci_placeholder'
+        run: npm run build
+      - if: always()
+        run: rm -rf project
