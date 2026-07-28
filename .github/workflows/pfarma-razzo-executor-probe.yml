@@ -1,0 +1,75 @@
+name: PFarma RAZZO Executor Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/pfarma-razzo-executor-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pfarma-razzo-probe-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  executor:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve exact PFarma source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require private source token
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+
+      - name: Checkout exact private PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout
+        shell: bash
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate executor
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q factory
+          python -m unittest factory.test_razzo_executor -v
+          python -m factory.plan
+
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf private-source
