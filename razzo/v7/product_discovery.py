@@ -133,6 +133,39 @@ def slice_instruction(domain: str) -> str:
     return f"Advance only the {leaf} aspect of this issue; avoid unrelated product surfaces."
 
 
+def select_fairly(items: list[dict[str, Any]], requested: int, project_ids: list[str]) -> list[dict[str, Any]]:
+    """Reserve one seat per enabled project with eligible work, then fill by global priority.
+
+    The input is already globally sorted. This prevents a busy/high-scoring project from starving
+    another enabled project during a bounded provider-cap wave while preserving score order for
+    all remaining capacity.
+    """
+    if requested <= 0:
+        return []
+    selected: list[dict[str, Any]] = []
+    selected_keys: set[tuple[str, int, str]] = set()
+
+    for project_id in project_ids:
+        item = next((candidate for candidate in items if candidate["project_id"] == project_id), None)
+        if item is None:
+            continue
+        key = (item["project_id"], int(item["issue_number"]), item["collision_domain"])
+        selected.append(item)
+        selected_keys.add(key)
+        if len(selected) >= requested:
+            return selected
+
+    for item in items:
+        key = (item["project_id"], int(item["issue_number"]), item["collision_domain"])
+        if key in selected_keys:
+            continue
+        selected.append(item)
+        selected_keys.add(key)
+        if len(selected) >= requested:
+            break
+    return selected
+
+
 def api(token: str, url: str) -> Any:
     req = urllib.request.Request(
         url,
@@ -161,8 +194,10 @@ def discover(token: str, limit: int = 3) -> list[dict[str, Any]]:
     state = {p["id"]: p for p in load_json(ROOT / "razzo" / "project-state.json")["projects"]}
     global_cap = max(1, int(registry.get("totalBurstSlots", limit)))
     requested = max(0, min(limit, global_cap, MAX_LOGICAL_WORKER_POOL))
+    enabled_projects = [p for p in registry["projects"] if p.get("enabled")]
+    project_ids = [p["id"] for p in enabled_projects]
     found: list[dict[str, Any]] = []
-    for project in [p for p in registry["projects"] if p.get("enabled")]:
+    for project in enabled_projects:
         pid = project["id"]
         repo = project["repository"]
         project_cap = max(1, int(project.get("burstConcurrency", requested)))
@@ -208,7 +243,7 @@ def discover(token: str, limit: int = 3) -> list[dict[str, Any]]:
             if admitted >= project_cap:
                 break
     found.sort(key=lambda x: (-x["priority_score"], x["project_id"], x["collision_domain"], -x["issue_number"]))
-    return found[:requested]
+    return select_fairly(found, requested, project_ids)
 
 
 def main() -> int:
