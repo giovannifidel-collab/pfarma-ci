@@ -1,4 +1,5 @@
 name: RAZZO Exact Ref Gates
+# Permanent Operator Robot staging regressions live here; temporary diagnostics have been removed.
 
 on:
   pull_request:
