@@ -103,6 +103,10 @@ jobs:
         working-directory: project-giovanni
         run: npx --yes tsc --noEmit
 
+      - name: Factory executor tests
+        working-directory: project-giovanni
+        run: npm run test:factory --if-present
+
       - name: Build application
         working-directory: project-giovanni
         env:
