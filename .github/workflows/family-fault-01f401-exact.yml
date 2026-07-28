@@ -1,0 +1,49 @@
+name: Family Fault Injection Exact 01f401
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'validation/family-fault-01f401/**'
+      - '.github/workflows/family-fault-01f401-exact.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        run: |
+          sha="$(tr -d '\r\n' < validation/family-fault-01f401/family.ref)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - run: test -n "$TOKEN"
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: source
+        run: npm install --no-audit --no-fund
+      - working-directory: source
+        run: npm run typecheck
+      - working-directory: source
+        run: npm test
+      - working-directory: source
+        run: npm run factory:plan
+      - if: always()
+        run: rm -rf source
