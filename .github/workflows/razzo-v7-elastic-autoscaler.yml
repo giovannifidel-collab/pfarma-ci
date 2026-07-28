@@ -1,0 +1,40 @@
+name: RAZZO V7 Elastic Autoscaler
+
+on:
+  pull_request:
+    paths:
+      - 'razzo/v7/**'
+      - '.github/workflows/razzo-v7-elastic-autoscaler.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: razzo-v7-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact SHA guard
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Autoscaler contract tests
+        run: python -m unittest razzo.v7.test_autoscaler -v
+      - name: Bounded geometric ramp proof
+        run: |
+          python - <<'PY'
+          import json
+          from razzo.v7.autoscaler import geometric_ramp
+          ramp = geometric_ramp(4, 128, 6)
+          assert ramp == [4, 8, 16, 32, 64, 128]
+          assert max(ramp) <= 128
+          print(json.dumps({"proof":"OPERATIONAL_PROOF","ramp":ramp,"unbounded":False}))
+          PY
