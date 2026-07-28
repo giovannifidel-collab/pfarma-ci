@@ -1,5 +1,5 @@
 name: Family Cloud Private Source Hosted CI
-# validation-wave: dynamic-squads
+# validation-wave: current-fifth-wave
 
 on:
   push:
@@ -13,43 +13,29 @@ on:
       - 'family-cloud-ref.txt'
       - '.github/workflows/family-cloud-private-source-ci.yml'
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: family-cloud-private-source-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: pfarma-ci-trusted
     steps:
-      - name: Check out public CI control repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Validate requested Family Cloud SHA
-        id: source
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
         shell: bash
         run: |
           set -euo pipefail
-          test -f family-cloud-ref.txt
           sha="$(tr -d '\r\n' < family-cloud-ref.txt)"
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'family-cloud-ref.txt is not a canonical commit SHA.' >&2; exit 1; }
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Fail closed unless private-source token is configured
-        shell: bash
-        env:
-          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      - env: {SOURCE_TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
         run: test -n "$SOURCE_TOKEN"
-
-      - name: Check out exact private Family Cloud commit
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/family-cloud
           ref: ${{ steps.source.outputs.sha }}
@@ -57,48 +43,19 @@ jobs:
           path: private-source
           fetch-depth: 1
           persist-credentials: false
-
-      - name: Verify exact private commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          actual="$(git -C private-source rev-parse HEAD)"
-          test "$actual" = '${{ steps.source.outputs.sha }}'
-
-      - name: Set up Node 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        working-directory: private-source
+      - run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: private-source
         run: npm install --no-audit --no-fund
-
       - name: Typecheck
         working-directory: private-source
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run typecheck 2>&1 | tee ../family-cloud-typecheck.log
-
-      - name: Upload typecheck diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: family-cloud-typecheck-${{ steps.source.outputs.sha }}
-          path: family-cloud-typecheck.log
-          if-no-files-found: ignore
-          retention-days: 1
-
+        run: npm run typecheck
       - name: Tests
         working-directory: private-source
         run: npm test
-
       - name: Factory planner smoke
         working-directory: private-source
         run: npm run factory:plan
-
-      - name: Remove private source checkout
-        if: always()
-        shell: bash
+      - if: always()
         run: rm -rf private-source
