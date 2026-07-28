@@ -22,6 +22,39 @@ class ProjectState:
         return max(0, self.ready)
 
 
+def project_state_from_task_graph(
+    project_id: str,
+    graph: dict[str, Any],
+    *,
+    normal_concurrency: int,
+    burst_concurrency: int,
+    backpressure: bool = False,
+) -> ProjectState:
+    tasks = graph.get("tasks")
+    if not isinstance(tasks, list):
+        raise ValueError("task graph must contain a tasks list")
+
+    ready = 0
+    blocked_human_gate = False
+    for task in tasks:
+        if not isinstance(task, dict):
+            raise ValueError("task entries must be objects")
+        status = task.get("status")
+        if status == "ready":
+            ready += 1
+        if status == "blocked" and (task.get("humanGate") or task.get("human_gate")):
+            blocked_human_gate = True
+
+    return ProjectState(
+        project_id=project_id,
+        ready=ready,
+        backpressure=backpressure,
+        human_gate=ready == 0 and blocked_human_gate,
+        normal_concurrency=normal_concurrency,
+        burst_concurrency=burst_concurrency,
+    )
+
+
 def allocate_portfolio(states: list[ProjectState], total_slots: int) -> dict[str, int]:
     allocations = {state.project_id: 0 for state in states}
     healthy = [state for state in states if state.runnable > 0]
