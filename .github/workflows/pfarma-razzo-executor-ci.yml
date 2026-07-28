@@ -6,17 +6,22 @@ on:
     paths:
       - 'source-ref.txt'
       - '.github/workflows/pfarma-razzo-executor-ci.yml'
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/pfarma-razzo-executor-ci.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pfarma-razzo-executor-ci
+  group: pfarma-razzo-executor-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   executor:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pfarma-ci-trusted
