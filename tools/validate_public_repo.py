@@ -48,6 +48,7 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/razzo-v6-operational-factory.yml"),
     PurePosixPath(".github/workflows/razzo-v7-elastic-autoscaler.yml"),
     PurePosixPath(".github/workflows/razzo-v7-elastic-fabric.yml"),
+    PurePosixPath(".github/workflows/razzo-v7-product-worker-fabric.yml"),
     PurePosixPath(".github/photo-ai/preparatore-v2.prompt.md"),
     PurePosixPath(".github/photo-ai/preparatore-v2.schema.json"),
     PurePosixPath(".github/workflows/project-giovanni-photo-ai.yml"),
@@ -74,6 +75,8 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/v7/test_autoscaler.py"),
     PurePosixPath("razzo/v7/fabric.py"),
     PurePosixPath("razzo/v7/test_fabric.py"),
+    PurePosixPath("razzo/v7/product_discovery.py"),
+    PurePosixPath("razzo/v7/test_product_discovery.py"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {

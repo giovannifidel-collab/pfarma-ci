@@ -1,0 +1,262 @@
+name: RAZZO V7 Product Worker Fabric
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'razzo/v7/product_discovery.py'
+      - 'razzo/v7/test_product_discovery.py'
+      - '.github/workflows/razzo-v7-product-worker-fabric.yml'
+      - 'tools/validate_public_repo.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PRODUCT_WORKER_CAP: '3'
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+      count: ${{ steps.discover.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact control-plane SHA
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - name: Product discovery contract tests
+        run: python -m unittest razzo.v7.test_product_discovery -v
+      - id: discover
+        name: Discover real safe product work dynamically
+        env:
+          PFARMA_SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          RAZZO_PRODUCT_WORKER_CAP: ${{ env.PRODUCT_WORKER_CAP }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix="$(python razzo/v7/product_discovery.py)"
+          count="$(python -c 'import json,sys; print(len(json.load(sys.stdin)["include"]))' <<< "$matrix")"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Discovered $count safe product work item(s)."
+
+  workers:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: photo-ai-private
+    steps:
+      - name: Check out trusted control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Codex CLI before loading credentials
+        run: npm install --global @openai/codex@0.145.0
+      - name: Require private source token
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+      - name: Check out exact private product source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.exact_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product-source
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact product SHA
+        working-directory: product-source
+        run: test "$(git rev-parse HEAD)" = "${{ matrix.exact_sha }}"
+      - name: Restore encrypted ChatGPT-managed Codex authentication
+        id: restore
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
+          CODEX_AUTH_SEED_B64: ${{ secrets.CODEX_AUTH_SEED_B64 }}
+          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}
+        run: node scripts/codex-auth-state.mjs restore
+      - name: Create bounded product-work prompt
+        shell: bash
+        env:
+          ISSUE_TITLE: ${{ matrix.issue_title }}
+          ISSUE_BODY: ${{ matrix.issue_body }}
+        run: |
+          cat > "${RUNNER_TEMP}/product-work.txt" <<'EOF'
+          You are a RAZZO V7 product worker operating on one real GitHub issue.
+          Implement the smallest meaningful product improvement that directly advances the issue in this checked-out repository.
+          Constraints are strict:
+          - Never write to production, external systems, user data, EasyFarm, fiscal devices, storage repair targets, secrets, credentials, paid infrastructure or irreversible migrations.
+          - Do not modify GitHub workflows, deployment/infra, secrets, factory policy, task graphs, migrations or authentication/RLS boundaries.
+          - Do not weaken tests or safety gates.
+          - Work only from the current exact SHA and keep the change narrow and collision-resistant.
+          - Prefer executable product code plus focused regression tests; do not produce documentation-only or governance-only changes.
+          - Do not commit or push; the outer worker owns Git operations.
+          - Run no network commands.
+          ISSUE TITLE:
+          EOF
+          printf '%s\n' "$ISSUE_TITLE" >> "${RUNNER_TEMP}/product-work.txt"
+          printf '%s\n' 'ISSUE BODY:' >> "${RUNNER_TEMP}/product-work.txt"
+          printf '%s\n' "$ISSUE_BODY" >> "${RUNNER_TEMP}/product-work.txt"
+      - name: Execute real product worker
+        id: codex
+        working-directory: product-source
+        env:
+          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          codex exec --skip-git-repo-check --ephemeral --sandbox workspace-write - < "${RUNNER_TEMP}/product-work.txt"
+      - name: Reject forbidden change surfaces
+        id: diff
+        working-directory: product-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git status --porcelain | awk '{print $2}')"
+          if [ -z "$changed" ]; then
+            echo 'No product change produced.'
+            echo 'has_changes=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if echo "$changed" | grep -E '(^|/)(\.github/workflows|migrations|infra|secrets)(/|$)|factory/(policy|task[-_]graph)'; then
+            echo 'Forbidden product-worker change surface detected.' >&2
+            exit 1
+          fi
+          echo 'has_changes=true' >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$changed"
+      - name: Run project factory tests
+        if: steps.diff.outputs.has_changes == 'true'
+        working-directory: product-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n '${{ matrix.factory_test }}' ]; then bash -lc '${{ matrix.factory_test }}'; fi
+          if [ -n '${{ matrix.factory_plan }}' ]; then bash -lc '${{ matrix.factory_plan }}'; fi
+      - name: Commit, push safe branch and open PR
+        if: steps.diff.outputs.has_changes == 'true'
+        id: publish
+        working-directory: product-source
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          ISSUE_TITLE: ${{ matrix.issue_title }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="razzo/v7/${{ matrix.project_id }}/issue-${{ matrix.issue_number }}-${GITHUB_RUN_ID}"
+          git config user.name 'RAZZO V7 Product Worker'
+          git config user.email 'razzo-v7@users.noreply.github.com'
+          git switch -c "$branch"
+          git add -A
+          git commit -m "RAZZO V7: advance #${{ matrix.issue_number }}"
+          git push "https://x-access-token:${SOURCE_TOKEN}@github.com/${{ matrix.repository }}.git" "HEAD:${branch}"
+          export BRANCH="$branch"
+          export PR_TITLE="RAZZO V7: advance #${{ matrix.issue_number }} — ${ISSUE_TITLE}"
+          export PR_BASE='${{ matrix.integration_lane }}'
+          export PR_BODY='Automated bounded product worker for #${{ matrix.issue_number }}. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and review/integration policy; no direct main write.'
+          payload="$(python - <<'PY'
+          import json, os
+          print(json.dumps({"title": os.environ["PR_TITLE"], "head": os.environ["BRANCH"], "base": os.environ["PR_BASE"], "body": os.environ["PR_BODY"]}))
+          PY
+          )"
+          response="$(curl -fsS -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'Content-Type: application/json' \
+            "https://api.github.com/repos/${{ matrix.repository }}/pulls" \
+            -d "$payload")"
+          pr="$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' <<< "$response")"
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+      - name: Persist refreshed ChatGPT authentication
+        if: always() && steps.restore.outcome == 'success'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
+          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}
+        run: node scripts/codex-auth-state.mjs persist
+      - name: Write execution receipt
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p receipts
+          python - <<'PY'
+          import hashlib, json
+          data = {
+            'project_id': '${{ matrix.project_id }}',
+            'repository': '${{ matrix.repository }}',
+            'issue_number': ${{ matrix.issue_number }},
+            'input_exact_sha': '${{ matrix.exact_sha }}',
+            'worker_id': 'product-${{ matrix.project_id }}-${{ matrix.issue_number }}',
+            'codex_outcome': '${{ steps.codex.outcome }}',
+            'has_changes': '${{ steps.diff.outputs.has_changes }}',
+            'pr_number': '${{ steps.publish.outputs.pr }}',
+            'run_id': '${{ github.run_id }}',
+          }
+          data['receipt_digest'] = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+          open('receipts/${{ matrix.project_id }}-${{ matrix.issue_number }}.json','w').write(json.dumps(data, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: razzo-v7-product-receipt-${{ matrix.project_id }}-${{ matrix.issue_number }}
+          path: receipts/*.json
+          if-no-files-found: error
+      - name: Remove private source and auth state
+        if: always()
+        shell: bash
+        run: |
+          rm -rf product-source "${RUNNER_TEMP}/razzo-codex-${{ matrix.project_id }}" "${RUNNER_TEMP}/product-work.txt"
+
+  aggregate:
+    needs: [plan, workers]
+    if: always() && needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: razzo-v7-product-receipt-*
+          path: receipts
+          merge-multiple: true
+      - name: Verify aggregate product-worker receipts
+        shell: bash
+        env:
+          EXPECTED: ${{ needs.plan.outputs.count }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          files = sorted(Path('receipts').glob('*.json'))
+          expected = int(os.environ['EXPECTED'])
+          assert len(files) == expected, (len(files), expected)
+          receipts = [json.loads(p.read_text()) for p in files]
+          ids = [r['worker_id'] for r in receipts]
+          assert len(ids) == len(set(ids)), 'duplicate worker receipt'
+          prs = [r['pr_number'] for r in receipts if r.get('pr_number')]
+          print(json.dumps({
+            'cycle_type': 'PRODUCT_WORK',
+            'workstreams_dispatched': expected,
+            'receipts': len(receipts),
+            'product_prs_created': len(prs),
+            'duplicate_execution': False,
+            'generation_promoted': False,
+          }, indent=2))
+          PY
