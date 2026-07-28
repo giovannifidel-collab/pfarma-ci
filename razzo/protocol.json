@@ -1,0 +1,44 @@
+{
+  "protocol": "RAZZO",
+  "protocolVersion": 1,
+  "controlPlaneRepository": "giovannifidel-collab/pfarma-ci",
+  "portfolioRegistry": "razzo/projects.json",
+  "portfolioState": "razzo/project-state.json",
+  "universalCommandSpec": "razzo/UNIVERSAL_COMMAND.md",
+  "sourceOfTruth": "github",
+  "discovery": {
+    "mode": "registry-driven",
+    "dynamicProjects": true,
+    "requireEnabled": true,
+    "projectManifestCandidates": [
+      ".razzo/project.json",
+      "factory/project.json",
+      "factory/task-graph.json"
+    ],
+    "rule": "Never hard-code the active project set in an operator prompt. Load enabled projects from the portfolio registry on every cycle."
+  },
+  "execution": {
+    "productFirst": true,
+    "continuousDiscovery": true,
+    "selfReplan": true,
+    "noIdle": true,
+    "noEarlyStop": true,
+    "safeParallelism": true,
+    "collisionCheck": true,
+    "integrationBackpressure": true,
+    "exactShaVerification": true,
+    "failClosed": true,
+    "readyZeroMeansStop": false
+  },
+  "humanGateClasses": [
+    "real-secrets",
+    "real-credentials",
+    "paid-activation",
+    "destructive-production",
+    "irreversible-migration",
+    "crypto-release",
+    "irreplaceable-data"
+  ],
+  "generationRule": "A generation advances only when new real work is produced or verified: code, capability, bug fix, UX, integration, functional test, performance, resilience, security or another concrete product improvement. Administrative ref/checkpoint churn alone is not a generation.",
+  "onboardingRule": "A new project joins RAZZO by adding one enabled entry to razzo/projects.json. The universal operator command and scheduled tasks must not be edited for project onboarding."
+}

@@ -40,15 +40,51 @@ jobs:
         run: python -m unittest tools.test_razzo_portfolio
       - name: Planner smoke
         run: python tools/razzo_portfolio.py
-      - name: Validate project configuration
+      - name: Validate universal RAZZO protocol and dynamic project registry
         run: |
           python - <<'PY'
           import json
+          import re
           from pathlib import Path
-          data = json.loads(Path('razzo/projects.json').read_text())
-          ids = [p['id'] for p in data['projects']]
-          assert ids == ['project-giovanni', 'pfarma-cloud', 'family-cloud']
-          assert data['totalNormalSlots'] > 0
-          assert all(p['protectMain'] for p in data['projects'])
-          print('RAZZO portfolio configuration valid:', ', '.join(ids))
+
+          protocol = json.loads(Path('razzo/protocol.json').read_text(encoding='utf-8'))
+          registry = json.loads(Path(protocol['portfolioRegistry']).read_text(encoding='utf-8'))
+          state = json.loads(Path(protocol['portfolioState']).read_text(encoding='utf-8'))
+
+          assert protocol['protocol'] == 'RAZZO'
+          assert protocol['discovery']['dynamicProjects'] is True
+          assert protocol['execution']['productFirst'] is True
+          assert protocol['execution']['readyZeroMeansStop'] is False
+          assert registry['dynamicPortfolio'] is True
+          assert registry['totalNormalSlots'] > 0
+
+          projects = registry.get('projects')
+          assert isinstance(projects, list) and projects, 'registry must contain at least one project'
+          ids = []
+          for project in projects:
+              assert isinstance(project, dict)
+              assert isinstance(project.get('id'), str) and project['id']
+              assert isinstance(project.get('repository'), str) and '/' in project['repository']
+              assert isinstance(project.get('enabled', True), bool)
+              if project.get('enabled', True):
+                  assert isinstance(project.get('portfolioRefFile'), str) and project['portfolioRefFile']
+                  assert isinstance(project.get('normalConcurrency'), int) and project['normalConcurrency'] > 0
+                  assert isinstance(project.get('burstConcurrency'), int) and project['burstConcurrency'] >= project['normalConcurrency']
+              ids.append(project['id'])
+          assert len(ids) == len(set(ids)), 'duplicate project ids'
+
+          state_entries = state.get('projects')
+          assert isinstance(state_entries, list)
+          state_ids = {entry['id'] for entry in state_entries}
+          enabled_ids = {p['id'] for p in projects if p.get('enabled', True)}
+          assert enabled_ids <= state_ids, f'missing portfolio state for enabled projects: {sorted(enabled_ids - state_ids)}'
+
+          sha_re = re.compile(r'^[0-9a-f]{40}$')
+          for project in projects:
+              if not project.get('enabled', True):
+                  continue
+              ref = Path(project['portfolioRefFile']).read_text(encoding='utf-8').strip()
+              assert sha_re.fullmatch(ref), f"invalid exact ref for {project['id']}"
+
+          print(f'RAZZO universal registry valid: {len(enabled_ids)} enabled project(s): ' + ', '.join(sorted(enabled_ids)))
           PY

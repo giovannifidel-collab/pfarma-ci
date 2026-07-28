@@ -1,11 +1,28 @@
 {
-  "version": 2,
+  "version": 3,
+  "protocol": "RAZZO",
+  "dynamicPortfolio": true,
   "totalNormalSlots": 32,
   "totalBurstSlots": 128,
+  "defaults": {
+    "enabled": true,
+    "protectMain": true,
+    "taskGraphPath": "factory/task-graph.json",
+    "projectManifestCandidates": [".razzo/project.json", "factory/project.json"],
+    "policyCandidates": ["factory/policy.json", ".razzo/policy.json"],
+    "executorCandidates": ["factory/executor", "factory/executor.py", "factory/executor.ts"],
+    "productFirst": true,
+    "selfReplan": true,
+    "continuousDiscovery": true,
+    "readyZeroMeansStop": false
+  },
   "projects": [
     {
       "id": "project-giovanni",
       "repository": "giovannifidel-collab/project-giovanni",
+      "enabled": true,
+      "integrationLane": "integration/razzo",
+      "taskGraphPath": "factory/task-graph.json",
       "normalConcurrency": 16,
       "burstConcurrency": 32,
       "protectMain": true,
@@ -17,6 +34,9 @@
     {
       "id": "pfarma-cloud",
       "repository": "giovannifidel-collab/pfarma-cloud",
+      "enabled": true,
+      "integrationLane": "integration/razzo",
+      "taskGraphPath": "factory/task_graph.json",
       "normalConcurrency": 16,
       "burstConcurrency": 32,
       "protectMain": true,
@@ -28,6 +48,9 @@
     {
       "id": "family-cloud",
       "repository": "giovannifidel-collab/family-cloud",
+      "enabled": true,
+      "integrationLane": "agent/bootstrap-family-cloud",
+      "taskGraphPath": "factory/task-graph.json",
       "normalConcurrency": 32,
       "burstConcurrency": 128,
       "protectMain": true,
@@ -36,5 +59,10 @@
       "factoryTest": "npm test",
       "factoryPlan": "npm run factory:plan"
     }
-  ]
+  ],
+  "onboarding": {
+    "rule": "Add or enable a project here; do not edit the AVANZA TUTTO operator command or scheduled task prompts.",
+    "minimumFields": ["id", "repository", "enabled"],
+    "recommendedFields": ["integrationLane", "taskGraphPath", "normalConcurrency", "burstConcurrency", "portfolioRefFile"]
+  }
 }
