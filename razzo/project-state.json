@@ -2,7 +2,7 @@
   "version": 1,
   "sourceOfTruth": "github-task-graphs-at-canonical-exact-refs",
   "projects": [
-    {"id":"project-giovanni","exactSha":"d435faf16f94698b70866e024bdf7247d0e3b581","taskGraphVersion":36,"ready":0,"backpressure":false,"humanGate":true,"blocker":"user-data-write"},
+    {"id":"project-giovanni","exactSha":"2674a9627575c88ada1be8ce46afce3f1d15602e","taskGraphVersion":37,"ready":0,"backpressure":false,"humanGate":true,"blocker":"user-data-write"},
     {"id":"pfarma-cloud","exactSha":"512e831e08cdf11ca406db1d87839c961370e506","taskGraphVersion":31,"ready":0,"backpressure":false,"humanGate":true,"blocker":"destructive-production"},
     {"id":"family-cloud","exactSha":"9771d76b67bbe316c0e927750eed7a3f8864eeab","taskGraphVersion":55,"ready":0,"backpressure":false,"humanGate":true,"blocker":"irreplaceable-data"}
   ]
