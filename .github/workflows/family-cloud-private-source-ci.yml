@@ -75,7 +75,19 @@ jobs:
 
       - name: Typecheck
         working-directory: private-source
-        run: npm run typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee ../family-cloud-typecheck.log
+
+      - name: Upload typecheck diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: family-cloud-typecheck-${{ steps.source.outputs.sha }}
+          path: family-cloud-typecheck.log
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Tests
         working-directory: private-source
