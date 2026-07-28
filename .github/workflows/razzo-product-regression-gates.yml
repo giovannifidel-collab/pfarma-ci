@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  pfarma-inventory-readonly:
+  pfarma-product-regressions:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -49,6 +49,9 @@ jobs:
       - name: Run inventory read-only regression
         working-directory: pfarma-cloud
         run: python tests/test_inventory_readonly_regression.py
+      - name: Run lots and expiry regression
+        working-directory: pfarma-cloud
+        run: python tests/test_lot_expiry_regression.py
       - name: Cleanup private source
         if: always()
         run: rm -rf pfarma-cloud
