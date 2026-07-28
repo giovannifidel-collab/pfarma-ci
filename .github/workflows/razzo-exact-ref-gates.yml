@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: current-third-wave
+# validation-wave: current-fourth-wave
 
 on:
   pull_request:
@@ -138,6 +138,9 @@ jobs:
       - name: Cart replenishment preview regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_cart_replenishment_preview.py || PYTHONPATH=. python tests/test_cart_replenishment_preview.py
+      - name: Replenishment proposal preview regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_replenishment_proposal_preview.py || PYTHONPATH=. python tests/test_replenishment_proposal_preview.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
