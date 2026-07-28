@@ -165,7 +165,7 @@ jobs:
         working-directory: pfarma-cloud
         env:
           PFARMA_FEEDBACK_GITHUB_SYNC: '0'
-        run: PYTHONPATH=. python -m unittest tests.test_pfarma_operator_robot -v
+        run: PYTHONPATH=. python tests/test_pfarma_operator_robot.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
