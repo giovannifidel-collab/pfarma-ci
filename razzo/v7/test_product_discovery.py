@@ -9,6 +9,7 @@ from razzo.v7.product_discovery import (
     issue_score,
     references_issue,
     risky,
+    select_fairly,
     slice_id,
     slice_instruction,
 )
@@ -95,6 +96,25 @@ class ProductDiscoveryTests(unittest.TestCase):
         self.assertEqual(slice_id("project-giovanni/photo-ai"), "photo-ai")
         self.assertEqual(slice_id("pfarma-cloud/module/nuova-vendita"), "nuova-vendita")
         self.assertIn("offline", slice_instruction("project-giovanni/offline"))
+
+    def test_fair_selection_reserves_one_seat_per_enabled_project(self):
+        items = [
+            {"project_id": "project-giovanni", "issue_number": 1, "collision_domain": "project-giovanni/a", "priority_score": 500},
+            {"project_id": "project-giovanni", "issue_number": 2, "collision_domain": "project-giovanni/b", "priority_score": 490},
+            {"project_id": "pfarma-cloud", "issue_number": 3, "collision_domain": "pfarma-cloud/a", "priority_score": 300},
+            {"project_id": "family-cloud", "issue_number": 4, "collision_domain": "family-cloud/a", "priority_score": 250},
+        ]
+        selected = select_fairly(items, 3, ["project-giovanni", "pfarma-cloud", "family-cloud"])
+        self.assertEqual([item["project_id"] for item in selected], ["project-giovanni", "pfarma-cloud", "family-cloud"])
+
+    def test_fair_selection_fills_remaining_capacity_by_existing_priority(self):
+        items = [
+            {"project_id": "project-giovanni", "issue_number": 1, "collision_domain": "project-giovanni/a", "priority_score": 500},
+            {"project_id": "project-giovanni", "issue_number": 2, "collision_domain": "project-giovanni/b", "priority_score": 490},
+            {"project_id": "pfarma-cloud", "issue_number": 3, "collision_domain": "pfarma-cloud/a", "priority_score": 300},
+        ]
+        selected = select_fairly(items, 3, ["project-giovanni", "pfarma-cloud", "family-cloud"])
+        self.assertEqual([item["issue_number"] for item in selected], [1, 3, 2])
 
     def test_elastic_pool_contract(self):
         self.assertEqual(MAX_LOGICAL_WORKER_POOL, 1000)
