@@ -61,6 +61,9 @@ jobs:
       - name: TypeScript validation
         working-directory: project-giovanni
         run: npx --yes tsc --noEmit
+      - name: Focused history integrity-verification regression
+        working-directory: project-giovanni
+        run: node --test factory/history-import-conflict-resolution-integrity-verification.test.mjs
       - name: Factory tests
         working-directory: project-giovanni
         run: npm run test:factory
