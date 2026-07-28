@@ -161,11 +161,18 @@ jobs:
       - name: Replenishment gate readiness regression
         working-directory: pfarma-cloud
         run: PYTHONPATH=. python tests/test_replenishment_gate_readiness.py
-      - name: PFarma Operator Robot staging regression
+      - name: Operator Robot navigation regression
         working-directory: pfarma-cloud
-        env:
-          PFARMA_FEEDBACK_GITHUB_SYNC: '0'
-        run: PYTHONPATH=. python tests/test_pfarma_operator_robot.py
+        env: {PFARMA_FEEDBACK_GITHUB_SYNC: '0'}
+        run: PYTHONPATH=. python tests/test_pfarma_operator_robot.py PFarmaOperatorRobotTests.test_core_navigation_and_visible_links -v
+      - name: Operator Robot sale regression
+        working-directory: pfarma-cloud
+        env: {PFARMA_FEEDBACK_GITHUB_SYNC: '0'}
+        run: PYTHONPATH=. python tests/test_pfarma_operator_robot.py PFarmaOperatorRobotTests.test_sales_three_products_remove_and_return_correction -v
+      - name: Operator Robot feedback regression
+        working-directory: pfarma-cloud
+        env: {PFARMA_FEEDBACK_GITHUB_SYNC: '0'}
+        run: PYTHONPATH=. python tests/test_pfarma_operator_robot.py PFarmaOperatorRobotTests.test_feedback_has_single_github_submit_and_endpoint_works -v
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
