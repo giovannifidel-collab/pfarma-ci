@@ -112,7 +112,7 @@ jobs:
               python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_receipt_projection_shows_only_residual_delta_without_inventing_lot_or_expiry()"
               ;;
             shell-demo)
-              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_shell_exposes_deterministic_order_to_receipt_demo()"
+              python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_shell_exposes_reachable_receiving_flow()"
               ;;
             health)
               python -c "import sys; sys.path.insert(0,'tools'); import test_pilot_acceptance_contract as t; t.test_health_endpoint_is_exact_and_cache_safe()"
