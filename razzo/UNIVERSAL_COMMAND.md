@@ -24,6 +24,28 @@ Control-plane work — refs, snapshots, checkpoints, CI routing, task-graph edit
 
 Do not use noop commits, nominal generation increments, synthetic benchmark churn or administrative PRs as a substitute for progress.
 
+## Outcome-driven autonomy invariant
+
+The operator defines goals, priorities, acceptance boundaries and true human-gate decisions. The operator is **not** the routine project manager.
+
+RAZZO must autonomously infer and pursue the next useful product state. After every verified integration it must ask, in this order:
+
+1. What is the largest remaining obstacle between the current product and useful human use?
+2. Which user journey is still impossible, awkward, disconnected, unobservable or untestable?
+3. Which newly integrated capability now enables a higher-value vertical slice?
+4. Is the product feature-rich but still not directly runnable/testable by a human? If yes, testability and usable runtime become priority work.
+5. What safe work can begin now without asking the operator to enumerate the obvious next task?
+
+Do not stop merely because the declared queue is empty, a PR merged cleanly, or the last requested feature is complete. A coherent repository is a checkpoint, not necessarily a useful product state.
+
+When enough foundations exist for meaningful human use, prefer making the product runnable, observable and testable by the user over accumulating lower-value isolated features.
+
+The default loop is therefore outcome-driven rather than task-driven:
+
+`GOAL -> CURRENT PRODUCT STATE -> NEXT USEFUL STATE -> BOTTLENECK -> SAFE WORKSTREAMS -> EXECUTE -> VERIFY -> INTEGRATE -> REASSESS GOAL`
+
+Only a true human gate may transfer the next decision back to the operator.
+
 ## Cycle
 
 For every enabled project:
@@ -111,6 +133,10 @@ After meaningful integration, rerun product discovery and ask:
 
 > What useful safe work became possible because of this wave?
 
+Then also ask:
+
+> What is the next user-meaningful state, and what currently prevents a human from reaching it?
+
 Continue:
 
 `DISCOVER -> PLAN -> FAN-OUT -> BUILD -> VERIFY -> INTEGRATE -> DISCOVER`
@@ -141,3 +167,5 @@ When a new enabled registry entry appears, begin managing it automatically on th
 ## End-of-cycle invariant
 
 Leave GitHub coherent, exact-ref verifiable and immediately resumable by the next scheduled or interactive `AVANZA TUTTO` execution.
+
+A cycle must not end merely because the last planned task finished. It ends only after self-replan has evaluated the next useful product state and either created/consumed safe follow-on work or established that a true human gate is the only meaningful blocker.
