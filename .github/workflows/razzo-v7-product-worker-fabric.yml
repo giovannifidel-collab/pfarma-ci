@@ -6,6 +6,8 @@ on:
     paths:
       - 'razzo/v7/product_discovery.py'
       - 'razzo/v7/test_product_discovery.py'
+      - 'razzo/v7/provider_capacity.py'
+      - 'razzo/v7/test_provider_capacity.py'
       - 'razzo/projects.json'
       - 'razzo/project-state.json'
       - '.github/workflows/razzo-v7-product-worker-fabric.yml'
@@ -14,9 +16,11 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
-  PRODUCT_WORKER_CAP: '220'
+  PRODUCT_WORKER_CAP_FALLBACK: '220'
+  MATRIX_EXECUTION_CEILING: '256'
 
 jobs:
   plan:
@@ -25,6 +29,8 @@ jobs:
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
       count: ${{ steps.discover.outputs.count }}
+      operational_cap: ${{ steps.capacity.outputs.cap }}
+      capacity_decision: ${{ steps.capacity.outputs.decision }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,13 +40,30 @@ jobs:
           python-version: '3.12'
       - name: Exact control-plane SHA
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-      - name: Product discovery contract tests
-        run: python -m unittest razzo.v7.test_product_discovery -v
+      - name: Product discovery and provider-capacity contract tests
+        run: |
+          python -m unittest razzo.v7.test_product_discovery -v
+          python -m unittest razzo.v7.test_provider_capacity -v
+      - id: capacity
+        name: Learn operational concurrency ceiling from GitHub Actions telemetry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          decision="$(python razzo/v7/provider_capacity.py --previous-cap "${PRODUCT_WORKER_CAP_FALLBACK}")"
+          raw_cap="$(python -c 'import json,sys; print(int(json.load(sys.stdin)["operational_cap"]))' <<< "$decision")"
+          cap="$raw_cap"
+          if [ "$cap" -gt "$MATRIX_EXECUTION_CEILING" ]; then cap="$MATRIX_EXECUTION_CEILING"; fi
+          if [ "$cap" -lt 1 ]; then cap=1; fi
+          echo "cap=$cap" >> "$GITHUB_OUTPUT"
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
+          echo "Provider-aware operational cap=$cap; telemetry=$decision"
       - id: discover
         name: Discover real safe product work dynamically
         env:
           PFARMA_SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-          RAZZO_PRODUCT_WORKER_CAP: ${{ env.PRODUCT_WORKER_CAP }}
+          RAZZO_PRODUCT_WORKER_CAP: ${{ steps.capacity.outputs.cap }}
         shell: bash
         run: |
           set -euo pipefail
@@ -48,14 +71,14 @@ jobs:
           count="$(python -c 'import json,sys; print(len(json.load(sys.stdin)["include"]))' <<< "$matrix")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "Discovered $count collision-safe product work item(s), cap=${PRODUCT_WORKER_CAP}."
+          echo "Discovered $count collision-safe product work item(s), provider-aware cap=${{ steps.capacity.outputs.cap }}."
 
   workers:
     needs: plan
     if: needs.plan.outputs.count != '0'
     strategy:
       fail-fast: false
-      max-parallel: 220
+      max-parallel: ${{ fromJSON(needs.plan.outputs.operational_cap) }}
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -235,6 +258,8 @@ jobs:
         shell: bash
         env:
           EXPECTED: ${{ needs.plan.outputs.count }}
+          OPERATIONAL_CAP: ${{ needs.plan.outputs.operational_cap }}
+          CAPACITY_DECISION: ${{ needs.plan.outputs.capacity_decision }}
         run: |
           python - <<'PY'
           import json, os
@@ -255,7 +280,9 @@ jobs:
             'product_prs_created': len(prs),
             'duplicate_execution': False,
             'collision_domains_unique': True,
-            'configured_worker_cap': 220,
+            'provider_aware_operational_cap': int(os.environ['OPERATIONAL_CAP']),
+            'capacity_decision': json.loads(os.environ['CAPACITY_DECISION']),
+            'registry_logical_burst': 1000,
             'generation_promoted': False,
           }, indent=2))
           PY
