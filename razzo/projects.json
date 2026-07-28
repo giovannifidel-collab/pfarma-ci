@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "totalNormalSlots": 32,
   "totalBurstSlots": 128,
   "projects": [
@@ -10,6 +10,7 @@
       "burstConcurrency": 32,
       "protectMain": true,
       "sourceRefFile": "project-giovanni-source-ref.txt",
+      "portfolioRefFile": "razzo/project-giovanni-ref.txt",
       "factoryTest": "npm run test:factory --if-present",
       "factoryPlan": "npm run factory:plan --if-present"
     },
@@ -20,6 +21,7 @@
       "burstConcurrency": 32,
       "protectMain": true,
       "sourceRefFile": "source-ref.txt",
+      "portfolioRefFile": "razzo/pfarma-ref.txt",
       "factoryTest": "python -m unittest factory.test_razzo_executor",
       "factoryPlan": "python -m factory.plan"
     },
@@ -30,6 +32,7 @@
       "burstConcurrency": 128,
       "protectMain": true,
       "sourceRefFile": "family-cloud-ref.txt",
+      "portfolioRefFile": "family-cloud-ref.txt",
       "factoryTest": "npm test",
       "factoryPlan": "npm run factory:plan"
     }

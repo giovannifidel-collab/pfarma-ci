@@ -1,9 +1,14 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from tools.razzo_portfolio import (
     ProjectState,
     allocate_portfolio,
+    load_reconciled_states,
     portfolio_decision,
+    project_state_from_snapshot,
     project_state_from_task_graph,
 )
 
@@ -100,6 +105,72 @@ class RazzoPortfolioTests(unittest.TestCase):
             project_state_from_task_graph(
                 "family-cloud", {"tasks": "not-a-list"}, normal_concurrency=32, burst_concurrency=128
             )
+
+    def test_snapshot_requires_exact_canonical_sha(self):
+        project = {
+            "id": "project-giovanni",
+            "normalConcurrency": 16,
+            "burstConcurrency": 32,
+        }
+        state = {
+            "id": "project-giovanni",
+            "exactSha": "a" * 40,
+            "ready": 0,
+            "backpressure": False,
+            "humanGate": True,
+        }
+        with self.assertRaisesRegex(ValueError, "exact SHA mismatch"):
+            project_state_from_snapshot(project, state, "b" * 40)
+
+    def test_loads_reconciled_exact_ref_states(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "razzo").mkdir()
+            sha_a = "a" * 40
+            sha_b = "b" * 40
+            (root / "razzo" / "a-ref.txt").write_text(sha_a + "\n", encoding="utf-8")
+            (root / "b-ref.txt").write_text(sha_b + "\n", encoding="utf-8")
+            snapshot = {
+                "projects": [
+                    {
+                        "id": "a",
+                        "exactSha": sha_a,
+                        "ready": 2,
+                        "backpressure": False,
+                        "humanGate": False,
+                    },
+                    {
+                        "id": "b",
+                        "exactSha": sha_b,
+                        "ready": 0,
+                        "backpressure": False,
+                        "humanGate": True,
+                    },
+                ]
+            }
+            (root / "razzo" / "project-state.json").write_text(
+                json.dumps(snapshot), encoding="utf-8"
+            )
+            config = {
+                "projects": [
+                    {
+                        "id": "a",
+                        "normalConcurrency": 4,
+                        "burstConcurrency": 8,
+                        "portfolioRefFile": "razzo/a-ref.txt",
+                    },
+                    {
+                        "id": "b",
+                        "normalConcurrency": 2,
+                        "burstConcurrency": 4,
+                        "portfolioRefFile": "b-ref.txt",
+                    },
+                ]
+            }
+            states = load_reconciled_states(root, config)
+            self.assertEqual([state.ready for state in states], [2, 0])
+            self.assertFalse(states[0].human_gate)
+            self.assertTrue(states[1].human_gate)
 
 
 if __name__ == "__main__":
