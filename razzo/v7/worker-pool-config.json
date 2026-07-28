@@ -1,0 +1,7 @@
+{
+  "logicalWorkerPool": 1000,
+  "physicalWaveCap": 250,
+  "continuation": "event-driven",
+  "watchdogMinutes": 10,
+  "matrixLimitRationale": "GitHub Actions matrix limit is 256 jobs; reserve headroom by capping each physical wave at 250."
+}
