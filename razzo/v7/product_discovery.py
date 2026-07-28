@@ -51,8 +51,12 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def issue_score(issue: dict[str, Any]) -> int:
-    text = f"{issue.get('title','')}\n{issue.get('body','')}".lower()
+    title = str(issue.get("title", ""))
+    text = f"{title}\n{issue.get('body','')}".lower()
     score = 0
+    # Explicit RAZZO product-discovery work is a first-class product queue input.
+    # Human-gate filtering is still applied separately by risky().
+    if "[razzo product]" in title.lower(): score += 150
     if re.search(r"\bp0\b", text): score += 100
     if "high" in text or "alta" in text: score += 60
     if "bug" in text: score += 40
@@ -76,6 +80,11 @@ def references_issue(pr: dict[str, Any], number: int) -> bool:
 
 def collision_domain(project_id: str, issue: dict[str, Any]) -> str:
     text = f"{issue.get('title','')}\n{issue.get('body','')}".lower()
+    explicit = re.search(r"collision\s+domain\s*:\s*`?([a-z0-9][a-z0-9/_-]{1,79})`?", text)
+    if explicit:
+        slug = explicit.group(1).strip("`/ ")[:80]
+        if slug:
+            return f"{project_id}/{slug}"
     module = re.search(r"(?:modulo|module)\s*:\s*([^\n\r]{2,80})", text)
     if module:
         slug = re.sub(r"[^a-z0-9]+", "-", module.group(1).strip()).strip("-")[:48]
