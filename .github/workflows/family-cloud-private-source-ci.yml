@@ -1,5 +1,5 @@
 name: Family Cloud Private Source Hosted CI
-# validation-wave: latest-bootstrap-album
+# validation-wave: fault-injection-catalog
 
 on:
   push:
