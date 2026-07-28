@@ -1,4 +1,5 @@
 name: RAZZO Exact Ref Gates
+# validation-wave: pg-h011
 
 on:
   pull_request:
