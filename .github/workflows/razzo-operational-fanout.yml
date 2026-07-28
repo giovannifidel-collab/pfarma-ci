@@ -1,0 +1,153 @@
+name: RAZZO Operational Fanout Proof
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/razzo-operational-fanout.yml'
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: 'Concurrent matrix shards (1-128)'
+        required: true
+        default: '128'
+      operations_per_shard:
+        description: 'Deterministic operations per shard (1-64)'
+        required: true
+        default: '16'
+      max_parallel:
+        description: 'Maximum concurrently running shards (1-64)'
+        required: true
+        default: '32'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: razzo-operational-fanout-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      operations_per_shard: ${{ steps.plan.outputs.operations_per_shard }}
+      max_parallel: ${{ steps.plan.outputs.max_parallel }}
+      expected_operations: ${{ steps.plan.outputs.expected_operations }}
+    steps:
+      - name: Build bounded fanout plan
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_SHARDS: ${{ inputs.shards }}
+          INPUT_OPERATIONS: ${{ inputs.operations_per_shard }}
+          INPUT_MAX_PARALLEL: ${{ inputs.max_parallel }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          if os.environ['EVENT_NAME'] == 'pull_request':
+              shards = 4
+              operations = 4
+              max_parallel = 4
+          else:
+              shards = int(os.environ.get('INPUT_SHARDS') or '128')
+              operations = int(os.environ.get('INPUT_OPERATIONS') or '16')
+              max_parallel = int(os.environ.get('INPUT_MAX_PARALLEL') or '32')
+
+          if not 1 <= shards <= 128:
+              raise SystemExit('shards must be between 1 and 128')
+          if not 1 <= operations <= 64:
+              raise SystemExit('operations_per_shard must be between 1 and 64')
+          if not 1 <= max_parallel <= 64:
+              raise SystemExit('max_parallel must be between 1 and 64')
+
+          matrix = {'shard': list(range(shards))}
+          expected = shards * operations
+          output = os.environ['GITHUB_OUTPUT']
+          with open(output, 'a', encoding='utf-8') as fh:
+              fh.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+              fh.write(f"operations_per_shard={operations}\n")
+              fh.write(f"max_parallel={max_parallel}\n")
+              fh.write(f"expected_operations={expected}\n")
+
+          print(f'fanout plan: shards={shards} operations_per_shard={operations} max_parallel={max_parallel}')
+          print(f'expected deterministic operations={expected}')
+          PY
+
+  fanout:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(needs.prepare.outputs.max_parallel) }}
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Execute deterministic shard ${{ matrix.shard }}
+        env:
+          SHARD: ${{ matrix.shard }}
+          OPERATIONS: ${{ needs.prepare.outputs.operations_per_shard }}
+          RUN_ID: ${{ github.run_id }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+
+          shard = int(os.environ['SHARD'])
+          operations = int(os.environ['OPERATIONS'])
+          run_id = os.environ['RUN_ID']
+          head_sha = os.environ['HEAD_SHA']
+
+          receipts = []
+          for op in range(operations):
+              payload = f'{run_id}:{head_sha}:{shard}:{op}'.encode()
+              digest = hashlib.sha256(payload).hexdigest()
+              receipts.append(digest)
+              print(f'OP shard={shard:03d} op={op:03d} sha256={digest}')
+
+          if len(receipts) != operations or len(set(receipts)) != operations:
+              raise SystemExit('deterministic fanout receipt verification failed')
+
+          summary = {
+              'shard': shard,
+              'operations': operations,
+              'first': receipts[0],
+              'last': receipts[-1],
+              'networkWrite': False,
+              'repositoryWrite': False,
+              'productionWrite': False,
+          }
+          print('SHARD_RECEIPT ' + json.dumps(summary, sort_keys=True))
+          PY
+
+  summary:
+    if: always()
+    needs: [prepare, fanout]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Publish operational proof summary
+        env:
+          EXPECTED: ${{ needs.prepare.outputs.expected_operations }}
+          FANOUT_RESULT: ${{ needs.fanout.result }}
+        run: |
+          echo "Expected deterministic operations: ${EXPECTED}"
+          echo "Fanout result: ${FANOUT_RESULT}"
+          if [ "${FANOUT_RESULT}" != "success" ]; then
+            echo "Fanout did not complete successfully" >&2
+            exit 1
+          fi
+          {
+            echo "## RAZZO operational fanout proof"
+            echo ""
+            echo "- Deterministic operations: ${EXPECTED}"
+            echo "- Fanout result: ${FANOUT_RESULT}"
+            echo "- Repository writes: false"
+            echo "- Production writes: false"
+            echo "- Secrets required: false"
+          } >> "$GITHUB_STEP_SUMMARY"
