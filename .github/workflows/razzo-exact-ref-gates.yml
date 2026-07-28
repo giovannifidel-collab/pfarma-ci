@@ -140,6 +140,9 @@ jobs:
       - name: Replenishment approval packet regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_replenishment_approval_packet.py || PYTHONPATH=. python tests/test_replenishment_approval_packet.py
+      - name: Replenishment PO draft preview regression
+        working-directory: pfarma-cloud
+        run: PYTHONPATH=. python tests/test_replenishment_purchase_order_draft.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
