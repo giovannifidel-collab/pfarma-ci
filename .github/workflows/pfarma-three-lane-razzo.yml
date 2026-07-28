@@ -1,0 +1,79 @@
+name: PFarma Three Lane RAZZO Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'validation/pfarma-three-lane/**'
+      - '.github/workflows/pfarma-three-lane-razzo.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pfarma-lane:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: accounting
+            ref_file: validation/pfarma-three-lane/accounting.ref
+            test_file: tests/test_razzo_accounting_staging_regression.py
+          - lane: suppliers
+            ref_file: validation/pfarma-three-lane/suppliers.ref
+            test_file: tests/test_razzo_supplier_staging_regression.py
+          - lane: migration
+            ref_file: validation/pfarma-three-lane/migration.ref
+            test_file: tests/test_razzo_migration_dry_run_policy.py
+    name: pfarma-${{ matrix.lane }}
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve immutable private SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < '${{ matrix.ref_file }}')"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env:
+          TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$TOKEN"
+      - name: Checkout exact PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        run: test "$(git -C source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Factory and lane test
+        working-directory: source
+        run: python -m compileall -q factory '${{ matrix.test_file }}'
+      - name: Factory regressions
+        working-directory: source
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Focused lane regression
+        working-directory: source
+        run: python '${{ matrix.test_file }}'
+      - name: Factory planner smoke
+        working-directory: source
+        run: python -m factory.plan
+      - name: Cleanup private source
+        if: always()
+        run: rm -rf source
