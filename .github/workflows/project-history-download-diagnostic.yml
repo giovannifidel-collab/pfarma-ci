@@ -31,23 +31,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Capture focused history download diagnostics
-        id: focused
+      - name: Happy-path descriptor test
         working-directory: project
-        shell: bash
-        run: |
-          set +e
-          node --test factory/history-export-download.test.mjs > ../history-download-diagnostic.log 2>&1
-          rc=$?
-          echo "rc=$rc" >> "$GITHUB_OUTPUT"
-          tail -n 40 ../history-download-diagnostic.log
-          exit 0
-      - name: Upload focused diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: project-history-download-diagnostic
-          path: history-download-diagnostic.log
-          retention-days: 1
-      - name: Fail when focused test failed
-        if: steps.focused.outputs.rc != '0'
-        run: exit 1
+        run: node --test --test-name-pattern='download descriptor is deterministic' factory/history-export-download.test.mjs
+      - name: Tamper-rejection descriptor test
+        working-directory: project
+        run: node --test --test-name-pattern='fails closed on tampered fingerprint' factory/history-export-download.test.mjs
