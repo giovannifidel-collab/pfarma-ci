@@ -46,29 +46,56 @@ class RazzoPortfolioTests(unittest.TestCase):
         decision = portfolio_decision(states, 24)
         self.assertEqual(decision["allocation"]["project-giovanni"], 0)
         self.assertEqual(decision["allocated"], 24)
+        self.assertFalse(decision["humanGateStopsPortfolio"])
 
     def test_self_replan_when_all_ready_work_is_gated(self):
         states = [
-            ProjectState("project-giovanni", ready=2, human_gate=True),
+            ProjectState("project-giovanni", ready=2, human_gate=True, gate_reason="user-data-write"),
             ProjectState("pfarma-cloud", ready=3, backpressure=True),
             ProjectState("family-cloud", ready=0),
         ]
         decision = portfolio_decision(states, 32)
         self.assertTrue(decision["selfReplan"])
-        self.assertEqual(decision["replanReason"], "all-ready-work-gated")
+        self.assertEqual(decision["replanReason"], "safe-expansion-around-human-gates")
+        self.assertEqual(decision["replanMode"], "freeze-gated-branches-and-expand-safe-work")
+        self.assertEqual(decision["safeExpansionTargets"], ["project-giovanni"])
+        self.assertEqual(decision["frozenHumanGates"], {"project-giovanni": "user-data-write"})
         self.assertEqual(decision["allocated"], 0)
 
-    def test_self_replan_when_safe_backlog_is_exhausted(self):
+    def test_safe_expansion_when_all_projects_end_at_human_gates(self):
         states = [
-            ProjectState("project-giovanni", ready=0, human_gate=True),
-            ProjectState("pfarma-cloud", ready=0, human_gate=True),
-            ProjectState("family-cloud", ready=0, human_gate=True),
+            ProjectState("project-giovanni", ready=0, human_gate=True, gate_reason="user-data-write"),
+            ProjectState("pfarma-cloud", ready=0, human_gate=True, gate_reason="destructive-production"),
+            ProjectState("family-cloud", ready=0, human_gate=True, gate_reason="irreplaceable-data"),
         ]
         decision = portfolio_decision(states, 32)
         self.assertTrue(decision["safeBacklogExhausted"])
         self.assertTrue(decision["selfReplan"])
-        self.assertEqual(decision["replanReason"], "safe-backlog-exhausted")
+        self.assertTrue(decision["safeExpansionRequested"])
+        self.assertFalse(decision["humanGateStopsPortfolio"])
+        self.assertEqual(decision["replanReason"], "safe-expansion-around-human-gates")
+        self.assertEqual(decision["safeExpansionTargets"], [
+            "project-giovanni",
+            "pfarma-cloud",
+            "family-cloud",
+        ])
         self.assertEqual(decision["allocated"], 0)
+
+    def test_backpressured_human_gate_is_not_safe_expansion_target(self):
+        states = [
+            ProjectState(
+                "pfarma-cloud",
+                ready=0,
+                human_gate=True,
+                gate_reason="destructive-production",
+                backpressure=True,
+            )
+        ]
+        decision = portfolio_decision(states, 32)
+        self.assertFalse(decision["safeExpansionRequested"])
+        self.assertEqual(decision["safeExpansionTargets"], [])
+        self.assertTrue(decision["selfReplan"])
+        self.assertEqual(decision["replanReason"], "safe-backlog-exhausted")
 
     def test_derives_ready_work_from_task_graph(self):
         graph = {
@@ -84,6 +111,7 @@ class RazzoPortfolioTests(unittest.TestCase):
         )
         self.assertEqual(state.ready, 2)
         self.assertFalse(state.human_gate)
+        self.assertIsNone(state.gate_reason)
         self.assertEqual(state.runnable, 2)
 
     def test_derives_human_gate_when_only_blocked_sensitive_work_remains(self):
@@ -98,6 +126,8 @@ class RazzoPortfolioTests(unittest.TestCase):
         )
         self.assertEqual(state.ready, 0)
         self.assertTrue(state.human_gate)
+        self.assertEqual(state.gate_reason, "user-data-write")
+        self.assertTrue(state.safe_expansion_candidate)
         self.assertEqual(state.runnable, 0)
 
     def test_rejects_malformed_task_graph(self):
@@ -118,11 +148,12 @@ class RazzoPortfolioTests(unittest.TestCase):
             "ready": 0,
             "backpressure": False,
             "humanGate": True,
+            "blocker": "user-data-write",
         }
         with self.assertRaisesRegex(ValueError, "exact SHA mismatch"):
             project_state_from_snapshot(project, state, "b" * 40)
 
-    def test_loads_reconciled_exact_ref_states(self):
+    def test_loads_reconciled_exact_ref_states_and_gate_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "razzo").mkdir()
@@ -145,6 +176,7 @@ class RazzoPortfolioTests(unittest.TestCase):
                         "ready": 0,
                         "backpressure": False,
                         "humanGate": True,
+                        "blocker": "destructive-production",
                     },
                 ]
             }
@@ -171,6 +203,7 @@ class RazzoPortfolioTests(unittest.TestCase):
             self.assertEqual([state.ready for state in states], [2, 0])
             self.assertFalse(states[0].human_gate)
             self.assertTrue(states[1].human_gate)
+            self.assertEqual(states[1].gate_reason, "destructive-production")
 
 
 if __name__ == "__main__":
