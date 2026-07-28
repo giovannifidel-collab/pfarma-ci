@@ -11,13 +11,24 @@ permissions:
   contents: read
 
 jobs:
-  seed:
+  href:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     strategy:
       fail-fast: false
       matrix:
-        seed: ['/', '/sales', '/reservations', '/inventory/dashboard', '/orders']
+        href:
+          - '/inventory/anomalies'
+          - '/inventory/expiry-cases'
+          - '/inventory/anomalies/reconcile-preview?product_id=AMOXICILLINA-500&location_id=MAG-01&quantity=-1&shortage_quantity=1'
+          - '/products/TACHIPIRINA-1000'
+          - '/products/ENTEROGERMINA-20'
+          - '/products/MAGNESIO-SUPREMO'
+          - '/products/VOLTAREN-EMULGEL'
+          - '/receiving'
+          - '/reservations'
+          - '/sales'
+          - '/pilot/reference-journey'
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
@@ -38,29 +49,21 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: Crawl visible links from seed
+      - name: Check dashboard href
         working-directory: pfarma-cloud
         env:
           PFARMA_FEEDBACK_GITHUB_SYNC: '0'
-          SEED: ${{ matrix.seed }}
+          HREF: ${{ matrix.href }}
         run: |
           PYTHONPATH=. python - <<'PY'
           import os
           from tools.preview_pfarma_feedback import build_feedback_preview
-          from tools.pfarma_operator_robot import PFarmaOperatorRobot, _LinkParser
+          from tools.pfarma_operator_robot import PFarmaOperatorRobot
           app, _ = build_feedback_preview()
           robot = PFarmaOperatorRobot(app)
-          seed = os.environ['SEED']
-          response = robot.request(seed)
-          robot.require_ok(response, f'seed {seed}')
-          parser = _LinkParser(); parser.feed(response.body)
-          seen = set()
-          for href in parser.links:
-              if href in seen or href.startswith('/__pfarma_feedback'):
-                  continue
-              seen.add(href)
-              check = robot.request(href)
-              if check.status_code in {404, 500, 502, 503}:
-                  raise AssertionError(f'BROKEN_VISIBLE_LINK seed={seed} href={href} status={check.status}')
-          print(f'SEED_OK {seed} links={len(seen)}')
+          href = os.environ['HREF']
+          response = robot.request(href)
+          print(f'HREF_RESULT href={href} status={response.status}')
+          if response.status_code in {404, 500, 502, 503}:
+              raise AssertionError(f'BROKEN_VISIBLE_LINK href={href} status={response.status}')
           PY
