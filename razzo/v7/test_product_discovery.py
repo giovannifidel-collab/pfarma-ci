@@ -1,6 +1,6 @@
 import unittest
 
-from razzo.v7.product_discovery import issue_score, references_issue, risky
+from razzo.v7.product_discovery import collision_domain, issue_score, references_issue, risky
 
 
 class ProductDiscoveryTests(unittest.TestCase):
@@ -19,6 +19,16 @@ class ProductDiscoveryTests(unittest.TestCase):
 
     def test_unscored_generic_issue_is_not_selected(self):
         self.assertEqual(issue_score({"title": "Documentation", "body": "minor note"}), 0)
+
+    def test_collision_domain_prefers_explicit_module(self):
+        issue = {"number": 10, "title": "P0 bug", "body": "Modulo: Nuova vendita\noperational bug"}
+        self.assertEqual(collision_domain("pfarma-cloud", issue), "pfarma-cloud/module/nuova-vendita")
+
+    def test_collision_domain_groups_related_work(self):
+        a = {"number": 11, "title": "Catalogo prodotto EAN bug", "body": "high bug"}
+        b = {"number": 12, "title": "MINSAN catalog search", "body": "P0 operational"}
+        self.assertEqual(collision_domain("pfarma-cloud", a), "pfarma-cloud/catalog")
+        self.assertEqual(collision_domain("pfarma-cloud", b), "pfarma-cloud/catalog")
 
 
 if __name__ == "__main__":
