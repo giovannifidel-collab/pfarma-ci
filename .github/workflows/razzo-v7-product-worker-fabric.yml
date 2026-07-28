@@ -8,6 +8,8 @@ on:
       - 'razzo/v7/test_product_discovery.py'
       - 'razzo/v7/provider_capacity.py'
       - 'razzo/v7/test_provider_capacity.py'
+      - 'razzo/v7/dispatcher_pool.py'
+      - 'razzo/v7/test_dispatcher_pool.py'
       - 'razzo/projects.json'
       - 'razzo/project-state.json'
       - '.github/workflows/razzo-v7-product-worker-fabric.yml'
@@ -18,9 +20,14 @@ permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: razzo-v7-product-factory-global
+  cancel-in-progress: false
+
 env:
   PRODUCT_WORKER_CAP_FALLBACK: '220'
   MATRIX_EXECUTION_CEILING: '256'
+  GENERIC_DISPATCHER_POOL_SIZE: '100'
 
 jobs:
   plan:
@@ -29,6 +36,8 @@ jobs:
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
       count: ${{ steps.discover.outputs.count }}
+      dispatcher_matrix: ${{ steps.discover.outputs.dispatcher_matrix }}
+      dispatcher_count: ${{ steps.discover.outputs.dispatcher_count }}
       operational_cap: ${{ steps.capacity.outputs.cap }}
       capacity_decision: ${{ steps.capacity.outputs.decision }}
     steps:
@@ -40,10 +49,11 @@ jobs:
           python-version: '3.12'
       - name: Exact control-plane SHA
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-      - name: Product discovery and provider-capacity contract tests
+      - name: Product discovery, capacity and dispatcher contract tests
         run: |
           python -m unittest razzo.v7.test_product_discovery -v
           python -m unittest razzo.v7.test_provider_capacity -v
+          python -m unittest razzo.v7.test_dispatcher_pool -v
       - id: capacity
         name: Learn operational concurrency ceiling from GitHub Actions telemetry
         env:
@@ -60,21 +70,98 @@ jobs:
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
           echo "Provider-aware operational cap=$cap; telemetry=$decision"
       - id: discover
-        name: Discover real safe product work dynamically
+        name: Discover work and lease it across generic dispatchers
         env:
           PFARMA_SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           RAZZO_PRODUCT_WORKER_CAP: ${{ steps.capacity.outputs.cap }}
+          DISPATCHER_POOL_SIZE: ${{ env.GENERIC_DISPATCHER_POOL_SIZE }}
         shell: bash
         run: |
           set -euo pipefail
-          matrix="$(python razzo/v7/product_discovery.py)"
+          raw="$(python razzo/v7/product_discovery.py)"
+          export RAW_MATRIX="$raw"
+          export PROVIDER_CAP="${{ steps.capacity.outputs.cap }}"
+          dispatch="$(python - <<'PY'
+          import json, os
+          from razzo.v7.dispatcher_pool import annotate_work_items
+          raw = json.loads(os.environ['RAW_MATRIX'])
+          items = list(raw.get('include', []))
+          annotated, leases = annotate_work_items(
+              items,
+              provider_cap=int(os.environ['PROVIDER_CAP']),
+              dispatcher_pool_size=int(os.environ['DISPATCHER_POOL_SIZE']),
+          )
+          print(json.dumps({
+              'workers': {'include': annotated},
+              'dispatchers': {'include': [lease.to_matrix_entry() for lease in leases]},
+          }, separators=(',', ':')))
+          PY
+          )"
+          matrix="$(python -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["workers"],separators=(",",":")))' <<< "$dispatch")"
+          dispatcher_matrix="$(python -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["dispatchers"],separators=(",",":")))' <<< "$dispatch")"
           count="$(python -c 'import json,sys; print(len(json.load(sys.stdin)["include"]))' <<< "$matrix")"
+          dispatcher_count="$(python -c 'import json,sys; print(len(json.load(sys.stdin)["include"]))' <<< "$dispatcher_matrix")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "Discovered $count collision-safe product work item(s), provider-aware cap=${{ steps.capacity.outputs.cap }}."
+          echo "dispatcher_matrix=$dispatcher_matrix" >> "$GITHUB_OUTPUT"
+          echo "dispatcher_count=$dispatcher_count" >> "$GITHUB_OUTPUT"
+          echo "Discovered $count work item(s); activated $dispatcher_count/100 generic dispatchers; provider cap=${{ steps.capacity.outputs.cap }}."
+
+  dispatchers:
+    needs: plan
+    if: needs.plan.outputs.dispatcher_count != '0'
+    strategy:
+      fail-fast: false
+      max-parallel: 100
+      matrix: ${{ fromJSON(needs.plan.outputs.dispatcher_matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact control-plane SHA
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - name: Validate generic dispatcher lease and emit dispatch receipt
+        env:
+          DISPATCHER_ID: ${{ matrix.dispatcher_id }}
+          ITEMS_JSON: ${{ matrix.items_json }}
+          LEASE_DIGEST: ${{ matrix.lease_digest }}
+          WORK_COUNT: ${{ matrix.work_count }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dispatch-receipts
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from razzo.v7.dispatcher_pool import verify_dispatcher_lease
+          items = json.loads(os.environ['ITEMS_JSON'])
+          assert len(items) == int(os.environ['WORK_COUNT'])
+          verify_dispatcher_lease(os.environ['DISPATCHER_ID'], items, os.environ['LEASE_DIGEST'])
+          receipt = {
+              'dispatcher_id': os.environ['DISPATCHER_ID'],
+              'lease_digest': os.environ['LEASE_DIGEST'],
+              'work_count': len(items),
+              'collision_domains': [item['collision_domain'] for item in items],
+              'run_id': '${{ github.run_id }}',
+              'status': 'leased',
+          }
+          receipt['receipt_digest'] = hashlib.sha256(json.dumps(receipt, sort_keys=True).encode()).hexdigest()
+          Path(f"dispatch-receipts/{receipt['dispatcher_id']}.json").write_text(json.dumps(receipt, indent=2), encoding='utf-8')
+          print(json.dumps(receipt))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-v7-dispatch-receipt-${{ matrix.dispatcher_id }}
+          path: dispatch-receipts/*.json
+          if-no-files-found: error
 
   workers:
-    needs: plan
+    needs: [plan, dispatchers]
     if: needs.plan.outputs.count != '0'
     strategy:
       fail-fast: false
@@ -124,6 +211,7 @@ jobs:
           ISSUE_TITLE: ${{ matrix.issue_title }}
           ISSUE_BODY: ${{ matrix.issue_body }}
           COLLISION_DOMAIN: ${{ matrix.collision_domain }}
+          DISPATCHER_ID: ${{ matrix.dispatcher_id }}
         run: |
           cat > "${RUNNER_TEMP}/product-work.txt" <<'EOF'
           You are a RAZZO V7 product worker operating on one real GitHub issue.
@@ -137,7 +225,7 @@ jobs:
           - Do not commit or push; the outer worker owns Git operations.
           - Run no network commands.
           EOF
-          printf 'COLLISION DOMAIN: %s\nISSUE TITLE:\n%s\nISSUE BODY:\n%s\n' "$COLLISION_DOMAIN" "$ISSUE_TITLE" "$ISSUE_BODY" >> "${RUNNER_TEMP}/product-work.txt"
+          printf 'DISPATCHER: %s\nCOLLISION DOMAIN: %s\nISSUE TITLE:\n%s\nISSUE BODY:\n%s\n' "$DISPATCHER_ID" "$COLLISION_DOMAIN" "$ISSUE_TITLE" "$ISSUE_BODY" >> "${RUNNER_TEMP}/product-work.txt"
       - name: Execute real product worker
         id: codex
         working-directory: product-source
@@ -194,7 +282,7 @@ jobs:
           export BRANCH="$branch"
           export PR_TITLE="RAZZO V7: advance #${{ matrix.issue_number }} — ${ISSUE_TITLE}"
           export PR_BASE='${{ matrix.integration_lane }}'
-          export PR_BODY='Automated bounded product worker for #${{ matrix.issue_number }}. Collision domain `${{ matrix.collision_domain }}`. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and integration policy; no direct main write.'
+          export PR_BODY='Automated bounded product worker for #${{ matrix.issue_number }}. Dispatcher `${{ matrix.dispatcher_id }}`. Collision domain `${{ matrix.collision_domain }}`. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and integration policy; no direct main write.'
           payload="$(python - <<'PY'
           import json, os
           print(json.dumps({"title": os.environ["PR_TITLE"], "head": os.environ["BRANCH"], "base": os.environ["PR_BASE"], "body": os.environ["PR_BODY"]}))
@@ -223,6 +311,8 @@ jobs:
             'repository': '${{ matrix.repository }}',
             'issue_number': ${{ matrix.issue_number }},
             'collision_domain': '${{ matrix.collision_domain }}',
+            'dispatcher_id': '${{ matrix.dispatcher_id }}',
+            'dispatcher_lease_digest': '${{ matrix.dispatcher_lease_digest }}',
             'input_exact_sha': '${{ matrix.exact_sha }}',
             'worker_id': 'product-${{ matrix.project_id }}-${{ matrix.issue_number }}',
             'codex_outcome': '${{ steps.codex.outcome }}',
@@ -245,7 +335,7 @@ jobs:
         run: rm -rf product-source "${RUNNER_TEMP}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}" "${RUNNER_TEMP}/product-work.txt"
 
   aggregate:
-    needs: [plan, workers]
+    needs: [plan, dispatchers, workers]
     if: always() && needs.plan.outputs.count != '0'
     runs-on: ubuntu-latest
     steps:
@@ -254,29 +344,48 @@ jobs:
           pattern: razzo-v7-product-receipt-*
           path: receipts
           merge-multiple: true
-      - name: Verify aggregate product-worker receipts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: razzo-v7-dispatch-receipt-*
+          path: dispatch-receipts
+          merge-multiple: true
+      - name: Verify aggregate dispatcher and product-worker receipts
         shell: bash
         env:
           EXPECTED: ${{ needs.plan.outputs.count }}
+          EXPECTED_DISPATCHERS: ${{ needs.plan.outputs.dispatcher_count }}
           OPERATIONAL_CAP: ${{ needs.plan.outputs.operational_cap }}
           CAPACITY_DECISION: ${{ needs.plan.outputs.capacity_decision }}
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
-          files = sorted(Path('receipts').glob('*.json'))
+          worker_files = sorted(Path('receipts').glob('*.json'))
+          dispatch_files = sorted(Path('dispatch-receipts').glob('*.json'))
           expected = int(os.environ['EXPECTED'])
-          assert len(files) == expected, (len(files), expected)
-          receipts = [json.loads(p.read_text()) for p in files]
+          expected_dispatchers = int(os.environ['EXPECTED_DISPATCHERS'])
+          assert len(worker_files) == expected, (len(worker_files), expected)
+          assert len(dispatch_files) == expected_dispatchers, (len(dispatch_files), expected_dispatchers)
+          assert 1 <= expected_dispatchers <= 100
+          receipts = [json.loads(p.read_text()) for p in worker_files]
+          dispatch_receipts = [json.loads(p.read_text()) for p in dispatch_files]
           ids = [r['worker_id'] for r in receipts]
           domains = [r['collision_domain'] for r in receipts]
+          dispatcher_ids = [r['dispatcher_id'] for r in dispatch_receipts]
+          leased_domains = [d for r in dispatch_receipts for d in r['collision_domains']]
           assert len(ids) == len(set(ids)), 'duplicate worker receipt'
           assert len(domains) == len(set(domains)), 'collision domain dispatched twice in one wave'
+          assert len(dispatcher_ids) == len(set(dispatcher_ids)), 'duplicate dispatcher receipt'
+          assert set(domains) == set(leased_domains), 'worker/dispatcher lease domain mismatch'
+          assert all(r['dispatcher_id'] in set(dispatcher_ids) for r in receipts)
           prs = [r['pr_number'] for r in receipts if r.get('pr_number')]
           print(json.dumps({
             'cycle_type': 'PRODUCT_WORK',
             'workstreams_dispatched': expected,
+            'active_generic_dispatchers': expected_dispatchers,
+            'generic_dispatcher_pool_size': 100,
             'receipts': len(receipts),
+            'dispatch_receipts': len(dispatch_receipts),
             'product_prs_created': len(prs),
             'duplicate_execution': False,
             'collision_domains_unique': True,
