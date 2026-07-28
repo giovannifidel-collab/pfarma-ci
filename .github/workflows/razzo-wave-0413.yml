@@ -85,8 +85,15 @@ jobs:
         run: python -m compileall -q factory tools/test_razzo_executor.py
       - working-directory: source
         run: python tools/test_razzo_executor.py
-      - working-directory: source
-        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime tests.test_inventory_readonly_regression tests.test_lots_expiry_regression -v
+      - name: Factory regression tests
+        working-directory: source
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Inventory read-only regression
+        working-directory: source
+        run: python tests/test_inventory_readonly_regression.py
+      - name: Lots-expiry regression
+        working-directory: source
+        run: python tests/test_lot_expiry_regression.py
       - working-directory: source
         run: python -m factory.plan
       - if: always()
