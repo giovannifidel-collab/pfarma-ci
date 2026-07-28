@@ -1,5 +1,4 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: project-and-pfarma-runtime-adapters
 
 on:
   pull_request:
@@ -32,8 +31,7 @@ jobs:
     steps:
       - name: Checkout public control plane
         uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+        with: {persist-credentials: false}
       - name: Resolve exact Project Giovanni SHA
         id: source
         shell: bash
@@ -43,9 +41,7 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Require private-source token
-        shell: bash
-        env:
-          TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
         run: test -n "$TOKEN"
       - name: Checkout exact private Project Giovanni commit
         uses: actions/checkout@v4
@@ -58,12 +54,9 @@ jobs:
           persist-credentials: false
       - name: Verify exact checkout
         run: test "$(git -C project-giovanni rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
-      - name: Setup Node 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install dependencies
-        working-directory: project-giovanni
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: project-giovanni
         run: npm install --no-audit --no-fund
       - name: TypeScript validation
         working-directory: project-giovanni
@@ -81,8 +74,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: 'https://ci-placeholder.supabase.co'
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_ci_placeholder'
         run: npm run build
-      - name: Cleanup private source
-        if: always()
+      - if: always()
         run: rm -rf project-giovanni
 
   pfarma:
@@ -93,8 +85,7 @@ jobs:
     steps:
       - name: Checkout public control plane
         uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+        with: {persist-credentials: false}
       - name: Resolve exact PFarma SHA
         id: source
         shell: bash
@@ -104,9 +95,7 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Require private-source token
-        shell: bash
-        env:
-          TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
         run: test -n "$TOKEN"
       - name: Checkout exact private PFarma commit
         uses: actions/checkout@v4
@@ -119,28 +108,34 @@ jobs:
           persist-credentials: false
       - name: Verify exact checkout
         run: test "$(git -C pfarma-cloud rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
       - name: Compile Factory
         working-directory: pfarma-cloud
         run: python -m compileall -q factory tools/test_razzo_executor.py
       - name: Compatibility wave tests
         working-directory: pfarma-cloud
         run: python tools/test_razzo_executor.py
-      - name: Advanced executor tests
+      - name: Factory core regression tests
         working-directory: pfarma-cloud
-        run: python -m unittest factory.test_razzo_executor -v
-      - name: Continuous-loop tests
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Inventory read-only regression
         working-directory: pfarma-cloud
-        run: python -m unittest factory.test_continuous_loop -v
-      - name: GitHub worker runtime tests
+        run: test ! -f tests/test_inventory_readonly_regression.py || PYTHONPATH=. python tests/test_inventory_readonly_regression.py
+      - name: Lots-expiry regression
         working-directory: pfarma-cloud
-        run: python -m unittest factory.test_github_worker_runtime -v
+        run: test ! -f tests/test_lot_expiry_regression.py || PYTHONPATH=. python tests/test_lot_expiry_regression.py
+      - name: POS staging regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_pos_staging_regression.py || PYTHONPATH=. python tests/test_pos_staging_regression.py
+      - name: Accounting staging regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_razzo_accounting_staging_regression.py || PYTHONPATH=. python tests/test_razzo_accounting_staging_regression.py
+      - name: Supplier staging regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_razzo_supplier_staging_regression.py || PYTHONPATH=. python tests/test_razzo_supplier_staging_regression.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
-      - name: Cleanup private source
-        if: always()
+      - if: always()
         run: rm -rf pfarma-cloud
