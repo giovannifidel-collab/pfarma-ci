@@ -45,7 +45,7 @@ jobs:
       - if: always()
         run: rm -rf project
 
-  pfarma-composite-routing:
+  pfarma-cart-routing:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -66,11 +66,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - working-directory: pfarma
-        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_composite_warehouse_routing_preview.py
+        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_cart_warehouse_routing_preview.py
       - working-directory: pfarma
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
       - working-directory: pfarma
-        run: PYTHONPATH=. python tests/test_composite_warehouse_routing_preview.py
+        run: PYTHONPATH=. python tests/test_cart_warehouse_routing_preview.py
       - working-directory: pfarma
         run: python -m factory.plan
       - if: always()
