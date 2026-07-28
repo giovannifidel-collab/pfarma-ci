@@ -31,7 +31,6 @@ jobs:
           sha="$(curl -fsSL https://raw.githubusercontent.com/giovannifidel-collab/pfarma-ci/${GITHUB_SHA}/razzo/project-giovanni-ref.txt 2>/dev/null || true)"
           sha="$(printf '%s' "$sha" | tr -d '\r\n')"
           if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            # Pull-request merge SHAs are not raw-content refs; read the file through the checked PR branch API instead.
             sha='27befa2e94fc794b57f5ba950d8616078e1adc96'
           fi
           test -n "$SOURCE_TOKEN"
@@ -47,7 +46,8 @@ jobs:
           NEXT_TELEMETRY_DISABLED=1 npm run build > ../build.log 2>&1
           status=$?
           set -e
-          echo "===== BUILD TAIL ====="
-          tail -n 90 ../build.log
-          echo "===== END BUILD TAIL ====="
+          echo '===== BUILD ERROR SIGNALS ====='
+          grep -Ei '(^|[^a-z])(error|failed|failure|module not found|cannot|does not exist|invalid)([^a-z]|$)' ../build.log | tail -n 35 || true
+          echo '===== FINAL 20 LINES ====='
+          tail -n 20 ../build.log
           exit "$status"
