@@ -12,6 +12,17 @@ class ProductDiscoveryTests(unittest.TestCase):
         for term in ("destructive-production", "user-data-write", "irreplaceable-data", "real-secrets", "irreversible-migration"):
             self.assertTrue(risky({"title": "task", "body": f"requires {term}"}), term)
 
+    def test_implicit_real_data_gates_fail_closed(self):
+        gated = (
+            "explicit authorization before accessing or mutating real EasyFarm data",
+            "requires a production write to inventory",
+            "perform destructive repair of the live store",
+            "mutate real data after approval",
+        )
+        for body in gated:
+            self.assertTrue(risky({"title": "operational task", "body": body}), body)
+        self.assertFalse(risky({"title": "P0 safe simulator", "body": "use fixtures only; no production writes"}))
+
     def test_open_pr_reference_blocks_duplicate_issue_dispatch(self):
         self.assertTrue(references_issue({"title": "Fix #152", "body": ""}, 152))
         self.assertTrue(references_issue({"title": "Fix", "body": "Closes #345"}, 345))
