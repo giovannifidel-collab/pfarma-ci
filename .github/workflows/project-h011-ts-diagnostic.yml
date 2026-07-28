@@ -1,0 +1,52 @@
+name: Project H011 TypeScript Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/project-h011-ts-diagnostic.yml'
+      - 'razzo/project-giovanni-ref.txt'
+permissions: {contents: read}
+
+jobs:
+  tsc:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        shell: bash
+        run: |
+          sha="$(tr -d '\r\n' < razzo/project-giovanni-ref.txt)"; echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: project
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: project
+        run: npm install --no-audit --no-fund
+      - name: Capture TypeScript diagnostic
+        id: tsc
+        shell: bash
+        run: |
+          set +e
+          (cd project && npx --yes tsc --noEmit) > project-h011-tsc.log 2>&1
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          cat project-h011-tsc.log
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: project-h011-tsc
+          path: project-h011-tsc.log
+          retention-days: 1
+      - if: steps.tsc.outputs.rc != '0'
+        run: exit 1
