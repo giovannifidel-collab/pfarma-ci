@@ -23,7 +23,9 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave9/project-giovanni.txt)"
+          wave="$(tr -d '\r\n' < razzo/waves/active.txt)"
+          [[ "$wave" =~ ^[0-9]{8}-wave[0-9]+$ ]] || exit 1
+          sha="$(tr -d '\r\n' < "razzo/waves/$wave/project-giovanni.txt")"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -66,7 +68,9 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave9/pfarma.txt)"
+          wave="$(tr -d '\r\n' < razzo/waves/active.txt)"
+          [[ "$wave" =~ ^[0-9]{8}-wave[0-9]+$ ]] || exit 1
+          sha="$(tr -d '\r\n' < "razzo/waves/$wave/pfarma.txt")"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -82,6 +86,24 @@ jobs:
         run: python -m compileall -q factory
       - working-directory: source
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Accounting staging regression when present
+        working-directory: source
+        shell: bash
+        run: |
+          test_file="tests/test_accounting_staging_regression.py"
+          if [ -f "$test_file" ]; then python "$test_file"; fi
+      - name: Supplier staging regression when present
+        working-directory: source
+        shell: bash
+        run: |
+          test_file="tests/test_supplier_staging_regression.py"
+          if [ -f "$test_file" ]; then python "$test_file"; fi
+      - name: Migration dry-run safety regression when present
+        working-directory: source
+        shell: bash
+        run: |
+          test_file="tests/test_migration_dry_run_safety.py"
+          if [ -f "$test_file" ]; then python "$test_file"; fi
       - working-directory: source
         run: python -m factory.plan
 
@@ -96,7 +118,9 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave9/family-cloud.txt)"
+          wave="$(tr -d '\r\n' < razzo/waves/active.txt)"
+          [[ "$wave" =~ ^[0-9]{8}-wave[0-9]+$ ]] || exit 1
+          sha="$(tr -d '\r\n' < "razzo/waves/$wave/family-cloud.txt")"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
