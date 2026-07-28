@@ -104,6 +104,12 @@ jobs:
         run: |
           test_file="tests/test_razzo_migration_dry_run_policy.py"
           if [ -f "$test_file" ]; then python "$test_file"; fi
+      - name: Dual warehouse allocation regression when present
+        working-directory: source
+        shell: bash
+        run: |
+          test_file="tests/test_dual_warehouse_allocation.py"
+          if [ -f "$test_file" ]; then python "$test_file"; fi
       - working-directory: source
         run: python -m factory.plan
 
