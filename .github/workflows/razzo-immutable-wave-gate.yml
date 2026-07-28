@@ -90,19 +90,19 @@ jobs:
         working-directory: source
         shell: bash
         run: |
-          test_file="tests/test_accounting_staging_regression.py"
+          test_file="tests/test_razzo_accounting_staging_regression.py"
           if [ -f "$test_file" ]; then python "$test_file"; fi
       - name: Supplier staging regression when present
         working-directory: source
         shell: bash
         run: |
-          test_file="tests/test_supplier_staging_regression.py"
+          test_file="tests/test_razzo_supplier_staging_regression.py"
           if [ -f "$test_file" ]; then python "$test_file"; fi
       - name: Migration dry-run safety regression when present
         working-directory: source
         shell: bash
         run: |
-          test_file="tests/test_migration_dry_run_safety.py"
+          test_file="tests/test_razzo_migration_dry_run_policy.py"
           if [ -f "$test_file" ]; then python "$test_file"; fi
       - working-directory: source
         run: python -m factory.plan
