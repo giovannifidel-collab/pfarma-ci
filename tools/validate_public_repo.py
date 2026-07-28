@@ -50,6 +50,7 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/razzo-v7-elastic-fabric.yml"),
     PurePosixPath(".github/workflows/razzo-v7-product-worker-fabric.yml"),
     PurePosixPath(".github/workflows/razzo-v7-autonomous-product-trigger.yml"),
+    PurePosixPath(".github/workflows/razzo-v7-event-driven-continuation.yml"),
     PurePosixPath(".github/photo-ai/preparatore-v2.prompt.md"),
     PurePosixPath(".github/photo-ai/preparatore-v2.schema.json"),
     PurePosixPath(".github/workflows/project-giovanni-photo-ai.yml"),
