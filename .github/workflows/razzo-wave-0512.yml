@@ -92,7 +92,7 @@ jobs:
         with: {python-version: '3.12'}
       - name: Compile
         working-directory: pfarma
-        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_dual_warehouse_sale_routing.py tests/test_invoice_series_routing_preview.py tests/test_composite_warehouse_routing_preview.py
+        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_dual_warehouse_sale_routing.py tests/test_invoice_series_routing_preview.py tests/test_composite_warehouse_routing_preview.py tests/test_cart_warehouse_routing_preview.py
       - name: Factory core regressions
         working-directory: pfarma
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
@@ -105,6 +105,9 @@ jobs:
       - name: Composite warehouse routing regression
         working-directory: pfarma
         run: PYTHONPATH=. python tests/test_composite_warehouse_routing_preview.py
+      - name: Cart warehouse routing regression
+        working-directory: pfarma
+        run: PYTHONPATH=. python tests/test_cart_warehouse_routing_preview.py
       - name: Planner
         working-directory: pfarma
         run: python -m factory.plan
