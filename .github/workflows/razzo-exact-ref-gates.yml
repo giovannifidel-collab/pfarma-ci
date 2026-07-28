@@ -161,10 +161,14 @@ jobs:
       - name: Replenishment gate readiness regression
         working-directory: pfarma-cloud
         run: PYTHONPATH=. python tests/test_replenishment_gate_readiness.py
-      - name: Operator Robot navigation regression
+      - name: Operator Robot core routes
         working-directory: pfarma-cloud
         env: {PFARMA_FEEDBACK_GITHUB_SYNC: '0'}
-        run: PYTHONPATH=. python tests/test_pfarma_operator_robot.py PFarmaOperatorRobotTests.test_core_navigation_and_visible_links -v
+        run: PYTHONPATH=. python -c "from tools.preview_pfarma_feedback import build_feedback_preview; from tools.pfarma_operator_robot import PFarmaOperatorRobot; app,_=build_feedback_preview(); PFarmaOperatorRobot(app).check_core_navigation()"
+      - name: Operator Robot visible-link crawler
+        working-directory: pfarma-cloud
+        env: {PFARMA_FEEDBACK_GITHUB_SYNC: '0'}
+        run: PYTHONPATH=. python -c "from tools.preview_pfarma_feedback import build_feedback_preview; from tools.pfarma_operator_robot import PFarmaOperatorRobot; app,_=build_feedback_preview(); PFarmaOperatorRobot(app).check_visible_internal_links(max_links=60)"
       - name: Operator Robot sale regression
         working-directory: pfarma-cloud
         env: {PFARMA_FEEDBACK_GITHUB_SYNC: '0'}
