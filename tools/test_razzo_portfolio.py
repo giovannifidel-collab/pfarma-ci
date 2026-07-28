@@ -1,6 +1,11 @@
 import unittest
 
-from tools.razzo_portfolio import ProjectState, allocate_portfolio, portfolio_decision
+from tools.razzo_portfolio import (
+    ProjectState,
+    allocate_portfolio,
+    portfolio_decision,
+    project_state_from_task_graph,
+)
 
 
 class RazzoPortfolioTests(unittest.TestCase):
@@ -59,6 +64,42 @@ class RazzoPortfolioTests(unittest.TestCase):
         self.assertTrue(decision["selfReplan"])
         self.assertEqual(decision["replanReason"], "safe-backlog-exhausted")
         self.assertEqual(decision["allocated"], 0)
+
+    def test_derives_ready_work_from_task_graph(self):
+        graph = {
+            "tasks": [
+                {"id": "A", "status": "done"},
+                {"id": "B", "status": "ready"},
+                {"id": "C", "status": "ready"},
+                {"id": "D", "status": "blocked", "humanGate": "destructive-production"},
+            ]
+        }
+        state = project_state_from_task_graph(
+            "pfarma-cloud", graph, normal_concurrency=16, burst_concurrency=32
+        )
+        self.assertEqual(state.ready, 2)
+        self.assertFalse(state.human_gate)
+        self.assertEqual(state.runnable, 2)
+
+    def test_derives_human_gate_when_only_blocked_sensitive_work_remains(self):
+        graph = {
+            "tasks": [
+                {"id": "A", "status": "done"},
+                {"id": "B", "status": "blocked", "humanGate": "user-data-write"},
+            ]
+        }
+        state = project_state_from_task_graph(
+            "project-giovanni", graph, normal_concurrency=16, burst_concurrency=32
+        )
+        self.assertEqual(state.ready, 0)
+        self.assertTrue(state.human_gate)
+        self.assertEqual(state.runnable, 0)
+
+    def test_rejects_malformed_task_graph(self):
+        with self.assertRaises(ValueError):
+            project_state_from_task_graph(
+                "family-cloud", {"tasks": "not-a-list"}, normal_concurrency=32, burst_concurrency=128
+            )
 
 
 if __name__ == "__main__":
