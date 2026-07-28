@@ -61,6 +61,12 @@ jobs:
       - name: TypeScript validation
         working-directory: project-giovanni
         run: npx --yes tsc --noEmit
+      - name: History download focused regression
+        working-directory: project-giovanni
+        run: node --test factory/history-export-download.test.mjs
+      - name: History export regression group
+        working-directory: project-giovanni
+        run: node --test factory/history-export*.test.mjs
       - name: Factory tests
         working-directory: project-giovanni
         run: npm run test:factory
