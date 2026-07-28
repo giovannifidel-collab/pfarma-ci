@@ -203,7 +203,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
           CODEX_AUTH_SEED_B64: ${{ secrets.CODEX_AUTH_SEED_B64 }}
-          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}
+          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}
         run: node scripts/codex-auth-state.mjs restore
       - name: Create bounded product-work prompt
         shell: bash
@@ -211,26 +211,28 @@ jobs:
           ISSUE_TITLE: ${{ matrix.issue_title }}
           ISSUE_BODY: ${{ matrix.issue_body }}
           COLLISION_DOMAIN: ${{ matrix.collision_domain }}
+          WORK_SLICE: ${{ matrix.work_slice }}
           DISPATCHER_ID: ${{ matrix.dispatcher_id }}
         run: |
           cat > "${RUNNER_TEMP}/product-work.txt" <<'EOF'
           You are a RAZZO V7 product worker operating on one real GitHub issue.
-          Implement the smallest meaningful product improvement that directly advances the issue in this checked-out repository.
+          Implement the smallest meaningful product improvement that directly advances the assigned work slice of the issue in this checked-out repository.
           Constraints are strict:
           - Never write to production, external systems, user data, EasyFarm, fiscal devices, storage repair targets, secrets, credentials, paid infrastructure or irreversible migrations.
           - Do not modify GitHub workflows, deployment/infra, secrets, factory policy, task graphs, migrations or authentication/RLS boundaries.
           - Do not weaken tests or safety gates.
           - Work only from the current exact SHA and keep the change narrow and collision-resistant.
+          - Stay inside the assigned work slice and collision domain; do not opportunistically edit unrelated domains.
           - Prefer executable product code plus focused regression tests; do not produce documentation-only or governance-only changes.
           - Do not commit or push; the outer worker owns Git operations.
           - Run no network commands.
           EOF
-          printf 'DISPATCHER: %s\nCOLLISION DOMAIN: %s\nISSUE TITLE:\n%s\nISSUE BODY:\n%s\n' "$DISPATCHER_ID" "$COLLISION_DOMAIN" "$ISSUE_TITLE" "$ISSUE_BODY" >> "${RUNNER_TEMP}/product-work.txt"
+          printf 'DISPATCHER: %s\nCOLLISION DOMAIN: %s\nWORK SLICE: %s\nISSUE TITLE:\n%s\nISSUE BODY:\n%s\n' "$DISPATCHER_ID" "$COLLISION_DOMAIN" "$WORK_SLICE" "$ISSUE_TITLE" "$ISSUE_BODY" >> "${RUNNER_TEMP}/product-work.txt"
       - name: Execute real product worker
         id: codex
         working-directory: product-source
         env:
-          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}
+          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -272,17 +274,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          branch="razzo/v7/${{ matrix.project_id }}/issue-${{ matrix.issue_number }}-${GITHUB_RUN_ID}"
+          branch="razzo/v7/${{ matrix.project_id }}/issue-${{ matrix.issue_number }}-${{ matrix.slice_id }}-${GITHUB_RUN_ID}"
           git config user.name 'RAZZO V7 Product Worker'
           git config user.email 'razzo-v7@users.noreply.github.com'
           git switch -c "$branch"
           git add -A
-          git commit -m "RAZZO V7: advance #${{ matrix.issue_number }}"
+          git commit -m "RAZZO V7: advance #${{ matrix.issue_number }} (${{ matrix.slice_id }})"
           git push "https://x-access-token:${SOURCE_TOKEN}@github.com/${{ matrix.repository }}.git" "HEAD:${branch}"
           export BRANCH="$branch"
-          export PR_TITLE="RAZZO V7: advance #${{ matrix.issue_number }} — ${ISSUE_TITLE}"
+          export PR_TITLE="RAZZO V7: advance #${{ matrix.issue_number }} [${{ matrix.slice_id }}] — ${ISSUE_TITLE}"
           export PR_BASE='${{ matrix.integration_lane }}'
-          export PR_BODY='Automated bounded product worker for #${{ matrix.issue_number }}. Dispatcher `${{ matrix.dispatcher_id }}`. Collision domain `${{ matrix.collision_domain }}`. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and integration policy; no direct main write.'
+          export PR_BODY='Automated bounded product worker for #${{ matrix.issue_number }}. Dispatcher `${{ matrix.dispatcher_id }}`. Work slice `${{ matrix.work_slice }}`. Collision domain `${{ matrix.collision_domain }}`. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and integration policy; no direct main write.'
           payload="$(python - <<'PY'
           import json, os
           print(json.dumps({"title": os.environ["PR_TITLE"], "head": os.environ["BRANCH"], "base": os.environ["PR_BASE"], "body": os.environ["PR_BODY"]}))
@@ -297,7 +299,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
-          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}
+          CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}
         run: node scripts/codex-auth-state.mjs persist
       - name: Write execution receipt
         if: always()
@@ -310,29 +312,31 @@ jobs:
             'project_id': '${{ matrix.project_id }}',
             'repository': '${{ matrix.repository }}',
             'issue_number': ${{ matrix.issue_number }},
+            'slice_id': '${{ matrix.slice_id }}',
+            'work_slice': '${{ matrix.work_slice }}',
             'collision_domain': '${{ matrix.collision_domain }}',
             'dispatcher_id': '${{ matrix.dispatcher_id }}',
             'dispatcher_lease_digest': '${{ matrix.dispatcher_lease_digest }}',
             'input_exact_sha': '${{ matrix.exact_sha }}',
-            'worker_id': 'product-${{ matrix.project_id }}-${{ matrix.issue_number }}',
+            'worker_id': 'product-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}',
             'codex_outcome': '${{ steps.codex.outcome }}',
             'has_changes': '${{ steps.diff.outputs.has_changes }}',
             'pr_number': '${{ steps.publish.outputs.pr }}',
             'run_id': '${{ github.run_id }}',
           }
           data['receipt_digest'] = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
-          open('receipts/${{ matrix.project_id }}-${{ matrix.issue_number }}.json','w').write(json.dumps(data, indent=2))
+          open('receipts/${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}.json','w').write(json.dumps(data, indent=2))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: razzo-v7-product-receipt-${{ matrix.project_id }}-${{ matrix.issue_number }}
+          name: razzo-v7-product-receipt-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}
           path: receipts/*.json
           if-no-files-found: error
       - name: Remove private source and auth state
         if: always()
         shell: bash
-        run: rm -rf product-source "${RUNNER_TEMP}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}" "${RUNNER_TEMP}/product-work.txt"
+        run: rm -rf product-source "${RUNNER_TEMP}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}" "${RUNNER_TEMP}/product-work.txt"
 
   aggregate:
     needs: [plan, dispatchers, workers]
