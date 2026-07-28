@@ -84,7 +84,7 @@ jobs:
           python -m unittest factory.test_github_worker_runtime -v
       - name: Focused product regression
         working-directory: pfarma-cloud
-        run: python '${{ matrix.focused_test }}'
+        run: PYTHONPATH=. python '${{ matrix.focused_test }}'
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
