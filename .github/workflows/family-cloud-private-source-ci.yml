@@ -1,5 +1,5 @@
 name: Family Cloud Private Source Hosted CI
-# validation-wave: dynamic-squads
+# validation-wave: 0548-wave2-repair-target-ranking
 
 on:
   push:
