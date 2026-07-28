@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: project-and-pfarma-runtime-adapters
+# validation-wave: automation-cycle-0413
 
 on:
   pull_request:
