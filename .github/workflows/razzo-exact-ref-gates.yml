@@ -73,10 +73,12 @@ jobs:
       - name: Factory planner smoke
         working-directory: project-giovanni
         run: npm run factory:plan
-      - name: Build application
+      - name: Build application with non-operational CI placeholders
         working-directory: project-giovanni
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_SUPABASE_URL: 'https://ci-placeholder.supabase.co'
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_ci_placeholder'
         run: npm run build
       - name: Cleanup private source
         if: always()
