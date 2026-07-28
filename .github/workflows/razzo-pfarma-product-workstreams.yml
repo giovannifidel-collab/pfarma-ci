@@ -1,0 +1,93 @@
+name: RAZZO PFarma Product Workstreams
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/pfarma-accounting-ref.txt'
+      - 'razzo/pfarma-supplier-ref.txt'
+      - 'razzo/pfarma-migration-ref.txt'
+      - '.github/workflows/razzo-pfarma-product-workstreams.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'razzo/pfarma-accounting-ref.txt'
+      - 'razzo/pfarma-supplier-ref.txt'
+      - 'razzo/pfarma-migration-ref.txt'
+      - '.github/workflows/razzo-pfarma-product-workstreams.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: accounting
+            ref_file: razzo/pfarma-accounting-ref.txt
+            focused_test: tests/test_razzo_accounting_staging_regression.py
+          - lane: supplier
+            ref_file: razzo/pfarma-supplier-ref.txt
+            focused_test: tests/test_razzo_supplier_staging_regression.py
+          - lane: migration-dry-run
+            ref_file: razzo/pfarma-migration-ref.txt
+            focused_test: tests/test_razzo_migration_dry_run_policy.py
+    name: ${{ matrix.lane }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact private SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < '${{ matrix.ref_file }}')"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env:
+          TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$TOKEN"
+      - name: Checkout exact PFarma candidate
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: pfarma-cloud
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        run: test "$(git -C pfarma-cloud rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Factory
+        working-directory: pfarma-cloud
+        run: python -m compileall -q factory tools/test_razzo_executor.py
+      - name: Core Factory regressions
+        working-directory: pfarma-cloud
+        run: |
+          python tools/test_razzo_executor.py
+          python -m unittest factory.test_razzo_executor -v
+          python -m unittest factory.test_continuous_loop -v
+          python -m unittest factory.test_github_worker_runtime -v
+      - name: Focused product regression
+        working-directory: pfarma-cloud
+        run: python '${{ matrix.focused_test }}'
+      - name: Factory planner smoke
+        working-directory: pfarma-cloud
+        run: python -m factory.plan
+      - name: Cleanup private source
+        if: always()
+        run: rm -rf pfarma-cloud
