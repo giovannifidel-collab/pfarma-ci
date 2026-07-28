@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: 0548-wave2-focused-history-download-log
+# validation-wave: 0548-wave3-local-download-and-approval-packet
 
 on:
   pull_request:
@@ -149,6 +149,9 @@ jobs:
       - name: Supplier staging regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_razzo_supplier_staging_regression.py || PYTHONPATH=. python tests/test_razzo_supplier_staging_regression.py
+      - name: Replenishment approval packet regression
+        working-directory: pfarma-cloud
+        run: PYTHONPATH=. python tests/test_replenishment_approval_packet.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
