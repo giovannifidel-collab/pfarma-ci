@@ -3,7 +3,7 @@
   "protocolVersion": 3,
   "architecture": "HOMO_NOVUS",
   "architectureVersion": 1,
-  "architectureSpec": "razzo/HOMO_NOVUS.md",
+  "architectureSpec": "embedded:homoNovus",
   "compatibility": {
     "operatorCommand": "AVANZA TUTTO",
     "executionEngine": "RAZZO_V6_V7",
