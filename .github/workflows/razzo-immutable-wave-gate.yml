@@ -23,7 +23,7 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave8/project-giovanni.txt)"
+          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave9/project-giovanni.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -66,7 +66,7 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave8/pfarma.txt)"
+          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave9/pfarma.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -96,7 +96,7 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave8/family-cloud.txt)"
+          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave9/family-cloud.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
