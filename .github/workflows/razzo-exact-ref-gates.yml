@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: project-and-pfarma-runtime-adapters
+# validation-wave: photo-ai-safety-regression
 
 on:
   pull_request:
