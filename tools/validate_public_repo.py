@@ -36,11 +36,15 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/reorder-preflight-json-contract.yml"),
     PurePosixPath(".github/workflows/project-giovanni-private-source-hosted-ci.yml"),
     PurePosixPath(".github/workflows/family-cloud-private-source-ci.yml"),
+    PurePosixPath(".github/workflows/family-cloud-exact-ref-gate.yml"),
     PurePosixPath(".github/workflows/pfarma-razzo-executor-ci.yml"),
     PurePosixPath(".github/workflows/razzo-exact-ref-gates.yml"),
     PurePosixPath(".github/workflows/razzo-pfarma-product-workstreams.yml"),
     PurePosixPath(".github/workflows/razzo-portfolio-ci.yml"),
     PurePosixPath(".github/workflows/razzo-project-product-workstreams.yml"),
+    PurePosixPath(".github/workflows/razzo-operational-fanout.yml"),
+    PurePosixPath(".github/workflows/operator-robot-link-diagnostic.yml"),
+    PurePosixPath(".github/workflows/operator-robot-sale-diagnostic.yml"),
     PurePosixPath(".github/photo-ai/preparatore-v2.prompt.md"),
     PurePosixPath(".github/photo-ai/preparatore-v2.schema.json"),
     PurePosixPath(".github/workflows/project-giovanni-photo-ai.yml"),
@@ -58,6 +62,7 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/project-history-ref.txt"),
     PurePosixPath("razzo/project-offline-ref.txt"),
     PurePosixPath("razzo/projects.json"),
+    PurePosixPath("razzo/project-state.json"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
