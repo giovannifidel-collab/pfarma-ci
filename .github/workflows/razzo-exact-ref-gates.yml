@@ -119,6 +119,9 @@ jobs:
       - name: Factory core regression tests
         working-directory: pfarma-cloud
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Human-gate invariant regression
+        working-directory: pfarma-cloud
+        run: python -m unittest factory.test_human_gate_invariants -v
       - name: Inventory read-only regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_inventory_readonly_regression.py || PYTHONPATH=. python tests/test_inventory_readonly_regression.py
