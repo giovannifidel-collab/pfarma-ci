@@ -15,6 +15,10 @@ class ProductDiscoveryTests(unittest.TestCase):
         issue = {"title": "P0 operator bug", "body": "priority high; operational flow unusable"}
         self.assertGreaterEqual(issue_score(issue), 200)
 
+    def test_explicit_razzo_product_issue_is_first_class_queue_input(self):
+        issue = {"title": "[RAZZO PRODUCT] Family onboarding vertical slice", "body": "safe product-first expansion"}
+        self.assertGreaterEqual(issue_score(issue), 150)
+
     def test_human_gate_terms_fail_closed(self):
         for term in ("destructive-production", "user-data-write", "irreplaceable-data", "real-secrets", "irreversible-migration"):
             self.assertTrue(risky({"title": "task", "body": f"requires {term}"}), term)
@@ -37,6 +41,14 @@ class ProductDiscoveryTests(unittest.TestCase):
 
     def test_unscored_generic_issue_is_not_selected(self):
         self.assertEqual(issue_score({"title": "Documentation", "body": "minor note"}), 0)
+
+    def test_collision_domain_prefers_explicit_contract(self):
+        issue = {
+            "number": 62,
+            "title": "[RAZZO PRODUCT] Family onboarding vertical slice",
+            "body": "Collision domain: `product/family-onboarding`",
+        }
+        self.assertEqual(collision_domain("family-cloud", issue), "family-cloud/product/family-onboarding")
 
     def test_collision_domain_prefers_explicit_module(self):
         issue = {"number": 10, "title": "P0 bug", "body": "Modulo: Nuova vendita\noperational bug"}
