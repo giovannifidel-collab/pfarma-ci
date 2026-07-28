@@ -1,0 +1,42 @@
+name: Project History Download Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/wave-0530-project-ref.txt'
+      - '.github/workflows/project-history-download-diagnostic.yml'
+permissions: {contents: read}
+
+jobs:
+  focused:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: ref
+        shell: bash
+        run: |
+          sha="$(tr -d '\r\n' < razzo/wave-0530-project-ref.txt)"; echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.ref.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: project
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Focused history download test
+        working-directory: project
+        shell: bash
+        run: |
+          set +e
+          output="$(node --test factory/history-export-download.test.mjs 2>&1)"
+          rc=$?
+          printf '%s\n' "$output"
+          exit "$rc"
