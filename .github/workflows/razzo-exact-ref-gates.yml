@@ -1,4 +1,5 @@
 name: RAZZO Exact Ref Gates
+# validation-wave: wave3-exact
 
 on:
   pull_request:
