@@ -1,0 +1,57 @@
+name: Photo Safety Artifact Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'validation/photo-safety-artifact/**'
+      - '.github/workflows/photo-safety-artifact-diag.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        run: |
+          sha="$(tr -d '\r\n' < validation/photo-safety-artifact/project.ref)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - run: test -n "$TOKEN"
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Capture direct safety result
+        working-directory: source
+        shell: bash
+        run: |
+          set +e
+          node --experimental-strip-types tools/test_photo_analysis_output_safety.cjs lib/photoAnalysisOutputSafety.ts > ../photo-safety-diag.txt 2>&1
+          status=$?
+          echo "$status" > ../photo-safety-status.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: photo-safety-diag
+          path: |
+            photo-safety-diag.txt
+            photo-safety-status.txt
+          retention-days: 1
+      - name: Enforce captured status
+        shell: bash
+        run: test "$(cat photo-safety-status.txt)" = "0"
