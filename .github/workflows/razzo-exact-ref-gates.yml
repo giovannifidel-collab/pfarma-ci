@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: photo-ai-safety-regression
+# validation-wave: photo-ai-safety-and-lot-expiry
 
 on:
   pull_request:
