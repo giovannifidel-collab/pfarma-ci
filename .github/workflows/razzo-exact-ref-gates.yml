@@ -1,4 +1,5 @@
 name: RAZZO Exact Ref Gates
+# validation-wave: 0548-wave3-fresh-h009-wh010
 
 on:
   pull_request:
@@ -61,6 +62,9 @@ jobs:
       - name: TypeScript validation
         working-directory: project-giovanni
         run: npx --yes tsc --noEmit
+      - name: Local history download integrity regression
+        working-directory: project-giovanni
+        run: node --test factory/history-local-download.test.mjs
       - name: Factory tests
         working-directory: project-giovanni
         run: npm run test:factory
@@ -137,6 +141,9 @@ jobs:
       - name: Replenishment proposal verification regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_replenishment_proposal_verification.py || PYTHONPATH=. python tests/test_replenishment_proposal_verification.py
+      - name: Replenishment approval packet regression
+        working-directory: pfarma-cloud
+        run: PYTHONPATH=. python tests/test_replenishment_approval_packet.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
