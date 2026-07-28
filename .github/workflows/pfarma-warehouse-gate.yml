@@ -45,13 +45,16 @@ jobs:
           python-version: '3.12'
       - name: Compile
         working-directory: source
-        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_dual_warehouse_allocation.py
+        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_dual_warehouse_allocation.py tests/test_dual_warehouse_sale_routing.py
       - name: Factory regressions
         working-directory: source
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
-      - name: Dual warehouse regression
+      - name: Dual warehouse allocation regression
         working-directory: source
         run: python tests/test_dual_warehouse_allocation.py
+      - name: Dual warehouse sale routing regression
+        working-directory: source
+        run: python tests/test_dual_warehouse_sale_routing.py
       - name: Planner
         working-directory: source
         run: python -m factory.plan
