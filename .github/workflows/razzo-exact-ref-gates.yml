@@ -61,6 +61,23 @@ jobs:
       - name: TypeScript validation
         working-directory: project-giovanni
         run: npx --yes tsc --noEmit
+      - name: Capture history download focused regression
+        working-directory: project-giovanni
+        shell: bash
+        run: |
+          set +e
+          node --test factory/history-export-download.test.mjs > ../history-download-debug.txt 2>&1
+          code=$?
+          echo "$code" > ../history-download-exit.txt
+          exit 0
+      - name: Upload history download diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: history-download-debug-${{ steps.source.outputs.sha }}
+          path: |
+            history-download-debug.txt
+            history-download-exit.txt
+          retention-days: 1
       - name: History download focused regression
         working-directory: project-giovanni
         run: node --test factory/history-export-download.test.mjs
