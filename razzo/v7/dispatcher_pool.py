@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import Any, Iterable
 
 MAX_GENERIC_DISPATCHERS = 100
@@ -23,7 +23,7 @@ class DispatcherLease:
         }
 
 
-def _lease_digest(dispatcher_id: str, items: Iterable[dict[str, Any]]) -> str:
+def lease_digest(dispatcher_id: str, items: Iterable[dict[str, Any]]) -> str:
     payload = {
         "dispatcher_id": dispatcher_id,
         "items": [
@@ -75,10 +75,41 @@ def assign_generic_dispatchers(
             DispatcherLease(
                 dispatcher_id=dispatcher_id,
                 work_items=tuple(bucket),
-                lease_digest=_lease_digest(dispatcher_id, bucket),
+                lease_digest=lease_digest(dispatcher_id, bucket),
             )
         )
     return leases
+
+
+def annotate_work_items(
+    work_items: list[dict[str, Any]],
+    *,
+    provider_cap: int,
+    dispatcher_pool_size: int = MAX_GENERIC_DISPATCHERS,
+) -> tuple[list[dict[str, Any]], list[DispatcherLease]]:
+    leases = assign_generic_dispatchers(
+        work_items,
+        provider_cap=provider_cap,
+        dispatcher_pool_size=dispatcher_pool_size,
+    )
+    annotated: list[dict[str, Any]] = []
+    for lease in leases:
+        for item in lease.work_items:
+            enriched = dict(item)
+            enriched["dispatcher_id"] = lease.dispatcher_id
+            enriched["dispatcher_lease_digest"] = lease.lease_digest
+            annotated.append(enriched)
+    annotated.sort(key=lambda item: (-int(item.get("priority_score", 0)), item["project_id"], item["collision_domain"], -int(item["issue_number"])))
+    return annotated, leases
+
+
+def verify_dispatcher_lease(dispatcher_id: str, items: list[dict[str, Any]], expected_digest: str) -> None:
+    domains = [str(item["collision_domain"]) for item in items]
+    if len(domains) != len(set(domains)):
+        raise ValueError("dispatcher lease contains duplicate collision domain")
+    actual = lease_digest(dispatcher_id, items)
+    if actual != expected_digest:
+        raise ValueError("dispatcher lease digest mismatch")
 
 
 def dispatcher_matrix_json(
