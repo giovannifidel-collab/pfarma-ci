@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: photo-ai-safety-and-lot-expiry
+# validation-wave: photo-ai-safety-and-lot-expiry-focused
 
 on:
   pull_request:
@@ -138,6 +138,9 @@ jobs:
       - name: GitHub worker runtime tests
         working-directory: pfarma-cloud
         run: python -m unittest factory.test_github_worker_runtime -v
+      - name: Lots-expiry regression tests
+        working-directory: pfarma-cloud
+        run: python tests/test_lot_expiry_regression.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
