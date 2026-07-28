@@ -86,13 +86,23 @@ jobs:
         with: {python-version: '3.12'}
       - working-directory: source
         run: python -m compileall -q factory tests/test_razzo_accounting_staging_regression.py tests/test_razzo_supplier_staging_regression.py tests/test_razzo_migration_dry_run_policy.py
-      - working-directory: source
+      - name: Compatibility executor
+        working-directory: source
         run: python tools/test_razzo_executor.py
-      - working-directory: source
+      - name: Factory runtime suites
+        working-directory: source
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
-      - working-directory: source
-        run: python tests/test_razzo_accounting_staging_regression.py && python tests/test_razzo_supplier_staging_regression.py && python tests/test_razzo_migration_dry_run_policy.py
-      - working-directory: source
+      - name: Accounting staging regression
+        working-directory: source
+        run: python tests/test_razzo_accounting_staging_regression.py
+      - name: Supplier staging regression
+        working-directory: source
+        run: python tests/test_razzo_supplier_staging_regression.py
+      - name: Migration dry-run regression
+        working-directory: source
+        run: python tests/test_razzo_migration_dry_run_policy.py
+      - name: Factory planner
+        working-directory: source
         run: python -m factory.plan
       - if: always()
         run: rm -rf source
