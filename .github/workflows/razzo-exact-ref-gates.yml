@@ -131,6 +131,9 @@ jobs:
       - name: Advanced multi-wave tests
         working-directory: pfarma-cloud
         run: python -m unittest factory.test_razzo_executor -v
+      - name: Runtime adapter tests
+        working-directory: pfarma-cloud
+        run: if [ -f factory/test_runtime_adapter.py ]; then python -m factory.test_runtime_adapter; fi
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
