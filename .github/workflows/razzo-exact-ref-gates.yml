@@ -1,4 +1,5 @@
 name: RAZZO Exact Ref Gates
+# validation-wave: project-and-pfarma-runtime-adapters
 
 on:
   pull_request:
@@ -67,7 +68,7 @@ jobs:
       - name: TypeScript validation
         working-directory: project-giovanni
         run: npx --yes tsc --noEmit
-      - name: Factory executor tests
+      - name: Factory tests
         working-directory: project-giovanni
         run: npm run test:factory
       - name: Factory planner smoke
@@ -128,9 +129,15 @@ jobs:
       - name: Compatibility wave tests
         working-directory: pfarma-cloud
         run: python tools/test_razzo_executor.py
-      - name: Advanced multi-wave tests
+      - name: Advanced executor tests
         working-directory: pfarma-cloud
         run: python -m unittest factory.test_razzo_executor -v
+      - name: Continuous-loop tests
+        working-directory: pfarma-cloud
+        run: python -m unittest factory.test_continuous_loop -v
+      - name: GitHub worker runtime tests
+        working-directory: pfarma-cloud
+        run: python -m unittest factory.test_github_worker_runtime -v
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
