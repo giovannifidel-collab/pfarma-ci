@@ -1,0 +1,124 @@
+name: RAZZO V7 Elastic Worker Fabric
+
+on:
+  pull_request:
+    paths:
+      - 'razzo/v7/**'
+      - '.github/workflows/razzo-v7-elastic-fabric.yml'
+      - '.github/workflows/razzo-v7-elastic-autoscaler.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: razzo-v7-fabric-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      exact_sha: ${{ steps.plan.outputs.exact_sha }}
+      materialized: ${{ steps.plan.outputs.materialized }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact SHA guard
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Fabric contract tests
+        run: python -m unittest razzo.v7.test_autoscaler razzo.v7.test_fabric -v
+      - id: plan
+        name: Build bounded elastic plan
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          from razzo.v7.autoscaler import ScaleInput
+          from razzo.v7.fabric import make_plan, matrix_json
+          plan = make_plan(
+              ScaleInput(queued=100, running=4, completed=20, failed=0,
+                         current_concurrency=4, normal_concurrency=8, burst_concurrency=128),
+              provider_cap=8,
+          )
+          print(f"matrix={matrix_json(plan)}")
+          print(f"materialized={plan.materialized_workers}")
+          PY
+          echo "exact_sha=${{ github.event.pull_request.head.sha || github.sha }}" >> "$GITHUB_OUTPUT"
+
+  workers:
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.exact_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exact SHA guard
+        run: test "$(git rev-parse HEAD)" = "${{ needs.plan.outputs.exact_sha }}"
+      - name: Execute independent worker shard
+        shell: bash
+        run: |
+          mkdir -p razzo/v7/out
+          WORK_ITEM="fabric-proof-${{ matrix.worker }}"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from razzo.v7.fabric import receipt
+          worker = "${{ matrix.worker }}"
+          sha = "${{ needs.plan.outputs.exact_sha }}"
+          work_item = "fabric-proof-${{ matrix.worker }}"
+          data = receipt(worker, sha, work_item)
+          Path("razzo/v7/out").mkdir(parents=True, exist_ok=True)
+          Path(f"razzo/v7/out/{worker}.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+          print(json.dumps(data))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-v7-receipt-${{ matrix.worker }}
+          path: razzo/v7/out/${{ matrix.worker }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: [plan, workers]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: razzo-v7-receipt-*
+          path: receipts
+          merge-multiple: true
+      - name: Verify real worker fan-out receipts
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files = sorted(Path('receipts').glob('*.json'))
+          expected = int('${{ needs.plan.outputs.materialized }}')
+          assert len(files) == expected, (len(files), expected)
+          receipts = [json.loads(p.read_text()) for p in files]
+          workers = [r['worker_id'] for r in receipts]
+          assert len(workers) == len(set(workers))
+          assert all(r['status'] == 'verified' for r in receipts)
+          assert all(r['exact_sha'] == '${{ needs.plan.outputs.exact_sha }}' for r in receipts)
+          print(json.dumps({
+              'proof': 'OPERATIONAL_PROOF',
+              'provider': 'github-actions',
+              'materialized_workers': len(receipts),
+              'duplicate_execution': False,
+              'exact_sha': '${{ needs.plan.outputs.exact_sha }}',
+              'product_progress': False,
+              'generation_promoted': False,
+          }, indent=2))
+          PY
