@@ -57,6 +57,15 @@ def portfolio_decision(states: list[ProjectState], total_slots: int) -> dict[str
     ready_total = sum(state.ready for state in states)
     runnable_total = sum(state.runnable for state in states)
     used = sum(allocation.values())
+    safe_backlog_exhausted = ready_total == 0
+    all_ready_work_gated = ready_total > 0 and runnable_total == 0
+    self_replan = runnable_total == 0 and (safe_backlog_exhausted or all_ready_work_gated)
+    if all_ready_work_gated:
+        replan_reason = "all-ready-work-gated"
+    elif safe_backlog_exhausted:
+        replan_reason = "safe-backlog-exhausted"
+    else:
+        replan_reason = None
     return {
         "readyTotal": ready_total,
         "runnableTotal": runnable_total,
@@ -65,7 +74,9 @@ def portfolio_decision(states: list[ProjectState], total_slots: int) -> dict[str
         "allocation": allocation,
         "backpressure": [state.project_id for state in states if state.backpressure],
         "humanGates": [state.project_id for state in states if state.human_gate],
-        "selfReplan": ready_total > 0 and runnable_total == 0,
+        "safeBacklogExhausted": safe_backlog_exhausted,
+        "selfReplan": self_replan,
+        "replanReason": replan_reason,
     }
 
 
