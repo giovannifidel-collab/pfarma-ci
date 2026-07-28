@@ -1,4 +1,4 @@
-name: Validate PF-WH-009 Exact Head
+name: Validate PF-WH-010 Exact Head
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 jobs:
-  pf-wh009:
+  pf-wh010:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -43,9 +43,9 @@ jobs:
       - name: Factory core regressions
         working-directory: pfarma
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
-      - name: PF-WH-009 focused regression
+      - name: PF-WH-010 focused regression
         working-directory: pfarma
-        run: PYTHONPATH=. python tests/test_replenishment_proposal_verification.py
+        run: PYTHONPATH=. python tests/test_replenishment_approval_packet.py
       - name: Planner
         working-directory: pfarma
         run: python -m factory.plan
