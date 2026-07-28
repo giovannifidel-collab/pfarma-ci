@@ -130,6 +130,8 @@ jobs:
               python tools/test_pilot_acceptance_contract.py
               python tools/test_preview_unknown_routes_fail_closed.py
               python tools/test_pilot_security_headers.py
+              python -m unittest tests.test_pfarma_operator_robot -v
+              python tools/pfarma_operator_robot.py
               ;;
           esac
 
