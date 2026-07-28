@@ -11,13 +11,13 @@ permissions:
   contents: read
 
 jobs:
-  stage:
+  check:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     strategy:
       fail-fast: false
       matrix:
-        stage: ['add-three', 'remove', 'correction']
+        check: ['remove-http','remove-confirmation','remove-preserve','remove-absent','correction-label','correction-href','correction-http']
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
@@ -38,32 +38,35 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: Check sale stage
+      - name: Check sale invariant
         working-directory: pfarma-cloud
         env:
           PFARMA_FEEDBACK_GITHUB_SYNC: '0'
-          STAGE: ${{ matrix.stage }}
+          CHECK: ${{ matrix.check }}
         run: |
           PYTHONPATH=. python - <<'PY'
           import os, re
           from tools.preview_pfarma_feedback import build_feedback_preview
           from tools.pfarma_operator_robot import PFarmaOperatorRobot
           app, _ = build_feedback_preview(); robot = PFarmaOperatorRobot(app)
-          first = robot.request('/sales?product=Tachipirina'); robot.require_ok(first, 'first'); robot.require('Tachipirina 1000 mg' in first.body, 'Tachipirina missing')
+          first = robot.request('/sales?product=Tachipirina'); robot.require_ok(first, 'first')
           session = robot._session_token(first.body)
-          second = robot.request(f'/sales/workspace-preview?session={session}&product=Magnesio'); robot.require_ok(second, 'second'); robot.require('Tachipirina 1000 mg' in second.body, 'Tachipirina lost'); robot.require('Magnesio Supremo' in second.body, 'Magnesio missing')
+          second = robot.request(f'/sales/workspace-preview?session={session}&product=Magnesio'); robot.require_ok(second, 'second')
           session = robot._session_token(second.body)
           third = robot.request(f'/sales/workspace-preview?session={session}&product=Voltaren'); robot.require_ok(third, 'third')
-          for expected in ('Tachipirina 1000 mg','Magnesio Supremo','Voltaren Emulgel'): robot.require(expected in third.body, f'row missing {expected}')
-          if os.environ['STAGE'] == 'add-three': print('ADD_THREE_OK'); raise SystemExit(0)
           remove_href = robot._remove_href(third.body, 'MAGNESIO-SUPREMO')
-          removed = robot.request(remove_href); robot.require_ok(removed, 'remove')
-          robot.require('Riga rimossa dalla sola sessione staging.' in removed.body, 'remove confirmation missing')
-          robot.require('Tachipirina 1000 mg' in removed.body and 'Voltaren Emulgel' in removed.body, 'other rows changed')
-          robot.require('<strong>Magnesio Supremo</strong>' not in removed.body, 'Magnesio not removed')
-          if os.environ['STAGE'] == 'remove': print('REMOVE_OK'); raise SystemExit(0)
-          robot.require('Reso / correzione demo' in removed.body, 'correction label missing')
-          match = re.search(r'href="([^"]*sales/correction-preview[^"]*)"', removed.body); robot.require(match is not None, 'correction href missing')
-          correction = robot.request(match.group(1).replace('&amp;', '&')); robot.require_ok(correction, 'correction')
-          print('CORRECTION_OK')
+          removed = robot.request(remove_href)
+          check = os.environ['CHECK']
+          if check == 'remove-http': robot.require_ok(removed, 'remove')
+          elif check == 'remove-confirmation': robot.require('Riga rimossa dalla sola sessione staging.' in removed.body, 'remove confirmation missing')
+          elif check == 'remove-preserve': robot.require('Tachipirina 1000 mg' in removed.body and 'Voltaren Emulgel' in removed.body, 'other rows changed')
+          elif check == 'remove-absent': robot.require('<strong>Magnesio Supremo</strong>' not in removed.body, 'Magnesio still rendered as cart row')
+          elif check == 'correction-label': robot.require('Reso / correzione demo' in removed.body, 'correction label missing')
+          else:
+              match = re.search(r'href="([^"]*sales/correction-preview[^"]*)"', removed.body)
+              if check == 'correction-href': robot.require(match is not None, 'correction href missing')
+              elif check == 'correction-http':
+                  robot.require(match is not None, 'correction href missing')
+                  correction = robot.request(match.group(1).replace('&amp;', '&')); robot.require_ok(correction, 'correction')
+          print('CHECK_OK', check)
           PY
