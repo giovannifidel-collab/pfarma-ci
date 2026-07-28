@@ -1,0 +1,98 @@
+name: RAZZO History + Dual Warehouse Wave
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'validation/pg-history-pf-warehouse/**'
+      - '.github/workflows/pg-history-pf-warehouse-wave.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  project-giovanni:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < validation/pg-history-pf-warehouse/project-giovanni.ref)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - env: {TOKEN: '${{ secrets.PFARMA_SOURCE_TOKEN }}'}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: '${{ steps.src.outputs.sha }}'
+          token: '${{ secrets.PFARMA_SOURCE_TOKEN }}'
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C source rev-parse HEAD)" = '${{ steps.src.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: source
+        run: npm install --no-audit --no-fund
+      - working-directory: source
+        run: npx --yes tsc --noEmit
+      - working-directory: source
+        run: npm run test:factory
+      - working-directory: source
+        run: npm run factory:plan
+      - working-directory: source
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_SUPABASE_URL: 'https://ci-placeholder.supabase.co'
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_ci_placeholder'
+        run: npm run build
+      - if: always()
+        run: rm -rf source
+
+  pfarma:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < validation/pg-history-pf-warehouse/pfarma.ref)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - env: {TOKEN: '${{ secrets.PFARMA_SOURCE_TOKEN }}'}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: '${{ steps.src.outputs.sha }}'
+          token: '${{ secrets.PFARMA_SOURCE_TOKEN }}'
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C source rev-parse HEAD)" = '${{ steps.src.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - working-directory: source
+        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_dual_warehouse_sale_routing.py
+      - working-directory: source
+        run: python tools/test_razzo_executor.py
+      - working-directory: source
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - working-directory: source
+        run: python tests/test_dual_warehouse_sale_routing.py
+      - working-directory: source
+        run: python -m factory.plan
+      - if: always()
+        run: rm -rf source
