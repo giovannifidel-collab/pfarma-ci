@@ -63,6 +63,8 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/project-offline-ref.txt"),
     PurePosixPath("razzo/projects.json"),
     PurePosixPath("razzo/project-state.json"),
+    PurePosixPath("razzo/protocol.json"),
+    PurePosixPath("razzo/UNIVERSAL_COMMAND.md"),
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
