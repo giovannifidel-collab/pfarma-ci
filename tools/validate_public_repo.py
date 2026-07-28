@@ -36,6 +36,7 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/reorder-preflight-json-contract.yml"),
     PurePosixPath(".github/workflows/project-giovanni-private-source-hosted-ci.yml"),
     PurePosixPath(".github/workflows/family-cloud-private-source-ci.yml"),
+    PurePosixPath(".github/workflows/family-cloud-exact-ref-gate.yml"),
     PurePosixPath(".github/workflows/pfarma-razzo-executor-ci.yml"),
     PurePosixPath(".github/workflows/razzo-exact-ref-gates.yml"),
     PurePosixPath(".github/workflows/razzo-pfarma-product-workstreams.yml"),
