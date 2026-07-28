@@ -7,21 +7,33 @@ from razzo.v7.fabric import make_plan, matrix_json, receipt
 class FabricTests(unittest.TestCase):
     def test_provider_cap_bounds_materialization(self):
         plan = make_plan(
-            ScaleInput(queued=1000, running=64, completed=200, failed=0,
-                       current_concurrency=64, normal_concurrency=16, burst_concurrency=128),
-            provider_cap=32,
+            ScaleInput(queued=10000, running=128, completed=1000, failed=0,
+                       current_concurrency=128, normal_concurrency=32, burst_concurrency=220),
+            provider_cap=50,
         )
-        self.assertEqual(plan.desired_concurrency, 128)
-        self.assertEqual(plan.materialized_workers, 32)
-        self.assertEqual(len(plan.worker_ids), 32)
-        self.assertEqual(len(set(plan.worker_ids)), 32)
+        self.assertEqual(plan.desired_concurrency, 220)
+        self.assertEqual(plan.materialized_workers, 50)
+        self.assertEqual(len(plan.worker_ids), 50)
+        self.assertEqual(len(set(plan.worker_ids)), 50)
+
+    def test_full_220_provider_materialization(self):
+        plan = make_plan(
+            ScaleInput(queued=10000, running=128, completed=1000, failed=0,
+                       current_concurrency=128, normal_concurrency=32, burst_concurrency=220),
+            provider_cap=220,
+        )
+        self.assertEqual(plan.desired_concurrency, 220)
+        self.assertEqual(plan.materialized_workers, 220)
+        self.assertEqual(plan.worker_ids[0], "v7-worker-001")
+        self.assertEqual(plan.worker_ids[-1], "v7-worker-220")
+        self.assertEqual(len(set(plan.worker_ids)), 220)
 
     def test_backpressure_shrinks_materialization(self):
         plan = make_plan(
             ScaleInput(queued=1000, running=64, completed=100, failed=0,
-                       current_concurrency=64, normal_concurrency=16, burst_concurrency=128,
+                       current_concurrency=64, normal_concurrency=16, burst_concurrency=220,
                        backpressure=True),
-            provider_cap=64,
+            provider_cap=220,
         )
         self.assertLessEqual(plan.materialized_workers, 16)
         self.assertEqual(plan.action, "scale_down")

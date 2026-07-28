@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'razzo/v7/**'
+      - 'razzo/projects.json'
       - '.github/workflows/razzo-v7-elastic-fabric.yml'
       - '.github/workflows/razzo-v7-elastic-autoscaler.yml'
   workflow_dispatch:
@@ -34,17 +35,18 @@ jobs:
       - name: Fabric contract tests
         run: python -m unittest razzo.v7.test_autoscaler razzo.v7.test_fabric -v
       - id: plan
-        name: Build bounded elastic plan
+        name: Build bounded 220-worker elastic plan
         shell: bash
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           from razzo.v7.autoscaler import ScaleInput
           from razzo.v7.fabric import make_plan, matrix_json
           plan = make_plan(
-              ScaleInput(queued=100, running=4, completed=20, failed=0,
-                         current_concurrency=4, normal_concurrency=8, burst_concurrency=128),
-              provider_cap=8,
+              ScaleInput(queued=10000, running=128, completed=1000, failed=0,
+                         current_concurrency=128, normal_concurrency=32, burst_concurrency=220),
+              provider_cap=220,
           )
+          assert plan.materialized_workers == 220, plan
           print(f"matrix={matrix_json(plan)}")
           print(f"materialized={plan.materialized_workers}")
           PY
@@ -54,7 +56,7 @@ jobs:
     needs: plan
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 220
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ubuntu-latest
     steps:
@@ -70,7 +72,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p razzo/v7/out
-          WORK_ITEM="fabric-proof-${{ matrix.worker }}"
+          started_at="$(date +%s.%N)"
+          sleep 20
+          ended_at="$(date +%s.%N)"
+          export STARTED_AT="$started_at"
+          export ENDED_AT="$ended_at"
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -79,6 +85,8 @@ jobs:
           sha = "${{ needs.plan.outputs.exact_sha }}"
           work_item = "fabric-proof-${{ matrix.worker }}"
           data = receipt(worker, sha, work_item)
+          data['started_at'] = float(os.environ['STARTED_AT'])
+          data['ended_at'] = float(os.environ['ENDED_AT'])
           Path("razzo/v7/out").mkdir(parents=True, exist_ok=True)
           Path(f"razzo/v7/out/{worker}.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
           print(json.dumps(data))
@@ -98,7 +106,7 @@ jobs:
           pattern: razzo-v7-receipt-*
           path: receipts
           merge-multiple: true
-      - name: Verify real worker fan-out receipts
+      - name: Verify 220-worker fan-out receipts and measured concurrency
         shell: bash
         run: |
           python - <<'PY'
@@ -106,16 +114,27 @@ jobs:
           from pathlib import Path
           files = sorted(Path('receipts').glob('*.json'))
           expected = int('${{ needs.plan.outputs.materialized }}')
+          assert expected == 220, expected
           assert len(files) == expected, (len(files), expected)
           receipts = [json.loads(p.read_text()) for p in files]
           workers = [r['worker_id'] for r in receipts]
           assert len(workers) == len(set(workers))
           assert all(r['status'] == 'verified' for r in receipts)
           assert all(r['exact_sha'] == '${{ needs.plan.outputs.exact_sha }}' for r in receipts)
+          events = []
+          for r in receipts:
+              events.append((float(r['started_at']), 1))
+              events.append((float(r['ended_at']), -1))
+          events.sort(key=lambda x: (x[0], x[1]))
+          running = peak = 0
+          for _, delta in events:
+              running += delta
+              peak = max(peak, running)
           print(json.dumps({
               'proof': 'OPERATIONAL_PROOF',
               'provider': 'github-actions',
               'materialized_workers': len(receipts),
+              'measured_concurrent_peak': peak,
               'duplicate_execution': False,
               'exact_sha': '${{ needs.plan.outputs.exact_sha }}',
               'product_progress': False,
