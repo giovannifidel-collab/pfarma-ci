@@ -1,0 +1,83 @@
+name: PFarma Pilot Marker Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/pfarma-pilot-marker-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  marker:
+    name: marker-${{ matrix.id }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: product, path: '/products/ENTEROGERMINA-20', marker: 'sola lettura' }
+          - { id: movements, path: '/inventory/movements', marker: 'provider movimenti non configurato' }
+          - { id: movement-audit, path: '/inventory/movements/semantic-audit', marker: 'provider audit movimenti non configurato' }
+          - { id: reservations, path: '/reservations', marker: 'provider prenotazioni non configurato' }
+          - { id: sales, path: '/sales', marker: 'provider vendite non configurato' }
+          - { id: reorder, path: '/reorder-proposal?product_id=ENTEROGERMINA-20', marker: 'review required' }
+          - { id: purchase-order, path: '/staging/purchase-orders/apply?supplier_id=fornitore-a&product_id=ENTEROGERMINA-20&quantity=6&currency=EUR&idempotency_key=pilot-reorder-ENTEROGERMINA-20-fornitore-a&external_reference=pilot-review-b5e697270e81&unit_cost=7.10', marker: 'non viene trasmesso automaticamente al fornitore' }
+          - { id: receipt, path: '/staging/inventory/goods-receipts/apply', marker: 'nessuna trasmissione a easyfarm' }
+          - { id: receipt-prefill, path: '/staging/inventory/goods-receipts/apply?purchase_order_id=11111111-1111-4111-8111-111111111111', marker: 'payload ricostruito server-side' }
+          - { id: projection, path: '/staging/inventory/goods-receipts/projection?purchase_order_id=11111111-1111-4111-8111-111111111111', marker: 'solo proiezione / nessuna scrittura' }
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: pfarma-ci-trusted
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Attest exact SHA
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify marker
+        working-directory: private-source
+        env:
+          ROUTE: ${{ matrix.path }}
+          MARKER: ${{ matrix.marker }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'tools')
+          from test_visual_preview_routes import request
+          route = os.environ['ROUTE']
+          marker = os.environ['MARKER'].encode().lower()
+          status, body = request(route)
+          print(f'route={route} status={status} marker={os.environ["MARKER"]!r} bytes={len(body)}')
+          if not status.startswith('200') or marker not in body.lower():
+              raise SystemExit(1)
+          PY
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf private-source
