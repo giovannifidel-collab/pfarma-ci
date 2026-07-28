@@ -1,0 +1,84 @@
+name: PFarma Pilot Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/pfarma-pilot-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pilot-diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [acceptance, unknown-routes, security-headers]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve exact private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'source-ref.txt is not a canonical SHA' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require private-source token
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+
+      - name: Checkout exact private PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Attest exact SHA
+        shell: bash
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Execute isolated pilot contract
+        shell: bash
+        working-directory: private-source
+        run: |
+          set -euo pipefail
+          case '${{ matrix.shard }}' in
+            acceptance)
+              python tools/test_pilot_acceptance_contract.py
+              ;;
+            unknown-routes)
+              python tools/test_preview_unknown_routes_fail_closed.py
+              ;;
+            security-headers)
+              python tools/test_pilot_security_headers.py
+              ;;
+          esac
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf private-source
