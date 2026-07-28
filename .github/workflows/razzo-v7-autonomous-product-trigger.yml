@@ -1,0 +1,27 @@
+name: RAZZO V7 Autonomous Product Trigger
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/razzo-v7-autonomous-product-trigger.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: razzo-v7-autonomous-product-trigger
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch product worker fabric
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run razzo-v7-product-worker-fabric.yml --ref main
