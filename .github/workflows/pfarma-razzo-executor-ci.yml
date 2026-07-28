@@ -1,7 +1,12 @@
-name: PFarma RAZZO Executor CI
+name: PFarma RAZZO Executor Hosted CI
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'source-ref.txt'
+      - '.github/workflows/pfarma-razzo-executor-ci.yml'
+  pull_request:
     branches: [main]
     paths:
       - 'source-ref.txt'
@@ -12,11 +17,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: pfarma-razzo-executor-ci
+  group: pfarma-razzo-executor-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   executor:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pfarma-ci-trusted
@@ -34,6 +40,12 @@ jobs:
           sha="$(tr -d '\r\n' < source-ref.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require private source token
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
 
       - name: Check out exact private PFarma commit
         uses: actions/checkout@v4
@@ -59,8 +71,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q factory tools/test_razzo_executor.py
-          if [ -f tools/test_razzo_executor.py ]; then python tools/test_razzo_executor.py; fi
+          python -m compileall -q factory
+          python -m unittest factory.test_razzo_executor -v
+          python -m factory.plan
 
       - name: Remove private source checkout
         if: always()
