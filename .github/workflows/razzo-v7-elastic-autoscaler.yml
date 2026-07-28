@@ -26,8 +26,10 @@ jobs:
           python-version: '3.12'
       - name: Exact SHA guard
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
-      - name: Autoscaler contract tests
-        run: python -m unittest razzo.v7.test_autoscaler -v
+      - name: Autoscaler and generic dispatcher contract tests
+        run: |
+          python -m unittest razzo.v7.test_autoscaler -v
+          python -m unittest razzo.v7.test_dispatcher_pool -v
       - name: Bounded geometric ramp proof
         run: |
           python - <<'PY'
