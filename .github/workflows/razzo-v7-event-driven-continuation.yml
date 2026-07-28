@@ -1,0 +1,41 @@
+name: RAZZO V7 Event-Driven Continuation
+
+on:
+  workflow_run:
+    workflows: ["RAZZO V7 Product Worker Fabric"]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: razzo-v7-event-driven-continuation
+  cancel-in-progress: false
+
+jobs:
+  continue-if-productive:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Detect whether the completed wave dispatched real workers
+        id: productive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts?per_page=100" --jq '[.artifacts[] | select(.name | startswith("razzo-v7-product-receipt-"))] | length')"
+          echo "receipt_count=$count" >> "$GITHUB_OUTPUT"
+          echo "Completed wave produced $count product-worker receipt artifact(s)."
+
+      - name: Dispatch next product wave immediately
+        if: ${{ steps.productive.outputs.receipt_count != '0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run razzo-v7-product-worker-fabric.yml --ref main
+
+      - name: Stop cleanly when no safe product work was dispatched
+        if: ${{ steps.productive.outputs.receipt_count == '0' }}
+        run: echo 'No worker receipts: event-driven loop stops until the watchdog or a new product/control-plane event wakes it.'
