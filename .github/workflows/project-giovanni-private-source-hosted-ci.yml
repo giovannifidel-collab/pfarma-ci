@@ -121,6 +121,8 @@ jobs:
         working-directory: project-giovanni
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_SUPABASE_URL: 'https://ci-placeholder.supabase.co'
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_ci_placeholder'
         run: npm run build
 
       - name: Hosted CI summary
