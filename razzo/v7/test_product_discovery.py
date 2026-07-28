@@ -1,6 +1,13 @@
 import unittest
 
-from razzo.v7.product_discovery import collision_domain, issue_score, references_issue, risky
+from razzo.v7.product_discovery import (
+    MAX_DISCOVERY_PAGES,
+    MAX_LOGICAL_WORKER_POOL,
+    collision_domain,
+    issue_score,
+    references_issue,
+    risky,
+)
 
 
 class ProductDiscoveryTests(unittest.TestCase):
@@ -40,6 +47,10 @@ class ProductDiscoveryTests(unittest.TestCase):
         b = {"number": 12, "title": "MINSAN catalog search", "body": "P0 operational"}
         self.assertEqual(collision_domain("pfarma-cloud", a), "pfarma-cloud/catalog")
         self.assertEqual(collision_domain("pfarma-cloud", b), "pfarma-cloud/catalog")
+
+    def test_elastic_pool_contract(self):
+        self.assertEqual(MAX_LOGICAL_WORKER_POOL, 1000)
+        self.assertGreaterEqual(MAX_DISCOVERY_PAGES, 10)
 
 
 if __name__ == "__main__":
