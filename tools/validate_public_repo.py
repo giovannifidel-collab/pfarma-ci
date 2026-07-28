@@ -12,6 +12,7 @@ ALLOWED_EXACT = {
     PurePosixPath("SECURITY.md"),
     PurePosixPath("source-ref.txt"),
     PurePosixPath("project-giovanni-source-ref.txt"),
+    PurePosixPath("family-cloud-ref.txt"),
     PurePosixPath("bundle/README.md"),
     PurePosixPath("bundle/pfarma-ci.bundle.json"),
     PurePosixPath("tools/public_ci_bundle.py"),
@@ -32,6 +33,7 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/reorder-readiness-json-contract.yml"),
     PurePosixPath(".github/workflows/reorder-preflight-json-contract.yml"),
     PurePosixPath(".github/workflows/project-giovanni-private-source-hosted-ci.yml"),
+    PurePosixPath(".github/workflows/family-cloud-private-source-ci.yml"),
     PurePosixPath(".github/photo-ai/preparatore-v2.prompt.md"),
     PurePosixPath(".github/photo-ai/preparatore-v2.schema.json"),
     PurePosixPath(".github/workflows/project-giovanni-photo-ai.yml"),
@@ -52,6 +54,15 @@ BUNDLE_REQUIRED_FIELDS = {
     "nonce_b64",
     "ciphertext_b64",
 }
+
+
+def _validate_ref_file(filename: str) -> None:
+    ref_file = ROOT / filename
+    if not ref_file.exists():
+        return
+    value = ref_file.read_text(encoding="ascii").strip()
+    if len(value) != 40 or any(ch not in "0123456789abcdef" for ch in value):
+        raise SystemExit(f"{filename} must contain exactly one lowercase 40-character commit SHA.")
 
 
 def main() -> None:
@@ -81,11 +92,9 @@ def main() -> None:
         if not isinstance(payload.get("ciphertext_b64"), str) or not payload["ciphertext_b64"]:
             raise SystemExit("Encrypted bundle has no ciphertext.")
 
-    source_ref = ROOT / "source-ref.txt"
-    if source_ref.exists():
-        value = source_ref.read_text(encoding="ascii").strip()
-        if len(value) != 40 or any(ch not in "0123456789abcdef" for ch in value):
-            raise SystemExit("source-ref.txt must contain exactly one lowercase 40-character commit SHA.")
+    _validate_ref_file("source-ref.txt")
+    _validate_ref_file("project-giovanni-source-ref.txt")
+    _validate_ref_file("family-cloud-ref.txt")
 
     print(f"PASS: public repository allowlist contains {len(files)} approved files; no plaintext source path admitted.")
 
