@@ -113,6 +113,10 @@ jobs:
         working-directory: project-giovanni
         run: npm run test:factory --if-present
 
+      - name: Factory planner smoke
+        working-directory: project-giovanni
+        run: npm run factory:plan --if-present
+
       - name: Build application
         working-directory: project-giovanni
         env:
