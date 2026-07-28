@@ -1,4 +1,5 @@
 name: Family Cloud Private Source Hosted CI
+# validation-wave: dynamic-squads
 
 on:
   push:
