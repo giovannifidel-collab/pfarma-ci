@@ -85,7 +85,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - working-directory: source
-        run: python -m compileall -q factory tests/test_razzo_accounting_staging_regression.py tests/test_razzo_supplier_staging_regression.py tests/test_razzo_migration_dry_run_policy.py
+        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_razzo_accounting_staging_regression.py tests/test_razzo_supplier_staging_regression.py tests/test_razzo_migration_dry_run_policy.py tests/test_invoice_series_routing_preview.py
       - name: Compatibility executor
         working-directory: source
         run: python tools/test_razzo_executor.py
@@ -101,6 +101,9 @@ jobs:
       - name: Migration dry-run regression
         working-directory: source
         run: python tests/test_razzo_migration_dry_run_policy.py
+      - name: Invoice series routing preview regression
+        working-directory: source
+        run: python tests/test_invoice_series_routing_preview.py
       - name: Factory planner
         working-directory: source
         run: python -m factory.plan
