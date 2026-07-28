@@ -16,6 +16,7 @@ class ProjectState:
     ready: int
     backpressure: bool = False
     human_gate: bool = False
+    gate_reason: str | None = None
     normal_concurrency: int = 1
     burst_concurrency: int = 1
 
@@ -24,6 +25,16 @@ class ProjectState:
         if self.backpressure or self.human_gate:
             return 0
         return max(0, self.ready)
+
+    @property
+    def safe_expansion_candidate(self) -> bool:
+        """A gated project may still be replanned around the gated action.
+
+        This never makes the gated action runnable. It only tells the portfolio
+        controller that safe, reversible work may be discovered elsewhere in
+        the same project while the sensitive branch remains frozen.
+        """
+        return self.human_gate and not self.backpressure
 
 
 def project_state_from_task_graph(
@@ -40,20 +51,26 @@ def project_state_from_task_graph(
 
     ready = 0
     blocked_human_gate = False
+    gate_reason: str | None = None
     for task in tasks:
         if not isinstance(task, dict):
             raise ValueError("task entries must be objects")
         status = task.get("status")
         if status == "ready":
             ready += 1
-        if status == "blocked" and (task.get("humanGate") or task.get("human_gate")):
+        raw_gate = task.get("humanGate") or task.get("human_gate")
+        if status == "blocked" and raw_gate:
             blocked_human_gate = True
+            if gate_reason is None and isinstance(raw_gate, str):
+                gate_reason = raw_gate
 
+    terminal_human_gate = ready == 0 and blocked_human_gate
     return ProjectState(
         project_id=project_id,
         ready=ready,
         backpressure=backpressure,
-        human_gate=ready == 0 and blocked_human_gate,
+        human_gate=terminal_human_gate,
+        gate_reason=gate_reason if terminal_human_gate else None,
         normal_concurrency=normal_concurrency,
         burst_concurrency=burst_concurrency,
     )
@@ -89,11 +106,17 @@ def project_state_from_snapshot(
     if not isinstance(burst, int) or burst < normal:
         raise ValueError(f"invalid burstConcurrency for {project_id}")
 
+    human_gate = _require_bool(state.get("humanGate"), f"humanGate for {project_id}")
+    blocker = state.get("blocker")
+    if blocker is not None and not isinstance(blocker, str):
+        raise ValueError(f"blocker must be a string or null for {project_id}")
+
     return ProjectState(
         project_id=project_id,
         ready=ready,
         backpressure=_require_bool(state.get("backpressure"), f"backpressure for {project_id}"),
-        human_gate=_require_bool(state.get("humanGate"), f"humanGate for {project_id}"),
+        human_gate=human_gate,
+        gate_reason=blocker if human_gate else None,
         normal_concurrency=normal,
         burst_concurrency=burst,
     )
@@ -179,13 +202,37 @@ def portfolio_decision(states: list[ProjectState], total_slots: int) -> dict[str
     used = sum(allocation.values())
     safe_backlog_exhausted = ready_total == 0
     all_ready_work_gated = ready_total > 0 and runnable_total == 0
-    self_replan = runnable_total == 0 and (safe_backlog_exhausted or all_ready_work_gated)
-    if all_ready_work_gated:
+
+    frozen_human_gates = {
+        state.project_id: state.gate_reason
+        for state in states
+        if state.human_gate
+    }
+    safe_expansion_targets = [
+        state.project_id for state in states if state.safe_expansion_candidate
+    ]
+
+    # A terminal human gate freezes only the sensitive branch. It must not be
+    # interpreted as a portfolio-wide stop. When nothing runnable remains, ask
+    # the planner to discover other safe/reversible work around those gates.
+    safe_expansion_requested = runnable_total == 0 and bool(safe_expansion_targets)
+    self_replan = runnable_total == 0 and (
+        safe_backlog_exhausted or all_ready_work_gated or safe_expansion_requested
+    )
+
+    if safe_expansion_requested:
+        replan_reason = "safe-expansion-around-human-gates"
+        replan_mode = "freeze-gated-branches-and-expand-safe-work"
+    elif all_ready_work_gated:
         replan_reason = "all-ready-work-gated"
+        replan_mode = "reconcile"
     elif safe_backlog_exhausted:
         replan_reason = "safe-backlog-exhausted"
+        replan_mode = "reconcile"
     else:
         replan_reason = None
+        replan_mode = None
+
     return {
         "readyTotal": ready_total,
         "runnableTotal": runnable_total,
@@ -194,9 +241,14 @@ def portfolio_decision(states: list[ProjectState], total_slots: int) -> dict[str
         "allocation": allocation,
         "backpressure": [state.project_id for state in states if state.backpressure],
         "humanGates": [state.project_id for state in states if state.human_gate],
+        "frozenHumanGates": frozen_human_gates,
+        "safeExpansionTargets": safe_expansion_targets,
+        "safeExpansionRequested": safe_expansion_requested,
+        "humanGateStopsPortfolio": False,
         "safeBacklogExhausted": safe_backlog_exhausted,
         "selfReplan": self_replan,
         "replanReason": replan_reason,
+        "replanMode": replan_mode,
     }
 
 
