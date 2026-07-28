@@ -1,0 +1,56 @@
+name: PFarma Accounting Exact 69a929
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'validation/pfarma-accounting-69a929/**'
+      - '.github/workflows/pfarma-accounting-69a929-exact.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        run: |
+          sha="$(tr -d '\r\n' < validation/pfarma-accounting-69a929/pfarma.ref)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - run: test -n "$TOKEN"
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Compile Factory
+        working-directory: source
+        run: python -m compileall -q factory tools/test_razzo_executor.py tests/test_razzo_accounting_staging_regression.py
+      - name: Compatibility wave
+        working-directory: source
+        run: python tools/test_razzo_executor.py
+      - name: Factory runtime suites
+        working-directory: source
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Accounting staging regression
+        working-directory: source
+        run: python -m unittest tests.test_razzo_accounting_staging_regression -v
+      - name: Planner
+        working-directory: source
+        run: python -m factory.plan
+      - if: always()
+        run: rm -rf source
