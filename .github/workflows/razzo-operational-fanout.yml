@@ -1,6 +1,10 @@
 name: RAZZO Operational Fanout Proof
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/razzo-operational-fanout.yml'
   pull_request:
     paths:
       - '.github/workflows/razzo-operational-fanout.yml'
