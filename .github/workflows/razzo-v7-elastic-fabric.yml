@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'razzo/v7/**'
+      - 'razzo/projects.json'
       - '.github/workflows/razzo-v7-elastic-fabric.yml'
       - '.github/workflows/razzo-v7-elastic-autoscaler.yml'
   workflow_dispatch:
@@ -34,18 +35,18 @@ jobs:
       - name: Fabric contract tests
         run: python -m unittest razzo.v7.test_autoscaler razzo.v7.test_fabric -v
       - id: plan
-        name: Build bounded 50-worker elastic plan
+        name: Build bounded 220-worker elastic plan
         shell: bash
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           from razzo.v7.autoscaler import ScaleInput
           from razzo.v7.fabric import make_plan, matrix_json
           plan = make_plan(
-              ScaleInput(queued=1000, running=32, completed=200, failed=0,
-                         current_concurrency=32, normal_concurrency=32, burst_concurrency=128),
-              provider_cap=50,
+              ScaleInput(queued=10000, running=128, completed=1000, failed=0,
+                         current_concurrency=128, normal_concurrency=32, burst_concurrency=220),
+              provider_cap=220,
           )
-          assert plan.materialized_workers == 50, plan
+          assert plan.materialized_workers == 220, plan
           print(f"matrix={matrix_json(plan)}")
           print(f"materialized={plan.materialized_workers}")
           PY
@@ -55,7 +56,7 @@ jobs:
     needs: plan
     strategy:
       fail-fast: false
-      max-parallel: 50
+      max-parallel: 220
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ubuntu-latest
     steps:
@@ -105,7 +106,7 @@ jobs:
           pattern: razzo-v7-receipt-*
           path: receipts
           merge-multiple: true
-      - name: Verify 50-worker fan-out receipts and measured concurrency
+      - name: Verify 220-worker fan-out receipts and measured concurrency
         shell: bash
         run: |
           python - <<'PY'
@@ -113,7 +114,7 @@ jobs:
           from pathlib import Path
           files = sorted(Path('receipts').glob('*.json'))
           expected = int('${{ needs.plan.outputs.materialized }}')
-          assert expected == 50, expected
+          assert expected == 220, expected
           assert len(files) == expected, (len(files), expected)
           receipts = [json.loads(p.read_text()) for p in files]
           workers = [r['worker_id'] for r in receipts]
