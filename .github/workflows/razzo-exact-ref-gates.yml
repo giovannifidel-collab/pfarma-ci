@@ -149,6 +149,9 @@ jobs:
       - name: Replenishment PO draft verification regression
         working-directory: pfarma-cloud
         run: PYTHONPATH=. python tests/test_replenishment_purchase_order_draft_verification.py
+      - name: Replenishment PO draft audit regression
+        working-directory: pfarma-cloud
+        run: PYTHONPATH=. python tests/test_replenishment_purchase_order_draft_audit.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
