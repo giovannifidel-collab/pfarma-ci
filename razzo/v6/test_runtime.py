@@ -6,7 +6,7 @@ import unittest
 from dataclasses import asdict
 from pathlib import Path
 
-from razzo.v6.runtime import Runtime, WorkItem, proof_queue
+from razzo.v6.runtime import Runtime, WorkItem, load_queue, proof_queue
 
 
 class RazzoV6RuntimeTests(unittest.TestCase):
@@ -42,6 +42,20 @@ class RazzoV6RuntimeTests(unittest.TestCase):
         self.assertEqual(a.status, "blocked")
         self.assertEqual(len(receipts), 1)
         self.assertEqual(b.status, "verified")
+        cycle = rt.aggregate("gated", 1)
+        self.assertEqual(cycle["gated"], 1)
+
+    def test_backpressure_blocks_only_backpressured_item(self):
+        a, b = proof_queue()[:2]
+        a.backpressure = True
+        rt = Runtime([a, b], concurrency=2)
+        receipts = rt.dispatch()
+        self.assertEqual(a.status, "blocked")
+        self.assertEqual(b.status, "verified")
+        self.assertEqual(len(receipts), 1)
+        cycle = rt.aggregate("backpressure", 1)
+        self.assertEqual(cycle["backpressured"], 1)
+        self.assertEqual(cycle["blocked"], 1)
 
     def test_prior_verified_receipt_enforces_idempotency(self):
         item = proof_queue()[0]
@@ -60,6 +74,19 @@ class RazzoV6RuntimeTests(unittest.TestCase):
         self.assertFalse(cycle["generation_promoted"])
         self.assertFalse(cycle["product_progress"])
         self.assertFalse(cycle["duplicate_execution"])
+        self.assertIn("queue_wait", cycle)
+        self.assertGreater(cycle["cycle_duration"], 0)
+        self.assertGreater(cycle["verified_throughput"], 0)
+
+    def test_generalized_queue_loader_accepts_v6_contract(self):
+        item = asdict(proof_queue()[0])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "queue.json"
+            path.write_text(json.dumps({"items": [item]}), encoding="utf-8")
+            loaded = load_queue(path)
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0].workItemId, item["workItemId"])
+        loaded[0].validate()
 
 
 if __name__ == "__main__":

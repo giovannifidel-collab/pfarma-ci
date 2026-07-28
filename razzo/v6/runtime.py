@@ -43,6 +43,8 @@ class WorkItem:
     status: str = "queued"
     operation: dict[str, Any] = field(default_factory=dict)
     maxRetries: int = 1
+    backpressure: bool = False
+    queuedAt: str | None = None
 
     def validate(self) -> None:
         if self.status not in ALLOWED:
@@ -53,6 +55,8 @@ class WorkItem:
             raise ValueError("routing/evidence fields are required")
         if not self.idempotencyKey:
             raise ValueError("idempotencyKey is required")
+        if len(self.exactInputSha) != 40 or any(c not in "0123456789abcdef" for c in self.exactInputSha):
+            raise ValueError("exactInputSha must be a lowercase 40-character SHA")
 
 
 @dataclass
@@ -70,24 +74,32 @@ class ExecutionReceipt:
     output_digest: str
     verification_state: str
     retry: int
+    queue_wait_seconds: float
 
 
 class Runtime:
     def __init__(self, items: list[WorkItem], concurrency: int = 4, prior_receipts: list[ExecutionReceipt] | None = None):
         self.items = {x.workItemId: x for x in items}
+        if len(self.items) != len(items):
+            raise ValueError("duplicate workItemId in queue")
         self.concurrency = max(1, concurrency)
         self.receipts: list[ExecutionReceipt] = list(prior_receipts or [])
         self.lock = threading.Lock()
         self.running = 0
         self.concurrent_peak = 0
         self.retried = 0
+        self.started_epoch = time.monotonic()
         self.started_at = now()
         self.completed_keys = {
             r.result_evidence.get("idempotencyKey") for r in self.receipts if r.verification_state == "verified"
         }
+        stamp = now()
+        for item in self.items.values():
+            if item.queuedAt is None:
+                item.queuedAt = stamp
 
     def eligible(self, item: WorkItem) -> bool:
-        if item.humanGate:
+        if item.humanGate or item.backpressure:
             item.status = "blocked"
             return False
         if item.idempotencyKey in self.completed_keys:
@@ -130,12 +142,12 @@ class Runtime:
 
     def _execute(self, item: WorkItem, shard_id: str, retry: int) -> ExecutionReceipt:
         item.status = "running"
+        start_epoch = time.monotonic()
         start = now()
         with self.lock:
             self.running += 1
             self.concurrent_peak = max(self.concurrent_peak, self.running)
         try:
-            # Small overlap makes concurrency measurable in the operational proof without fabricating work.
             time.sleep(0.08)
             evidence = self._run_operation(item.operation)
             evidence["idempotencyKey"] = item.idempotencyKey
@@ -143,7 +155,7 @@ class Runtime:
             digest = hashlib.sha256(payload).hexdigest()
             status = "completed"
             verification = "verified"
-        except Exception as exc:  # fail closed
+        except Exception as exc:
             evidence = {"error": type(exc).__name__, "message": str(exc), "idempotencyKey": item.idempotencyKey}
             digest = hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
             status = "failed"
@@ -151,11 +163,13 @@ class Runtime:
         finally:
             with self.lock:
                 self.running -= 1
+        queue_wait = max(0.0, start_epoch - self.started_epoch)
         return ExecutionReceipt(
             execution_id=str(uuid.uuid4()), work_item_id=item.workItemId, project_id=item.projectId,
             generation_id=item.generationId, worker_shard_id=shard_id, input_exact_sha=item.exactInputSha,
             start_time=start, end_time=now(), status=status, result_evidence=evidence,
             output_digest=digest, verification_state=verification, retry=retry,
+            queue_wait_seconds=round(queue_wait, 6),
         )
 
     def _run_operation(self, op: dict[str, Any]) -> dict[str, Any]:
@@ -187,16 +201,21 @@ class Runtime:
         verified = sum(r.verification_state == "verified" for r in receipts)
         duplicate_exec = len([r.work_item_id for r in receipts]) != len(set(r.work_item_id for r in receipts))
         blocked = sum(x.status == "blocked" for x in self.items.values())
+        gated = sum(bool(x.humanGate) for x in self.items.values())
+        backpressured = sum(bool(x.backpressure) for x in self.items.values())
+        queue_wait = round(sum(r.queue_wait_seconds for r in receipts) / len(receipts), 6) if receipts else 0.0
+        duration = round(time.monotonic() - self.started_epoch, 6)
         promoted = bool(product_progress and completed and verified and not failed and not duplicate_exec)
         return {
             "cycle_id": cycle_id,
             "protocol_version": protocol_version,
-            "portfolio_size": len(load_json(ROOT / "razzo" / "projects.json")["projects"]),
+            "portfolio_size": len([p for p in load_json(ROOT / "razzo" / "projects.json")["projects"] if p.get("enabled")]),
             "projects_scanned": len({x.projectId for x in self.items.values()}),
             "product_gaps_found": 0,
             "new_workstreams_created": len(self.items),
-            "workstreams_eligible": sum(x.humanGate is None for x in self.items.values()),
+            "workstreams_eligible": sum(x.humanGate is None and not x.backpressure for x in self.items.values()),
             "workstreams_dispatched": len(receipts),
+            "workstreams_running": self.running,
             "workstreams_completed": completed,
             "workstreams_failed": failed,
             "workstreams_retried": self.retried,
@@ -211,21 +230,26 @@ class Runtime:
             "bugs_fixed": 0,
             "capabilities_added": 0,
             "parallel_peak": self.concurrent_peak,
-            "human_gates_encountered": blocked,
+            "blocked": blocked,
+            "gated": gated,
+            "backpressured": backpressured,
+            "human_gates_encountered": gated,
             "safe_work_remaining": sum(x.status == "queued" for x in self.items.values()),
+            "queue_wait": queue_wait,
+            "cycle_duration": duration,
             "product_progress": product_progress,
             "generation_promoted": promoted,
             "duplicate_execution": duplicate_exec,
             "start_time": self.started_at,
             "end_time": now(),
-            "verified_throughput": verified,
+            "verified_throughput": round(verified / duration, 3) if duration > 0 else float(verified),
         }
 
 
 def proof_queue() -> list[WorkItem]:
     projects = load_json(ROOT / "razzo" / "projects.json")
     state = {x["id"]: x for x in load_json(ROOT / "razzo" / "project-state.json")["projects"]}
-    generation = "OPERATIONAL_PROOF-V6-001"
+    generation = "OPERATIONAL_PROOF-V6-002"
     items: list[WorkItem] = []
     for p in [x for x in projects["projects"] if x.get("enabled")]:
         pid = p["id"]
@@ -235,7 +259,6 @@ def proof_queue() -> list[WorkItem]:
             items.append(WorkItem(wid, pid, generation, f"Verify {pid} {suffix}", "OPERATIONAL_PROOF", priority, [],
                                   f"proof/{pid}/{suffix}", p.get("integrationLane", ""), sha, kind, None,
                                   hashlib.sha256(f"{generation}:{wid}:{sha}".encode()).hexdigest(), operation={"kind": kind, "projectId": pid}))
-    # Add two independent global-invariant shards attached to enabled projects to exceed the minimum proof size.
     enabled = [x for x in projects["projects"] if x.get("enabled")]
     for n, p in enumerate(enabled[:2], 1):
         pid = p["id"]; sha = state[pid]["exactSha"]; wid = f"proof-global-invariants-{n}"
@@ -245,24 +268,48 @@ def proof_queue() -> list[WorkItem]:
     return items
 
 
+def load_queue(path: Path) -> list[WorkItem]:
+    raw = load_json(path)
+    rows = raw["items"] if isinstance(raw, dict) else raw
+    if not isinstance(rows, list):
+        raise ValueError("queue must be a list or an object with items[]")
+    items = [WorkItem(**row) for row in rows]
+    for item in items:
+        item.validate()
+    return items
+
+
+def write_outputs(out: Path, rt: Runtime, cycle: dict[str, Any]) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "queue-state.json").write_text(json.dumps([asdict(x) for x in rt.items.values()], indent=2), encoding="utf-8")
+    (out / "execution-receipts.json").write_text(json.dumps([asdict(x) for x in rt.receipts], indent=2), encoding="utf-8")
+    (out / "cycle-receipt.json").write_text(json.dumps(cycle, indent=2), encoding="utf-8")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["operational-proof"])
+    ap.add_argument("command", choices=["operational-proof", "dispatch-queue"])
+    ap.add_argument("--queue")
     ap.add_argument("--out", default=str(V6 / "out"))
     ap.add_argument("--concurrency", type=int, default=4)
+    ap.add_argument("--cycle-id", default=None)
+    ap.add_argument("--product-progress", action="store_true")
     args = ap.parse_args()
-    out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     protocol = load_json(ROOT / "razzo" / "protocol.json")
-    items = proof_queue()
+    if args.command == "operational-proof":
+        items = proof_queue(); cycle_id = args.cycle_id or "v6-proof-002"; product_progress = False
+    else:
+        if not args.queue:
+            raise SystemExit("--queue is required for dispatch-queue")
+        items = load_queue(Path(args.queue)); cycle_id = args.cycle_id or f"v6-cycle-{uuid.uuid4()}"; product_progress = args.product_progress
     for x in items: x.validate()
     rt = Runtime(items, concurrency=args.concurrency)
-    receipts = rt.dispatch()
-    cycle = rt.aggregate("v6-proof-001", int(protocol["protocolVersion"]), product_progress=False)
-    (out / "queue-state.json").write_text(json.dumps([asdict(x) for x in rt.items.values()], indent=2), encoding="utf-8")
-    (out / "execution-receipts.json").write_text(json.dumps([asdict(x) for x in receipts], indent=2), encoding="utf-8")
-    (out / "cycle-receipt.json").write_text(json.dumps(cycle, indent=2), encoding="utf-8")
-    if len(items) < 8 or cycle["workstreams_dispatched"] < 4 or cycle["parallel_peak"] < 2 or cycle["workstreams_failed"] or cycle["duplicate_execution"]:
-        print(json.dumps(cycle, indent=2)); return 1
+    rt.dispatch()
+    cycle = rt.aggregate(cycle_id, int(protocol["protocolVersion"]), product_progress=product_progress)
+    write_outputs(Path(args.out), rt, cycle)
+    if args.command == "operational-proof":
+        if len(items) < 8 or cycle["workstreams_dispatched"] < 4 or cycle["parallel_peak"] < 2 or cycle["workstreams_failed"] or cycle["duplicate_execution"]:
+            print(json.dumps(cycle, indent=2)); return 1
     print(json.dumps(cycle, indent=2)); return 0
 
 
