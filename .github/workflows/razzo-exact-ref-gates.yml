@@ -61,29 +61,6 @@ jobs:
       - name: TypeScript validation
         working-directory: project-giovanni
         run: npx --yes tsc --noEmit
-      - name: Capture history download focused regression
-        working-directory: project-giovanni
-        shell: bash
-        run: |
-          set +e
-          node --test factory/history-export-download.test.mjs > ../history-download-debug.txt 2>&1
-          code=$?
-          echo "$code" > ../history-download-exit.txt
-          exit 0
-      - name: Upload history download diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: history-download-debug-${{ steps.source.outputs.sha }}
-          path: |
-            history-download-debug.txt
-            history-download-exit.txt
-          retention-days: 1
-      - name: History download focused regression
-        working-directory: project-giovanni
-        run: node --test factory/history-export-download.test.mjs
-      - name: History export regression group
-        working-directory: project-giovanni
-        run: node --test factory/history-export*.test.mjs
       - name: Factory tests
         working-directory: project-giovanni
         run: npm run test:factory
@@ -163,6 +140,9 @@ jobs:
       - name: Replenishment proposal integrity regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_replenishment_proposal_integrity.py || PYTHONPATH=. python tests/test_replenishment_proposal_integrity.py
+      - name: Replenishment proposal verification regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_replenishment_proposal_verification.py || PYTHONPATH=. python tests/test_replenishment_proposal_verification.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
