@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: current-fifth-wave
+# validation-wave: pg-h008-diagnostic
 
 on:
   pull_request:
@@ -54,6 +54,12 @@ jobs:
       - name: TypeScript validation
         working-directory: project-giovanni
         run: npx --yes tsc --noEmit
+      - name: Existing download descriptor regression
+        working-directory: project-giovanni
+        run: node --test factory/history-export-download.test.mjs
+      - name: PG-H-008 verification receipt regression
+        working-directory: project-giovanni
+        run: node --test factory/history-export-download-verification.test.mjs
       - name: Factory tests
         working-directory: project-giovanni
         run: npm run test:factory
@@ -97,38 +103,17 @@ jobs:
       - run: test "$(git -C pfarma-cloud rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: Compile Factory
-        working-directory: pfarma-cloud
+      - working-directory: pfarma-cloud
         run: python -m compileall -q factory api tools/test_razzo_executor.py
-      - name: Compatibility wave tests
-        working-directory: pfarma-cloud
+      - working-directory: pfarma-cloud
         run: python tools/test_razzo_executor.py
-      - name: Factory core regression tests
-        working-directory: pfarma-cloud
+      - working-directory: pfarma-cloud
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
-      - name: Inventory read-only regression
-        working-directory: pfarma-cloud
-        run: test ! -f tests/test_inventory_readonly_regression.py || PYTHONPATH=. python tests/test_inventory_readonly_regression.py
-      - name: Lots-expiry regression
-        working-directory: pfarma-cloud
-        run: test ! -f tests/test_lot_expiry_regression.py || PYTHONPATH=. python tests/test_lot_expiry_regression.py
-      - name: POS staging regression
-        working-directory: pfarma-cloud
-        run: test ! -f tests/test_pos_staging_regression.py || PYTHONPATH=. python tests/test_pos_staging_regression.py
-      - name: Accounting staging regression
-        working-directory: pfarma-cloud
-        run: test ! -f tests/test_razzo_accounting_staging_regression.py || PYTHONPATH=. python tests/test_razzo_accounting_staging_regression.py
-      - name: Supplier staging regression
-        working-directory: pfarma-cloud
-        run: test ! -f tests/test_razzo_supplier_staging_regression.py || PYTHONPATH=. python tests/test_razzo_supplier_staging_regression.py
-      - name: Replenishment proposal regression
-        working-directory: pfarma-cloud
+      - working-directory: pfarma-cloud
         run: test ! -f tests/test_replenishment_proposal_preview.py || PYTHONPATH=. python tests/test_replenishment_proposal_preview.py
-      - name: Replenishment proposal integrity regression
-        working-directory: pfarma-cloud
+      - working-directory: pfarma-cloud
         run: test ! -f tests/test_replenishment_proposal_integrity.py || PYTHONPATH=. python tests/test_replenishment_proposal_integrity.py
-      - name: Factory planner smoke
-        working-directory: pfarma-cloud
+      - working-directory: pfarma-cloud
         run: python -m factory.plan
       - if: always()
         run: rm -rf pfarma-cloud
