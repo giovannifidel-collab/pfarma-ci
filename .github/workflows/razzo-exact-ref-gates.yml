@@ -137,6 +137,9 @@ jobs:
       - name: Replenishment proposal verification regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_replenishment_proposal_verification.py || PYTHONPATH=. python tests/test_replenishment_proposal_verification.py
+      - name: Replenishment approval packet regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_replenishment_approval_packet.py || PYTHONPATH=. python tests/test_replenishment_approval_packet.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
