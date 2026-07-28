@@ -25,13 +25,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [smoke, health, quality, migration, backend, goods-receipt, pilot]
+        shard: [smoke, health, quality, migration, backend, goods-receipt, pilot, operator-navigation, operator-sales, operator-feedback, operator-links]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: pfarma-ci-trusted
     env:
       PYTHONUTF8: '1'
       DISPATCH_SHA: ${{ github.event.client_payload.sha || '' }}
+      PFARMA_FEEDBACK_GITHUB_SYNC: '0'
+      PFARMA_FEEDBACK_PATH: ${{ runner.temp }}/pfarma-feedback.jsonl
     steps:
       - name: Check out public control repository
         uses: actions/checkout@v4
@@ -130,8 +132,18 @@ jobs:
               python tools/test_pilot_acceptance_contract.py
               python tools/test_preview_unknown_routes_fail_closed.py
               python tools/test_pilot_security_headers.py
-              python -m unittest tests.test_pfarma_operator_robot -v
-              python tools/pfarma_operator_robot.py
+              ;;
+            operator-navigation)
+              python -c "from tools.preview_pfarma_feedback import build_feedback_preview; from tools.pfarma_operator_robot import PFarmaOperatorRobot; app,_=build_feedback_preview(); PFarmaOperatorRobot(app).check_core_navigation(); print('OPERATOR NAVIGATION PASS')"
+              ;;
+            operator-sales)
+              python -c "from tools.preview_pfarma_feedback import build_feedback_preview; from tools.pfarma_operator_robot import PFarmaOperatorRobot; app,_=build_feedback_preview(); PFarmaOperatorRobot(app).check_sales_add_remove_and_return(); print('OPERATOR SALES PASS')"
+              ;;
+            operator-feedback)
+              python -c "from tools.preview_pfarma_feedback import build_feedback_preview; from tools.pfarma_operator_robot import PFarmaOperatorRobot; app,_=build_feedback_preview(); PFarmaOperatorRobot(app).check_feedback_overlay_and_submit(); print('OPERATOR FEEDBACK PASS')"
+              ;;
+            operator-links)
+              python -c "from tools.preview_pfarma_feedback import build_feedback_preview; from tools.pfarma_operator_robot import PFarmaOperatorRobot; app,_=build_feedback_preview(); PFarmaOperatorRobot(app).check_visible_internal_links(max_links=80); print('OPERATOR LINKS PASS')"
               ;;
           esac
 
