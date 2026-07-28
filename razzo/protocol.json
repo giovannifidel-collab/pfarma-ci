@@ -1,6 +1,6 @@
 {
   "protocol": "RAZZO",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "controlPlaneRepository": "giovannifidel-collab/pfarma-ci",
   "portfolioRegistry": "razzo/projects.json",
   "portfolioState": "razzo/project-state.json",
@@ -19,6 +19,8 @@
   },
   "execution": {
     "productFirst": true,
+    "outcomeDrivenAutonomy": true,
+    "operatorIsNotProjectManager": true,
     "continuousDiscovery": true,
     "selfReplan": true,
     "noIdle": true,
@@ -28,7 +30,9 @@
     "integrationBackpressure": true,
     "exactShaVerification": true,
     "failClosed": true,
-    "readyZeroMeansStop": false
+    "readyZeroMeansStop": false,
+    "nextUsefulStateRule": "After each verified integration, infer the next user-meaningful bottleneck or missing journey and immediately discover/plan safe work toward that state without waiting for the operator to name the next task.",
+    "testabilityRule": "When enough capabilities exist for meaningful human use, prioritize making the product runnable, observable and testable by the user before accumulating lower-value isolated features."
   },
   "humanGateClasses": [
     "real-secrets",
@@ -40,5 +44,6 @@
     "irreplaceable-data"
   ],
   "generationRule": "A generation advances only when new real work is produced or verified: code, capability, bug fix, UX, integration, functional test, performance, resilience, security or another concrete product improvement. Administrative ref/checkpoint churn alone is not a generation.",
+  "autonomyRule": "The operator supplies goals, priorities and human-gate decisions. RAZZO owns routine project-management reasoning: identify the next useful state, expose bottlenecks, create safe workstreams, execute, verify, integrate and replan continuously. Do not wait for the operator to enumerate obvious next steps.",
   "onboardingRule": "A new project joins RAZZO by adding one enabled entry to razzo/projects.json. The universal operator command and scheduled tasks must not be edited for project onboarding."
 }
