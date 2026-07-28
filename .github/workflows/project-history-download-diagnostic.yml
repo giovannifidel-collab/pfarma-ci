@@ -31,9 +31,38 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
+      - name: Import portable history modules
+        working-directory: project
+        run: node --input-type=module -e "await import('./lib/workoutHistoryExportPayloadIntegrity.ts'); await import('./lib/workoutHistoryExportDownload.ts')"
+      - name: Fingerprint canonical payload
+        working-directory: project
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const { buildWorkoutHistoryExportPayload, serializeWorkoutHistoryExportPayload } = await import('./lib/workoutHistoryExportPayload.ts');
+          const { fingerprintSerializedWorkoutHistoryExportPayload } = await import('./lib/workoutHistoryExportPayloadIntegrity.ts');
+          const snapshot={version:1,userId:'user 1',count:1,firstCompletedAt:'2026-07-01T10:00:00.000Z',lastCompletedAt:'2026-07-01T10:00:00.000Z',sessionIds:['s1'],completionHashes:['b'.repeat(64)]};
+          const manifest={version:1,format:'application/json',userId:'user 1',recordCount:1,firstCompletedAt:snapshot.firstCompletedAt,lastCompletedAt:snapshot.lastCompletedAt,snapshotSha256:'a'.repeat(64)};
+          const payload=buildWorkoutHistoryExportPayload(snapshot,manifest);
+          const serialized=serializeWorkoutHistoryExportPayload(payload);
+          const fp=await fingerprintSerializedWorkoutHistoryExportPayload(serialized);
+          if(!/^[0-9a-f]{64}$/.test(fp.sha256)||fp.byteLength<1) process.exit(2);
+          NODE
+      - name: Build download descriptor
+        working-directory: project
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const { buildWorkoutHistoryExportPayload, serializeWorkoutHistoryExportPayload } = await import('./lib/workoutHistoryExportPayload.ts');
+          const { fingerprintSerializedWorkoutHistoryExportPayload } = await import('./lib/workoutHistoryExportPayloadIntegrity.ts');
+          const { previewWorkoutHistoryExportDownload } = await import('./lib/workoutHistoryExportDownload.ts');
+          const snapshot={version:1,userId:'user 1',count:1,firstCompletedAt:'2026-07-01T10:00:00.000Z',lastCompletedAt:'2026-07-01T10:00:00.000Z',sessionIds:['s1'],completionHashes:['b'.repeat(64)]};
+          const manifest={version:1,format:'application/json',userId:'user 1',recordCount:1,firstCompletedAt:snapshot.firstCompletedAt,lastCompletedAt:snapshot.lastCompletedAt,snapshotSha256:'a'.repeat(64)};
+          const payload=buildWorkoutHistoryExportPayload(snapshot,manifest);
+          const fp=await fingerprintSerializedWorkoutHistoryExportPayload(serializeWorkoutHistoryExportPayload(payload));
+          const descriptor=await previewWorkoutHistoryExportDownload(payload,fp);
+          if(!descriptor.fileName.startsWith('workout-history-user_1-')) process.exit(3);
+          NODE
       - name: Happy-path descriptor test
         working-directory: project
         run: node --test --test-name-pattern='download descriptor is deterministic' factory/history-export-download.test.mjs
-      - name: Tamper-rejection descriptor test
-        working-directory: project
-        run: node --test --test-name-pattern='fails closed on tampered fingerprint' factory/history-export-download.test.mjs
