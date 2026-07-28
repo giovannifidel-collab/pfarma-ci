@@ -31,12 +31,23 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Focused history download test
+      - name: Capture focused history download diagnostics
+        id: focused
         working-directory: project
         shell: bash
         run: |
           set +e
-          output="$(node --test factory/history-export-download.test.mjs 2>&1)"
+          node --test factory/history-export-download.test.mjs > ../history-download-diagnostic.log 2>&1
           rc=$?
-          printf '%s\n' "$output"
-          exit "$rc"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          tail -n 40 ../history-download-diagnostic.log
+          exit 0
+      - name: Upload focused diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-history-download-diagnostic
+          path: history-download-diagnostic.log
+          retention-days: 1
+      - name: Fail when focused test failed
+        if: steps.focused.outputs.rc != '0'
+        run: exit 1
