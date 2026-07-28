@@ -1,0 +1,86 @@
+name: Family Cloud Exact Ref Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'family-cloud-ref.txt'
+      - '.github/workflows/family-cloud-exact-ref-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: family-cloud-exact-ref-gate
+  cancel-in-progress: true
+
+jobs:
+  family-cloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve exact Family Cloud SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < family-cloud-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require private-source token
+        env:
+          TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"
+        run: test -n "$TOKEN"
+
+      - name: Checkout exact private Family Cloud commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: family-cloud
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout
+        run: test "$(git -C family-cloud rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: family-cloud
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript validation
+        working-directory: family-cloud
+        run: npm run typecheck
+
+      - name: Full test suite
+        working-directory: family-cloud
+        run: npm test
+
+      - name: Factory planner smoke
+        working-directory: family-cloud
+        run: npm run factory:plan
+
+      - name: Record exact hosted validation
+        if: success()
+        run: |
+          echo "## Family Cloud exact-SHA hosted gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "- source: giovannifidel-collab/family-cloud" >> "$GITHUB_STEP_SUMMARY"
+          echo "- exact SHA: ${{ steps.source.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- runner: GitHub-hosted ubuntu-latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "- checkout credentials persisted: false" >> "$GITHUB_STEP_SUMMARY"
+
+      - if: always()
+        run: rm -rf family-cloud
