@@ -134,6 +134,12 @@ jobs:
       - name: Supplier staging regression
         working-directory: pfarma-cloud
         run: test ! -f tests/test_razzo_supplier_staging_regression.py || PYTHONPATH=. python tests/test_razzo_supplier_staging_regression.py
+      - name: Multi-line warehouse routing preview regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_cart_warehouse_routing_preview.py || PYTHONPATH=. python tests/test_cart_warehouse_routing_preview.py
+      - name: Cart replenishment preview regression
+        working-directory: pfarma-cloud
+        run: test ! -f tests/test_cart_replenishment_preview.py || PYTHONPATH=. python tests/test_cart_replenishment_preview.py
       - name: Factory planner smoke
         working-directory: pfarma-cloud
         run: python -m factory.plan
