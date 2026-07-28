@@ -3,10 +3,14 @@ import unittest
 from razzo.v7.product_discovery import (
     MAX_DISCOVERY_PAGES,
     MAX_LOGICAL_WORKER_POOL,
+    MAX_SLICES_PER_ISSUE,
     collision_domain,
+    collision_domains,
     issue_score,
     references_issue,
     risky,
+    slice_id,
+    slice_instruction,
 )
 
 
@@ -49,10 +53,12 @@ class ProductDiscoveryTests(unittest.TestCase):
             "body": "Collision domain: `product/family-onboarding`",
         }
         self.assertEqual(collision_domain("family-cloud", issue), "family-cloud/product/family-onboarding")
+        self.assertEqual(collision_domains("family-cloud", issue), ["family-cloud/product/family-onboarding"])
 
     def test_collision_domain_prefers_explicit_module(self):
         issue = {"number": 10, "title": "P0 bug", "body": "Modulo: Nuova vendita\noperational bug"}
         self.assertEqual(collision_domain("pfarma-cloud", issue), "pfarma-cloud/module/nuova-vendita")
+        self.assertEqual(collision_domains("pfarma-cloud", issue), ["pfarma-cloud/module/nuova-vendita"])
 
     def test_collision_domain_groups_related_work(self):
         a = {"number": 11, "title": "Catalogo prodotto EAN bug", "body": "high bug"}
@@ -60,9 +66,40 @@ class ProductDiscoveryTests(unittest.TestCase):
         self.assertEqual(collision_domain("pfarma-cloud", a), "pfarma-cloud/catalog")
         self.assertEqual(collision_domain("pfarma-cloud", b), "pfarma-cloud/catalog")
 
+    def test_multidomain_issue_can_fan_out_conservatively(self):
+        issue = {
+            "number": 142,
+            "title": "P0 offline workout history UX",
+            "body": "Improve PWA sync visibility, workout resume and history navigation.",
+        }
+        domains = collision_domains("project-giovanni", issue)
+        self.assertEqual(
+            domains,
+            [
+                "project-giovanni/workout",
+                "project-giovanni/history",
+                "project-giovanni/offline",
+            ],
+        )
+        self.assertLessEqual(len(domains), MAX_SLICES_PER_ISSUE)
+
+    def test_multidomain_fanout_is_bounded(self):
+        issue = {
+            "number": 99,
+            "title": "P0 product sales inventory receiving supplier accounting dashboard performance",
+            "body": "operational",
+        }
+        self.assertEqual(len(collision_domains("pfarma-cloud", issue)), MAX_SLICES_PER_ISSUE)
+
+    def test_slice_metadata_is_branch_safe_and_bounded(self):
+        self.assertEqual(slice_id("project-giovanni/photo-ai"), "photo-ai")
+        self.assertEqual(slice_id("pfarma-cloud/module/nuova-vendita"), "nuova-vendita")
+        self.assertIn("offline", slice_instruction("project-giovanni/offline"))
+
     def test_elastic_pool_contract(self):
         self.assertEqual(MAX_LOGICAL_WORKER_POOL, 1000)
         self.assertGreaterEqual(MAX_DISCOVERY_PAGES, 10)
+        self.assertGreaterEqual(MAX_SLICES_PER_ISSUE, 2)
 
 
 if __name__ == "__main__":

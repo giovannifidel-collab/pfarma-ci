@@ -11,6 +11,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 MAX_LOGICAL_WORKER_POOL = 1000
 MAX_DISCOVERY_PAGES = 10
+MAX_SLICES_PER_ISSUE = 4
 
 RISK_TERMS = (
     "destructive-production", "user-data-write", "irreplaceable-data",
@@ -54,8 +55,6 @@ def issue_score(issue: dict[str, Any]) -> int:
     title = str(issue.get("title", ""))
     text = f"{title}\n{issue.get('body','')}".lower()
     score = 0
-    # Explicit RAZZO product-discovery work is a first-class product queue input.
-    # Human-gate filtering is still applied separately by risky().
     if "[razzo product]" in title.lower(): score += 150
     if re.search(r"\bp0\b", text): score += 100
     if "high" in text or "alta" in text: score += 60
@@ -78,7 +77,7 @@ def references_issue(pr: dict[str, Any], number: int) -> bool:
     return bool(re.search(rf"(?<!\d)#{number}(?!\d)", text))
 
 
-def collision_domain(project_id: str, issue: dict[str, Any]) -> str:
+def _explicit_collision_domain(project_id: str, issue: dict[str, Any]) -> str | None:
     text = f"{issue.get('title','')}\n{issue.get('body','')}".lower()
     explicit = re.search(r"collision\s+domain\s*:\s*`?([a-z0-9][a-z0-9/_-]{1,79})`?", text)
     if explicit:
@@ -90,10 +89,48 @@ def collision_domain(project_id: str, issue: dict[str, Any]) -> str:
         slug = re.sub(r"[^a-z0-9]+", "-", module.group(1).strip()).strip("-")[:48]
         if slug:
             return f"{project_id}/module/{slug}"
+    return None
+
+
+def collision_domains(project_id: str, issue: dict[str, Any]) -> list[str]:
+    """Return bounded independent product slices for one issue.
+
+    Explicit collision-domain/module declarations remain authoritative and yield one slice.
+    Otherwise high-priority product issues may fan out across distinct semantic domains already
+    present in the issue text. This is conservative: no invented subtask, no duplicate domain,
+    and at most MAX_SLICES_PER_ISSUE slices.
+    """
+    explicit = _explicit_collision_domain(project_id, issue)
+    if explicit:
+        return [explicit]
+
+    text = f"{issue.get('title','')}\n{issue.get('body','')}".lower()
+    domains: list[str] = []
     for pattern, domain in DOMAIN_PATTERNS:
         if re.search(pattern, text):
-            return f"{project_id}/{domain}"
-    return f"{project_id}/issue-{int(issue['number'])}"
+            candidate = f"{project_id}/{domain}"
+            if candidate not in domains:
+                domains.append(candidate)
+        if len(domains) >= MAX_SLICES_PER_ISSUE:
+            break
+    if domains:
+        return domains
+    return [f"{project_id}/issue-{int(issue['number'])}"]
+
+
+def collision_domain(project_id: str, issue: dict[str, Any]) -> str:
+    return collision_domains(project_id, issue)[0]
+
+
+def slice_id(domain: str) -> str:
+    slug = domain.rsplit("/", 1)[-1]
+    slug = re.sub(r"[^a-z0-9-]+", "-", slug.lower()).strip("-")
+    return (slug or "slice")[:40]
+
+
+def slice_instruction(domain: str) -> str:
+    leaf = domain.rsplit("/", 1)[-1].replace("-", " ")
+    return f"Advance only the {leaf} aspect of this issue; avoid unrelated product surfaces."
 
 
 def api(token: str, url: str) -> Any:
@@ -106,7 +143,6 @@ def api(token: str, url: str) -> Any:
 
 
 def api_pages(token: str, base_url: str, max_pages: int = MAX_DISCOVERY_PAGES) -> list[dict[str, Any]]:
-    """Read enough GitHub pages to let the elastic pool search beyond the first 100 items."""
     results: list[dict[str, Any]] = []
     separator = "&" if "?" in base_url else "?"
     for page in range(1, max_pages + 1):
@@ -147,24 +183,28 @@ def discover(token: str, limit: int = 3) -> list[dict[str, Any]]:
         used_domains: set[str] = set()
         admitted = 0
         for score, issue in candidates:
-            domain = collision_domain(pid, issue)
-            if domain in used_domains:
-                continue
-            used_domains.add(domain)
-            found.append({
-                "project_id": pid,
-                "repository": repo,
-                "issue_number": int(issue["number"]),
-                "issue_title": str(issue.get("title") or "")[:240],
-                "issue_body": str(issue.get("body") or "")[:7000],
-                "priority_score": score,
-                "collision_domain": domain,
-                "exact_sha": state[pid]["exactSha"],
-                "integration_lane": project.get("integrationLane", "integration/razzo"),
-                "factory_test": project.get("factoryTest", ""),
-                "factory_plan": project.get("factoryPlan", ""),
-            })
-            admitted += 1
+            for domain in collision_domains(pid, issue):
+                if domain in used_domains:
+                    continue
+                used_domains.add(domain)
+                found.append({
+                    "project_id": pid,
+                    "repository": repo,
+                    "issue_number": int(issue["number"]),
+                    "issue_title": str(issue.get("title") or "")[:240],
+                    "issue_body": str(issue.get("body") or "")[:7000],
+                    "priority_score": score,
+                    "collision_domain": domain,
+                    "slice_id": slice_id(domain),
+                    "work_slice": slice_instruction(domain),
+                    "exact_sha": state[pid]["exactSha"],
+                    "integration_lane": project.get("integrationLane", "integration/razzo"),
+                    "factory_test": project.get("factoryTest", ""),
+                    "factory_plan": project.get("factoryPlan", ""),
+                })
+                admitted += 1
+                if admitted >= project_cap:
+                    break
             if admitted >= project_cap:
                 break
     found.sort(key=lambda x: (-x["priority_score"], x["project_id"], x["collision_domain"], -x["issue_number"]))
