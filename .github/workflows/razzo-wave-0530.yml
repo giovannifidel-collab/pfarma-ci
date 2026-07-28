@@ -45,7 +45,7 @@ jobs:
       - if: always()
         run: rm -rf project
 
-  pfarma-cart-routing:
+  pfarma-proposal-verification:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -66,17 +66,17 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - working-directory: pfarma
-        run: python -m compileall -q factory api/warehouse_allocation_service.py tests/test_cart_warehouse_routing_preview.py
+        run: python -m compileall -q factory api/replenishment_proposal_preview.py api/replenishment_proposal_integrity.py api/replenishment_proposal_verification.py tests/test_replenishment_proposal_preview.py tests/test_replenishment_proposal_integrity.py tests/test_replenishment_proposal_verification.py
       - working-directory: pfarma
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
       - working-directory: pfarma
-        run: PYTHONPATH=. python tests/test_cart_warehouse_routing_preview.py
+        run: PYTHONPATH=. python tests/test_replenishment_proposal_preview.py && PYTHONPATH=. python tests/test_replenishment_proposal_integrity.py && PYTHONPATH=. python tests/test_replenishment_proposal_verification.py
       - working-directory: pfarma
         run: python -m factory.plan
       - if: always()
         run: rm -rf pfarma
 
-  family-repair-intent:
+  family-checkpoint:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
