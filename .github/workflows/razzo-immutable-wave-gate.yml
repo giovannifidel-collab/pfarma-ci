@@ -23,7 +23,7 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave7/project-giovanni.txt)"
+          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave8/project-giovanni.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -43,6 +43,9 @@ jobs:
         run: npx --yes tsc --noEmit
       - working-directory: source
         run: npm run test:factory
+      - name: Photo AI safety regression
+        working-directory: source
+        run: node tools/test_photo_analysis_output_safety.cjs lib/photoAnalysisOutputSafety.ts
       - working-directory: source
         run: npm run factory:plan
       - working-directory: source
@@ -63,7 +66,7 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave7/pfarma.txt)"
+          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave8/pfarma.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
@@ -93,7 +96,7 @@ jobs:
       - id: source
         shell: bash
         run: |
-          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave7/family-cloud.txt)"
+          sha="$(tr -d '\r\n' < razzo/waves/20260728-wave8/family-cloud.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
