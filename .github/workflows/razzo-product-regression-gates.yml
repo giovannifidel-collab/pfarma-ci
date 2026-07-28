@@ -1,0 +1,54 @@
+name: RAZZO Product Regression Gates
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/project-giovanni-ref.txt'
+      - 'razzo/pfarma-ref.txt'
+      - '.github/workflows/razzo-product-regression-gates.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pfarma-lots-expiry:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact PFarma SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/pfarma-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env:
+          TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$TOKEN"
+      - name: Checkout exact private PFarma commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: pfarma-cloud
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        run: test "$(git -C pfarma-cloud rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - name: Run lots and expiry regression
+        working-directory: pfarma-cloud
+        run: python tests/test_lot_expiry_regression.py
+      - name: Cleanup private source
+        if: always()
+        run: rm -rf pfarma-cloud
