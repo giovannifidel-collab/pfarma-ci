@@ -35,7 +35,11 @@ jobs:
         run: npm install --no-audit --no-fund
       - working-directory: project
         run: npx --yes tsc --noEmit
-      - working-directory: project
+      - name: PG-H-008 focused regression
+        working-directory: project
+        run: node --experimental-strip-types --test factory/history-export-download-verification.test.mjs
+      - name: Factory suite
+        working-directory: project
         run: npm run test:factory
       - working-directory: project
         run: npm run factory:plan
