@@ -1,5 +1,5 @@
 name: RAZZO Exact Ref Gates
-# validation-wave: 0548-wave2-focused-history-download
+# validation-wave: 0548-wave2-focused-history-download-log
 
 on:
   pull_request:
@@ -64,7 +64,18 @@ jobs:
         run: npx --yes tsc --noEmit
       - name: PG-H-007 focused regression
         working-directory: project-giovanni
-        run: node --test factory/history-export-download.test.mjs
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test factory/history-export-download.test.mjs 2>&1 | tee ../pg-h007.log
+      - name: Upload PG-H-007 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg-h007-${{ steps.source.outputs.sha }}
+          path: pg-h007.log
+          if-no-files-found: error
+          retention-days: 1
       - name: Factory tests
         working-directory: project-giovanni
         run: npm run test:factory
