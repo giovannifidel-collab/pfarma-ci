@@ -45,6 +45,19 @@ class RazzoPortfolioTests(unittest.TestCase):
         ]
         decision = portfolio_decision(states, 32)
         self.assertTrue(decision["selfReplan"])
+        self.assertEqual(decision["replanReason"], "all-ready-work-gated")
+        self.assertEqual(decision["allocated"], 0)
+
+    def test_self_replan_when_safe_backlog_is_exhausted(self):
+        states = [
+            ProjectState("project-giovanni", ready=0, human_gate=True),
+            ProjectState("pfarma-cloud", ready=0, human_gate=True),
+            ProjectState("family-cloud", ready=0, human_gate=True),
+        ]
+        decision = portfolio_decision(states, 32)
+        self.assertTrue(decision["safeBacklogExhausted"])
+        self.assertTrue(decision["selfReplan"])
+        self.assertEqual(decision["replanReason"], "safe-backlog-exhausted")
         self.assertEqual(decision["allocated"], 0)
 
 
