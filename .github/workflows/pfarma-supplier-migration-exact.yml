@@ -1,0 +1,88 @@
+name: PFarma Supplier and Migration Exact Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'validation/pfarma-supplier-migration/**'
+      - '.github/workflows/pfarma-supplier-migration-exact.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  supplier:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        run: |
+          sha="$(tr -d '\r\n' < validation/pfarma-supplier-migration/supplier.ref)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - run: test -n "$TOKEN"
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - working-directory: source
+        run: python -m compileall -q factory tools/test_razzo_executor.py tests/test_razzo_supplier_staging_regression.py
+      - working-directory: source
+        run: python tools/test_razzo_executor.py
+      - working-directory: source
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Supplier staging regression
+        working-directory: source
+        env: {PYTHONPATH: .}
+        run: python -m unittest discover -s tests -p 'test_razzo_supplier_staging_regression.py' -v
+      - working-directory: source
+        run: python -m factory.plan
+
+  migration:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        run: |
+          sha="$(tr -d '\r\n' < validation/pfarma-supplier-migration/migration.ref)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - run: test -n "$TOKEN"
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - working-directory: source
+        run: python -m compileall -q factory tools/test_razzo_executor.py tests/test_razzo_migration_dry_run_regression.py
+      - working-directory: source
+        run: python tools/test_razzo_executor.py
+      - working-directory: source
+        run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+      - name: Migration dry-run policy regression
+        working-directory: source
+        env: {PYTHONPATH: .}
+        run: python -m unittest discover -s tests -p 'test_razzo_migration_dry_run_regression.py' -v
+      - working-directory: source
+        run: python -m factory.plan
