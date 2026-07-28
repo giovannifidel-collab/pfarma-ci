@@ -15,6 +15,14 @@ RISK_TERMS = (
     "irreversible-migration", "crypto-release",
 )
 
+RISK_PATTERNS = (
+    r"explicit\s+authorization\s+before\s+(?:accessing|access|mutating|mutation|writing)",
+    r"(?:write|mutat(?:e|ion)|delete|repair)\s+(?:to\s+)?real\s+(?:easyfarm\s+)?data",
+    r"real\s+easyfarm\s+(?:write|mutation|access)",
+    r"production\s+(?:write|mutation|delete|repair)",
+    r"destructive\s+(?:write|migration|operation|repair)",
+)
+
 DOMAIN_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\b(catalog|catalogo|mins[a-z]*|ean|product|prodott)", "catalog"),
     (r"\b(sales|sale|vendit|pos|cassa)", "sales"),
@@ -53,7 +61,9 @@ def issue_score(issue: dict[str, Any]) -> int:
 
 def risky(issue: dict[str, Any]) -> bool:
     text = f"{issue.get('title','')}\n{issue.get('body','')}".lower()
-    return any(term in text for term in RISK_TERMS)
+    if any(term in text for term in RISK_TERMS):
+        return True
+    return any(re.search(pattern, text) for pattern in RISK_PATTERNS)
 
 
 def references_issue(pr: dict[str, Any], number: int) -> bool:
