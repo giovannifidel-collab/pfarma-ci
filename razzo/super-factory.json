@@ -1,23 +1,31 @@
 {
-  "version": 1,
+  "version": 2,
   "fabric": "RAZZO_SUPER_FACTORY",
   "controlPlane": "giovannifidel-collab/pfarma-ci",
   "owner": "giovannifidel-collab",
   "repositoryPrefix": "razzo-shard-",
   "logicalShardCapacity": 1000,
+  "desiredLogicalShardCount": 1000,
   "discovery": {
     "dynamic": true,
     "requirePublic": true,
     "namePattern": "^razzo-shard-[0-9]{4}$",
-    "neverAssumeRepositoryExists": true
+    "neverAssumeRepositoryExists": true,
+    "autoEnrollOnDiscovery": true,
+    "autoEnrollUpperBound": 1000,
+    "missingShardState": "dormant-unmaterialized",
+    "newShardState": "eligible"
   },
   "activation": {
-    "mode": "adaptive-progressive",
-    "initialActiveLimit": 20,
-    "stages": [20, 40, 80, 160, 320, 640, 1000],
-    "increaseOnlyOnMeasuredThroughputGain": true,
+    "mode": "elastic-autojoin",
+    "logicalTarget": 1000,
+    "allDiscoveredShardsEligibleImmediately": true,
+    "doNotRequireManualStagePromotion": true,
+    "physicalDispatchMode": "capacity-aware",
+    "dispatchUpToSafeMeasuredCapacity": true,
     "decreaseOnBackpressureOrRegression": true,
-    "neverEquateRepositoryCountWithRunningConcurrency": true
+    "neverEquateRepositoryCountWithRunningConcurrency": true,
+    "rule": "Model the fabric as 1000 logical shards from the start. Every matching repository becomes eligible automatically when discovered. Dispatch as many eligible shards as the real DAG, collision domains, leases, exact-SHA gates, GitHub/CI capacity and backpressure safely permit; do not impose an artificial staged ceiling."
   },
   "phenotypes": [
     "DISCOVER",
@@ -37,17 +45,24 @@
     "hierarchy": ["cell", "tissue", "organ", "system", "organism"],
     "promoteOnlyAfterChildVerification": true,
     "requireEmergentVerificationAtEveryParent": true,
-    "prioritizeHighestLevelFunctionalDeficit": true
+    "prioritizeHighestLevelFunctionalDeficit": true,
+    "overlapBuildAndComposition": true,
+    "composeAsSoonAsDependenciesVerify": true
   },
   "scheduling": {
     "fungibleShards": true,
+    "maxLogicalEligibleShards": 1000,
     "collisionDomainLeaseRequired": true,
     "exactShaRequired": true,
     "immutableInputRefRequired": true,
     "integrationSerializedByCollisionDomain": true,
     "humanGatesActionScoped": true,
     "backpressureAware": true,
-    "productFirst": true
+    "productFirst": true,
+    "continuousDiscovery": true,
+    "continuousReplan": true,
+    "fillAvailableSafeCapacity": true,
+    "neverCreateFakeWorkToFillSlots": true
   },
   "publicShardBoundary": {
     "allowPrivateSourceMaterialization": false,
@@ -73,6 +88,8 @@
       "candidate_failure_rate",
       "retry_rate",
       "backpressure_rate",
+      "eligible_shards",
+      "dispatched_shards",
       "time_to_tissue_seconds",
       "time_to_organ_seconds",
       "time_to_system_seconds",
