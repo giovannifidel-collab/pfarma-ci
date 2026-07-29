@@ -1,8 +1,8 @@
 {
   "protocol": "RAZZO",
-  "protocolVersion": 4,
+  "protocolVersion": 5,
   "architecture": "HOMO_NOVUS",
-  "architectureVersion": 2,
+  "architectureVersion": 3,
   "architectureSpec": "embedded:homoNovus",
   "compatibility": {
     "operatorCommand": "AVANZA TUTTO",
@@ -86,7 +86,11 @@
       "minUsefulWorkstreams": 3,
       "targetUsefulWorkstreams": 12,
       "softMaxUsefulWorkstreams": 20,
-      "rule": "Fan out only across independently verifiable collision domains justified by the real DAG. Never create work merely to fill slots."
+      "proactiveDiscoveryBeforeQueueExhaustion": true,
+      "replenishWhenBelowTarget": true,
+      "humanGateIsActionScoped": true,
+      "readySafeWorkRemainsRunnableUnderProjectGateMarker": true,
+      "rule": "Fan out only across independently verifiable collision domains justified by the real DAG. Never create work merely to fill slots. Do not wait for ready=0: when the safe runnable backlog is below target, discover additional independent product work immediately. A human-gate marker freezes only the sensitive action and never zeros unrelated ready safe work."
     },
     "pipelineOverlap": {
       "enabled": true,
@@ -136,7 +140,8 @@
     "testabilityRule": "When enough capabilities exist for meaningful human use, prioritize making the product runnable, observable and testable by the user before accumulating lower-value isolated features.",
     "recursiveExecutionRule": "For the selected highest-level deficit, descend through the HOMO NOVUS hierarchy only as far as needed to expose safe independent work; execute in parallel where the DAG allows; verify bottom-up and then verify emergent behavior top-down.",
     "intraCycleRecursionRule": "After each verified integration, immediately self-replan and consume the next safe generation in the same invocation while execution budget remains. Do not wait for the next scheduled trigger merely because a generation boundary was reached.",
-    "overlapRule": "Discovery and planning for the next generation may overlap prior-generation verification/build when based on immutable exact refs and independent collision domains; integration remains guarded by exact-SHA, leases and backpressure."
+    "overlapRule": "Discovery and planning for the next generation may overlap prior-generation verification/build when based on immutable exact refs and independent collision domains; integration remains guarded by exact-SHA, leases and backpressure.",
+    "proactiveQueueRule": "Do not allow one-ready-item-per-project to become an accidental fan-out ceiling. Keep discovering independent product work before the queue drains whenever the measured runnable backlog is below the dynamic fan-out target and no backpressure forbids expansion."
   },
   "humanGateClasses": [
     "real-secrets",

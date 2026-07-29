@@ -37,21 +37,44 @@ class RazzoPortfolioTests(unittest.TestCase):
         self.assertEqual(decision["allocated"], 32)
         self.assertEqual(decision["idle"], 0)
 
-    def test_human_gate_does_not_block_other_projects(self):
+    def test_human_gate_is_action_scoped_when_safe_ready_work_exists(self):
         states = [
             ProjectState("project-giovanni", ready=4, human_gate=True, normal_concurrency=16, burst_concurrency=32),
             ProjectState("pfarma-cloud", ready=20, normal_concurrency=16, burst_concurrency=32),
             ProjectState("family-cloud", ready=20, normal_concurrency=20, burst_concurrency=128),
         ]
         decision = portfolio_decision(states, 24)
-        self.assertEqual(decision["allocation"]["project-giovanni"], 0)
+        self.assertEqual(decision["allocation"]["project-giovanni"], 4)
         self.assertEqual(decision["allocated"], 24)
         self.assertFalse(decision["humanGateStopsPortfolio"])
 
-    def test_self_replan_when_all_ready_work_is_gated(self):
+    def test_proactive_replan_before_queue_exhaustion_when_below_fanout_target(self):
         states = [
-            ProjectState("project-giovanni", ready=2, human_gate=True, gate_reason="user-data-write"),
-            ProjectState("pfarma-cloud", ready=3, backpressure=True),
+            ProjectState("project-giovanni", ready=1, human_gate=True, gate_reason="user-data-write", normal_concurrency=20, burst_concurrency=300),
+            ProjectState("pfarma-cloud", ready=1, human_gate=True, gate_reason="destructive-production", normal_concurrency=20, burst_concurrency=350),
+            ProjectState("family-cloud", ready=1, human_gate=True, gate_reason="irreplaceable-data", normal_concurrency=24, burst_concurrency=350),
+        ]
+        decision = portfolio_decision(
+            states,
+            64,
+            target_useful_workstreams=12,
+            min_useful_workstreams=3,
+        )
+        self.assertEqual(decision["runnableTotal"], 3)
+        self.assertEqual(decision["allocated"], 3)
+        self.assertEqual(decision["fanoutDeficit"], 9)
+        self.assertTrue(decision["proactiveExpansionRequested"])
+        self.assertTrue(decision["selfReplan"])
+        self.assertEqual(decision["replanReason"], "fanout-deficit")
+        self.assertEqual(
+            decision["expansionTargets"],
+            ["project-giovanni", "pfarma-cloud", "family-cloud"],
+        )
+
+    def test_self_replan_when_ready_zero_and_gate_remains(self):
+        states = [
+            ProjectState("project-giovanni", ready=0, human_gate=True, gate_reason="user-data-write"),
+            ProjectState("pfarma-cloud", ready=0, backpressure=True),
             ProjectState("family-cloud", ready=0),
         ]
         decision = portfolio_decision(states, 32)
@@ -129,6 +152,24 @@ class RazzoPortfolioTests(unittest.TestCase):
         self.assertEqual(state.gate_reason, "user-data-write")
         self.assertTrue(state.safe_expansion_candidate)
         self.assertEqual(state.runnable, 0)
+
+    def test_snapshot_gate_marker_does_not_zero_safe_ready_queue(self):
+        project = {
+            "id": "project-giovanni",
+            "normalConcurrency": 16,
+            "burstConcurrency": 32,
+        }
+        state = {
+            "id": "project-giovanni",
+            "exactSha": "a" * 40,
+            "ready": 3,
+            "backpressure": False,
+            "humanGate": True,
+            "blocker": "user-data-write",
+        }
+        parsed = project_state_from_snapshot(project, state, "a" * 40)
+        self.assertTrue(parsed.human_gate)
+        self.assertEqual(parsed.runnable, 3)
 
     def test_rejects_malformed_task_graph(self):
         with self.assertRaises(ValueError):
