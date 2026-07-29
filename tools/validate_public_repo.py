@@ -66,6 +66,9 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/super_factory/__init__.py"),
     PurePosixPath("razzo/super_factory/allocator.py"),
     PurePosixPath("razzo/super_factory/test_allocator.py"),
+    PurePosixPath("razzo/super_factory/provision-shards.ps1"),
+    PurePosixPath("razzo/super_factory/shard-bootstrap-contract.json"),
+    PurePosixPath("razzo/super_factory/shard-worker-template.yml"),
     PurePosixPath("razzo/pfarma-accounting-ref.txt"),
     PurePosixPath("razzo/pfarma-migration-ref.txt"),
     PurePosixPath("razzo/pfarma-ref.txt"),
@@ -94,24 +97,12 @@ ALLOWED_EXACT = {
 }
 IGNORED_ROOTS = {".git"}
 BUNDLE_REQUIRED_FIELDS = {
-    "format",
-    "algorithm",
-    "source_ref",
-    "file_count",
-    "plaintext_sha256",
-    "nonce_b64",
-    "ciphertext_b64",
+    "format", "algorithm", "source_ref", "file_count", "plaintext_sha256", "nonce_b64", "ciphertext_b64",
 }
 REF_FILES = (
-    "source-ref.txt",
-    "project-giovanni-source-ref.txt",
-    "family-cloud-ref.txt",
-    "razzo/pfarma-accounting-ref.txt",
-    "razzo/pfarma-migration-ref.txt",
-    "razzo/pfarma-ref.txt",
-    "razzo/pfarma-supplier-ref.txt",
-    "razzo/project-giovanni-ref.txt",
-    "razzo/project-history-ref.txt",
+    "source-ref.txt", "project-giovanni-source-ref.txt", "family-cloud-ref.txt",
+    "razzo/pfarma-accounting-ref.txt", "razzo/pfarma-migration-ref.txt", "razzo/pfarma-ref.txt",
+    "razzo/pfarma-supplier-ref.txt", "razzo/project-giovanni-ref.txt", "razzo/project-history-ref.txt",
     "razzo/project-offline-ref.txt",
 )
 
@@ -134,11 +125,9 @@ def main() -> None:
         if rel.parts and rel.parts[0] in IGNORED_ROOTS:
             continue
         files.append(rel)
-
     unexpected = sorted(str(path) for path in files if path not in ALLOWED_EXACT)
     if unexpected:
         raise SystemExit("Unexpected public-repository files rejected: " + ", ".join(unexpected))
-
     bundle = ROOT / "bundle" / "pfarma-ci.bundle.json"
     if bundle.exists():
         try:
@@ -151,10 +140,8 @@ def main() -> None:
             raise SystemExit("Encrypted bundle must use the approved authenticated format.")
         if not isinstance(payload.get("ciphertext_b64"), str) or not payload["ciphertext_b64"]:
             raise SystemExit("Encrypted bundle has no ciphertext.")
-
     for filename in REF_FILES:
         _validate_ref_file(filename)
-
     print(f"PASS: public repository allowlist contains {len(files)} approved files; no plaintext source path admitted.")
 
 
