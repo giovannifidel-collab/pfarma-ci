@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "fabric": "RAZZO_SUPER_FACTORY",
+  "controlPlane": "giovannifidel-collab/pfarma-ci",
+  "owner": "giovannifidel-collab",
+  "repositoryPrefix": "razzo-shard-",
+  "logicalShardCapacity": 1000,
+  "desiredLogicalShardCount": 1000,
+  "discovery": {
+    "dynamic": true,
+    "requirePublic": true,
+    "namePattern": "^razzo-shard-[0-9]{4}$",
+    "neverAssumeRepositoryExists": true,
+    "autoEnrollOnDiscovery": true,
+    "autoEnrollUpperBound": 1000,
+    "missingShardState": "dormant-unmaterialized",
+    "newShardState": "eligible"
+  },
+  "activation": {
+    "mode": "elastic-autojoin",
+    "logicalTarget": 1000,
+    "allDiscoveredShardsEligibleImmediately": true,
+    "doNotRequireManualStagePromotion": true,
+    "physicalDispatchMode": "capacity-aware",
+    "dispatchUpToSafeMeasuredCapacity": true,
+    "decreaseOnBackpressureOrRegression": true,
+    "neverEquateRepositoryCountWithRunningConcurrency": true,
+    "rule": "Model the fabric as 1000 logical shards from the start. Every matching repository becomes eligible automatically when discovered. Dispatch as many eligible shards as the real DAG, collision domains, leases, exact-SHA gates, GitHub/CI capacity and backpressure safely permit; do not impose an artificial staged ceiling."
+  },
+  "phenotypes": [
+    "DISCOVER",
+    "BUILD",
+    "TEST",
+    "COMPOSE_TISSUE",
+    "COMPOSE_ORGAN",
+    "COMPOSE_SYSTEM",
+    "VERIFY_ORGANISM",
+    "FAULT",
+    "SECURITY",
+    "PERFORMANCE",
+    "INTEGRATION"
+  ],
+  "composition": {
+    "enabled": true,
+    "hierarchy": ["cell", "tissue", "organ", "system", "organism"],
+    "promoteOnlyAfterChildVerification": true,
+    "requireEmergentVerificationAtEveryParent": true,
+    "prioritizeHighestLevelFunctionalDeficit": true,
+    "overlapBuildAndComposition": true,
+    "composeAsSoonAsDependenciesVerify": true
+  },
+  "scheduling": {
+    "fungibleShards": true,
+    "maxLogicalEligibleShards": 1000,
+    "collisionDomainLeaseRequired": true,
+    "exactShaRequired": true,
+    "immutableInputRefRequired": true,
+    "integrationSerializedByCollisionDomain": true,
+    "humanGatesActionScoped": true,
+    "backpressureAware": true,
+    "productFirst": true,
+    "continuousDiscovery": true,
+    "continuousReplan": true,
+    "fillAvailableSafeCapacity": true,
+    "neverCreateFakeWorkToFillSlots": true
+  },
+  "publicShardBoundary": {
+    "allowPrivateSourceMaterialization": false,
+    "allowSecrets": false,
+    "allowRealCustomerOrFamilyData": false,
+    "allowCredentials": false,
+    "allowedPayloadClasses": [
+      "task-contract",
+      "non-sensitive-metadata",
+      "exact-sha-reference",
+      "verification-contract",
+      "receipt",
+      "timing-metrics"
+    ]
+  },
+  "optimizer": {
+    "objective": "maximize verified product utility per wall-clock while preserving correctness, safety, resumability and organic composition",
+    "metrics": [
+      "verified_product_integrations_per_hour",
+      "generation_to_generation_seconds",
+      "queue_wait_seconds",
+      "collision_rate",
+      "candidate_failure_rate",
+      "retry_rate",
+      "backpressure_rate",
+      "eligible_shards",
+      "dispatched_shards",
+      "time_to_tissue_seconds",
+      "time_to_organ_seconds",
+      "time_to_system_seconds",
+      "time_to_organism_seconds"
+    ]
+  }
+}
