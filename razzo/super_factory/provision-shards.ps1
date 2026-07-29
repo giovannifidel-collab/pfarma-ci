@@ -18,17 +18,21 @@ function Invoke-Gh([string[]]$Args) {
 function Is-SecondaryLimit([string]$Message) {
   return $Message -match 'secondary rate limit|temporarily blocked from content creation|HTTP 403'
 }
+function Put-File([string]$Repo,[string]$Path,[string]$Message,[string]$LocalPath) {
+  $encoded=[Convert]::ToBase64String([IO.File]::ReadAllBytes($LocalPath))
+  $existing=$null
+  try { $existing=Invoke-Gh @('api',"repos/$Repo/contents/$Path",'--jq','.sha') } catch { $existing=$null }
+  $args=@('api','--method','PUT',"repos/$Repo/contents/$Path",'-f',"message=$Message",'-f',"content=$encoded")
+  if ($existing) { $args += @('-f',"sha=$existing") }
+  Invoke-Gh $args | Out-Null
+}
 $backoff = 60
 $doneInBatch = 0
 for ($i=$Start; $i -le $End; $i++) {
   $name = 'razzo-shard-{0:D4}' -f $i
   $repo = "$Owner/$name"
-  try {
-    Invoke-Gh @('repo','view',$repo,'--json','nameWithOwner') | Out-Null
-  } catch {
-    Write-Host "SKIP missing $repo"
-    continue
-  }
+  try { Invoke-Gh @('repo','view',$repo,'--json','nameWithOwner') | Out-Null }
+  catch { Write-Host "SKIP missing $repo"; continue }
   $manifest = @{
     schema='razzo.shard.v1'; shard_id=('shard-{0:D4}' -f $i); repository=$repo;
     control_plane=$ControlPlane; state='PROVISIONED'; exact_sha_required=$true;
@@ -43,10 +47,12 @@ for ($i=$Start; $i -le $End; $i++) {
   while ($true) {
     try {
       $attempt++
-      Invoke-Gh @('api','--method','PUT',"repos/$repo/contents/.razzo/shard.json",'-f',"message=RAZZO provision $name manifest",'-f',"content=$([Convert]::ToBase64String([IO.File]::ReadAllBytes($manifestPath)))") | Out-Null
+      # Install/update the workflow first. The subsequent manifest write is the
+      # activation edge: push:path=.razzo/shard.json starts exact-SHA self-health.
+      Put-File $repo '.github/workflows/razzo-shard-worker.yml' "RAZZO provision $name worker" $workflowPath
       Start-Sleep -Seconds $DelaySeconds
-      Invoke-Gh @('api','--method','PUT',"repos/$repo/contents/.github/workflows/razzo-shard-worker.yml",'-f',"message=RAZZO provision $name worker",'-f',"content=$([Convert]::ToBase64String([IO.File]::ReadAllBytes($workflowPath)))") | Out-Null
-      Write-Host "PROVISIONED $repo"
+      Put-File $repo '.razzo/shard.json' "RAZZO activate $name self-health" $manifestPath
+      Write-Host "PROVISIONED+ACTIVATED $repo"
       $backoff = 60
       break
     } catch {
@@ -65,4 +71,4 @@ for ($i=$Start; $i -le $End; $i++) {
     $doneInBatch = 0
   }
 }
-Write-Host 'RAZZO shard provisioning pass complete.'
+Write-Host 'RAZZO shard provisioning + self-activation pass complete.'
