@@ -1,0 +1,15 @@
+{
+  "protocol": "RAZZO V6/V7 Operational Product Factory",
+  "cycle": "20260729T1058",
+  "dynamicPortfolio": true,
+  "productProgress": true,
+  "verificationProbe": {"pr":514,"headSha":"0121bbac9a42e45f2c06904a7521cc58a571a722","exactRefGateRun":30438552206,"v6OperationalRun":30438556020},
+  "projects": [
+    {"id":"project-giovanni","issue":785,"pr":790,"candidateSha":"0c41b8eb2ec3e760bc8468a8faf83f2fa92dde66","integrationSha":"bbfdd714b979ba6956bb4c2e2cc76f070a240da3","nextReadyIssue":786,"humanGateTraversed":false},
+    {"id":"pfarma-cloud","issue":1905,"pr":1909,"candidateSha":"90da9cc7c81b3634012792410454d3d68eef1a37","integrationSha":"d195625f37447ef488ec95a2a5a8c4a4455faa6f","nextReadyIssue":1906,"humanGateTraversed":false},
+    {"id":"family-cloud","issue":184,"pr":185,"candidateSha":"c27868abdeaf7a61677e77228e73eb659aec1255","integrationSha":"2d2f93bb1d76faa2071160b4ad89f4f0aebdf346","nextReadyIssue":186,"humanGateTraversed":false,"fcA023Traversed":false}
+  ],
+  "operationalDispatchVerified": true,
+  "aggregateReceiptVerified": true,
+  "backpressure": false
+}
