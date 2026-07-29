@@ -3,13 +3,13 @@ name: RAZZO Super Factory Discovery
 on:
   workflow_dispatch:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '*/15 * * * *'
 
 permissions:
   contents: read
 
 jobs:
-  discover-shards:
+  discover-and-enroll:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout control plane
@@ -30,16 +30,48 @@ jobs:
             > out/shards.txt || true
 
           COUNT=$(wc -l < out/shards.txt | tr -d ' ')
-          printf '{\n  "owner": "%s",\n  "discovered": %s,\n  "capacity": 1000,\n  "repositories": [\n' "$OWNER" "$COUNT" > out/shards.json
-          awk '{printf "    \"%s\"%s\n", $0, (NR==total ? "" : ",")}' total="$COUNT" out/shards.txt >> out/shards.json
-          printf '  ]\n}\n' >> out/shards.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          repos = [line.strip() for line in Path('out/shards.txt').read_text().splitlines() if line.strip()]
+          Path('out/shards.json').write_text(json.dumps({
+              'owner': 'giovannifidel-collab',
+              'discovered': len(repos),
+              'capacity': 1000,
+              'repositories': repos,
+          }, indent=2) + '\n')
+          PY
 
           echo "Discovered shard repositories: $COUNT"
-          cat out/shards.json
 
-      - name: Upload shard discovery snapshot
+      - name: Build 1000-shard elastic eligibility snapshot
+        run: |
+          python razzo/super_factory/allocator.py \
+            --discovery out/shards.json \
+            --out out/eligibility.json \
+            --capacity 1000
+
+      - name: Verify allocator
+        run: python -m unittest razzo.super_factory.test_allocator
+
+      - name: Summarize fabric state
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s = json.loads(Path('out/eligibility.json').read_text())
+          print(f"logical_capacity={s['logicalCapacity']}")
+          print(f"materialized={s['materializedCount']}")
+          print(f"eligible={s['eligibleCount']}")
+          print(f"dormant_unmaterialized={s['dormantUnmaterializedCount']}")
+          PY
+
+      - name: Upload live shard fabric snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: razzo-super-factory-shard-discovery
-          path: out/shards.json
+          name: razzo-super-factory-live-fabric
+          path: |
+            out/shards.json
+            out/eligibility.json
           if-no-files-found: error
