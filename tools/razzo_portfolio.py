@@ -22,19 +22,22 @@ class ProjectState:
 
     @property
     def runnable(self) -> int:
-        if self.backpressure or self.human_gate:
+        """Return safe ready work; a human gate freezes only the gated action.
+
+        `ready` is the count of already-discovered safe runnable workstreams. A
+        project-level human-gate marker therefore must not zero that queue. Only
+        backpressure suppresses dispatch here. When ready is zero, the gate is a
+        discovery signal rather than a portfolio-wide stop.
+        """
+        if self.backpressure:
             return 0
         return max(0, self.ready)
 
     @property
     def safe_expansion_candidate(self) -> bool:
-        """A gated project may still be replanned around the gated action.
-
-        This never makes the gated action runnable. It only tells the portfolio
-        controller that safe, reversible work may be discovered elsewhere in
-        the same project while the sensitive branch remains frozen.
-        """
+        """A gated project may still be replanned around the gated action."""
         return self.human_gate and not self.backpressure
+
 
 
 def project_state_from_task_graph(
@@ -76,10 +79,12 @@ def project_state_from_task_graph(
     )
 
 
+
 def _require_bool(value: Any, field: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{field} must be boolean")
     return value
+
 
 
 def project_state_from_snapshot(
@@ -120,6 +125,7 @@ def project_state_from_snapshot(
         normal_concurrency=normal,
         burst_concurrency=burst,
     )
+
 
 
 def load_reconciled_states(root: Path, config: dict[str, Any]) -> list[ProjectState]:
@@ -165,6 +171,7 @@ def load_reconciled_states(root: Path, config: dict[str, Any]) -> list[ProjectSt
     return states
 
 
+
 def allocate_portfolio(states: list[ProjectState], total_slots: int) -> dict[str, int]:
     allocations = {state.project_id: 0 for state in states}
     healthy = [state for state in states if state.runnable > 0]
@@ -195,7 +202,14 @@ def allocate_portfolio(states: list[ProjectState], total_slots: int) -> dict[str
     return allocations
 
 
-def portfolio_decision(states: list[ProjectState], total_slots: int) -> dict[str, Any]:
+
+def portfolio_decision(
+    states: list[ProjectState],
+    total_slots: int,
+    *,
+    target_useful_workstreams: int = 0,
+    min_useful_workstreams: int = 0,
+) -> dict[str, Any]:
     allocation = allocate_portfolio(states, total_slots)
     ready_total = sum(state.ready for state in states)
     runnable_total = sum(state.runnable for state in states)
@@ -212,15 +226,32 @@ def portfolio_decision(states: list[ProjectState], total_slots: int) -> dict[str
         state.project_id for state in states if state.safe_expansion_candidate
     ]
 
-    # A terminal human gate freezes only the sensitive branch. It must not be
-    # interpreted as a portfolio-wide stop. When nothing runnable remains, ask
-    # the planner to discover other safe/reversible work around those gates.
+    # Never wait for ready==0 before refilling the queue. The previous behavior
+    # made a single ready slice per project the effective fan-out ceiling even
+    # when the portfolio had abundant independent capacity. Request discovery
+    # proactively whenever useful backlog is below the configured target.
+    target = max(0, min(target_useful_workstreams, total_slots))
+    minimum = max(0, min(min_useful_workstreams, target or total_slots))
+    fanout_deficit = max(0, target - runnable_total)
+    below_minimum = minimum > 0 and runnable_total < minimum
+    expansion_targets = [
+        state.project_id for state in states if not state.backpressure
+    ]
+    proactive_expansion_requested = fanout_deficit > 0 and bool(expansion_targets)
+
     safe_expansion_requested = runnable_total == 0 and bool(safe_expansion_targets)
-    self_replan = runnable_total == 0 and (
-        safe_backlog_exhausted or all_ready_work_gated or safe_expansion_requested
+    self_replan = (
+        proactive_expansion_requested
+        or (
+            runnable_total == 0
+            and (safe_backlog_exhausted or all_ready_work_gated or safe_expansion_requested)
+        )
     )
 
-    if safe_expansion_requested:
+    if proactive_expansion_requested:
+        replan_reason = "fanout-deficit"
+        replan_mode = "discover-independent-product-work-before-queue-exhaustion"
+    elif safe_expansion_requested:
         replan_reason = "safe-expansion-around-human-gates"
         replan_mode = "freeze-gated-branches-and-expand-safe-work"
     elif all_ready_work_gated:
@@ -246,17 +277,41 @@ def portfolio_decision(states: list[ProjectState], total_slots: int) -> dict[str
         "safeExpansionRequested": safe_expansion_requested,
         "humanGateStopsPortfolio": False,
         "safeBacklogExhausted": safe_backlog_exhausted,
+        "fanoutTarget": target,
+        "fanoutMinimum": minimum,
+        "fanoutDeficit": fanout_deficit,
+        "belowFanoutMinimum": below_minimum,
+        "expansionTargets": expansion_targets,
+        "proactiveExpansionRequested": proactive_expansion_requested,
         "selfReplan": self_replan,
         "replanReason": replan_reason,
         "replanMode": replan_mode,
     }
 
 
+
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
     config = json.loads((root / "razzo" / "projects.json").read_text(encoding="utf-8"))
+    protocol = json.loads((root / "razzo" / "protocol.json").read_text(encoding="utf-8"))
+    fanout = protocol.get("acceleration", {}).get("dynamicFanout", {})
+    target = fanout.get("targetUsefulWorkstreams", 0)
+    minimum = fanout.get("minUsefulWorkstreams", 0)
+    if not isinstance(target, int) or isinstance(target, bool) or target < 0:
+        raise ValueError("targetUsefulWorkstreams must be a non-negative integer")
+    if not isinstance(minimum, int) or isinstance(minimum, bool) or minimum < 0:
+        raise ValueError("minUsefulWorkstreams must be a non-negative integer")
     states = load_reconciled_states(root, config)
-    print(json.dumps(portfolio_decision(states, config["totalNormalSlots"]), indent=2, sort_keys=True))
+    print(json.dumps(
+        portfolio_decision(
+            states,
+            config["totalNormalSlots"],
+            target_useful_workstreams=target,
+            min_useful_workstreams=minimum,
+        ),
+        indent=2,
+        sort_keys=True,
+    ))
 
 
 if __name__ == "__main__":
