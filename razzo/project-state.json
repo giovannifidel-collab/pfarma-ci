@@ -1,10 +1,10 @@
 {
   "version": 1,
   "sourceOfTruth": "github-task-graphs-at-canonical-exact-refs",
-  "rediscoveryEpoch": "2026-07-29T02:38:30+02:00",
+  "rediscoveryEpoch": "2026-07-29T03:01:00+02:00",
   "projects": [
-    {"id":"project-giovanni","exactSha":"3a4bc499d8a2a23ace43c0e04b0b561f568ad363","taskGraphVersion":41,"ready":1,"backpressure":false,"humanGate":true,"blocker":"user-data-write"},
-    {"id":"pfarma-cloud","exactSha":"62a6ed562149faff928d0abd11c5c6e18faf71d8","taskGraphVersion":35,"ready":1,"backpressure":false,"humanGate":true,"blocker":"destructive-production"},
-    {"id":"family-cloud","exactSha":"950ea65093556d90eadd420fe577e54f6b9b5253","taskGraphVersion":59,"ready":1,"backpressure":false,"humanGate":true,"blocker":"irreplaceable-data"}
+    {"id":"project-giovanni","exactSha":"1c61fdc543288039b2c30e781dd7c2a82cb4d13f","taskGraphVersion":42,"ready":1,"backpressure":false,"humanGate":true,"blocker":"user-data-write"},
+    {"id":"pfarma-cloud","exactSha":"dd31a6d0bbd70083adc421330b6c793aaeb527a5","taskGraphVersion":36,"ready":1,"backpressure":false,"humanGate":true,"blocker":"destructive-production"},
+    {"id":"family-cloud","exactSha":"f7166978ab3a14d9ec4b00224cf56cc84a13c1a2","taskGraphVersion":60,"ready":1,"backpressure":false,"humanGate":true,"blocker":"irreplaceable-data"}
   ]
 }
