@@ -109,6 +109,8 @@ Prioritize:
 
 Do not allow administrative work to consume most execution slots.
 
+When acceleration is enabled in `razzo/protocol.json`, use dynamic DAG-driven fan-out rather than one-workstream-per-project behavior. The target is useful independent work, never artificial task inflation. Respect the configured soft maximum and reduce fan-out automatically when collision rate, CI pressure or failure rate rises.
+
 ### 6. VERIFY
 
 A result is complete only after real evidence exists on GitHub:
@@ -143,6 +145,26 @@ Continue:
 
 for the available execution budget.
 
+When acceleration is enabled, a generation boundary is not an end-of-cycle condition. Consume the next safe generation in the **same invocation** while budget remains, up to the protocol's `maxIntraCycleGenerations`. The scheduled trigger is a watchdog/recovery entry point, not the primary reason progress continues.
+
+### 9. PIPELINE OVERLAP
+
+When exact immutable refs and collision domains make it safe, overlap stages instead of serially idling:
+
+- begin next-generation discovery while the prior generation is verifying;
+- build independent next-generation work while prior verification is running;
+- never integrate against a stale mutable base;
+- serialize only the collision/integration points that require serialization;
+- preserve leases, idempotency, exact-SHA gates and backpressure.
+
+The desired execution shape is a bounded pipeline, not `build -> wait -> verify -> wait -> discover`.
+
+### 10. HOMO NOVUS FEEDBACK CONTROL
+
+For every completed generation, record enough telemetry to compare strategy quality: discovery/build/verify/integration time, queue wait, verified throughput, candidate failures, retries, collisions, backpressure, useful workstreams, product integrations and generation-to-generation latency.
+
+HOMO NOVUS may alter decomposition depth, fan-out, worker allocation and overlap strategy only when the new strategy is measurable and reversible. Promote a strategy only when comparable generations show improvement without violating correctness or safety. Roll back a strategy that regresses verified product throughput, failure rate, collision safety or resumability.
+
 ## Human gates
 
 Use the protocol and repository-local policy. At minimum, require a real human decision for:
@@ -168,4 +190,4 @@ When a new enabled registry entry appears, begin managing it automatically on th
 
 Leave GitHub coherent, exact-ref verifiable and immediately resumable by the next scheduled or interactive `AVANZA TUTTO` execution.
 
-A cycle must not end merely because the last planned task finished. It ends only after self-replan has evaluated the next useful product state and either created/consumed safe follow-on work or established that a true human gate is the only meaningful blocker.
+A cycle must not end merely because the last planned task finished. It ends only after self-replan has evaluated the next useful product state and either created/consumed safe follow-on work or established that a true human gate is the only meaningful blocker. With acceleration enabled, also require the intra-cycle recursion budget to be exhausted or a protocol stop condition to be reached before ending the invocation.

@@ -1,8 +1,8 @@
 {
   "protocol": "RAZZO",
-  "protocolVersion": 3,
+  "protocolVersion": 4,
   "architecture": "HOMO_NOVUS",
-  "architectureVersion": 1,
+  "architectureVersion": 2,
   "architectureSpec": "embedded:homoNovus",
   "compatibility": {
     "operatorCommand": "AVANZA TUTTO",
@@ -69,6 +69,55 @@
     "differentiationRule": "Workers specialize by bounded role and collision domain while sharing the same canonical goal, interfaces, repository state and verification contract.",
     "phenotypeRule": "The operator supplies the desired phenotype: goals, priorities, acceptance boundaries and human-gate decisions. HOMO NOVUS infers the hierarchy, missing structures and next safe work without requiring routine task enumeration."
   },
+  "acceleration": {
+    "enabled": true,
+    "mode": "recursive-overlapped-adaptive",
+    "schedulerRole": "watchdog-recovery-not-primary-progress-engine",
+    "maxIntraCycleGenerations": 4,
+    "minIntraCycleGenerationsWhenSafeWorkExists": 2,
+    "continueUntil": [
+      "execution-budget-exhausted",
+      "integration-backpressure",
+      "no-safe-independent-product-work",
+      "true-human-gate-only"
+    ],
+    "dynamicFanout": {
+      "enabled": true,
+      "minUsefulWorkstreams": 3,
+      "targetUsefulWorkstreams": 12,
+      "softMaxUsefulWorkstreams": 20,
+      "rule": "Fan out only across independently verifiable collision domains justified by the real DAG. Never create work merely to fill slots."
+    },
+    "pipelineOverlap": {
+      "enabled": true,
+      "allowNextGenerationDiscoveryDuringVerify": true,
+      "allowIndependentBuildDuringPriorVerify": true,
+      "immutableBaseRequired": true,
+      "integrationStillSerializedByCollisionDomain": true
+    },
+    "homoStrategyOptimizer": {
+      "enabled": true,
+      "observe": [
+        "discovery_seconds",
+        "build_seconds",
+        "verify_seconds",
+        "integration_seconds",
+        "queue_wait_seconds",
+        "verified_throughput",
+        "candidate_failure_rate",
+        "retry_rate",
+        "collision_rate",
+        "backpressure_rate",
+        "useful_workstreams_per_generation",
+        "product_integrations_per_generation",
+        "generation_to_generation_seconds"
+      ],
+      "objective": "maximize verified product utility throughput while preserving exact-SHA correctness, gates, collision safety and resumability",
+      "promoteStrategyOnlyIfMeasuredBetter": true,
+      "rollbackStrategyOnRegression": true,
+      "minimumComparableGenerations": 2
+    }
+  },
   "execution": {
     "productFirst": true,
     "outcomeDrivenAutonomy": true,
@@ -85,7 +134,9 @@
     "readyZeroMeansStop": false,
     "nextUsefulStateRule": "After each verified integration, infer the next user-meaningful bottleneck or missing journey and immediately discover/plan safe work toward that state without waiting for the operator to name the next task.",
     "testabilityRule": "When enough capabilities exist for meaningful human use, prioritize making the product runnable, observable and testable by the user before accumulating lower-value isolated features.",
-    "recursiveExecutionRule": "For the selected highest-level deficit, descend through the HOMO NOVUS hierarchy only as far as needed to expose safe independent work; execute in parallel where the DAG allows; verify bottom-up and then verify emergent behavior top-down."
+    "recursiveExecutionRule": "For the selected highest-level deficit, descend through the HOMO NOVUS hierarchy only as far as needed to expose safe independent work; execute in parallel where the DAG allows; verify bottom-up and then verify emergent behavior top-down.",
+    "intraCycleRecursionRule": "After each verified integration, immediately self-replan and consume the next safe generation in the same invocation while execution budget remains. Do not wait for the next scheduled trigger merely because a generation boundary was reached.",
+    "overlapRule": "Discovery and planning for the next generation may overlap prior-generation verification/build when based on immutable exact refs and independent collision domains; integration remains guarded by exact-SHA, leases and backpressure."
   },
   "humanGateClasses": [
     "real-secrets",
