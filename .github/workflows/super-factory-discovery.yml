@@ -1,0 +1,45 @@
+name: RAZZO Super Factory Discovery
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  discover-shards:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout control plane
+        uses: actions/checkout@v4
+
+      - name: Discover public RAZZO shard repositories
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: giovannifidel-collab
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          gh api --paginate "/users/${OWNER}/repos?per_page=100&type=owner&sort=full_name" \
+            --jq '.[] | select(.private == false) | .name' \
+            | grep -E '^razzo-shard-[0-9]{4}$' \
+            | sort -u \
+            > out/shards.txt || true
+
+          COUNT=$(wc -l < out/shards.txt | tr -d ' ')
+          printf '{\n  "owner": "%s",\n  "discovered": %s,\n  "capacity": 1000,\n  "repositories": [\n' "$OWNER" "$COUNT" > out/shards.json
+          awk '{printf "    \"%s\"%s\n", $0, (NR==total ? "" : ",")}' total="$COUNT" out/shards.txt >> out/shards.json
+          printf '  ]\n}\n' >> out/shards.json
+
+          echo "Discovered shard repositories: $COUNT"
+          cat out/shards.json
+
+      - name: Upload shard discovery snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: razzo-super-factory-shard-discovery
+          path: out/shards.json
+          if-no-files-found: error
