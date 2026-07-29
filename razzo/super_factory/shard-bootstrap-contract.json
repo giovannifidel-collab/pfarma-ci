@@ -1,0 +1,24 @@
+{
+  "schema": "razzo.shard-bootstrap.v1",
+  "states": ["EMPTY", "PROVISIONING", "PROVISIONED", "HEALTHY", "READY", "QUARANTINED"],
+  "repository_pattern": "razzo-shard-[0-9]{4}",
+  "required_files": [".razzo/shard.json", ".github/workflows/razzo-shard-worker.yml"],
+  "worker_contract": {
+    "required_identity": ["shard_id", "repository", "control_plane"],
+    "required_execution_fields": ["execution_id", "work_item_id", "project_id", "generation_id", "input_sha", "collision_domain", "idempotency_key"],
+    "required_receipt_fields": ["execution_id", "work_item_id", "project_id", "generation_id", "shard_id", "input_sha", "started_at", "ended_at", "status", "evidence", "output_sha", "verification_state"]
+  },
+  "safety": {
+    "human_gates_preserved": true,
+    "exact_sha_required": true,
+    "collision_domain_lease_required": true,
+    "idempotency_required": true,
+    "fail_closed": true
+  },
+  "rollout": {
+    "batches": [5, 10, 25, 50, 100],
+    "advance_only_if_previous_batch_healthy": true,
+    "content_creation_serialized": true,
+    "secondary_rate_limit_backoff": "exponential"
+  }
+}
