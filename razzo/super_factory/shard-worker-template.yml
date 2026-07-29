@@ -1,0 +1,36 @@
+name: RAZZO Shard Worker
+on:
+  workflow_dispatch:
+    inputs:
+      execution_id: {required: true, type: string}
+      work_item_id: {required: true, type: string}
+      project_id: {required: true, type: string}
+      generation_id: {required: true, type: string}
+      input_sha: {required: true, type: string}
+      collision_domain: {required: true, type: string}
+      idempotency_key: {required: true, type: string}
+permissions:
+  contents: read
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate dispatch envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${{ inputs.execution_id }}"
+          test -n "${{ inputs.work_item_id }}"
+          test -n "${{ inputs.input_sha }}"
+          test -n "${{ inputs.idempotency_key }}"
+          echo "RAZZO shard dispatch envelope accepted"
+      - name: Emit bootstrap health receipt
+        shell: bash
+        run: |
+          mkdir -p receipts
+          printf '%s\n' '{"status":"HEALTHY","verification_state":"BOOTSTRAP_ONLY","product_progress":false}' > "receipts/${{ inputs.execution_id }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-receipt-${{ inputs.execution_id }}
+          path: receipts/${{ inputs.execution_id }}.json
