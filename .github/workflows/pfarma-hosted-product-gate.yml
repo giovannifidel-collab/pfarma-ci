@@ -1,0 +1,49 @@
+name: PFarma Hosted Product Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact lower-case 40-character pfarma-cloud commit SHA to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-product-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate exact SHA input
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.target_sha }}" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid target_sha"; exit 1; }
+
+      - name: Checkout exact PFarma product SHA
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ inputs.target_sha }}
+          token: ${{ secrets.RAZZO_FACTORY_TOKEN }}
+          fetch-depth: 0
+          path: pfarma-cloud
+
+      - name: Prove exact checkout
+        shell: bash
+        working-directory: pfarma-cloud
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "${{ inputs.target_sha }}"
+
+      - name: Run focused product regressions
+        shell: bash
+        working-directory: pfarma-cloud
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q \
+            tests/test_inventory_dashboard_low_stock_missing_product_link.py \
+            tests/test_inventory_dashboard_low_stock_product_placeholder.py
