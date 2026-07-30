@@ -1,0 +1,81 @@
+{
+  "protocol": "RAZZO",
+  "protocolVersion": 5,
+  "executionEngine": "RAZZO_V6_V7",
+  "cycleId": "cycle-2026-07-30T21-02-00Z",
+  "sourceOfTruth": "github",
+  "portfolio": {
+    "enabledProjects": [
+      "project-giovanni",
+      "pfarma-cloud",
+      "family-cloud"
+    ],
+    "scannedProjects": 3
+  },
+  "operatorRobot": {
+    "projectId": "pfarma-cloud",
+    "status": "READY",
+    "closedLoopProved": true,
+    "discovery": {
+      "workflow": "PFarma Operator Robot READY Control",
+      "runId": 30581423805,
+      "exactSha": "5f914afc8b84edc1157e0dbe9c26f099e44a27ce",
+      "issue": 2040,
+      "fingerprint": "b6dcc008beaf0c8c"
+    },
+    "acquisition": {
+      "priority": "P0",
+      "canonicalPullRequest": 2041,
+      "candidateSha": "a5b0385b0bb1d22d50d8ecd446d1b9bc6d68e8a0",
+      "targetLane": "integration/razzo",
+      "collisionDomain": "pfarma-cloud:operator-robot:closed-loop-canary-evidence-v2",
+      "idempotencyKey": "operator-robot:b6dcc008beaf0c8c"
+    },
+    "verification": {
+      "duplicateCandidateRunId": 30581618102,
+      "duplicateCandidateSha": "a7530dd4dda98358b8ab3f9cf67653c2a28adcd5",
+      "duplicateCandidateConclusion": "success",
+      "duplicatePullRequest": 2042,
+      "duplicateDisposition": "closed-unmerged-after-canonical-integration"
+    },
+    "integration": {
+      "pullRequest": 2041,
+      "integrated": true,
+      "authoritativeRetestSha": "6c0c5230ef81427e3a1e98540b87ed6839ef76f8"
+    },
+    "retest": {
+      "workflow": "PFarma Operator Robot READY Control",
+      "runId": 30581631957,
+      "exactSha": "6c0c5230ef81427e3a1e98540b87ed6839ef76f8",
+      "issueAutoClosed": true,
+      "issue": 2040
+    },
+    "safety": {
+      "easyFarmMutation": false,
+      "inventoryMutation": false,
+      "salesMutation": false,
+      "paymentsMutation": false,
+      "fiscalMutation": false,
+      "productionDataMutation": false
+    }
+  },
+  "workItems": {
+    "created": 1,
+    "eligible": 1,
+    "dispatched": 1,
+    "completed": 1,
+    "verified": 1,
+    "integrated": 1,
+    "realShardsUsed": 1,
+    "parallelPeak": 1
+  },
+  "productProgress": false,
+  "generationPromoted": false,
+  "classificationNote": "Closed-loop certification and control-plane evidence are operational capability, not standalone user-visible product progress.",
+  "humanGates": [],
+  "safeWorkRemaining": [
+    "project-giovanni PR #897 lacks exact-SHA workflow evidence",
+    "family-cloud issue #297 remains discovered without an active product PR",
+    "pfarma-cloud delivery issue #2030 can be closed after receipt integration"
+  ]
+}
