@@ -3,8 +3,8 @@ name: HOMO NOVUS Phase 4 Certify
 on:
   workflow_dispatch:
     inputs:
-      evidence_json:
-        description: Compact phase4 evidence JSON
+      evidence_b64:
+        description: Base64-encoded compact phase4 evidence JSON
         required: true
         type: string
 
@@ -16,14 +16,33 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.RAZZO_FACTORY_TOKEN || github.token }}
+      EVIDENCE_B64: ${{ inputs.evidence_b64 }}
     steps:
       - uses: actions/checkout@v4
-      - name: Materialize evidence
+      - name: Materialize evidence safely
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p phase4/receipts
-          printf '%s' '${{ inputs.evidence_json }}' > phase4/evidence.json
+          python - <<'PY'
+          import base64, json, os
+          from pathlib import Path
+
+          raw = os.environ.get('EVIDENCE_B64', '')
+          if not raw:
+              raise SystemExit('missing evidence_b64')
+          try:
+              decoded = base64.b64decode(raw, validate=True)
+              evidence = json.loads(decoded.decode('utf-8'))
+          except Exception as exc:
+              raise SystemExit(f'invalid base64 evidence JSON: {exc}')
+          if not isinstance(evidence, dict):
+              raise SystemExit('evidence JSON object required')
+          Path('phase4/evidence.json').write_text(
+              json.dumps(evidence, sort_keys=True, separators=(',', ':')) + '\n',
+              encoding='utf-8',
+          )
+          PY
       - name: Download exact artifacts
         shell: bash
         run: |
