@@ -1,37 +1,37 @@
 {
-  "version": 2,
-  "sourceOfTruth": "github-open-product-prs-at-exact-heads",
-  "rediscoveryEpoch": "2026-07-30T18:01:53Z",
+  "version": 3,
+  "sourceOfTruth": "github-live-reconciliation",
+  "rediscoveryEpoch": "2026-07-30T22:04:08Z",
   "projects": [
     {
       "id": "project-giovanni",
-      "exactSha": "4b5cccaeda6642c5941559444b1cc84588cba898",
-      "ready": 1,
+      "exactSha": "4de5ffa188aa31d9d1738818738743c8c360f827",
+      "ready": 0,
       "backpressure": true,
       "humanGate": false,
-      "blocker": "exact-sha-ci-failing-retry-dispatched",
-      "queueHint": "PR #919",
-      "collisionDomain": "project-giovanni:wearable-ci"
+      "blocker": "stale-nonmergeable-pr-without-exact-sha-ci",
+      "queueHint": "PR #897 requires conflict-free successor or closure",
+      "collisionDomain": "project-giovanni:sync-outbox-visible-status-target"
     },
     {
       "id": "pfarma-cloud",
-      "exactSha": "73352332d6d8c80339cb20c132a834f71c1612c3",
-      "ready": 1,
-      "backpressure": true,
+      "exactSha": "6c0c5230ef81427e3a1e98540b87ed6839ef76f8",
+      "ready": 2,
+      "backpressure": false,
       "humanGate": false,
-      "blocker": "required-hosted-product-gates-incomplete",
-      "queueHint": "PR #2029",
-      "collisionDomain": "pfarma-cloud:inventory-dashboard:low-stock-location"
+      "blocker": null,
+      "queueHint": "OPERATOR FEEDBACK #2032 and #2033; no open machine-marked robot issue",
+      "collisionDomain": "pfarma-cloud:operator-feedback"
     },
     {
       "id": "family-cloud",
       "exactSha": "b9e8f5f08fa2c322ef6782a46d51ccbdeaead1ae",
-      "ready": 1,
-      "backpressure": true,
+      "ready": 0,
+      "backpressure": false,
       "humanGate": false,
-      "blocker": "exact-sha-ci-failing-retry-dispatched",
-      "queueHint": "PR #298",
-      "collisionDomain": "family-cloud:explicit-save-control"
+      "blocker": null,
+      "queueHint": "issue #297 reconciled closed after merged PR #298; discovery required",
+      "collisionDomain": "family-cloud:discovery"
     }
   ]
 }
