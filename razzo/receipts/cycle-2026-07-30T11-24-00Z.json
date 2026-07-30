@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "cycle": "2026-07-30T11:24:00Z",
+  "protocol": "RAZZO V6/V7 Operational Product Factory",
+  "portfolioSource": "razzo/project-state.json",
+  "enabledProjects": ["project-giovanni", "pfarma-cloud", "family-cloud"],
+  "pfarmaOperatorFeedbackP0": {
+    "query": "open issues with exact title OPERATOR FEEDBACK",
+    "count": 0
+  },
+  "queue": [
+    {"project": "pfarma-cloud", "issue": 2022, "pr": 2023, "collisionDomain": "pfarma-cloud:inventory-dashboard:low-stock-product-placeholder"},
+    {"project": "family-cloud", "issue": 297, "pr": 298, "collisionDomain": "family-cloud:saved-view:explicit-save-control-identity"}
+  ],
+  "execution": {
+    "pfarma-cloud": {
+      "candidateSha": "c9ae0383f385fd970faf11271b160912088181b1",
+      "buildMaterialized": true,
+      "scopeClean": false,
+      "exactShaGateComplete": false,
+      "integrated": false
+    },
+    "family-cloud": {
+      "dispatchSha": "2c994058b02719f730def874acf5196181762466",
+      "temporaryMaterializerInstallSha": "86f2b1ec2ff1772c96571cda2ddc7561869c1eba",
+      "temporaryMaterializerCleanupSha": "0a991476e99e04e7f17b33c7cecc225d5571211a",
+      "buildMaterialized": false,
+      "exactShaGateComplete": false,
+      "integrated": false,
+      "humanGateUntouched": "FC-A-023"
+    },
+    "project-giovanni": {
+      "ready": 1,
+      "openProductQueue": 0,
+      "discoveryPerformed": true
+    }
+  },
+  "result": {
+    "discover": "complete",
+    "queue": "complete",
+    "dispatch": "complete",
+    "buildExecute": "partial",
+    "receipts": "complete",
+    "verify": "complete",
+    "integrate": "fail-closed",
+    "selfReplan": "retain #2022 and #297",
+    "generationPromoted": false,
+    "productCreditGranted": false
+  }
+}
