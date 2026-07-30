@@ -1,4 +1,4 @@
-# RAZZO control-plane execution worker; zero standalone product credit.
+# RAZZO control-plane builder; zero standalone product credit.
 name: RAZZO Product Data Plane 901 2019 293
 
 on:
@@ -10,45 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  giovanni-901:
-    runs-on: ubuntu-latest
-    environment: pfarma-ci-trusted
-    steps:
-      - name: Require source token
-        env:
-          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-        run: test -n "$SOURCE_TOKEN"
-      - uses: actions/checkout@v4
-        with:
-          repository: giovannifidel-collab/project-giovanni
-          ref: agent/razzo-901-stale-focus-artifact-cleanup
-          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-          fetch-depth: 0
-          persist-credentials: true
-      - name: Implement and test Giovanni #901
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('app/sync-status/OutboxStatusNavigationEnhancer.tsx')
-          s=p.read_text()
-          old='''function clearStaleFocusTargets(eventCards: HTMLElement[]) {\n  for (const card of eventCards) {\n'''
-          new='''function clearStaleFocusTargets(eventCards: HTMLElement[]) {\n  const enhancerOwnedCards = Array.from(document.querySelectorAll<HTMLElement>(\n    'article[data-outbox-focus-target="true"], article[data-outbox-tabindex-owner="outboxStatusNavigation"], article[data-outbox-target-name-owner="outboxStatusNavigation"]',\n  ));\n  const candidates = Array.from(new Set([...eventCards, ...enhancerOwnedCards]));\n  for (const card of candidates) {\n'''
-          if old in s:
-              p.write_text(s.replace(old,new,1))
-          elif 'const enhancerOwnedCards = Array.from(document.querySelectorAll<HTMLElement>' not in s:
-              raise SystemExit('Giovanni #901 source anchor missing')
-          Path('factory/workout-sync-outbox-stale-focus-artifact-cleanup.test.mjs').write_text('''import assert from "node:assert/strict";\nimport fs from "node:fs";\nimport test from "node:test";\nconst source = fs.readFileSync(new URL("../app/sync-status/OutboxStatusNavigationEnhancer.tsx", import.meta.url), "utf8");\ntest("cleanup includes enhancer-owned cards that lost sync-event identity",()=>{\n assert.match(source,/const enhancerOwnedCards = Array\\.from\\(document\\.querySelectorAll<HTMLElement>/);\n assert.match(source,/data-outbox-focus-target="true"/);\n assert.match(source,/data-outbox-tabindex-owner="outboxStatusNavigation"/);\n assert.match(source,/data-outbox-target-name-owner="outboxStatusNavigation"/);\n assert.match(source,/const candidates = Array\\.from\\(new Set\\(\\[\\.\\.\\.eventCards, \\.\\.\\.enhancerOwnedCards\\]\\)\\)/);\n});\ntest("cleanup remains owner-scoped and read-only",()=>{\n assert.match(source,/card\\.dataset\\.outboxTabindexOwner === TARGET_TABINDEX_OWNER/);\n assert.match(source,/card\\.dataset\\.outboxTargetNameOwner === TARGET_NAME_OWNER/);\n assert.doesNotMatch(source,/fetch\\s*\\(|XMLHttpRequest|localStorage\\.(?:setItem|removeItem|clear)\\s*\\(/);\n});\n''')
-          PY
-          node --test factory/workout-sync-outbox-stale-focus-artifact-cleanup.test.mjs factory/workout-sync-outbox-stale-focus-guard.test.mjs
-      - name: Persist Giovanni candidate
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm -f .github/workflows/razzo-901-worker.yml || true
-          git add app/sync-status/OutboxStatusNavigationEnhancer.tsx factory/workout-sync-outbox-stale-focus-artifact-cleanup.test.mjs
-          if ! git diff --cached --quiet; then git commit -m 'RAZZO #901 clean stale OUTBOX focus artifacts'; git push origin HEAD:agent/razzo-901-stale-focus-artifact-cleanup; fi
-
-  pfarma-2019:
+  pfarma-2019-builder:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     steps:
@@ -62,8 +24,8 @@ jobs:
           ref: agent/razzo-2018-2019-low-stock-link
           token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           fetch-depth: 0
-          persist-credentials: true
-      - name: Implement and test PFarma #2019
+          persist-credentials: false
+      - name: Implement PFarma #2019
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -77,48 +39,19 @@ jobs:
           if old in s: s=s.replace(old,new,1)
           elif 'action=_low_stock_action(item)' not in s: raise SystemExit('PFarma #2019 row anchor missing')
           p.write_text(s)
-          Path('tests/test_inventory_dashboard_low_stock_missing_product_link.py').write_text('''from web.inventory_dashboard_page import _low_stock_action\n\ndef test_low_stock_action_suppresses_missing_or_blank_product_id():\n assert "Apri prodotto" not in _low_stock_action({"product_id":None})\n assert "Apri prodotto" not in _low_stock_action({"product_id":"   "})\n assert "Prodotto non disponibile" in _low_stock_action({"product_id":None})\n\ndef test_low_stock_action_keeps_encoded_real_product_link():\n html=_low_stock_action({"product_id":"ABC 123"})\n assert "href='/products/ABC%20123'" in html\n assert "Apri prodotto" in html\n''')
+          Path('tests/test_inventory_dashboard_low_stock_missing_product_link.py').write_text('''from web.inventory_dashboard_page import _low_stock_action\n\ndef test_low_stock_action_suppresses_missing_or_blank_product_id():\n    assert "Apri prodotto" not in _low_stock_action({"product_id": None})\n    assert "Apri prodotto" not in _low_stock_action({"product_id": "   "})\n    assert "Prodotto non disponibile" in _low_stock_action({"product_id": None})\n\ndef test_low_stock_action_keeps_encoded_real_product_link():\n    html = _low_stock_action({"product_id": "ABC 123"})\n    assert "href='/products/ABC%20123'" in html\n    assert "Apri prodotto" in html\n''')
           PY
+      - name: Test PFarma #2019
+        run: |
+          python -m pip install -q pytest
           python -m pytest -q tests/test_inventory_dashboard_low_stock_missing_product_link.py tests/test_inventory_dashboard_missing_product_link.py
-      - name: Persist PFarma candidate
+      - name: Stage artifact
         run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm -f .github/workflows/razzo-2018-2019-worker.yml || true
-          git add web/inventory_dashboard_page.py tests/test_inventory_dashboard_low_stock_missing_product_link.py
-          if ! git diff --cached --quiet; then git commit -m 'RAZZO #2019 suppress empty low-stock product links'; git push origin HEAD:agent/razzo-2018-2019-low-stock-link; fi
-
-  family-293:
-    runs-on: ubuntu-latest
-    environment: pfarma-ci-trusted
-    steps:
-      - name: Require source token
-        env:
-          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-        run: test -n "$SOURCE_TOKEN"
-      - uses: actions/checkout@v4
+          mkdir -p /tmp/razzo2019/web /tmp/razzo2019/tests
+          cp web/inventory_dashboard_page.py /tmp/razzo2019/web/
+          cp tests/test_inventory_dashboard_low_stock_missing_product_link.py /tmp/razzo2019/tests/
+      - uses: actions/upload-artifact@v4
         with:
-          repository: giovannifidel-collab/family-cloud
-          ref: agent/razzo-292-293-canonical-save-scope
-          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-          fetch-depth: 0
-          persist-credentials: true
-      - name: Implement and test Family #293
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('web/alternate-name-cancel-focus-return.js'); s=p.read_text()
-          old='''  const explicitSave = target.closest("#save-current-view");\n  if (explicitSave) {\n'''
-          new='''  const explicitSave = target.closest("#save-current-view");\n  const explicitSavePanel = currentSavedViewPanel();\n  if (explicitSave && explicitSavePanel instanceof HTMLElement && explicitSavePanel.contains(explicitSave)) {\n'''
-          if old in s: p.write_text(s.replace(old,new,1))
-          elif 'explicitSavePanel.contains(explicitSave)' not in s: raise SystemExit('Family #293 source anchor missing')
-          Path('factory/workout-alternate-name-save-canonical-panel.test.mjs').write_text('''import assert from "node:assert/strict";\nimport fs from "node:fs";\nimport test from "node:test";\nconst source=fs.readFileSync(new URL("../web/alternate-name-cancel-focus-return.js",import.meta.url),"utf8");\ntest("explicit save belongs to canonical saved-view panel",()=>{\n assert.match(source,/const explicitSavePanel = currentSavedViewPanel\\(\\);/);\n assert.match(source,/explicitSavePanel instanceof HTMLElement && explicitSavePanel\\.contains\\(explicitSave\\)/);\n});\ntest("save scope remains local-only",()=>{assert.doesNotMatch(source,/fetch\\s*\\(|XMLHttpRequest|localStorage\\.(?:setItem|removeItem|clear)\\s*\\(/);});\n''')
-          PY
-          node --test factory/workout-alternate-name-save-canonical-panel.test.mjs factory/workout-alternate-name-cancel-canonical-panel.test.mjs
-      - name: Persist Family candidate
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm -f .github/workflows/razzo-292-293-worker.yml || true
-          git add web/alternate-name-cancel-focus-return.js factory/workout-alternate-name-save-canonical-panel.test.mjs
-          if ! git diff --cached --quiet; then git commit -m 'RAZZO #293 scope alternate-name save to canonical panel'; git push origin HEAD:agent/razzo-292-293-canonical-save-scope; fi
+          name: pfarma-2019-candidate
+          path: /tmp/razzo2019
+          if-no-files-found: error
