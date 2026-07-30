@@ -48,21 +48,28 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Dispatch V6 operational proof wave
         run: python razzo/v6/runtime.py operational-proof --concurrency 4 --out razzo/v6/out
-      - name: Verify aggregate receipt
+      - name: Verify queue, execution receipts and aggregate receipt
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          p = json.loads(Path('razzo/v6/out/cycle-receipt.json').read_text())
-          assert p['workstreams_dispatched'] >= 4
-          assert p['parallel_peak'] >= 2
-          assert p['workstreams_failed'] == 0
-          assert p['duplicate_execution'] is False
-          assert p['generation_promoted'] is False
-          print(json.dumps(p, indent=2))
+          out = Path('razzo/v6/out')
+          queue = json.loads((out / 'queue-state.json').read_text())
+          receipts = json.loads((out / 'execution-receipts.json').read_text())
+          cycle = json.loads((out / 'cycle-receipt.json').read_text())
+          assert len(queue) >= 8
+          assert cycle['workstreams_dispatched'] >= 4
+          assert len(receipts) == cycle['workstreams_dispatched']
+          assert cycle['parallel_peak'] >= 2
+          assert cycle['workstreams_failed'] == 0
+          assert cycle['workstreams_verified'] == cycle['workstreams_completed']
+          assert cycle['duplicate_execution'] is False
+          assert cycle['generation_promoted'] is False
+          print(json.dumps(cycle, indent=2))
           PY
       - uses: actions/upload-artifact@v4
         with:
           name: razzo-v6-operational-proof-${{ github.event.pull_request.head.sha || github.sha }}
           path: razzo/v6/out/*.json
           if-no-files-found: error
+          retention-days: 30
