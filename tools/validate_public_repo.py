@@ -69,6 +69,9 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/super_factory/dispatcher.py"),
     PurePosixPath("razzo/super_factory/test_dispatcher.py"),
     PurePosixPath("razzo/super_factory/dispatch-work.ps1"),
+    PurePosixPath("razzo/super_factory/phase3_composer.py"),
+    PurePosixPath("razzo/super_factory/test_phase3_composer.py"),
+    PurePosixPath("razzo/super_factory/run-phase3.ps1"),
     PurePosixPath("razzo/super_factory/provision-shards.ps1"),
     PurePosixPath("razzo/super_factory/shard-bootstrap-contract.json"),
     PurePosixPath("razzo/super_factory/shard-worker-template.yml"),
@@ -109,44 +112,29 @@ REF_FILES = (
     "razzo/project-offline-ref.txt",
 )
 
-
 def _validate_ref_file(filename: str) -> None:
     ref_file = ROOT / filename
-    if not ref_file.exists():
-        return
+    if not ref_file.exists(): return
     value = ref_file.read_text(encoding="ascii").strip()
     if len(value) != 40 or any(ch not in "0123456789abcdef" for ch in value):
         raise SystemExit(f"{filename} must contain exactly one lowercase 40-character commit SHA.")
 
-
 def main() -> None:
-    files: list[PurePosixPath] = []
+    files=[]
     for path in ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = PurePosixPath(path.relative_to(ROOT).as_posix())
-        if rel.parts and rel.parts[0] in IGNORED_ROOTS:
-            continue
+        if not path.is_file(): continue
+        rel=PurePosixPath(path.relative_to(ROOT).as_posix())
+        if rel.parts and rel.parts[0] in IGNORED_ROOTS: continue
         files.append(rel)
-    unexpected = sorted(str(path) for path in files if path not in ALLOWED_EXACT)
-    if unexpected:
-        raise SystemExit("Unexpected public-repository files rejected: " + ", ".join(unexpected))
-    bundle = ROOT / "bundle" / "pfarma-ci.bundle.json"
+    unexpected=sorted(str(path) for path in files if path not in ALLOWED_EXACT)
+    if unexpected: raise SystemExit("Unexpected public-repository files rejected: "+", ".join(unexpected))
+    bundle=ROOT/"bundle"/"pfarma-ci.bundle.json"
     if bundle.exists():
-        try:
-            payload = json.loads(bundle.read_text(encoding="utf-8"))
-        except Exception as exc:
-            raise SystemExit("Encrypted bundle must be valid JSON.") from exc
-        if not isinstance(payload, dict) or set(payload) != BUNDLE_REQUIRED_FIELDS:
-            raise SystemExit("Encrypted bundle schema mismatch.")
-        if payload.get("format") != "PFARMA_CI_BUNDLE_V2" or payload.get("algorithm") != "AES-256-GCM":
-            raise SystemExit("Encrypted bundle must use the approved authenticated format.")
-        if not isinstance(payload.get("ciphertext_b64"), str) or not payload["ciphertext_b64"]:
-            raise SystemExit("Encrypted bundle has no ciphertext.")
-    for filename in REF_FILES:
-        _validate_ref_file(filename)
+        try: payload=json.loads(bundle.read_text(encoding="utf-8"))
+        except Exception as exc: raise SystemExit("Encrypted bundle must be valid JSON.") from exc
+        if not isinstance(payload,dict) or set(payload)!=BUNDLE_REQUIRED_FIELDS: raise SystemExit("Encrypted bundle schema mismatch.")
+        if payload.get("format")!="PFARMA_CI_BUNDLE_V2" or payload.get("algorithm")!="AES-256-GCM": raise SystemExit("Encrypted bundle must use the approved authenticated format.")
+        if not isinstance(payload.get("ciphertext_b64"),str) or not payload["ciphertext_b64"]: raise SystemExit("Encrypted bundle has no ciphertext.")
+    for filename in REF_FILES: _validate_ref_file(filename)
     print(f"PASS: public repository allowlist contains {len(files)} approved files; no plaintext source path admitted.")
-
-
-if __name__ == "__main__":
-    main()
+if __name__=="__main__": main()
