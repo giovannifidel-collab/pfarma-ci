@@ -1,0 +1,99 @@
+name: RAZZO Product Data Plane 2016 290
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/razzo-product-data-plane-2016-290.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pfarma-2016:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Require source token
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+      - name: Checkout PFarma product branch
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: agent/razzo-2016-suppress-empty-product-links
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Implement PFarma #2016
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('web/inventory_dashboard_page.py')
+          s = p.read_text()
+          old = '''    return (\n        "<tr data-quantity-authority='{authority}'><td><strong>{name}</strong><small>{product_id}</small><small>{supplier} · {category}</small>{authority_badge}</td><td>{ean}</td><td>{minsan}</td>"\n        "<td{quantity_description}>{physical}</td><td{quantity_description}>{available}</td><td{quantity_description}>{reserved}</td><td{quantity_description}>{on_order}</td><td>{location}</td>"\n        "<td>{lot}</td><td>{expiry}</td><td>€ {price}</td><td>€ {purchase_cost}</td><td>{margin}%</td><td><a class='action' href='{href}'>Apri scheda</a></td></tr>"\n    ).format(\n'''
+          new = '''    product_id_value = str(item.get("product_id") or "").strip()\n    product_action = (\n        f"<a class='action' href='{escape(_product_href(item), quote=True)}'>Apri scheda</a>"\n        if product_id_value\n        else "<span class='muted'>Scheda non disponibile</span>"\n    )\n    return (\n        "<tr data-quantity-authority='{authority}'><td><strong>{name}</strong><small>{product_id}</small><small>{supplier} · {category}</small>{authority_badge}</td><td>{ean}</td><td>{minsan}</td>"\n        "<td{quantity_description}>{physical}</td><td{quantity_description}>{available}</td><td{quantity_description}>{reserved}</td><td{quantity_description}>{on_order}</td><td>{location}</td>"\n        "<td>{lot}</td><td>{expiry}</td><td>€ {price}</td><td>€ {purchase_cost}</td><td>{margin}%</td><td>{product_action}</td></tr>"\n    ).format(\n'''
+          if old in s:
+              s = s.replace(old, new, 1)
+              s = s.replace('        href=escape(_product_href(item), quote=True),\n', '        product_action=product_action,\n', 1)
+              p.write_text(s)
+          elif 'product_action=product_action' not in s:
+              raise SystemExit('PFarma #2016 source anchor missing')
+          t = Path('tests/test_inventory_dashboard_missing_product_link.py')
+          t.write_text('''from web.inventory_dashboard_page import _product_row\n\ndef test_primary_row_suppresses_product_link_without_product_id():\n    html = _product_row({"name": "Senza id", "product_id": None}, False)\n    assert "Scheda non disponibile" in html\n    assert "Apri scheda" not in html\n    assert "href='/products/'" not in html\n\ndef test_primary_row_keeps_product_link_for_real_product_id():\n    html = _product_row({"name": "Con id", "product_id": "ABC 123"}, False)\n    assert "Apri scheda" in html\n    assert "href='/products/ABC%20123'" in html\n\ndef test_blank_product_id_is_not_treated_as_navigation_target():\n    html = _product_row({"name": "Blank", "product_id": "   "}, False)\n    assert "Scheda non disponibile" in html\n    assert "Apri scheda" not in html\n''')
+          PY
+      - name: Test PFarma #2016
+        run: python -m pytest -q tests/test_inventory_dashboard_missing_product_link.py tests/test_inventory_dashboard_primary_zero_monetary_rendering.py
+      - name: Persist PFarma candidate
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f .github/workflows/razzo-2016-worker.yml .razzo-dispatch-2016 || true
+          git add web/inventory_dashboard_page.py tests/test_inventory_dashboard_missing_product_link.py
+          if ! git diff --cached --quiet; then
+            git commit -m 'RAZZO #2016 suppress empty product links'
+            git push origin HEAD:agent/razzo-2016-suppress-empty-product-links
+          fi
+
+  family-290:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Require source token
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+      - name: Checkout Family product branch
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: agent/razzo-290-scope-cancel-to-canonical-panel
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Implement Family #290
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('web/alternate-name-cancel-focus-return.js')
+          s = p.read_text()
+          old = '''  const cancel = target.closest('[data-alternate-name-cancel="true"]');\n  if (cancel) {\n'''
+          new = '''  const cancel = target.closest('[data-alternate-name-cancel="true"]');\n  const cancelPanel = currentSavedViewPanel();\n  if (cancel && cancelPanel instanceof HTMLElement && cancelPanel.contains(cancel)) {\n'''
+          if old in s:
+              p.write_text(s.replace(old, new, 1))
+          elif 'const cancelPanel = currentSavedViewPanel();' not in s:
+              raise SystemExit('Family #290 source anchor missing')
+          Path('factory/workout-alternate-name-cancel-canonical-panel.test.mjs').write_text('''import assert from "node:assert/strict";\nimport fs from "node:fs";\nimport test from "node:test";\n\nconst source = fs.readFileSync(new URL("../web/alternate-name-cancel-focus-return.js", import.meta.url), "utf8");\n\ntest("alternate-name cancel is accepted only inside the canonical saved-view panel", () => {\n  assert.match(source, /const cancel = target\\.closest\\('\\[data-alternate-name-cancel="true"\\]'\\);/);\n  assert.match(source, /const cancelPanel = currentSavedViewPanel\\(\\);/);\n  assert.match(source, /if \\(cancel && cancelPanel instanceof HTMLElement && cancelPanel\\.contains\\(cancel\\)\\) \\{/);\n});\n\ntest("canonical cancel path keeps rollback and focus behavior", () => {\n  assert.match(source, /setCancelExitHintDescription\\(cancel, false\\);/);\n  assert.match(source, /clearAlternateNameExitHintAssociation\\(\\);/);\n  assert.match(source, /focusRollbackDestination\\(\\);/);\n});\n''')
+          PY
+      - name: Test Family #290
+        run: node --test factory/workout-alternate-name-cancel-canonical-panel.test.mjs
+      - name: Persist Family candidate
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f .github/workflows/razzo-290-worker.yml .razzo-dispatch-290 || true
+          git add web/alternate-name-cancel-focus-return.js factory/workout-alternate-name-cancel-canonical-panel.test.mjs
+          if ! git diff --cached --quiet; then
+            git commit -m 'RAZZO #290 scope cancel to canonical saved-view panel'
+            git push origin HEAD:agent/razzo-290-scope-cancel-to-canonical-panel
+          fi
