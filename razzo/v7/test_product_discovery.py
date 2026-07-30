@@ -6,6 +6,9 @@ from razzo.v7.product_discovery import (
     MAX_SLICES_PER_ISSUE,
     collision_domain,
     collision_domains,
+    delivery_contract,
+    delivery_score,
+    is_micro_refinement,
     issue_score,
     references_issue,
     risky,
@@ -23,6 +26,34 @@ class ProductDiscoveryTests(unittest.TestCase):
     def test_explicit_razzo_product_issue_is_first_class_queue_input(self):
         issue = {"title": "[RAZZO PRODUCT] Family onboarding vertical slice", "body": "safe product-first expansion"}
         self.assertGreaterEqual(issue_score(issue), 150)
+
+    def test_delivery_issue_outranks_generic_product_work(self):
+        delivery = {
+            "title": "[RAZZO DELIVERY] PFarma receiving end-to-end beta blocker",
+            "body": "Acceptance criteria: receive goods, allocate warehouse, validate lot and expiry, verify resulting stock projection.",
+        }
+        generic = {"title": "[RAZZO PRODUCT] dashboard improvement", "body": "operational UX"}
+        self.assertGreater(delivery_score(delivery), 0)
+        self.assertGreater(issue_score(delivery), issue_score(generic))
+        self.assertIn("delivery milestone", delivery_contract(delivery))
+
+    def test_cosmetic_micro_refinement_without_delivery_outcome_is_rejected(self):
+        issue = {
+            "title": "P0 placeholder and aria-label cleanup",
+            "body": "Adjust focus artifact and wording on one status link.",
+        }
+        self.assertTrue(is_micro_refinement(issue))
+        self.assertEqual(delivery_score(issue), 0)
+        self.assertEqual(issue_score(issue), 0)
+
+    def test_micro_fix_can_run_when_tied_to_release_acceptance(self):
+        issue = {
+            "title": "Release blocker: repair placeholder in checkout end-to-end journey",
+            "body": "Acceptance criteria prove the complete sale flow is usable in beta.",
+        }
+        self.assertTrue(is_micro_refinement(issue))
+        self.assertGreater(delivery_score(issue), 0)
+        self.assertGreater(issue_score(issue), 0)
 
     def test_human_gate_terms_fail_closed(self):
         for term in ("destructive-production", "user-data-write", "irreplaceable-data", "real-secrets", "irreversible-migration"):
