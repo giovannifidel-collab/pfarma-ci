@@ -1,0 +1,23 @@
+{
+  "cycle":"2026-07-30T12:03:49Z",
+  "protocol":"RAZZO V6/V7 Operational Product Factory",
+  "portfolioSource":"razzo/project-state.json@1a3f86df5815ee4f79552e68d43cf63ee4bec60d",
+  "enabledProjects":["project-giovanni","pfarma-cloud","family-cloud"],
+  "pfarmaOperatorFeedbackOpenExactTitle":0,
+  "queue":[
+    {"project":"pfarma-cloud","issue":2022,"pr":2023,"candidate":"c9ae0383f385fd970faf11271b160912088181b1"},
+    {"project":"family-cloud","issue":297,"pr":298,"candidate":"2c994058b02719f730def874acf5196181762466"}
+  ],
+  "dispatch":[
+    {"project":"pfarma-cloud","kind":"one-shot-clean-materializer","installCommit":"1ce7ed9706d9cbd640b5d5cd2282282b7dd59c7c","triggerComment":5130608877,"cleanupCommit":"2e7c1a907c90b2ea67498ed99db18afc48ad7b4c","result":"no candidate head advance observed"}
+  ],
+  "verify":{
+    "pfarma-cloud":{"exactSha":"c9ae0383f385fd970faf11271b160912088181b1","workflow":"PFarma Autonomous Operator Robot","conclusion":"success","requiredHostedCiAndExecutor":false,"scopeClean":false},
+    "family-cloud":{"exactSha":"2c994058b02719f730def874acf5196181762466","candidateMaterialized":false,"fcA023Touched":false},
+    "project-giovanni":{"queueHint902":"closed-completed","openRazzoProduct":0}
+  },
+  "integrate":"fail-closed",
+  "productCredit":0,
+  "generationPromoted":false,
+  "rediscovery":{"openProductIssues":["pfarma-cloud#2022","family-cloud#297"]}
+}
