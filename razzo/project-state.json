@@ -1,37 +1,37 @@
 {
   "version": 2,
   "sourceOfTruth": "github-open-product-prs-at-exact-heads",
-  "rediscoveryEpoch": "2026-07-30T18:01:53Z",
+  "rediscoveryEpoch": "2026-07-30T22:16:00Z",
   "projects": [
     {
       "id": "project-giovanni",
-      "exactSha": "4b5cccaeda6642c5941559444b1cc84588cba898",
+      "exactSha": "4de5ffa188aa31d9d1738818738743c8c360f827",
       "ready": 1,
       "backpressure": true,
       "humanGate": false,
-      "blocker": "exact-sha-ci-failing-retry-dispatched",
-      "queueHint": "PR #919",
-      "collisionDomain": "project-giovanni:wearable-ci"
+      "blocker": "open-product-pr-without-exact-sha-workflow-run",
+      "queueHint": "PR #897",
+      "collisionDomain": "project-giovanni:outbox-visible-target"
     },
     {
       "id": "pfarma-cloud",
-      "exactSha": "73352332d6d8c80339cb20c132a834f71c1612c3",
+      "exactSha": "467759df73807a12bbb4ce6369eca73057fe32ae",
       "ready": 1,
       "backpressure": true,
       "humanGate": false,
-      "blocker": "required-hosted-product-gates-incomplete",
-      "queueHint": "PR #2029",
-      "collisionDomain": "pfarma-cloud:inventory-dashboard:low-stock-location"
+      "blocker": "exact-sha-ci-running",
+      "queueHint": "PR #2043 / issue #2032",
+      "collisionDomain": "pfarma-cloud:dashboard:sidebar-navigation-scroll"
     },
     {
       "id": "family-cloud",
-      "exactSha": "b9e8f5f08fa2c322ef6782a46d51ccbdeaead1ae",
-      "ready": 1,
-      "backpressure": true,
+      "exactSha": null,
+      "ready": 0,
+      "backpressure": false,
       "humanGate": false,
-      "blocker": "exact-sha-ci-failing-retry-dispatched",
-      "queueHint": "PR #298",
-      "collisionDomain": "family-cloud:explicit-save-control"
+      "blocker": null,
+      "queueHint": "continuous product discovery required",
+      "collisionDomain": null
     }
   ]
 }
