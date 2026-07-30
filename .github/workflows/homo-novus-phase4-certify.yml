@@ -1,0 +1,58 @@
+name: HOMO NOVUS Phase 4 Certify
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_json:
+        description: Compact phase4 evidence JSON
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RAZZO_FACTORY_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Materialize evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase4/receipts
+          printf '%s' '${{ inputs.evidence_json }}' > phase4/evidence.json
+      - name: Download exact artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, subprocess
+          evidence=json.loads(pathlib.Path('phase4/evidence.json').read_text())
+          for item in evidence['items']:
+              repo=item['shard_repository']
+              artifact=item['artifact_id']
+              destination=pathlib.Path('phase4')/f"artifact-{artifact}.zip"
+              with destination.open('wb') as handle:
+                  subprocess.run(['gh','api',f'/repos/{repo}/actions/artifacts/{artifact}/zip'],stdout=handle,check=True)
+              extract=pathlib.Path('phase4')/f"artifact-{artifact}"
+              extract.mkdir()
+              subprocess.run(['unzip','-q',str(destination),'-d',str(extract)],check=True)
+              files=list(extract.rglob('*.json'))
+              if len(files)!=1:
+                  raise SystemExit(f'artifact {artifact}: expected exactly one receipt JSON')
+              target=pathlib.Path('phase4/receipts')/f"{item['execution_id']}.json"
+              target.write_bytes(files[0].read_bytes())
+          PY
+      - name: Certify generation
+        run: python razzo/super_factory/phase4_certifier.py --receipts phase4/receipts --evidence phase4/evidence.json --output phase4/composition.json
+      - name: Upload certification
+        uses: actions/upload-artifact@v4
+        with:
+          name: homo-novus-phase4-certification
+          path: |
+            phase4/evidence.json
+            phase4/receipts/*.json
+            phase4/composition.json
