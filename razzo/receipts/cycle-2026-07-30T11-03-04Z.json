@@ -1,0 +1,15 @@
+{
+  "protocol": "RAZZO V6/V7 Operational Product Factory",
+  "cycleAt": "2026-07-30T11:03:04Z",
+  "portfolioSource": "razzo/project-state.json",
+  "enabledProjects": ["project-giovanni", "pfarma-cloud", "family-cloud"],
+  "operatorFeedbackP0": {"repository": "giovannifidel-collab/pfarma-cloud", "openExactTitleCount": 0},
+  "queue": [
+    {"project": "pfarma-cloud", "issue": 2022, "pr": 2023, "candidateSha": "c9ae0383f385fd970faf11271b160912088181b1", "build": "materialized", "exactShaEvidence": {"runId": 30535527994, "conclusion": "success", "job": "verify"}, "integrate": "blocked", "blockers": ["named PFarma Hosted CI and PFarma Executor gates absent", "unrelated dashboard markup remains in diff"]},
+    {"project": "family-cloud", "issue": 297, "pr": 298, "candidateSha": "2f8ac85d7b273cdf7a7365e2f2898e74a26593e6", "build": "worker-trigger-only", "exactShaEvidence": {"workflowRuns": 0}, "integrate": "blocked", "blockers": ["runtime and focused regression not materialized", "Family Hosted CI absent"], "humanGatePreserved": "FC-A-023"}
+  ],
+  "projectGiovanni": {"queue": "empty after verified integration of #908", "action": "rediscovered; no synthetic progress credited"},
+  "phases": {"discover": "complete", "queue": "complete", "dispatch": "existing isolated branches retained", "buildExecute": "PFarma materialized; Family incomplete", "receipts": "complete", "verify": "exact-SHA refreshed", "integrate": "fail-closed", "selfReplan": "retain #2022 and #297", "rediscover": "complete"},
+  "productCredit": [],
+  "generationPromotion": false
+}
