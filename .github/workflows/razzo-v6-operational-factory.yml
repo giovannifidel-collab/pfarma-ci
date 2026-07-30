@@ -4,9 +4,13 @@ on:
   pull_request:
     paths:
       - 'razzo/v6/**'
+      - 'razzo/v7/product_discovery.py'
+      - 'razzo/v7/test_product_discovery.py'
       - 'razzo/protocol.json'
       - 'razzo/projects.json'
       - 'razzo/project-state.json'
+      - 'tools/validate_public_repo.py'
+      - 'razzo/audits/**'
       - '.github/workflows/razzo-v6-operational-factory.yml'
   workflow_dispatch:
 
@@ -33,6 +37,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Runtime contract tests
         run: python -m unittest razzo.v6.test_runtime -v
+      - name: Delivery governor tests
+        run: python -m unittest razzo.v7.test_product_discovery -v
 
   operational-proof:
     runs-on: ubuntu-latest
