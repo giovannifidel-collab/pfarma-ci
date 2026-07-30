@@ -27,6 +27,31 @@ RISK_PATTERNS = (
     r"destructive\s+(?:write|migration|operation|repair)",
 )
 
+DELIVERY_MARKERS: tuple[tuple[str, int], ...] = (
+    (r"\[razzo delivery\]", 300),
+    (r"\bend[- ]to[- ]end\b|\be2e\b", 180),
+    (r"\bacceptance criteria\b|\bcriteri di accettazione\b", 140),
+    (r"\bdefinition of done\b|\bdefinizione di done\b", 140),
+    (r"\brelease blocker\b|\bblocco rilascio\b", 130),
+    (r"\bbeta blocker\b|\bblocco beta\b", 120),
+    (r"\bpilot blocker\b|\bblocco pilot\b", 120),
+    (r"\bmilestone\b|\bmilestone di consegna\b", 100),
+    (r"\buser journey\b|\bpercorso utente\b", 90),
+    (r"\bcomplete flow\b|\bflusso completo\b", 90),
+    (r"\bready for beta\b|\bpronto per la beta\b", 90),
+)
+
+MICRO_REFINEMENT_PATTERNS = (
+    r"\bplaceholder\b",
+    r"\btooltip\b",
+    r"\bwording\b|\bcopy change\b|\btesto etichetta\b",
+    r"\btabindex\b|\baria[- ](?:label|controls|hidden)\b",
+    r"\bfocus artifact\b|\bfocus cleanup\b|\bfocus identity\b",
+    r"\bnavigation control\b|\bstatus link\b",
+    r"\bzero value\b|\bvalore zero\b|\bmissing marker\b",
+    r"\bminor ui\b|\bmicro[- ]refinement\b",
+)
+
 DOMAIN_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\b(catalog|catalogo|mins[a-z]*|ean|product|prodott)", "catalog"),
     (r"\b(sales|sale|vendit|pos|cassa)", "sales"),
@@ -51,10 +76,39 @@ def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _issue_text(issue: dict[str, Any]) -> str:
+    return f"{issue.get('title','')}\n{issue.get('body','')}".lower()
+
+
+def delivery_score(issue: dict[str, Any]) -> int:
+    text = _issue_text(issue)
+    return sum(weight for pattern, weight in DELIVERY_MARKERS if re.search(pattern, text))
+
+
+def is_micro_refinement(issue: dict[str, Any]) -> bool:
+    text = _issue_text(issue)
+    return any(re.search(pattern, text) for pattern in MICRO_REFINEMENT_PATTERNS)
+
+
+def delivery_contract(issue: dict[str, Any]) -> str:
+    text = _issue_text(issue)
+    matched = [pattern for pattern, _ in DELIVERY_MARKERS if re.search(pattern, text)]
+    if matched:
+        return "Close a measurable delivery milestone or end-to-end acceptance criterion from this issue."
+    return "Produce a user-visible functional increment that advances a complete flow; do not spend a worker on cosmetic-only refinement."
+
+
 def issue_score(issue: dict[str, Any]) -> int:
     title = str(issue.get("title", ""))
-    text = f"{title}\n{issue.get('body','')}".lower()
-    score = 0
+    text = _issue_text(issue)
+    outcome_score = delivery_score(issue)
+
+    # Delivery mode is deliberately fail-closed for cosmetic micro-work. A micro issue can still
+    # run when it is explicitly tied to an end-to-end milestone, acceptance criterion or release.
+    if is_micro_refinement(issue) and outcome_score == 0:
+        return 0
+
+    score = outcome_score
     if "[razzo product]" in title.lower(): score += 150
     if re.search(r"\bp0\b", text): score += 100
     if "high" in text or "alta" in text: score += 60
@@ -66,7 +120,7 @@ def issue_score(issue: dict[str, Any]) -> int:
 
 
 def risky(issue: dict[str, Any]) -> bool:
-    text = f"{issue.get('title','')}\n{issue.get('body','')}".lower()
+    text = _issue_text(issue)
     if any(term in text for term in RISK_TERMS):
         return True
     return any(re.search(pattern, text) for pattern in RISK_PATTERNS)
@@ -78,7 +132,7 @@ def references_issue(pr: dict[str, Any], number: int) -> bool:
 
 
 def _explicit_collision_domain(project_id: str, issue: dict[str, Any]) -> str | None:
-    text = f"{issue.get('title','')}\n{issue.get('body','')}".lower()
+    text = _issue_text(issue)
     explicit = re.search(r"collision\s+domain\s*:\s*`?([a-z0-9][a-z0-9/_-]{1,79})`?", text)
     if explicit:
         slug = explicit.group(1).strip("`/ ")[:80]
@@ -104,7 +158,7 @@ def collision_domains(project_id: str, issue: dict[str, Any]) -> list[str]:
     if explicit:
         return [explicit]
 
-    text = f"{issue.get('title','')}\n{issue.get('body','')}".lower()
+    text = _issue_text(issue)
     domains: list[str] = []
     for pattern, domain in DOMAIN_PATTERNS:
         if re.search(pattern, text):
@@ -134,12 +188,7 @@ def slice_instruction(domain: str) -> str:
 
 
 def select_fairly(items: list[dict[str, Any]], requested: int, project_ids: list[str]) -> list[dict[str, Any]]:
-    """Reserve one seat per enabled project with eligible work, then fill by global priority.
-
-    The input is already globally sorted. This prevents a busy/high-scoring project from starving
-    another enabled project during a bounded provider-cap wave while preserving score order for
-    all remaining capacity.
-    """
+    """Reserve one seat per enabled project with eligible work, then fill by global priority."""
     if requested <= 0:
         return []
     selected: list[dict[str, Any]] = []
@@ -229,6 +278,8 @@ def discover(token: str, limit: int = 3) -> list[dict[str, Any]]:
                     "issue_title": str(issue.get("title") or "")[:240],
                     "issue_body": str(issue.get("body") or "")[:7000],
                     "priority_score": score,
+                    "delivery_score": delivery_score(issue),
+                    "delivery_contract": delivery_contract(issue),
                     "collision_domain": domain,
                     "slice_id": slice_id(domain),
                     "work_slice": slice_instruction(domain),
@@ -242,7 +293,7 @@ def discover(token: str, limit: int = 3) -> list[dict[str, Any]]:
                     break
             if admitted >= project_cap:
                 break
-    found.sort(key=lambda x: (-x["priority_score"], x["project_id"], x["collision_domain"], -x["issue_number"]))
+    found.sort(key=lambda x: (-x["delivery_score"], -x["priority_score"], x["project_id"], x["collision_domain"], -x["issue_number"]))
     return select_fairly(found, requested, project_ids)
 
 
