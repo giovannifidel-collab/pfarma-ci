@@ -1,0 +1,15 @@
+{
+  "cycleAt": "2026-07-30T11:47:56Z",
+  "portfolioSource": "razzo/project-state.json",
+  "enabledProjects": ["project-giovanni", "pfarma-cloud", "family-cloud"],
+  "pfarmaOperatorFeedbackOpenExactTitle": 0,
+  "queue": [
+    {"project": "pfarma-cloud", "issue": 2022, "pr": 2023, "exactSha": "c9ae0383f385fd970faf11271b160912088181b1", "build": "materialized", "verify": "incomplete", "integrate": "fail-closed", "reason": "unrelated dashboard markup plus missing Hosted CI/Executor evidence"},
+    {"project": "family-cloud", "issue": 297, "pr": 298, "exactSha": "2c994058b02719f730def874acf5196181762466", "build": "worker-only", "verify": "no-pr-runs", "integrate": "fail-closed", "reason": "runtime and regression candidate not materialized"}
+  ],
+  "projectGiovanni": {"action": "rediscovered", "newProductIntegration": false},
+  "generationPromoted": false,
+  "productCredit": 0,
+  "fcA023Touched": false,
+  "finalState": "coherent-resumable"
+}
