@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": 5,
+  "executionEngine": "RAZZO_V6_V7",
+  "cycleId": "cycle-2026-07-30T23-10-30Z",
+  "sourceOfTruth": "github",
+  "portfolio": {
+    "registry": "razzo/projects.json",
+    "enabledProjectCount": 3,
+    "scannedRepositories": [
+      "giovannifidel-collab/project-giovanni",
+      "giovannifidel-collab/pfarma-cloud",
+      "giovannifidel-collab/family-cloud"
+    ]
+  },
+  "discovery": {
+    "openRobotFingerprints": [],
+    "selectedWorkItem": "PFARMA-OPERATOR-FEEDBACK-2033",
+    "selectedIssue": "giovannifidel-collab/pfarma-cloud#2033",
+    "priority": "P0",
+    "collisionDomain": "pfarma-cloud:sales:remove-line-control"
+  },
+  "workItems": [
+    {
+      "workItemId": "PFARMA-OPERATOR-FEEDBACK-2033",
+      "projectId": "pfarma-cloud",
+      "generationId": "PFARMA-PRODUCT-20260730-REMOVE-CONTROL",
+      "objective": "Make the multi-line sales remove action explicit, reliable and keyboard-safe while preserving the staging-only session contract.",
+      "targetLane": "integration/razzo",
+      "collisionDomain": "pfarma-cloud:sales:remove-line-control",
+      "idempotencyKey": "pfarma-cloud:2033:remove-control:v1",
+      "lifecycle": "INTEGRATED",
+      "branch": "factory/fix-operator-feedback-2033-remove-control",
+      "pullRequest": 2044,
+      "exactCandidateSha": "0cf4d3c77cf0a1c942e7d4e3dbca85741fdf6d55",
+      "verification": {
+        "workflow": "PFarma Autonomous Operator Robot",
+        "runId": 30589584323,
+        "conclusion": "success"
+      },
+      "mergeSha": "9a81e5d9e7256da9d2cec6879f4410decc601d9d",
+      "issueClosed": 2033,
+      "productProgress": true,
+      "safety": {
+        "easyfarmMutation": false,
+        "inventoryMutation": false,
+        "salesPersistenceMutation": false,
+        "paymentMutation": false,
+        "fiscalMutation": false,
+        "productionDataMutation": false
+      }
+    }
+  ],
+  "metrics": {
+    "created": 1,
+    "eligible": 1,
+    "dispatched": 1,
+    "shardsUsed": 1,
+    "parallelPeak": 1,
+    "completed": 1,
+    "verified": 1,
+    "integrated": 1,
+    "failures": 0,
+    "retries": 0,
+    "duplicateExecutions": 0
+  },
+  "promotion": {
+    "productProgress": true,
+    "generationPromoted": false,
+    "reason": "A real PFarma product increment was integrated, but this cycle does not claim a portfolio generation promotion without a broader generation receipt contract."
+  },
+  "humanGates": [],
+  "safeWorkRemaining": [
+    "pfarma-cloud#2032: verify the existing sidebar-scroll implementation on an exact SHA and close only after evidence",
+    "rediscover milestone-level delivery work in every enabled repository because no open product PR was active at cycle start"
+  ]
+}
