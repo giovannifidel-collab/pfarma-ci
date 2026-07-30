@@ -1,0 +1,41 @@
+{
+  "receiptType": "aggregate-cycle",
+  "protocolVersion": 5,
+  "cycleId": "cycle-20260731T0011Z",
+  "source": "github",
+  "enabledProjects": ["project-giovanni", "pfarma-cloud", "family-cloud"],
+  "reconciled": true,
+  "discovery": {
+    "project-giovanni": {"openCandidatePr": 897, "exactSha": "4de5ffa188aa31d9d1738818738743c8c360f827", "status": "blocked-missing-exact-sha-run"},
+    "pfarma-cloud": {"openRobotIssues": 0, "selectedIssue": 2032, "status": "product-fix-dispatched"},
+    "family-cloud": {"openCandidatePr": null, "ready": 0, "status": "discovery-required"}
+  },
+  "workItems": [
+    {
+      "workItemId": "PFARMA-2032-SIDEBAR-SCROLL",
+      "projectId": "pfarma-cloud",
+      "generationId": "unpromoted",
+      "objective": "Keep every dashboard sidebar module reachable on short operator screens",
+      "acceptanceCriteria": ["vertical mouse/trackpad scroll", "keyboard reachability", "idempotent injection", "no production mutation"],
+      "exactInputSha": "6c0c5230ef81427e3a1e98540b87ed6839ef76f8",
+      "candidateSha": "467759df73807a12bbb4ce6369eca73057fe32ae",
+      "targetLane": "integration/razzo",
+      "collisionDomain": "pfarma-cloud:dashboard:sidebar-navigation-scroll",
+      "idempotencyKey": "pfarma-cloud:2032:sidebar-scroll:v1",
+      "dependencies": [],
+      "verification": ["PFarma Autonomous Operator Robot", "PFarma Offline Sync Workspace"],
+      "humanGate": null,
+      "lifecycle": "VERIFYING",
+      "branch": "factory/fix-scrollable-dashboard-sidebar-2032",
+      "pullRequest": 2043
+    }
+  ],
+  "dispatchCount": 1,
+  "workerReceipts": 1,
+  "parallelPeak": 1,
+  "verifiedCount": 0,
+  "integratedCount": 0,
+  "productProgress": false,
+  "generationPromoted": false,
+  "safeWorkRemaining": true
+}
