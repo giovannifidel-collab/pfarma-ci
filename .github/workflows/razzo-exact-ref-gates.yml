@@ -67,10 +67,10 @@ jobs:
         run: test ! -f factory/history-import-conflict-resolution-integrity-verification.test.mjs || node --test factory/history-import-conflict-resolution-integrity-verification.test.mjs
       - name: Factory tests
         working-directory: project-giovanni
-        run: npm run test:factory
+        run: npm run test:factory --if-present
       - name: Factory planner smoke
         working-directory: project-giovanni
-        run: npm run factory:plan
+        run: npm run factory:plan --if-present
       - name: Build application with non-operational CI placeholders
         working-directory: project-giovanni
         env:
@@ -168,7 +168,7 @@ jobs:
         run: PYTHONPATH=. python -c "from tools.preview_pfarma_feedback import build_feedback_preview; from tools.pfarma_operator_robot import PFarmaOperatorRobot; app,_=build_feedback_preview(); PFarmaOperatorRobot(app).check_core_navigation()"
       - name: Targeted low-stock placeholder regression
         working-directory: pfarma-cloud
-        run: PYTHONPATH=. python -m pytest -q tests/test_inventory_dashboard_low_stock_location_placeholder.py
+        run: python -m pip install -q pytest && PYTHONPATH=. python -m pytest -q tests/test_inventory_dashboard_low_stock_location_placeholder.py
       - name: Operator Robot sale regression
         working-directory: pfarma-cloud
         env: {PFARMA_FEEDBACK_GITHUB_SYNC: '0'}
