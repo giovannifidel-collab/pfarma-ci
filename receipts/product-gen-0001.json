@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "generation_id": "HOMO-NOVUS-PRODUCT-GEN-0001",
+  "status": "certified",
+  "product_progress": true,
+  "source_repository": "giovannifidel-collab/pfarma-cloud",
+  "product_issue": 2022,
+  "source_pr_original": 2023,
+  "source_pr_frozen": 2027,
+  "collision_domain": "pfarma-cloud:inventory-dashboard:low-stock-product-placeholder",
+  "candidate_sha": "9e07c17e0aa88c121c6e39daa45f515a4cc4bcf7",
+  "integration_branch": "integration/razzo",
+  "merge_sha": "672a76e39097a5894b08821f03d95ba676b8104d",
+  "verification": {
+    "executor": {
+      "repository": "giovannifidel-collab/pfarma-cloud",
+      "workflow": "PFarma Executor",
+      "run_id": 30549637311,
+      "job_id": 90894652975,
+      "conclusion": "success"
+    },
+    "hosted": {
+      "repository": "giovannifidel-collab/pfarma-ci",
+      "workflow": "PFarma Hosted Product Gate",
+      "run_id": 30549691330,
+      "job_id": 90894819507,
+      "conclusion": "success"
+    }
+  },
+  "acceptance": {
+    "missing_product_id_placeholder": "em dash",
+    "blank_product_id_placeholder": "em dash",
+    "valid_product_id_preserved": true,
+    "conditional_navigation_preserved": true,
+    "read_only": true,
+    "easyfarm_mutation": false,
+    "inventory_mutation": false,
+    "fiscal_mutation": false,
+    "production_mutation": false
+  },
+  "certified_at": "2026-07-30T16:09:00+02:00"
+}
