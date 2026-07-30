@@ -1,0 +1,49 @@
+{
+  "protocolVersion": 5,
+  "executionEngine": "RAZZO_V6_V7",
+  "cycleId": "cycle-2026-07-30T22-04-08Z",
+  "portfolioSource": "razzo/projects.json",
+  "enabledProjects": ["project-giovanni", "pfarma-cloud", "family-cloud"],
+  "projectsScanned": 3,
+  "robot": {
+    "openMachineMarkedIssues": 0,
+    "openOperatorRobotTitleIssues": 0,
+    "state": "READY-PREVIOUSLY-PROVED-NO-NEW-DEFECT"
+  },
+  "reconcile": {
+    "familyIssue297ClosedAfterMergedPr298": true,
+    "projectGiovanniPr897": "open-nonmergeable-no-exact-sha-ci",
+    "pfarmaOperatorFeedback": [2032, 2033]
+  },
+  "discovery": {
+    "readyZeroTriggered": ["project-giovanni", "family-cloud"],
+    "milestones": [
+      "pfarma-cloud#345 September operational cutover",
+      "pfarma-cloud#335 premium operator UI",
+      "pfarma-cloud#2032 scrollable operator sidebar",
+      "pfarma-cloud#2033 working multi-line sale remove control"
+    ]
+  },
+  "workItems": {
+    "created": 0,
+    "eligible": 2,
+    "dispatched": 0,
+    "completed": 0,
+    "verified": 0,
+    "integrated": 0
+  },
+  "shardsUsed": 0,
+  "parallelPeak": 0,
+  "failures": 1,
+  "retries": 0,
+  "failureDetail": "project-giovanni PR #897 remains nonmergeable and has no exact-SHA workflow evidence",
+  "productProgress": false,
+  "generationPromoted": false,
+  "humanGates": [],
+  "safeWorkRemaining": [
+    "PFarma operator feedback #2032",
+    "PFarma operator feedback #2033",
+    "Project Giovanni delivery rediscovery after stale PR #897",
+    "Family Cloud product rediscovery after #297 reconciliation"
+  ]
+}
