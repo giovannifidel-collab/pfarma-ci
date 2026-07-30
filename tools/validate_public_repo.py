@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_EXACT = {
@@ -38,6 +39,7 @@ ALLOWED_EXACT = {
     PurePosixPath(".github/workflows/family-cloud-private-source-ci.yml"),
     PurePosixPath(".github/workflows/family-cloud-exact-ref-gate.yml"),
     PurePosixPath(".github/workflows/pfarma-razzo-executor-ci.yml"),
+    PurePosixPath(".github/workflows/pfarma-hosted-product-gate.yml"),
     PurePosixPath(".github/workflows/razzo-exact-ref-gates.yml"),
     PurePosixPath(".github/workflows/razzo-pfarma-product-workstreams.yml"),
     PurePosixPath(".github/workflows/razzo-portfolio-ci.yml"),
@@ -78,6 +80,7 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/super_factory/provision-shards.ps1"),
     PurePosixPath("razzo/super_factory/shard-bootstrap-contract.json"),
     PurePosixPath("razzo/super_factory/shard-worker-template.yml"),
+    PurePosixPath("razzo/audits/v6-bootstrap-2026-07-30.md"),
     PurePosixPath("razzo/pfarma-accounting-ref.txt"),
     PurePosixPath("razzo/pfarma-migration-ref.txt"),
     PurePosixPath("razzo/pfarma-ref.txt"),
@@ -114,6 +117,10 @@ REF_FILES = (
     "razzo/pfarma-supplier-ref.txt", "razzo/project-giovanni-ref.txt", "razzo/project-history-ref.txt",
     "razzo/project-offline-ref.txt",
 )
+RECEIPT_PREFIXES = (PurePosixPath("razzo/receipts"), PurePosixPath("receipts"))
+FORBIDDEN_RECEIPT_KEYS = {
+    "token", "secret", "password", "credential", "authorization", "cookie", "private_key", "api_key",
+}
 
 
 def _validate_ref_file(filename: str) -> None:
@@ -125,6 +132,38 @@ def _validate_ref_file(filename: str) -> None:
         raise SystemExit(f"{filename} must contain exactly one lowercase 40-character commit SHA.")
 
 
+def _contains_forbidden_key(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).strip().lower()
+            if normalized in FORBIDDEN_RECEIPT_KEYS:
+                return True
+            if _contains_forbidden_key(child):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_forbidden_key(child) for child in value)
+    return False
+
+
+def _is_valid_public_receipt(rel: PurePosixPath) -> bool:
+    if rel.suffix != ".json" or not any(rel.parent == prefix for prefix in RECEIPT_PREFIXES):
+        return False
+    path = ROOT / rel
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise SystemExit(f"Public receipt must be valid JSON: {rel}") from exc
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Public receipt must be a JSON object: {rel}")
+    if _contains_forbidden_key(payload):
+        raise SystemExit(f"Public receipt contains a forbidden sensitive key: {rel}")
+    return True
+
+
+def _is_allowed(rel: PurePosixPath) -> bool:
+    return rel in ALLOWED_EXACT or _is_valid_public_receipt(rel)
+
+
 def main() -> None:
     files = []
     for path in ROOT.rglob("*"):
@@ -134,7 +173,7 @@ def main() -> None:
         if rel.parts and rel.parts[0] in IGNORED_ROOTS:
             continue
         files.append(rel)
-    unexpected = sorted(str(path) for path in files if path not in ALLOWED_EXACT)
+    unexpected = sorted(str(path) for path in files if not _is_allowed(path))
     if unexpected:
         raise SystemExit("Unexpected public-repository files rejected: " + ", ".join(unexpected))
     bundle = ROOT / "bundle" / "pfarma-ci.bundle.json"
