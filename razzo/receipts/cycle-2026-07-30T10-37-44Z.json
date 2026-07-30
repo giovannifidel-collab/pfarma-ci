@@ -1,0 +1,60 @@
+{
+  "protocol": "RAZZO V6/V7 Operational Product Factory",
+  "cycleUtc": "2026-07-30T10:37:44Z",
+  "portfolioSource": "razzo/project-state.json",
+  "enabledProjects": [
+    "project-giovanni",
+    "pfarma-cloud",
+    "family-cloud"
+  ],
+  "operatorFeedbackP0": {
+    "repository": "giovannifidel-collab/pfarma-cloud",
+    "exactOpenTitleMatches": 0
+  },
+  "queue": [
+    {
+      "repository": "giovannifidel-collab/pfarma-cloud",
+      "issue": 2022,
+      "pullRequest": 2023,
+      "collisionDomain": "pfarma-cloud:inventory-dashboard:low-stock-product-placeholder",
+      "candidateSha": "c9ae0383f385fd970faf11271b160912088181b1",
+      "build": "materialized",
+      "execution": "transient dispatch trigger removed",
+      "verify": "PFarma Autonomous Operator Robot success only; Hosted CI and Executor missing",
+      "integrate": "fail-closed: exact-SHA repository-local gates and scope reconciliation missing"
+    },
+    {
+      "repository": "giovannifidel-collab/family-cloud",
+      "issue": 297,
+      "pullRequest": 298,
+      "collisionDomain": "family-cloud:saved-view:explicit-save-control-identity",
+      "candidateSha": "0e9a65a40a4a3d7cc34a695595c65c19d290c2e0",
+      "build": "not materialized",
+      "execution": "worker and trigger remain queued",
+      "verify": "no exact-SHA pull-request workflow runs",
+      "integrate": "fail-closed"
+    }
+  ],
+  "projectGiovanni": {
+    "state": "no open RAZZO PRODUCT item discovered in this cycle"
+  },
+  "humanGates": {
+    "scope": "action-only",
+    "familyCloudFcA023Touched": false
+  },
+  "credits": {
+    "product": 0,
+    "generation": 0
+  },
+  "phases": {
+    "discover": "complete",
+    "queue": "complete",
+    "dispatch": "existing isolated queues consumed",
+    "buildExecute": "PFarma cleanup advanced; Family candidate pending",
+    "receipts": "complete",
+    "verify": "complete on current exact SHAs",
+    "integrate": "fail-closed",
+    "selfReplan": "retain issues 2022 and 297",
+    "finalDiscover": "complete"
+  }
+}
