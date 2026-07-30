@@ -1,3 +1,4 @@
+# RAZZO control-plane execution worker; zero standalone product credit.
 name: RAZZO Product Data Plane 2016 290
 
 on:
@@ -39,8 +40,7 @@ jobs:
               p.write_text(s)
           elif 'product_action=product_action' not in s:
               raise SystemExit('PFarma #2016 source anchor missing')
-          t = Path('tests/test_inventory_dashboard_missing_product_link.py')
-          t.write_text('''from web.inventory_dashboard_page import _product_row\n\ndef test_primary_row_suppresses_product_link_without_product_id():\n    html = _product_row({"name": "Senza id", "product_id": None}, False)\n    assert "Scheda non disponibile" in html\n    assert "Apri scheda" not in html\n    assert "href='/products/'" not in html\n\ndef test_primary_row_keeps_product_link_for_real_product_id():\n    html = _product_row({"name": "Con id", "product_id": "ABC 123"}, False)\n    assert "Apri scheda" in html\n    assert "href='/products/ABC%20123'" in html\n\ndef test_blank_product_id_is_not_treated_as_navigation_target():\n    html = _product_row({"name": "Blank", "product_id": "   "}, False)\n    assert "Scheda non disponibile" in html\n    assert "Apri scheda" not in html\n''')
+          Path('tests/test_inventory_dashboard_missing_product_link.py').write_text('''from web.inventory_dashboard_page import _product_row\n\ndef test_primary_row_suppresses_product_link_without_product_id():\n    html = _product_row({"name": "Senza id", "product_id": None}, False)\n    assert "Scheda non disponibile" in html\n    assert "Apri scheda" not in html\n    assert "href='/products/'" not in html\n\ndef test_primary_row_keeps_product_link_for_real_product_id():\n    html = _product_row({"name": "Con id", "product_id": "ABC 123"}, False)\n    assert "Apri scheda" in html\n    assert "href='/products/ABC%20123'" in html\n\ndef test_blank_product_id_is_not_treated_as_navigation_target():\n    html = _product_row({"name": "Blank", "product_id": "   "}, False)\n    assert "Scheda non disponibile" in html\n    assert "Apri scheda" not in html\n''')
           PY
       - name: Test PFarma #2016
         run: python -m pytest -q tests/test_inventory_dashboard_missing_product_link.py tests/test_inventory_dashboard_primary_zero_monetary_rendering.py
