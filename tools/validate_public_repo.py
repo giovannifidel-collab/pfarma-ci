@@ -80,6 +80,7 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/super_factory/provision-shards.ps1"),
     PurePosixPath("razzo/super_factory/shard-bootstrap-contract.json"),
     PurePosixPath("razzo/super_factory/shard-worker-template.yml"),
+    PurePosixPath("razzo/audits/v6-bootstrap-2026-07-30.md"),
     PurePosixPath("razzo/pfarma-accounting-ref.txt"),
     PurePosixPath("razzo/pfarma-migration-ref.txt"),
     PurePosixPath("razzo/pfarma-ref.txt"),
