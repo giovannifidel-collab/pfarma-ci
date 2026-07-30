@@ -1,0 +1,20 @@
+{
+  "protocol": "RAZZO V6/V7 Operational Product Factory",
+  "cycleUtc": "2026-07-30T11:18:00Z",
+  "portfolioSource": "razzo/project-state.json",
+  "enabledProjects": ["project-giovanni", "pfarma-cloud", "family-cloud"],
+  "pfarmaOperatorFeedbackP0": {"exactOpenTitleMatches": 0},
+  "queue": [
+    {"project": "pfarma-cloud", "issue": 2022, "pr": 2023, "candidateSha": "c9ae0383f385fd970faf11271b160912088181b1", "build": "materialized", "verify": "partial", "integrate": "blocked", "reason": "required Hosted CI + Executor absent; unrelated markup remains"},
+    {"project": "family-cloud", "issue": 297, "pr": 298, "dispatchSha": "ceb485054d2840bae6a6dad5fbeb19a470173780", "build": "not-materialized", "verify": "no exact-SHA workflow run", "integrate": "blocked", "fcA023": "untouched"}
+  ],
+  "execution": {
+    "familyTransientWorkerInstall": "50508111badcb64f159c4b122cd0b18ffa445436",
+    "familyTransientWorkerCleanup": "e8843b4e963bafeac5664f7f21752d02389cd36b",
+    "pfarmaObservedRun": 30535527994
+  },
+  "productCredit": [],
+  "generationPromotion": false,
+  "finalState": "coherent-fail-closed",
+  "phases": ["DISCOVER", "QUEUE", "DISPATCH", "BUILD_EXECUTE", "RECEIPTS", "VERIFY", "INTEGRATE_FAIL_CLOSED", "SELF_REPLAN", "DISCOVER"]
+}
