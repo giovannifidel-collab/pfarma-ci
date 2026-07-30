@@ -1,0 +1,20 @@
+{
+  "cycle": "2026-07-30T11:37:24Z",
+  "protocol": "RAZZO V6/V7 Operational Product Factory",
+  "portfolioSource": "razzo/project-state.json",
+  "enabledProjects": ["project-giovanni", "pfarma-cloud", "family-cloud"],
+  "pfarmaOperatorFeedbackOpenExactTitle": 0,
+  "queue": [
+    {"project": "pfarma-cloud", "issue": 2022, "pr": 2023, "exactSha": "c9ae0383f385fd970faf11271b160912088181b1", "state": "verify-blocked", "reason": "required Hosted CI and Executor absent; unrelated dashboard diff remains"},
+    {"project": "family-cloud", "issue": 297, "pr": 298, "exactSha": "2c994058b02719f730def874acf5196181762466", "state": "build-blocked", "reason": "one-shot data-plane materializer did not advance candidate"}
+  ],
+  "dispatch": {
+    "familyMaterializerInstall": "fef5e007b53bb1c2760bd69f8469e5e1cac4d12f",
+    "familyMaterializerCleanup": "ee237e41c3b17ddb08d1ba5de057a616a962c28e"
+  },
+  "integrated": [],
+  "generationPromoted": false,
+  "productCredit": 0,
+  "humanGatesCrossed": [],
+  "finalState": "coherent-fail-closed"
+}
