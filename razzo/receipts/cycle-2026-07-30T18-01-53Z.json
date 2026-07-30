@@ -1,0 +1,97 @@
+{
+  "cycle_id": "RAZZO-2026-07-30T18:01:53Z",
+  "protocol_version": 5,
+  "execution_engine": "RAZZO_V6_V7",
+  "portfolio_source": "razzo/projects.json@4f9d6a2f416cdc722cafe99defb35f6df927ca39",
+  "projects_enabled": 3,
+  "discovery": {
+    "mode": "registry-driven",
+    "work_items": [
+      {
+        "project_id": "project-giovanni",
+        "repository": "giovannifidel-collab/project-giovanni",
+        "work_item": "PR #919 wearable implementation CI verification",
+        "exact_sha": "4b5cccaeda6642c5941559444b1cc84588cba898",
+        "collision_domain": "project-giovanni:wearable-ci"
+      },
+      {
+        "project_id": "pfarma-cloud",
+        "repository": "giovannifidel-collab/pfarma-cloud",
+        "work_item": "PR #2029 low-stock location rendering",
+        "exact_sha": "73352332d6d8c80339cb20c132a834f71c1612c3",
+        "collision_domain": "pfarma-cloud:inventory-dashboard:low-stock-location"
+      },
+      {
+        "project_id": "family-cloud",
+        "repository": "giovannifidel-collab/family-cloud",
+        "work_item": "PR #298 explicit save control identity",
+        "exact_sha": "b9e8f5f08fa2c322ef6782a46d51ccbdeaead1ae",
+        "collision_domain": "family-cloud:explicit-save-control"
+      }
+    ]
+  },
+  "queue": {
+    "discovered": 3,
+    "eligible": 3,
+    "leased": 3,
+    "backpressured_after_verify": 3,
+    "human_gated": 0
+  },
+  "dispatch": {
+    "real_actions": [
+      {
+        "project_id": "project-giovanni",
+        "action": "rerun_failed_workflow_jobs",
+        "workflow_runs": [30558366298, 30558365776],
+        "accepted": true
+      },
+      {
+        "project_id": "family-cloud",
+        "action": "rerun_failed_workflow_jobs",
+        "workflow_runs": [30566944143],
+        "accepted": true
+      },
+      {
+        "project_id": "pfarma-cloud",
+        "action": "verify_existing_exact_sha_run",
+        "workflow_run": 30568300084,
+        "accepted": true
+      }
+    ],
+    "worker_executions": 3,
+    "parallel_domains": 3
+  },
+  "verification": {
+    "project-giovanni": {
+      "state": "retry-dispatched-awaiting-exact-sha-result",
+      "prior_typecheck": "failure",
+      "prior_health": "failure"
+    },
+    "pfarma-cloud": {
+      "state": "partially-verified",
+      "operator_robot": "success",
+      "required_hosted_product_gates": "incomplete"
+    },
+    "family-cloud": {
+      "state": "retry-dispatched-awaiting-exact-sha-result",
+      "prior_hosted_ci": "failure"
+    }
+  },
+  "integration": {
+    "integrated": 0,
+    "reason": "No product candidate had the complete required exact-SHA gate set. Fail-closed integration preserved."
+  },
+  "self_replan": {
+    "performed": true,
+    "next_state": "keep all three exact candidates queued under integration backpressure; consume successful retries when exact-SHA evidence appears; otherwise repair the failing CI root cause without crossing collision domains"
+  },
+  "metrics": {
+    "product_progress": false,
+    "generation_promoted": false,
+    "duplicate_execution": false,
+    "failures_observed": 3,
+    "retries_dispatched": 3,
+    "verified_candidates": 0,
+    "integrated_candidates": 0
+  }
+}
