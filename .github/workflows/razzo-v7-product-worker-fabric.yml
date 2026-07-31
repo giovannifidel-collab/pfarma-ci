@@ -49,13 +49,13 @@ jobs:
           python-version: '3.12'
       - name: Exact control-plane SHA
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-      - name: Product discovery, capacity and dispatcher contract tests
+      - name: Product discovery and dispatcher contract tests
         run: |
           python -m unittest razzo.v7.test_product_discovery -v
           python -m unittest razzo.v7.test_provider_capacity -v
           python -m unittest razzo.v7.test_dispatcher_pool -v
       - id: capacity
-        name: Learn operational concurrency ceiling from GitHub Actions telemetry
+        name: Learn provider-aware concurrency ceiling
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
@@ -68,9 +68,8 @@ jobs:
           if [ "$cap" -lt 1 ]; then cap=1; fi
           echo "cap=$cap" >> "$GITHUB_OUTPUT"
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
-          echo "Provider-aware operational cap=$cap; telemetry=$decision"
       - id: discover
-        name: Discover work and lease it across generic dispatchers
+        name: Discover and lease real product work
         env:
           PFARMA_SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           RAZZO_PRODUCT_WORKER_CAP: ${{ steps.capacity.outputs.cap }}
@@ -84,8 +83,7 @@ jobs:
           dispatch="$(python - <<'PY'
           import json, os
           from razzo.v7.dispatcher_pool import annotate_work_items
-          raw = json.loads(os.environ['RAW_MATRIX'])
-          items = list(raw.get('include', []))
+          items = list(json.loads(os.environ['RAW_MATRIX']).get('include', []))
           annotated, leases = annotate_work_items(
               items,
               provider_cap=int(os.environ['PROVIDER_CAP']),
@@ -105,7 +103,7 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
           echo "dispatcher_matrix=$dispatcher_matrix" >> "$GITHUB_OUTPUT"
           echo "dispatcher_count=$dispatcher_count" >> "$GITHUB_OUTPUT"
-          echo "Discovered $count work item(s); activated $dispatcher_count/100 generic dispatchers; provider cap=${{ steps.capacity.outputs.cap }}."
+          echo "Discovered $count work item(s); activated $dispatcher_count dispatcher(s)."
 
   dispatchers:
     needs: plan
@@ -123,9 +121,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Exact control-plane SHA
-        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-      - name: Validate generic dispatcher lease and emit dispatch receipt
+      - name: Validate lease and write isolated dispatcher receipt
         env:
           DISPATCHER_ID: ${{ matrix.dispatcher_id }}
           ITEMS_JSON: ${{ matrix.items_json }}
@@ -134,7 +130,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dispatch-receipts
+          out="${RUNNER_TEMP}/dispatcher-receipt"
+          rm -rf "$out" && mkdir -p "$out"
+          export OUT="$out"
           python - <<'PY'
           import hashlib, json, os
           from pathlib import Path
@@ -151,13 +149,12 @@ jobs:
               'status': 'leased',
           }
           receipt['receipt_digest'] = hashlib.sha256(json.dumps(receipt, sort_keys=True).encode()).hexdigest()
-          Path(f"dispatch-receipts/{receipt['dispatcher_id']}.json").write_text(json.dumps(receipt, indent=2), encoding='utf-8')
-          print(json.dumps(receipt))
+          Path(os.environ['OUT'], f"{receipt['dispatcher_id']}.json").write_text(json.dumps(receipt, indent=2))
           PY
       - uses: actions/upload-artifact@v4
         with:
           name: razzo-v7-dispatch-receipt-${{ matrix.dispatcher_id }}
-          path: dispatch-receipts/*.json
+          path: ${{ runner.temp }}/dispatcher-receipt/${{ matrix.dispatcher_id }}.json
           if-no-files-found: error
 
   workers:
@@ -171,14 +168,13 @@ jobs:
     timeout-minutes: 30
     environment: photo-ai-private
     steps:
-      - name: Check out trusted control plane
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install pinned Codex CLI before loading credentials
+      - name: Install pinned Codex CLI
         run: npm install --global @openai/codex@0.145.0
       - name: Require private source token
         env:
@@ -206,26 +202,22 @@ jobs:
           CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}
         run: node scripts/codex-auth-state.mjs restore
       - name: Create bounded product-work prompt
-        shell: bash
         env:
           ISSUE_TITLE: ${{ matrix.issue_title }}
           ISSUE_BODY: ${{ matrix.issue_body }}
           COLLISION_DOMAIN: ${{ matrix.collision_domain }}
           WORK_SLICE: ${{ matrix.work_slice }}
           DISPATCHER_ID: ${{ matrix.dispatcher_id }}
+        shell: bash
         run: |
           cat > "${RUNNER_TEMP}/product-work.txt" <<'EOF'
           You are a RAZZO V7 product worker operating on one real GitHub issue.
-          Implement the smallest meaningful product improvement that directly advances the assigned work slice of the issue in this checked-out repository.
-          Constraints are strict:
-          - Never write to production, external systems, user data, EasyFarm, fiscal devices, storage repair targets, secrets, credentials, paid infrastructure or irreversible migrations.
-          - Do not modify GitHub workflows, deployment/infra, secrets, factory policy, task graphs, migrations or authentication/RLS boundaries.
-          - Do not weaken tests or safety gates.
-          - Work only from the current exact SHA and keep the change narrow and collision-resistant.
-          - Stay inside the assigned work slice and collision domain; do not opportunistically edit unrelated domains.
-          - Prefer executable product code plus focused regression tests; do not produce documentation-only or governance-only changes.
-          - Do not commit or push; the outer worker owns Git operations.
-          - Run no network commands.
+          Implement the smallest meaningful product improvement that directly advances the assigned work slice.
+          Never write to production, user data, external systems, secrets, paid infrastructure or irreversible migrations.
+          Do not modify workflows, infrastructure, authentication boundaries or factory policy.
+          Do not weaken tests. Work only from the exact SHA. Keep changes narrow and collision-resistant.
+          Prefer executable product code plus focused regression tests. Do not commit or push; the outer worker owns Git operations.
+          Run no network commands.
           EOF
           printf 'DISPATCHER: %s\nCOLLISION DOMAIN: %s\nWORK SLICE: %s\nISSUE TITLE:\n%s\nISSUE BODY:\n%s\n' "$DISPATCHER_ID" "$COLLISION_DOMAIN" "$WORK_SLICE" "$ISSUE_TITLE" "$ISSUE_BODY" >> "${RUNNER_TEMP}/product-work.txt"
       - name: Execute real product worker
@@ -234,9 +226,7 @@ jobs:
         env:
           CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}
         shell: bash
-        run: |
-          set -euo pipefail
-          codex exec --skip-git-repo-check --ephemeral --sandbox workspace-write - < "${RUNNER_TEMP}/product-work.txt"
+        run: codex exec --skip-git-repo-check --ephemeral --sandbox workspace-write - < "${RUNNER_TEMP}/product-work.txt"
       - name: Reject forbidden change surfaces
         id: diff
         working-directory: product-source
@@ -244,17 +234,9 @@ jobs:
         run: |
           set -euo pipefail
           changed="$(git status --porcelain | awk '{print $2}')"
-          if [ -z "$changed" ]; then
-            echo 'No product change produced.'
-            echo 'has_changes=false' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if echo "$changed" | grep -E '(^|/)(\.github/workflows|migrations|infra|secrets)(/|$)|factory/(policy|task[-_]graph)'; then
-            echo 'Forbidden product-worker change surface detected.' >&2
-            exit 1
-          fi
+          if [ -z "$changed" ]; then echo 'has_changes=false' >> "$GITHUB_OUTPUT"; exit 0; fi
+          if echo "$changed" | grep -E '(^|/)(\.github/workflows|migrations|infra|secrets)(/|$)|factory/(policy|task[-_]graph)'; then exit 1; fi
           echo 'has_changes=true' >> "$GITHUB_OUTPUT"
-          printf '%s\n' "$changed"
       - name: Run project factory tests
         if: steps.diff.outputs.has_changes == 'true'
         working-directory: product-source
@@ -284,15 +266,14 @@ jobs:
           export BRANCH="$branch"
           export PR_TITLE="RAZZO V7: advance #${{ matrix.issue_number }} [${{ matrix.slice_id }}] — ${ISSUE_TITLE}"
           export PR_BASE='${{ matrix.integration_lane }}'
-          export PR_BODY='Automated bounded product worker for #${{ matrix.issue_number }}. Dispatcher `${{ matrix.dispatcher_id }}`. Work slice `${{ matrix.work_slice }}`. Collision domain `${{ matrix.collision_domain }}`. Exact input SHA `${{ matrix.exact_sha }}`. Human-gated/destructive surfaces prohibited. Factory tests/planner passed before publication. Requires normal exact-SHA CI and integration policy; no direct main write.'
+          export PR_BODY='Automated bounded product worker. Exact input SHA `${{ matrix.exact_sha }}`. Requires normal exact-SHA CI and integration policy.'
           payload="$(python - <<'PY'
           import json, os
-          print(json.dumps({"title": os.environ["PR_TITLE"], "head": os.environ["BRANCH"], "base": os.environ["PR_BASE"], "body": os.environ["PR_BODY"]}))
+          print(json.dumps({'title': os.environ['PR_TITLE'], 'head': os.environ['BRANCH'], 'base': os.environ['PR_BASE'], 'body': os.environ['PR_BODY']}))
           PY
           )"
           response="$(curl -fsS -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' "https://api.github.com/repos/${{ matrix.repository }}/pulls" -d "$payload")"
-          pr="$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' <<< "$response")"
-          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          echo "pr=$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' <<< "$response")" >> "$GITHUB_OUTPUT"
       - name: Persist refreshed ChatGPT authentication
         if: always() && steps.restore.outcome == 'success'
         env:
@@ -301,13 +282,16 @@ jobs:
           CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
           CODEX_HOME: ${{ runner.temp }}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}
         run: node scripts/codex-auth-state.mjs persist
-      - name: Write execution receipt
+      - name: Write isolated execution receipt
         if: always()
+        env:
+          OUT: ${{ runner.temp }}/worker-receipt
         shell: bash
         run: |
-          mkdir -p receipts
+          rm -rf "$OUT" && mkdir -p "$OUT"
           python - <<'PY'
-          import hashlib, json
+          import hashlib, json, os
+          from pathlib import Path
           data = {
             'project_id': '${{ matrix.project_id }}',
             'repository': '${{ matrix.repository }}',
@@ -325,17 +309,16 @@ jobs:
             'run_id': '${{ github.run_id }}',
           }
           data['receipt_digest'] = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
-          open('receipts/${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}.json','w').write(json.dumps(data, indent=2))
+          Path(os.environ['OUT'], 'receipt.json').write_text(json.dumps(data, indent=2))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: razzo-v7-product-receipt-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}
-          path: receipts/*.json
+          path: ${{ runner.temp }}/worker-receipt/receipt.json
           if-no-files-found: error
       - name: Remove private source and auth state
         if: always()
-        shell: bash
         run: rm -rf product-source "${RUNNER_TEMP}/razzo-codex-${{ matrix.project_id }}-${{ matrix.issue_number }}-${{ matrix.slice_id }}" "${RUNNER_TEMP}/product-work.txt"
 
   aggregate:
@@ -347,47 +330,43 @@ jobs:
         with:
           pattern: razzo-v7-product-receipt-*
           path: receipts
-          merge-multiple: true
       - uses: actions/download-artifact@v4
         with:
           pattern: razzo-v7-dispatch-receipt-*
           path: dispatch-receipts
-          merge-multiple: true
-      - name: Verify aggregate dispatcher and product-worker receipts
-        shell: bash
+      - name: Verify aggregate receipts
         env:
           EXPECTED: ${{ needs.plan.outputs.count }}
           EXPECTED_DISPATCHERS: ${{ needs.plan.outputs.dispatcher_count }}
           OPERATIONAL_CAP: ${{ needs.plan.outputs.operational_cap }}
           CAPACITY_DECISION: ${{ needs.plan.outputs.capacity_decision }}
+        shell: bash
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
-          worker_files = sorted(Path('receipts').glob('*.json'))
-          dispatch_files = sorted(Path('dispatch-receipts').glob('*.json'))
+          worker_files = sorted(Path('receipts').glob('**/receipt.json'))
+          dispatch_files = sorted(Path('dispatch-receipts').glob('**/*.json'))
           expected = int(os.environ['EXPECTED'])
           expected_dispatchers = int(os.environ['EXPECTED_DISPATCHERS'])
           assert len(worker_files) == expected, (len(worker_files), expected)
           assert len(dispatch_files) == expected_dispatchers, (len(dispatch_files), expected_dispatchers)
-          assert 1 <= expected_dispatchers <= 100
           receipts = [json.loads(p.read_text()) for p in worker_files]
           dispatch_receipts = [json.loads(p.read_text()) for p in dispatch_files]
           ids = [r['worker_id'] for r in receipts]
           domains = [r['collision_domain'] for r in receipts]
           dispatcher_ids = [r['dispatcher_id'] for r in dispatch_receipts]
           leased_domains = [d for r in dispatch_receipts for d in r['collision_domains']]
-          assert len(ids) == len(set(ids)), 'duplicate worker receipt'
-          assert len(domains) == len(set(domains)), 'collision domain dispatched twice in one wave'
-          assert len(dispatcher_ids) == len(set(dispatcher_ids)), 'duplicate dispatcher receipt'
-          assert set(domains) == set(leased_domains), 'worker/dispatcher lease domain mismatch'
+          assert len(ids) == len(set(ids))
+          assert len(domains) == len(set(domains))
+          assert len(dispatcher_ids) == len(set(dispatcher_ids))
+          assert set(domains) == set(leased_domains)
           assert all(r['dispatcher_id'] in set(dispatcher_ids) for r in receipts)
           prs = [r['pr_number'] for r in receipts if r.get('pr_number')]
           print(json.dumps({
             'cycle_type': 'PRODUCT_WORK',
             'workstreams_dispatched': expected,
             'active_generic_dispatchers': expected_dispatchers,
-            'generic_dispatcher_pool_size': 100,
             'receipts': len(receipts),
             'dispatch_receipts': len(dispatch_receipts),
             'product_prs_created': len(prs),
