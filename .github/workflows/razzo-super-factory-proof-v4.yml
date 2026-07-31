@@ -1,0 +1,201 @@
+name: RAZZO Super Factory Objective Proof V4
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/razzo-super-factory-proof-v4.yml'
+      - 'project-giovanni-source-ref.txt'
+      - 'source-ref.txt'
+      - 'family-cloud-ref.txt'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          pg=$(tr -d '\r\n' < project-giovanni-source-ref.txt)
+          pf=$(tr -d '\r\n' < source-ref.txt)
+          fc=$(tr -d '\r\n' < family-cloud-ref.txt)
+          for sha in "$pg" "$pf" "$fc"; do [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; done
+          matrix=$(jq -cn --arg pg "$pg" --arg pf "$pf" --arg fc "$fc" '{include:[
+            {shard_id:"razzo-shard-0001",work_item_id:"PG-FACTORY-V4",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"pg-factory"},
+            {shard_id:"razzo-shard-0002",work_item_id:"PG-BUILD-V4",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"pg-build"},
+            {shard_id:"razzo-shard-0003",work_item_id:"PF-CONTRACT-V4",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,command:"pf-contract"},
+            {shard_id:"razzo-shard-0004",work_item_id:"FC-SUITE-V4",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,command:"fc-suite"}
+          ]}')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  execute:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 30
+    steps:
+      - id: clock
+        shell: bash
+        run: echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Validate immutable dispatch and credential
+        env:
+          TOKEN: ${{ matrix.project_id == 'project-giovanni' && secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ matrix.exact_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${{ matrix.shard_id }}" =~ ^razzo-shard-[0-9]{4}$ ]]
+          test -n "$TOKEN"
+
+      - name: Checkout authoritative exact SHA
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.exact_sha }}
+          token: ${{ matrix.project_id == 'project-giovanni' && secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: product
+
+      - name: Verify exact checkout
+        working-directory: product
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ matrix.exact_sha }}"
+          git remote set-url origin REDACTED
+
+      - name: Execute real product verification
+        working-directory: product
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_npm_deps() {
+            if [[ -f package-lock.json || -f npm-shrinkwrap.json ]]; then
+              npm ci --no-audit --no-fund
+            else
+              npm install --no-audit --no-fund
+            fi
+          }
+          case "${{ matrix.command }}" in
+            pg-factory)
+              install_npm_deps
+              npm run test:factory
+              ;;
+            pg-build)
+              install_npm_deps
+              NEXT_TELEMETRY_DISABLED=1 npm run build
+              ;;
+            pf-contract)
+              python -m compileall -q api backend agent tools
+              mapfile -t tests < <(printf '%s\n' \
+                backend/test_goods_receipt_allocation_cardinality.py \
+                backend/test_goods_receipt_allocation_exact_schema.py \
+                backend/test_goods_receipt_duplicate_warehouse_allocation.py \
+                backend/test_goods_receipt_evidence_reference_date.py \
+                backend/test_goods_receipt_evidence_source_line_binding.py \
+                backend/test_goods_receipt_identifier_validation.py \
+                backend/test_product_manual_reorder_supplier_identifier_safety.py \
+                tools/test_receipt_location_id_validation.py | while read -r f; do [[ -f "$f" ]] && echo "$f"; done)
+              printf 'PFarma focused unittest files:\n%s\n' "${tests[*]}"
+              test "${#tests[@]}" -ge 6
+              python -m unittest -v "${tests[@]}"
+              ;;
+            fc-suite)
+              install_npm_deps
+              npm run typecheck
+              npm test
+              npm run factory:plan
+              ;;
+            *) exit 64 ;;
+          esac
+
+      - name: Write sanitized exact-SHA receipt
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p receipts
+          ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          digest=$(printf '%s' '${{ matrix.shard_id }}|${{ matrix.work_item_id }}|${{ matrix.project_id }}|${{ matrix.repository }}|${{ matrix.exact_sha }}|${{ github.run_id }}' | sha256sum | cut -d' ' -f1)
+          jq -n --arg state PRODUCT_EXACT_SHA_VERIFIED --arg shardId '${{ matrix.shard_id }}' --arg workItemId '${{ matrix.work_item_id }}' --arg projectId '${{ matrix.project_id }}' --arg repository '${{ matrix.repository }}' --arg exactInputSha '${{ matrix.exact_sha }}' --arg runId '${{ github.run_id }}' --arg started '${{ steps.clock.outputs.started }}' --arg ended "$ended" --arg digest "$digest" '{schema:"razzo.product-exact-sha-receipt.v1",state:$state,shardId:$shardId,workItemId:$workItemId,projectId:$projectId,repository:$repository,exactInputSha:$exactInputSha,runId:$runId,startedAt:$started,endedAt:$ended,conclusion:"success",digest:$digest}' > "receipts/${{ matrix.work_item_id }}.json"
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: receipt-v4-${{ matrix.work_item_id }}
+          path: receipts/${{ matrix.work_item_id }}.json
+          retention-days: 7
+
+      - name: Purge private checkout
+        if: always()
+        shell: bash
+        run: rm -rf product
+
+  prove:
+    needs: [prepare, execute]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: receipt-v4-*
+          path: collected
+          merge-multiple: true
+      - name: Validate exact receipts and measured overlap
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+          files=sorted(Path('collected').glob('*.json'))
+          assert len(files)==4, f'expected 4 receipts, found {len(files)}'
+          rows=[json.loads(p.read_text()) for p in files]
+          assert all(r['state']=='PRODUCT_EXACT_SHA_VERIFIED' for r in rows)
+          assert len({r['workItemId'] for r in rows})==4
+          assert len({r['shardId'] for r in rows})==4
+          projects={r['projectId'] for r in rows}
+          assert len(projects)>=2
+          parse=lambda x: datetime.fromisoformat(x.replace('Z','+00:00'))
+          intervals=[(parse(r['startedAt']),parse(r['endedAt'])) for r in rows]
+          peak=max(sum(1 for s,e in intervals if s < end and e > start) for start,end in intervals)
+          assert peak>=2, f'parallel peak {peak} is below 2'
+          proof={'schema':'razzo.objective-factory-proof.v1','runId':rows[0]['runId'],'workItems':len(rows),'projects':len(projects),'shards':len({r['shardId'] for r in rows}),'parallelPeak':peak,'state':'OBJECTIVELY_VERIFIED','receipts':rows}
+          out=Path('razzo/runtime-receipts')/str(rows[0]['runId'])
+          out.mkdir(parents=True,exist_ok=True)
+          (out/'aggregate.json').write_text(json.dumps(proof,indent=2)+'\n')
+          print(json.dumps({k:proof[k] for k in ('runId','workItems','projects','shards','parallelPeak','state')}))
+          PY
+      - name: Persist objective proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'RAZZO Super Factory'
+          git config user.email 'actions@users.noreply.github.com'
+          git add razzo/runtime-receipts
+          git commit -m "RAZZO proof: verified multi-project wave run ${{ github.run_id }}"
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push; then exit 0; fi
+            sleep $((attempt * 3))
+          done
+          exit 1
