@@ -1,0 +1,67 @@
+{
+  "schema": "razzo.objective-factory-proof.v1",
+  "runId": "30634314097",
+  "workItems": 4,
+  "projects": 3,
+  "shards": 4,
+  "parallelPeak": 4,
+  "state": "OBJECTIVELY_VERIFIED",
+  "receipts": [
+    {
+      "schema": "razzo.product-exact-sha-receipt.v1",
+      "state": "PRODUCT_EXACT_SHA_VERIFIED",
+      "shardId": "razzo-shard-0004",
+      "workItemId": "FC-SUITE-V4",
+      "projectId": "family-cloud",
+      "repository": "giovannifidel-collab/family-cloud",
+      "exactInputSha": "b9e8f5f08fa2c322ef6782a46d51ccbdeaead1ae",
+      "runId": "30634314097",
+      "startedAt": "2026-07-31T13:24:43Z",
+      "endedAt": "2026-07-31T13:24:55Z",
+      "conclusion": "success",
+      "digest": "084e5d72c96a09646d15b0c25b018980be8bfe65cb4758612988d6505331a9a6"
+    },
+    {
+      "schema": "razzo.product-exact-sha-receipt.v1",
+      "state": "PRODUCT_EXACT_SHA_VERIFIED",
+      "shardId": "razzo-shard-0003",
+      "workItemId": "PF-CONTRACT-V4",
+      "projectId": "pfarma-cloud",
+      "repository": "giovannifidel-collab/pfarma-cloud",
+      "exactInputSha": "99ccd8811f4baf6d1fab69bb8cd6481c658bf051",
+      "runId": "30634314097",
+      "startedAt": "2026-07-31T13:24:43Z",
+      "endedAt": "2026-07-31T13:24:47Z",
+      "conclusion": "success",
+      "digest": "2e2af97c1f1b27f48d0d886daf2278a58b92115aec3b975b139671a7f007d0c2"
+    },
+    {
+      "schema": "razzo.product-exact-sha-receipt.v1",
+      "state": "PRODUCT_EXACT_SHA_VERIFIED",
+      "shardId": "razzo-shard-0002",
+      "workItemId": "PG-BUILD-V4",
+      "projectId": "project-giovanni",
+      "repository": "giovannifidel-collab/project-giovanni",
+      "exactInputSha": "0e9a63adaea9d261ba4b14ccbf36dd5099ce97f8",
+      "runId": "30634314097",
+      "startedAt": "2026-07-31T13:24:42Z",
+      "endedAt": "2026-07-31T13:25:39Z",
+      "conclusion": "success",
+      "digest": "81f29de243b7ef3e3f6cc6ca43dcabef4435ccad2578b1c944cd23810b417ac1"
+    },
+    {
+      "schema": "razzo.product-exact-sha-receipt.v1",
+      "state": "PRODUCT_EXACT_SHA_VERIFIED",
+      "shardId": "razzo-shard-0001",
+      "workItemId": "PG-FACTORY-V4",
+      "projectId": "project-giovanni",
+      "repository": "giovannifidel-collab/project-giovanni",
+      "exactInputSha": "0e9a63adaea9d261ba4b14ccbf36dd5099ce97f8",
+      "runId": "30634314097",
+      "startedAt": "2026-07-31T13:24:42Z",
+      "endedAt": "2026-07-31T13:25:04Z",
+      "conclusion": "success",
+      "digest": "df0a5557bd94895548c6d4ff9c892ffa3b504844de0fd88d0118b80158e4ebbb"
+    }
+  ]
+}
