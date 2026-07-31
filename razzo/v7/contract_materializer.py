@@ -123,6 +123,8 @@ def materialize(
         domain = str(candidate.get("collision_domain") or "").strip().strip("/")
         if domain and not domain.startswith(project_id + "/"):
             domain = f"{project_id}/{domain}"
+        if not re.fullmatch(r"[a-z0-9][a-z0-9/_-]{2,120}", domain):
+            reasons.append("invalid_collision_domain")
         objective = str(candidate.get("product_objective") or "").strip()
         normalized_objective = re.sub(r"\s+", " ", objective.lower())
 
