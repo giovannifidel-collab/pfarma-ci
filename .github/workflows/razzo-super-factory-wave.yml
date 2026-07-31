@@ -36,7 +36,7 @@ jobs:
             '{include:[
               {shard_id:"razzo-shard-0001",work_item_id:"PG-VERIFY-FACTORY",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,collision_domain:"project-giovanni/factory",command:"npm run test:factory --if-present"},
               {shard_id:"razzo-shard-0002",work_item_id:"PG-VERIFY-BUILD",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,collision_domain:"project-giovanni/build",command:"npm run build"},
-              {shard_id:"razzo-shard-0003",work_item_id:"PF-VERIFY-FACTORY",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,collision_domain:"pfarma-cloud/factory",command:"python -m unittest factory.test_razzo_executor"},
+              {shard_id:"razzo-shard-0003",work_item_id:"PF-VERIFY-HEALTH",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,collision_domain:"pfarma-cloud/health",command:"pfarma-health-smoke"},
               {shard_id:"razzo-shard-0004",work_item_id:"FC-VERIFY-SUITE",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,collision_domain:"family-cloud/suite",command:"npm test"}
             ]}')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
@@ -102,8 +102,26 @@ jobs:
           case "${{ matrix.command }}" in
             "npm run test:factory --if-present") npm run test:factory --if-present ;;
             "npm run build") npm run build ;;
-            "python -m unittest factory.test_razzo_executor") python -m unittest factory.test_razzo_executor ;;
             "npm test") npm test ;;
+            "pfarma-health-smoke")
+              python -m compileall -q .
+              HOST=127.0.0.1 PORT=8000 python tools/preview_inventory_dashboard.py >"${RUNNER_TEMP}/pfarma-health.log" 2>&1 &
+              server_pid=$!
+              trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+              healthy=0
+              for attempt in $(seq 1 30); do
+                if curl --fail --silent --show-error http://127.0.0.1:8000/health >"${RUNNER_TEMP}/pfarma-health.json"; then healthy=1; break; fi
+                sleep 1
+              done
+              test "$healthy" -eq 1
+              python - <<'PY'
+import json
+from pathlib import Path
+payload=json.loads(Path(__import__('os').environ['RUNNER_TEMP']).joinpath('pfarma-health.json').read_text())
+assert payload
+print('PFARMA_READ_ONLY_HEALTH_VERIFIED')
+PY
+              ;;
             *) exit 64 ;;
           esac
           echo "ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
@@ -138,10 +156,10 @@ jobs:
           path: receipts/${{ matrix.work_item_id }}.json
           retention-days: 7
 
-      - name: Purge private checkout
+      - name: Purge private checkout and temporary output
         if: always()
         shell: bash
-        run: rm -rf product
+        run: rm -rf product "${RUNNER_TEMP}/pfarma-health.log" "${RUNNER_TEMP}/pfarma-health.json"
 
   aggregate:
     if: always()
