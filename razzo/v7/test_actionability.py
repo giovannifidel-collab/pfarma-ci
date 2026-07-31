@@ -38,6 +38,10 @@ class ActionabilityTests(unittest.TestCase):
         item["fingerprint"] = fingerprint(item)
         return item
 
+    def rehash(self, item: dict) -> dict:
+        item["fingerprint"] = fingerprint(item)
+        return item
+
     def test_complete_contract_is_ready(self) -> None:
         state, reasons = validate(self.item(), state={"items": {}})
         self.assertEqual("READY", state)
@@ -46,10 +50,38 @@ class ActionabilityTests(unittest.TestCase):
     def test_project_domain_mismatch_is_rejected(self) -> None:
         item = self.item()
         item["collision_domain"] = "project-giovanni/accounting"
-        item["fingerprint"] = fingerprint(item)
-        state, reasons = validate(item)
+        state, reasons = validate(self.rehash(item))
         self.assertEqual("NOT_ACTIONABLE", state)
         self.assertIn("project_domain_incompatible", reasons)
+
+    def test_target_outside_allowed_surfaces_is_rejected(self) -> None:
+        item = self.item()
+        item["target_surfaces"] = ["src/photo-upload.ts", "src/unrelated.ts"]
+        state, reasons = validate(self.rehash(item))
+        self.assertEqual("NOT_ACTIONABLE", state)
+        self.assertIn("target_outside_allowed_surfaces", reasons)
+
+    def test_forbidden_or_unsafe_surface_is_rejected(self) -> None:
+        item = self.item()
+        item["target_surfaces"] = ["../secrets/token.txt"]
+        item["allowed_surfaces"] = ["../secrets/token.txt"]
+        state, reasons = validate(self.rehash(item))
+        self.assertEqual("NOT_ACTIONABLE", state)
+        self.assertIn("invalid_surface_path", reasons)
+
+    def test_network_or_publish_test_command_is_rejected(self) -> None:
+        item = self.item()
+        item["required_tests"] = ["curl https://example.invalid/test"]
+        state, reasons = validate(self.rehash(item))
+        self.assertEqual("NOT_ACTIONABLE", state)
+        self.assertIn("unsafe_required_test", reasons)
+
+    def test_human_gate_cannot_enter_product_matrix(self) -> None:
+        item = self.item()
+        item["human_gate"] = True
+        state, reasons = validate(self.rehash(item))
+        self.assertEqual("NOT_ACTIONABLE", state)
+        self.assertIn("human_gate_required", reasons)
 
     def test_no_change_escalates_6h_24h_then_rediscovery(self) -> None:
         item = self.item()
