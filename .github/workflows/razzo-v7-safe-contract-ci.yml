@@ -10,7 +10,6 @@ on:
       - 'razzo/v7/test_product_discovery.py'
       - 'razzo/v7/test_dispatcher_pool.py'
       - 'razzo/v7/shards.json'
-      - 'razzo/v7/one-shot-plan-trigger.txt'
       - '.github/workflows/razzo-v7-product-worker-fabric.yml'
       - '.github/workflows/razzo-v7-safe-contract-ci.yml'
       - '.github/workflows/razzo-v7-elastic-fabric.yml'
@@ -18,7 +17,6 @@ on:
       - '.github/workflows/razzo-v6-operational-factory.yml'
 
 permissions:
-  actions: write
   contents: read
 
 concurrency:
@@ -54,6 +52,7 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
+
           payload = json.loads(Path('razzo/v7/shards.json').read_text())
           shards = payload.get('shards', [])
           ids = [entry['shard_id'] for entry in shards]
@@ -65,6 +64,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+
           legacy = [
               '.github/workflows/razzo-v7-elastic-fabric.yml',
               '.github/workflows/razzo-v7-elastic-autoscaler.yml',
@@ -85,79 +85,3 @@ jobs:
           assert 'git push origin HEAD:main' not in safe
           assert 'bash -lc "$command"' not in safe
           PY
-
-  one-shot-plan-dispatch:
-    needs: contracts
-    if: >-
-      github.event.pull_request.head.ref == 'razzo/v7-one-shot-plan-trigger' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    steps:
-      - name: Enable, dispatch and print safe factory plan-only run
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          api="https://api.github.com/repos/${REPOSITORY}"
-          headers=(
-            -H "Authorization: Bearer ${GH_TOKEN}"
-            -H "Accept: application/vnd.github+json"
-            -H "X-GitHub-Api-Version: 2022-11-28"
-          )
-
-          ref_file="$RUNNER_TEMP/main-ref.json"
-          curl --fail-with-body --silent --show-error \
-            "${headers[@]}" \
-            "${api}/git/ref/heads/main" \
-            -o "$ref_file"
-          CONTROL_SHA="$(python - "$ref_file" <<'PY'
-          import json, sys
-          with open(sys.argv[1], encoding='utf-8') as handle:
-              print(json.load(handle)['object']['sha'])
-          PY
-          )"
-
-          curl --fail-with-body --silent --show-error \
-            -X PUT "${headers[@]}" \
-            "${api}/actions/workflows/razzo-v7-product-worker-fabric.yml/enable"
-
-          payload='{"ref":"main","inputs":{"mode":"plan-only","max_workers":"3"}}'
-          curl --fail-with-body --silent --show-error \
-            -X POST "${headers[@]}" \
-            "${api}/actions/workflows/razzo-v7-product-worker-fabric.yml/dispatches" \
-            -d "${payload}"
-
-          run_json=''
-          runs_file="$RUNNER_TEMP/safe-factory-runs.json"
-          for attempt in $(seq 1 30); do
-            curl --fail-with-body --silent --show-error \
-              "${headers[@]}" \
-              "${api}/actions/workflows/razzo-v7-product-worker-fabric.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
-              -o "$runs_file"
-            run_json="$(python - "$runs_file" "$CONTROL_SHA" <<'PY'
-          import json, sys
-          path, sha = sys.argv[1], sys.argv[2]
-          with open(path, encoding='utf-8') as handle:
-              payload = json.load(handle)
-          for run in payload.get('workflow_runs', []):
-              if run.get('head_sha') == sha and run.get('event') == 'workflow_dispatch':
-                  print(json.dumps({
-                      'run_id': run['id'],
-                      'run_number': run['run_number'],
-                      'html_url': run['html_url'],
-                      'status': run['status'],
-                      'head_sha': run['head_sha'],
-                  }))
-                  break
-          PY
-            )"
-            if [ -n "$run_json" ]; then
-              break
-            fi
-            sleep 2
-          done
-
-          test -n "$run_json"
-          echo "SAFE_FACTORY_RUN_JSON=$run_json"
