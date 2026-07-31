@@ -7,6 +7,7 @@ on:
       - 'razzo/v7/product_discovery.py'
       - 'razzo/v7/contract_materializer.py'
       - 'razzo/v7/trial_runtime.py'
+      - 'razzo/v7/test_trial_runtime.py'
       - 'razzo/v7/dispatcher_pool.py'
       - 'razzo/v7/test_actionability.py'
       - 'razzo/v7/test_product_discovery.py'
@@ -54,6 +55,7 @@ jobs:
           python -m unittest razzo.v7.test_product_discovery -v
           python -m unittest razzo.v7.test_contract_materializer -v
           python -m unittest razzo.v7.test_dispatcher_pool -v
+          python -m unittest razzo.v7.test_trial_runtime -v
       - name: Validate exact ten-shard topology
         run: |
           python - <<'PY'
@@ -98,10 +100,13 @@ jobs:
               assert '\n  schedule:' not in text
               assert 'cancel-in-progress: true' in text
           trial = Path('.github/workflows/razzo-v7-ten-shard-trial.yml').read_text()
+          runtime = Path('razzo/v7/trial_runtime.py').read_text()
           assert 'execute-trial' in trial
           assert 'max-parallel: 3' in trial
           assert 'max-parallel: 5' in trial
           assert 'git push origin HEAD:main' not in trial
           assert 'bash -lc "$command"' not in trial
-          assert 'auto_merge": False' in Path('razzo/v7/trial_runtime.py').read_text()
+          assert 'auto_merge": False' in runtime
+          assert 'use_legacy_landlock' not in runtime
+          assert 'install_codex_worker_wrapper' not in runtime
           PY
