@@ -1,0 +1,449 @@
+name: RAZZO V7 Ten-Shard Product Trial
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Read-only materialization or bounded product delivery"
+        required: true
+        type: choice
+        options:
+          - plan-only
+          - execute-trial
+        default: plan-only
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: razzo-v7-ten-shard-trial
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    outputs:
+      discovery_matrix: ${{ steps.plan.outputs.discovery_matrix }}
+      discovery_count: ${{ steps.plan.outputs.discovery_count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact control-plane SHA
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - name: Run deterministic factory contracts
+        run: |
+          python -m unittest razzo.v7.test_actionability -v
+          python -m unittest razzo.v7.test_product_discovery -v
+          python -m unittest razzo.v7.test_contract_materializer -v
+          python -m unittest razzo.v7.test_dispatcher_pool -v
+      - id: plan
+        name: Resolve exact product heads and discovery leases
+        env:
+          PFARMA_SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          python -m razzo.v7.trial_runtime plan \
+            --run-id "${{ github.run_id }}" \
+            --mode "${{ inputs.mode }}" \
+            --output "$RUNNER_TEMP/topology.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-v7-ten-shard-topology-${{ github.run_id }}
+          path: ${{ runner.temp }}/topology.json
+          if-no-files-found: error
+
+  discovery:
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.plan.outputs.discovery_matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: photo-ai-private
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned Codex CLI
+        run: npm install --global @openai/codex@0.145.0
+      - name: Checkout exact product source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.exact_input_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product-source
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify discovery lease
+        working-directory: product-source
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ matrix.exact_input_sha }}"
+          test -n "${{ matrix.shard_id }}"
+      - name: Fetch explicit portfolio issue
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${SOURCE_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ matrix.repository }}/issues/${{ matrix.issue_number }}" \
+            -o "$RUNNER_TEMP/issue.json"
+      - name: Restore Codex authentication
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
+          CODEX_AUTH_SEED_B64: ${{ secrets.CODEX_AUTH_SEED_B64 }}
+          CODEX_HOME: ${{ runner.temp }}/codex-discovery-${{ matrix.shard_id }}
+        run: node scripts/codex-auth-state.mjs restore
+      - name: Build read-only discovery prompt
+        run: |
+          python -m razzo.v7.trial_runtime discovery-prompt \
+            --issue-file "$RUNNER_TEMP/issue.json" \
+            --project-id "${{ matrix.project_id }}" \
+            --repository "${{ matrix.repository }}" \
+            --exact-sha "${{ matrix.exact_input_sha }}" \
+            --integration-lane "${{ matrix.integration_lane }}" \
+            --task-graph-path "${{ matrix.task_graph_path }}" \
+            --output "$RUNNER_TEMP/discovery-prompt.txt"
+      - name: Run read-only product discovery
+        working-directory: product-source
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-discovery-${{ matrix.shard_id }}
+        run: |
+          codex exec --skip-git-repo-check --ephemeral --sandbox read-only \
+            - < "$RUNNER_TEMP/discovery-prompt.txt" \
+            > "$RUNNER_TEMP/discovery-output.txt"
+          test -z "$(git status --porcelain)"
+      - name: Deterministically validate discovered contracts
+        env:
+          PROJECT_JSON: ${{ matrix.project_json }}
+        run: |
+          issue_title="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["title"])' "$RUNNER_TEMP/issue.json")"
+          mkdir -p "$RUNNER_TEMP/discovery-result"
+          python -m razzo.v7.contract_materializer \
+            --raw-output "$RUNNER_TEMP/discovery-output.txt" \
+            --project-json "$PROJECT_JSON" \
+            --exact-sha "${{ matrix.exact_input_sha }}" \
+            --issue-number "${{ matrix.issue_number }}" \
+            --issue-title "$issue_title" \
+            --product-root product-source \
+            --output "$RUNNER_TEMP/discovery-result/result.json"
+          cp "$RUNNER_TEMP/discovery-output.txt" "$RUNNER_TEMP/discovery-result/model-output.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: razzo-v7-discovery-${{ matrix.shard_id }}
+          path: ${{ runner.temp }}/discovery-result
+          if-no-files-found: error
+      - name: Purge private state
+        if: always()
+        run: |
+          rm -rf product-source \
+            "$RUNNER_TEMP/discovery-prompt.txt" \
+            "$RUNNER_TEMP/discovery-output.txt" \
+            "$RUNNER_TEMP/issue.json" \
+            "${{ runner.temp }}/codex-discovery-${{ matrix.shard_id }}"
+
+  materialize:
+    needs: [plan, discovery]
+    if: ${{ needs.discovery.result == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      worker_matrix: ${{ steps.aggregate.outputs.worker_matrix }}
+      worker_count: ${{ steps.aggregate.outputs.worker_count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: razzo-v7-discovery-*
+          path: discovery-results
+      - id: aggregate
+        name: Select collision-safe product contracts
+        run: |
+          python -m razzo.v7.trial_runtime aggregate \
+            --discovery-root discovery-results \
+            --run-id "${{ github.run_id }}" \
+            --mode "${{ inputs.mode }}" \
+            --output "$RUNNER_TEMP/materialized-plan.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-v7-materialized-plan-${{ github.run_id }}
+          path: ${{ runner.temp }}/materialized-plan.json
+          if-no-files-found: error
+
+  workers:
+    needs: materialize
+    if: ${{ inputs.mode == 'execute-trial' && needs.materialize.outputs.worker_count != '0' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJSON(needs.materialize.outputs.worker_matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: photo-ai-private
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned Codex CLI
+        run: npm install --global @openai/codex@0.145.0
+      - name: Verify signed product lease
+        env:
+          CONTRACT_JSON: ${{ toJSON(matrix) }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from razzo.v7.dispatcher_pool import verify_dispatcher_lease
+          item = json.loads(os.environ["CONTRACT_JSON"])
+          verify_dispatcher_lease(
+              item["dispatcher_id"], [item], item["lease_digest"],
+              item["shard_id"], "${{ github.run_id }}"
+          )
+          PY
+      - name: Checkout exact product source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.exact_input_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product-source
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact product SHA
+        working-directory: product-source
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ matrix.exact_input_sha }}"
+          test "${{ matrix.actionability_state }}" = "READY"
+      - name: Restore Codex authentication
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
+          CODEX_AUTH_SEED_B64: ${{ secrets.CODEX_AUTH_SEED_B64 }}
+          CODEX_HOME: ${{ runner.temp }}/codex-product-${{ matrix.shard_id }}
+        run: node scripts/codex-auth-state.mjs restore
+      - name: Build bounded product prompt
+        env:
+          CONTRACT_JSON: ${{ toJSON(matrix) }}
+        run: |
+          python -m razzo.v7.trial_runtime worker-prompt \
+            --output "$RUNNER_TEMP/product-work.txt"
+      - name: Execute bounded product worker
+        id: codex
+        continue-on-error: true
+        working-directory: product-source
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-product-${{ matrix.shard_id }}
+        run: |
+          codex exec --skip-git-repo-check --ephemeral --sandbox workspace-write \
+            - < "$RUNNER_TEMP/product-work.txt"
+      - name: Enforce changed-file boundaries
+        id: diff
+        if: ${{ steps.codex.outcome == 'success' }}
+        working-directory: product-source
+        env:
+          ALLOWED_JSON: ${{ toJSON(matrix.allowed_surfaces) }}
+        run: |
+          set -euo pipefail
+          git status --porcelain | sed -E 's/^.. //' > "$RUNNER_TEMP/changed-files.txt"
+          if [ ! -s "$RUNNER_TEMP/changed-files.txt" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python - <<'PY'
+          import fnmatch, json, os
+          from pathlib import Path
+          changed = [line.strip() for line in Path(os.environ["RUNNER_TEMP"], "changed-files.txt").read_text().splitlines() if line.strip()]
+          allowed = [str(value).strip().rstrip("/") for value in json.loads(os.environ["ALLOWED_JSON"])]
+          forbidden = (".github/workflows/", "infra/", "migrations/", "secrets/", "factory/policy", "factory/task-graph", "factory/task_graph")
+          def matches(path, rule):
+              return fnmatch.fnmatch(path, rule) if any(token in rule for token in "*?[") else path == rule or path.startswith(rule + "/")
+          for path in changed:
+              if path.startswith(forbidden):
+                  raise SystemExit(f"forbidden changed path: {path}")
+              if not any(matches(path, rule) for rule in allowed):
+                  raise SystemExit(f"changed path outside contract: {path}")
+          PY
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+      - name: Run registry-controlled tests
+        id: tests
+        if: ${{ steps.diff.outputs.has_changes == 'true' }}
+        working-directory: product-source
+        env:
+          FACTORY_TEST: ${{ matrix.factory_test }}
+          FACTORY_PLAN: ${{ matrix.factory_plan }}
+        run: |
+          set -euo pipefail
+          executed=false
+          if [ -n "$FACTORY_TEST" ]; then executed=true; bash -lc "$FACTORY_TEST"; fi
+          if [ -n "$FACTORY_PLAN" ]; then executed=true; bash -lc "$FACTORY_PLAN"; fi
+          test "$executed" = true
+          echo "executed=true" >> "$GITHUB_OUTPUT"
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+      - name: Verify expected integration head
+        id: base
+        if: ${{ steps.diff.outputs.has_changes == 'true' && steps.tests.outcome == 'success' }}
+        working-directory: product-source
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          remote_head="$(git ls-remote "https://x-access-token:${SOURCE_TOKEN}@github.com/${{ matrix.repository }}.git" "refs/heads/${{ matrix.integration_lane }}" | awk '{print $1}')"
+          test -n "$remote_head"
+          if [ "$remote_head" = "${{ matrix.exact_input_sha }}" ]; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Commit, push and open product PR
+        id: publish
+        if: ${{ steps.base.outputs.fresh == 'true' }}
+        working-directory: product-source
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          short_fp="$(printf '%s' '${{ matrix.fingerprint }}' | cut -c1-12)"
+          branch="razzo/v7/${{ matrix.project_id }}/${short_fp}-${GITHUB_RUN_ID}"
+          git config user.name "RAZZO V7 Product Worker"
+          git config user.email "razzo-v7@users.noreply.github.com"
+          git switch -c "$branch"
+          git add -A
+          git commit -m "RAZZO V7: ${{ matrix.product_objective }}"
+          candidate_sha="$(git rev-parse HEAD)"
+          git push "https://x-access-token:${SOURCE_TOKEN}@github.com/${{ matrix.repository }}.git" "HEAD:${branch}"
+          export BRANCH="$branch"
+          payload="$(python - <<'PY'
+          import json, os
+          print(json.dumps({
+              "title": "RAZZO V7: ${{ matrix.product_objective }}",
+              "head": os.environ["BRANCH"],
+              "base": "${{ matrix.integration_lane }}",
+              "body": "Validated candidate from #${{ matrix.issue_number }}. Exact input `${{ matrix.exact_input_sha }}`; shard `${{ matrix.shard_id }}`; work item `${{ matrix.work_item_id }}`. Registry-controlled tests passed."
+          }))
+          PY
+          )"
+          response="$(curl --fail-with-body --silent --show-error -X POST \
+            -H "Authorization: Bearer ${SOURCE_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ matrix.repository }}/pulls" -d "$payload")"
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' <<< "$response")" >> "$GITHUB_OUTPUT"
+      - name: Write truthful receipt
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/worker-receipt"
+          python -m razzo.v7.trial_runtime receipt \
+            --run-id "${{ github.run_id }}" \
+            --codex-outcome "${{ steps.codex.outcome }}" \
+            --diff-outcome "${{ steps.diff.outcome }}" \
+            --has-changes "${{ steps.diff.outputs.has_changes }}" \
+            --tests-outcome "${{ steps.tests.outcome }}" \
+            --tests-executed "${{ steps.tests.outputs.executed }}" \
+            --tests-passed "${{ steps.tests.outputs.passed }}" \
+            --fresh "${{ steps.base.outputs.fresh }}" \
+            --pr-number "${{ steps.publish.outputs.pr_number }}" \
+            --candidate-sha "${{ steps.publish.outputs.candidate_sha }}" \
+            --project-id "${{ matrix.project_id }}" \
+            --repository "${{ matrix.repository }}" \
+            --issue-number "${{ matrix.issue_number }}" \
+            --work-item-id "${{ matrix.work_item_id }}" \
+            --fingerprint "${{ matrix.fingerprint }}" \
+            --collision-domain "${{ matrix.collision_domain }}" \
+            --shard-id "${{ matrix.shard_id }}" \
+            --dispatcher-id "${{ matrix.dispatcher_id }}" \
+            --lease-digest "${{ matrix.lease_digest }}" \
+            --exact-input-sha "${{ matrix.exact_input_sha }}" \
+            --integration-lane "${{ matrix.integration_lane }}" \
+            --output "$RUNNER_TEMP/worker-receipt/receipt.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: razzo-v7-product-receipt-${{ matrix.shard_id }}
+          path: ${{ runner.temp }}/worker-receipt/receipt.json
+          if-no-files-found: error
+      - name: Purge private state
+        if: always()
+        run: |
+          rm -rf product-source "$RUNNER_TEMP/product-work.txt" "$RUNNER_TEMP/changed-files.txt" \
+            "${{ runner.temp }}/codex-product-${{ matrix.shard_id }}"
+
+  verify:
+    needs: [plan, materialize, workers]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.mode == 'execute-trial' && needs.materialize.outputs.worker_count != '0' }}
+        with:
+          pattern: razzo-v7-product-receipt-*
+          path: receipts
+      - name: Classify trial
+        run: |
+          python -m razzo.v7.trial_runtime verify \
+            --receipts-root receipts \
+            --expected-count "${{ needs.materialize.outputs.worker_count || 0 }}" \
+            --mode "${{ inputs.mode }}" \
+            --run-id "${{ github.run_id }}" \
+            --output "$RUNNER_TEMP/summary.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-v7-ten-shard-summary-${{ github.run_id }}
+          path: ${{ runner.temp }}/summary.json
+          if-no-files-found: error
+
+  integration-readiness:
+    needs: [materialize, verify]
+    if: ${{ always() && needs.verify.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.mode == 'execute-trial' && needs.materialize.outputs.worker_count != '0' }}
+        with:
+          pattern: razzo-v7-product-receipt-*
+          path: receipts
+      - name: Verify delivered PR identity without merging
+        env:
+          PFARMA_SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          python -m razzo.v7.trial_runtime integration \
+            --receipts-root receipts \
+            --output "$RUNNER_TEMP/readiness.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-v7-integration-readiness-${{ github.run_id }}
+          path: ${{ runner.temp }}/readiness.json
+          if-no-files-found: error
