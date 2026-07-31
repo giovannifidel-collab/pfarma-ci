@@ -1,7 +1,7 @@
 {
   "version": 3,
   "sourceOfTruth": "github-current-open-product-prs-and-enabled-registry",
-  "rediscoveryEpoch": "2026-07-31T19:36:33Z",
+  "rediscoveryEpoch": "2026-07-31T19:48:41Z",
   "projects": [
     {
       "id": "project-giovanni",
