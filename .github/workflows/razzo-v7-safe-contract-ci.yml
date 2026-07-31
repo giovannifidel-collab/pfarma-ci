@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: razzo-v7-safe-contract-${{ github.event.pull_request.number }}
@@ -44,3 +45,21 @@ jobs:
           assert 'Restore Codex authentication' not in trial
           assert 'git push origin HEAD:main' not in trial
           PY
+
+  dispatch-once:
+    if: ${{ github.event.pull_request.head.ref == 'razzo/v7-run-free-wave-once' }}
+    needs: contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch corrected free execute trial
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${REPOSITORY}"
+          headers=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          curl --fail-with-body --silent --show-error -X POST "${headers[@]}" \
+            "${api}/actions/workflows/razzo-v7-ten-shard-trial.yml/dispatches" \
+            -d '{"ref":"main","inputs":{"mode":"execute-trial"}}'
+          echo 'One corrected free execute-trial wave dispatched.'
