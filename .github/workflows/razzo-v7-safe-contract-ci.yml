@@ -5,18 +5,18 @@ on:
     branches: [main]
 
 permissions:
-  actions: write
-  contents: write
+  contents: read
 
 jobs:
   dispatch:
     if: ${{ github.head_ref == 'razzo/v7-free-trial-trigger' }}
     runs-on: ubuntu-latest
+    environment: photo-ai-private
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-          token: ${{ github.token }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       - name: Remove duplicate publish environment
         run: |
           python - <<'PY'
@@ -26,7 +26,7 @@ jobs:
           marker='      - name: Write truthful receipt'
           index=lines.index(marker)
           env_index=None
-          for pos in range(max(0,index-6),index):
+          for pos in range(max(0,index-8),index):
               if lines[pos].strip()=='env:' and pos+1 < index and lines[pos+1].strip().startswith('BRANCH:'):
                   env_index=pos
           if env_index is None:
@@ -34,14 +34,14 @@ jobs:
           del lines[env_index:env_index+2]
           path.write_text('\n'.join(lines)+'\n')
           PY
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config user.name 'RAZZO V7 Factory'
+          git config user.email 'razzo-v7@users.noreply.github.com'
           git add .github/workflows/razzo-v7-ten-shard-trial.yml
           git commit -m 'fix: remove duplicate free trial environment'
           git push origin HEAD:main
       - name: Dispatch deterministic free execute trial
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
