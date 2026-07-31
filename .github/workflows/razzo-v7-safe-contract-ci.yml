@@ -55,7 +55,6 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-
           payload = json.loads(Path('razzo/v7/shards.json').read_text())
           shards = payload.get('shards', [])
           ids = [entry['shard_id'] for entry in shards]
@@ -67,7 +66,6 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           legacy = [
               '.github/workflows/razzo-v7-elastic-fabric.yml',
               '.github/workflows/razzo-v7-elastic-autoscaler.yml',
@@ -111,11 +109,17 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28"
           )
 
-          ref_json="$(curl --fail-with-body --silent --show-error \
+          ref_file="$RUNNER_TEMP/main-ref.json"
+          curl --fail-with-body --silent --show-error \
             "${headers[@]}" \
-            "${api}/git/ref/heads/main")"
-          CONTROL_SHA="$(python -c 'import json,sys; print(json.load(sys.stdin)["object"]["sha"])' <<< "$ref_json")"
-          export CONTROL_SHA
+            "${api}/git/ref/heads/main" \
+            -o "$ref_file"
+          CONTROL_SHA="$(python - "$ref_file" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding='utf-8') as handle:
+              print(json.load(handle)['object']['sha'])
+          PY
+          )"
 
           curl --fail-with-body --silent --show-error \
             -X PUT "${headers[@]}" \
@@ -128,15 +132,17 @@ jobs:
             -d "${payload}"
 
           run_json=''
+          runs_file="$RUNNER_TEMP/safe-factory-runs.json"
           for attempt in $(seq 1 30); do
-            response="$(curl --fail-with-body --silent --show-error \
+            curl --fail-with-body --silent --show-error \
               "${headers[@]}" \
-              "${api}/actions/workflows/razzo-v7-product-worker-fabric.yml/runs?event=workflow_dispatch&branch=main&per_page=20")"
-            export RESPONSE="$response"
-            run_json="$(python - <<'PY'
-          import json, os
-          payload = json.loads(os.environ['RESPONSE'])
-          sha = os.environ['CONTROL_SHA']
+              "${api}/actions/workflows/razzo-v7-product-worker-fabric.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+              -o "$runs_file"
+            run_json="$(python - "$runs_file" "$CONTROL_SHA" <<'PY'
+          import json, sys
+          path, sha = sys.argv[1], sys.argv[2]
+          with open(path, encoding='utf-8') as handle:
+              payload = json.load(handle)
           for run in payload.get('workflow_runs', []):
               if run.get('head_sha') == sha and run.get('event') == 'workflow_dispatch':
                   print(json.dumps({
