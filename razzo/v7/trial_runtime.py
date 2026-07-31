@@ -4,8 +4,6 @@ import argparse
 import json
 import os
 import re
-import shlex
-import shutil
 import urllib.parse
 import urllib.request
 from collections import Counter
@@ -205,39 +203,9 @@ def command_aggregate(args: argparse.Namespace) -> int:
     return 0
 
 
-def install_codex_worker_wrapper(contract: dict[str, Any]) -> Path:
-    runner_temp = Path(os.environ["RUNNER_TEMP"])
-    github_path = Path(os.environ["GITHUB_PATH"])
-    real_codex = shutil.which("codex")
-    if not real_codex:
-        raise RuntimeError("codex executable not found before wrapper installation")
-    wrapper_dir = runner_temp / "razzo-codex-wrapper"
-    wrapper_dir.mkdir(parents=True, exist_ok=True)
-    wrapper = wrapper_dir / "codex"
-    log_path = runner_temp / "codex-worker.log"
-    marker_path = runner_temp / "razzo-codex-environment-blocked"
-    script = f"""#!/usr/bin/env bash
-set -o pipefail
-set +e
-{shlex.quote(real_codex)} --enable use_legacy_landlock "$@" 2>&1 | tee {shlex.quote(str(log_path))}
-status=${{PIPESTATUS[0]}}
-set -e
-if grep -Eq 'bwrap: loopback: Failed RTM_NEWADDR|execution sandbox failed|sandbox failed before|sandbox helper failed' {shlex.quote(str(log_path))}; then
-  touch {shlex.quote(str(marker_path))}
-  exit 74
-fi
-exit "$status"
-"""
-    wrapper.write_text(script, encoding="utf-8")
-    wrapper.chmod(0o700)
-    with github_path.open("a", encoding="utf-8") as handle:
-        handle.write(str(wrapper_dir) + "\n")
-    return wrapper
-
 
 def command_worker_prompt(args: argparse.Namespace) -> int:
     contract = json.loads(os.environ["CONTRACT_JSON"])
-    install_codex_worker_wrapper(contract)
     prompt = f"""You are one RAZZO V7 product worker operating on an exact validated contract.
 
 WORK ITEM: {contract['work_item_id']}
@@ -267,7 +235,6 @@ def command_receipt(args: argparse.Namespace) -> int:
     contract = json.loads(os.environ["CONTRACT_JSON"])
     environment_blocked = (
         args.environment_blocked == "true"
-        or Path(os.environ["RUNNER_TEMP"], "razzo-codex-environment-blocked").exists()
     )
     codex_ok = args.codex_outcome == "success"
     diff_ok = args.diff_outcome in {"success", "skipped"}
