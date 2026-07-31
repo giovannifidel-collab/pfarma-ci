@@ -21,6 +21,7 @@ on:
       - '.github/workflows/razzo-v6-operational-factory.yml'
 
 permissions:
+  actions: write
   contents: read
 
 concurrency:
@@ -105,3 +106,80 @@ jobs:
           assert 'bash -lc "$command"' not in trial
           assert 'auto_merge": False' in Path('razzo/v7/trial_runtime.py').read_text()
           PY
+
+  one-shot-execute-trial:
+    needs: contracts
+    if: >-
+      github.event.pull_request.head.ref == 'razzo/v7-ten-shard-execute-trigger' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch bounded ten-shard execute trial and print run identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${REPOSITORY}"
+          headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+
+          main_ref="$RUNNER_TEMP/main-ref.json"
+          runs_before="$RUNNER_TEMP/runs-before.json"
+          runs_after="$RUNNER_TEMP/runs-after.json"
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "${api}/git/ref/heads/main" -o "$main_ref"
+          control_sha="$(python - "$main_ref" <<'PY'
+          import json, sys
+          print(json.load(open(sys.argv[1], encoding='utf-8'))['object']['sha'])
+          PY
+          )"
+
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "${api}/actions/workflows/razzo-v7-ten-shard-trial.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+            -o "$runs_before"
+          before_id="$(python - "$runs_before" <<'PY'
+          import json, sys
+          runs = json.load(open(sys.argv[1], encoding='utf-8')).get('workflow_runs', [])
+          print(max((int(run['id']) for run in runs), default=0))
+          PY
+          )"
+
+          curl --fail-with-body --silent --show-error -X PUT "${headers[@]}" \
+            "${api}/actions/workflows/razzo-v7-ten-shard-trial.yml/enable"
+          payload='{"ref":"main","inputs":{"mode":"execute-trial"}}'
+          curl --fail-with-body --silent --show-error -X POST "${headers[@]}" \
+            "${api}/actions/workflows/razzo-v7-ten-shard-trial.yml/dispatches" \
+            -d "$payload"
+
+          run_json=''
+          for attempt in $(seq 1 30); do
+            curl --fail-with-body --silent --show-error "${headers[@]}" \
+              "${api}/actions/workflows/razzo-v7-ten-shard-trial.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+              -o "$runs_after"
+            run_json="$(python - "$runs_after" "$control_sha" "$before_id" <<'PY'
+          import json, sys
+          path, sha, before = sys.argv[1], sys.argv[2], int(sys.argv[3])
+          runs = json.load(open(path, encoding='utf-8')).get('workflow_runs', [])
+          for run in runs:
+              if int(run['id']) > before and run.get('head_sha') == sha:
+                  print(json.dumps({
+                      'run_id': run['id'],
+                      'run_number': run['run_number'],
+                      'html_url': run['html_url'],
+                      'status': run['status'],
+                      'head_sha': run['head_sha'],
+                      'event': run['event'],
+                  }))
+                  break
+          PY
+            )"
+            if [ -n "$run_json" ]; then break; fi
+            sleep 2
+          done
+          test -n "$run_json"
+          echo "TEN_SHARD_RUN_JSON=$run_json"
