@@ -6,6 +6,7 @@ import os
 import re
 import urllib.parse
 import urllib.request
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -162,12 +163,19 @@ repository evidence is insufficient.
 
 
 def command_aggregate(args: argparse.Namespace) -> int:
-    results = [load_json(path) for path in Path(args.discovery_root).glob("**/result.json")]
+    results = [
+        load_json(path)
+        for path in Path(args.discovery_root).glob("**/result.json")
+    ]
     ready = [item for result in results for item in result.get("ready", [])]
     rejected = [item for result in results for item in result.get("rejected", [])]
     project_ids = [str(result["project_id"]) for result in results]
     selected = select_fairly(ready, 5, project_ids)
-    workers, leases = annotate_work_items(selected, provider_cap=5, run_id=args.run_id)
+    workers, leases = annotate_work_items(
+        selected,
+        provider_cap=5,
+        run_id=args.run_id,
+    )
     plan = {
         "run_id": args.run_id,
         "mode": args.mode,
@@ -182,11 +190,16 @@ def command_aggregate(args: argparse.Namespace) -> int:
     write_json(Path(args.output), plan)
     append_output("worker_matrix", {"include": workers})
     append_output("worker_count", str(len(workers)))
-    print(json.dumps({
-        "ready_candidates": len(ready),
-        "selected_product_workers": len(workers),
-        "rejected_candidates": len(rejected),
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "ready_candidates": len(ready),
+                "selected_product_workers": len(workers),
+                "rejected_candidates": len(rejected),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -218,6 +231,7 @@ leave the tree unchanged.
 
 
 def command_receipt(args: argparse.Namespace) -> int:
+    contract = json.loads(os.environ["CONTRACT_JSON"])
     codex_ok = args.codex_outcome == "success"
     diff_ok = args.diff_outcome in {"success", "skipped"}
     changed = args.has_changes == "true"
@@ -241,17 +255,17 @@ def command_receipt(args: argparse.Namespace) -> int:
         "execution_success": codex_ok,
         "product_progress": outcome == "PRODUCT_DELIVERED",
         "outcome": outcome,
-        "project_id": args.project_id,
-        "repository": args.repository,
-        "issue_number": args.issue_number,
-        "work_item_id": args.work_item_id,
-        "fingerprint": args.fingerprint,
-        "collision_domain": args.collision_domain,
-        "shard_id": args.shard_id,
-        "dispatcher_id": args.dispatcher_id,
-        "lease_digest": args.lease_digest,
-        "exact_input_sha": args.exact_input_sha,
-        "integration_lane": args.integration_lane,
+        "project_id": contract["project_id"],
+        "repository": contract["repository"],
+        "issue_number": int(contract["issue_number"]),
+        "work_item_id": contract["work_item_id"],
+        "fingerprint": contract["fingerprint"],
+        "collision_domain": contract["collision_domain"],
+        "shard_id": contract["shard_id"],
+        "dispatcher_id": contract["dispatcher_id"],
+        "lease_digest": contract["lease_digest"],
+        "exact_input_sha": contract["exact_input_sha"],
+        "integration_lane": contract["integration_lane"],
         "has_changes": changed,
         "tests_executed": tests_executed,
         "tests_passed": tests_passed,
@@ -287,18 +301,30 @@ def command_verify(args: argparse.Namespace) -> int:
     changed = sum(bool(receipt["has_changes"]) for receipt in receipts)
     classification = "PLAN_ONLY"
     if args.mode == "execute-trial":
-        classification = "PRODUCTIVE" if delivered else "PARTIALLY_PRODUCTIVE" if changed else "NON_PRODUCTIVE"
+        classification = (
+            "PRODUCTIVE"
+            if delivered
+            else "PARTIALLY_PRODUCTIVE"
+            if changed
+            else "NON_PRODUCTIVE"
+        )
     summary = {
         "run_id": args.run_id,
         "mode": args.mode,
         "logical_shard_capacity": 10,
-        "discovery_shards": ["razzo-shard-0001", "razzo-shard-0007", "razzo-shard-0008"],
+        "discovery_shards": [
+            "razzo-shard-0001",
+            "razzo-shard-0007",
+            "razzo-shard-0008",
+        ],
         "verify_shard": "razzo-shard-0005",
         "planned_product_workers": expected,
         "changed_workers": changed,
         "tested_workers": sum(bool(receipt["tests_executed"]) for receipt in receipts),
         "delivered_prs": delivered,
-        "no_actionable_change": sum(receipt["outcome"] == "NO_ACTIONABLE_CHANGE" for receipt in receipts),
+        "no_actionable_change": sum(
+            receipt["outcome"] == "NO_ACTIONABLE_CHANGE" for receipt in receipts
+        ),
         "failed_workers": sum(receipt["outcome"] == "FAILED" for receipt in receipts),
         "stale_base": sum(receipt["outcome"] == "STALE_BASE" for receipt in receipts),
         "product_progress": delivered > 0,
@@ -312,7 +338,7 @@ def command_verify(args: argparse.Namespace) -> int:
 def command_integration(args: argparse.Namespace) -> int:
     token = os.environ["PFARMA_SOURCE_TOKEN"]
     receipts = load_receipts(args.receipts_root)
-    delivered = [receipt for receipt in receipts if receipt["outcome"] == "PRODUCT_DELIVERED"]
+    delivered = [r for r in receipts if r["outcome"] == "PRODUCT_DELIVERED"]
     verified = []
     for receipt in delivered:
         pr = api_json(
@@ -323,12 +349,14 @@ def command_integration(args: argparse.Namespace) -> int:
             raise RuntimeError("candidate SHA does not match product PR")
         if pr["base"]["ref"] != receipt["integration_lane"]:
             raise RuntimeError("product PR base does not match integration lane")
-        verified.append({
-            "repository": receipt["repository"],
-            "pr_number": receipt["pr_number"],
-            "candidate_sha": receipt["candidate_sha"],
-            "base": receipt["integration_lane"],
-        })
+        verified.append(
+            {
+                "repository": receipt["repository"],
+                "pr_number": receipt["pr_number"],
+                "candidate_sha": receipt["candidate_sha"],
+                "base": receipt["integration_lane"],
+            }
+        )
     readiness = {
         "integration_shard": "razzo-shard-0006",
         "verified_product_prs": verified,
@@ -374,13 +402,9 @@ def parser() -> argparse.ArgumentParser:
     receipt = sub.add_parser("receipt")
     for name in (
         "run_id", "codex_outcome", "diff_outcome", "has_changes", "tests_outcome",
-        "tests_executed", "tests_passed", "fresh", "pr_number", "candidate_sha",
-        "project_id", "repository", "work_item_id", "fingerprint", "collision_domain",
-        "shard_id", "dispatcher_id", "lease_digest", "exact_input_sha",
-        "integration_lane", "output",
+        "tests_executed", "tests_passed", "fresh", "pr_number", "candidate_sha", "output",
     ):
         receipt.add_argument("--" + name.replace("_", "-"), default="")
-    receipt.add_argument("--issue-number", type=int, required=True)
     receipt.set_defaults(func=command_receipt)
 
     verify = sub.add_parser("verify")
