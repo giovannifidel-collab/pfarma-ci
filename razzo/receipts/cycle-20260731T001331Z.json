@@ -1,0 +1,57 @@
+{
+  "receiptType": "aggregate-cycle",
+  "protocolVersion": 5,
+  "engine": "RAZZO_V6_V7",
+  "cycleAt": "2026-07-31T00:13:31Z",
+  "portfolioSource": "razzo/projects.json@4f9d6a2f416cdc722cafe99defb35f6df927ca39",
+  "enabledProjects": [
+    "project-giovanni",
+    "pfarma-cloud",
+    "family-cloud"
+  ],
+  "reconcile": {
+    "staleCandidatesRemoved": [
+      "project-giovanni#919@4b5cccaeda6642c5941559444b1cc84588cba898",
+      "pfarma-cloud#2029@73352332d6d8c80339cb20c132a834f71c1612c3",
+      "family-cloud#298@b9e8f5f08fa2c322ef6782a46d51ccbdeaead1ae"
+    ],
+    "projectStateCommit": "36b94191b0a8d4059f185eac59ed4348d17c0415"
+  },
+  "operatorRobot": {
+    "openMachineMarkedIssues": 0,
+    "newFingerprintsAcquired": [],
+    "statusClaimedThisCycle": "INTEGRATED_GREEN_PREVIOUSLY_PROVEN",
+    "readyClaimed": false
+  },
+  "discovery": {
+    "project-giovanni": [
+      "issue#152 end-to-end mobile training journey",
+      "issue#917 wearable data in workout completion"
+    ],
+    "pfarma-cloud": [
+      "issue#345 September operational cutover",
+      "issue#1250 operator-critical pilot journeys",
+      "issue#1272 fiscal/product-master/recall parallel orbit"
+    ],
+    "family-cloud": [
+      "no open delivery issue returned by current repository search; repository discovery required"
+    ]
+  },
+  "execution": {
+    "workItemsCreated": 0,
+    "workItemsDispatched": 0,
+    "shardsUsed": 0,
+    "parallelPeak": 0,
+    "verified": 0,
+    "integrated": 0,
+    "productProgress": false,
+    "generationPromoted": false
+  },
+  "stopReason": "no safe candidate with complete build-and-exact-sha evidence was materialized during this bounded run; canonical state was repaired and discovery was persisted",
+  "nextPlan": [
+    "materialize one non-duplicative vertical-slice candidate per enabled project from repository-local discovery",
+    "prioritize PFarma operator-critical journeys and Project Giovanni end-to-end usability",
+    "run exact-SHA CI before integration",
+    "repeat robot issue discovery before any PFarma dispatch"
+  ]
+}
