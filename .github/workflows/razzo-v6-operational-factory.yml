@@ -1,94 +1,30 @@
-name: RAZZO V6 Operational Factory
+name: RAZZO V6 Legacy Regression (Manual)
 
 on:
-  pull_request:
-    paths:
-      - 'razzo/v6/**'
-      - 'razzo/v7/product_discovery.py'
-      - 'razzo/v7/test_product_discovery.py'
-      - 'razzo/protocol.json'
-      - 'razzo/projects.json'
-      - 'razzo/project-state.json'
-      - 'tools/validate_public_repo.py'
-      - 'razzo/audits/**'
-      - '.github/workflows/razzo-v6-operational-factory.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'razzo/v6/**'
-      - 'razzo/v7/product_discovery.py'
-      - 'razzo/v7/test_product_discovery.py'
-      - 'razzo/protocol.json'
-      - 'razzo/projects.json'
-      - 'razzo/project-state.json'
-      - 'tools/validate_public_repo.py'
-      - 'razzo/audits/**'
-      - '.github/workflows/razzo-v6-operational-factory.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: razzo-v6-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  group: razzo-v6-legacy-regression
+  cancel-in-progress: true
 
 jobs:
-  unit-and-contract:
+  regression:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - name: Exact SHA guard
-        shell: bash
-        run: |
-          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
-      - name: Runtime contract tests
+          python-version: "3.12"
+      - name: Verify exact SHA
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - name: Run V6 unit regression only
         run: python -m unittest razzo.v6.test_runtime -v
-      - name: Delivery governor tests
-        run: python -m unittest razzo.v7.test_product_discovery -v
-
-  operational-proof:
-    runs-on: ubuntu-latest
-    needs: unit-and-contract
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Exact SHA guard
-        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
-      - name: Dispatch V6 operational proof wave
-        run: python razzo/v6/runtime.py operational-proof --concurrency 4 --out razzo/v6/out
-      - name: Verify queue, execution receipts and aggregate receipt
+      - name: State legacy boundary
         run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          out = Path('razzo/v6/out')
-          queue = json.loads((out / 'queue-state.json').read_text())
-          receipts = json.loads((out / 'execution-receipts.json').read_text())
-          cycle = json.loads((out / 'cycle-receipt.json').read_text())
-          assert len(queue) >= 8
-          assert cycle['workstreams_dispatched'] >= 4
-          assert len(receipts) == cycle['workstreams_dispatched']
-          assert cycle['parallel_peak'] >= 2
-          assert cycle['workstreams_failed'] == 0
-          assert cycle['workstreams_verified'] == cycle['workstreams_completed']
-          assert cycle['duplicate_execution'] is False
-          assert cycle['generation_promoted'] is False
-          print(json.dumps(cycle, indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: razzo-v6-operational-proof-${{ github.event.pull_request.head.sha || github.sha }}
-          path: razzo/v6/out/*.json
-          if-no-files-found: error
-          retention-days: 30
+          echo "V6 is retained only for manual regression compatibility."
+          echo "It cannot dispatch proof waves, claim product progress, publish, or trigger continuation."
