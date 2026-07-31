@@ -1,6 +1,6 @@
 name: RAZZO Super Factory Objective Proof
 
-# trigger: 2026-07-31T11:14:00+02:00
+# trigger: 2026-07-31T11:16:00+02:00
 on:
   workflow_dispatch:
   push:
@@ -14,9 +14,6 @@ on:
 permissions:
   contents: write
   actions: read
-
-env:
-  PRIVATE_REPO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
 
 jobs:
   prepare:
@@ -34,10 +31,10 @@ jobs:
           fc=$(tr -d '\r\n' < family-cloud-ref.txt)
           for sha in "$pg" "$pf" "$fc"; do [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; done
           matrix=$(jq -cn --arg pg "$pg" --arg pf "$pf" --arg fc "$fc" '{include:[
-            {shard_id:"razzo-shard-0001",work_item_id:"PG-FACTORY",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"npm-factory"},
-            {shard_id:"razzo-shard-0002",work_item_id:"PG-BUILD",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"npm-build"},
-            {shard_id:"razzo-shard-0003",work_item_id:"PF-PYTHON",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,command:"python-tests"},
-            {shard_id:"razzo-shard-0004",work_item_id:"FC-TEST",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,command:"npm-test"}
+            {shard_id:"razzo-shard-0001",work_item_id:"PG-FACTORY",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"npm-factory",credential:"project"},
+            {shard_id:"razzo-shard-0002",work_item_id:"PG-BUILD",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"npm-build",credential:"project"},
+            {shard_id:"razzo-shard-0003",work_item_id:"PF-PYTHON",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,command:"python-tests",credential:"pfarma"},
+            {shard_id:"razzo-shard-0004",work_item_id:"FC-TEST",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,command:"npm-test",credential:"pfarma"}
           ]}')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
@@ -49,6 +46,8 @@ jobs:
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      SELECTED_PRIVATE_REPO_TOKEN: ${{ matrix.credential == 'project' && secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
     steps:
       - id: clock
         shell: bash
@@ -59,13 +58,14 @@ jobs:
           set -euo pipefail
           [[ "${{ matrix.exact_sha }}" =~ ^[0-9a-f]{40}$ ]]
           [[ "${{ matrix.shard_id }}" =~ ^razzo-shard-[0-9]{4}$ ]]
-          test -n "$PRIVATE_REPO_TOKEN"
+          [[ "${{ matrix.credential }}" =~ ^(project|pfarma)$ ]]
+          test -n "$SELECTED_PRIVATE_REPO_TOKEN"
       - name: Checkout exact private product SHA
         uses: actions/checkout@v4
         with:
           repository: ${{ matrix.repository }}
           ref: ${{ matrix.exact_sha }}
-          token: ${{ env.PRIVATE_REPO_TOKEN }}
+          token: ${{ env.SELECTED_PRIVATE_REPO_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
           path: product
@@ -128,7 +128,6 @@ jobs:
           path: collected
           merge-multiple: true
       - name: Validate receipts and parallel overlap
-        id: proof
         shell: bash
         run: |
           set -euo pipefail
