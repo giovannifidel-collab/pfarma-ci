@@ -69,7 +69,7 @@ jobs:
           )"
           export RAZZO_MAX_WORKERS="$max_workers"
 
-          raw="$(python razzo/v7/product_discovery.py)"
+          raw="$(python -m razzo.v7.product_discovery)"
           export RAW="$raw"
 
           mkdir -p "$RUNNER_TEMP/razzo-plan"
