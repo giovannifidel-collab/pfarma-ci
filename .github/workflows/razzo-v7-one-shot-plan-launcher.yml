@@ -1,15 +1,14 @@
 name: RAZZO V7 One-Shot Plan Launcher
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/razzo-v7-one-shot-plan-launcher.yml'
+  pull_request_target:
+    types:
+      - opened
 
 permissions:
   actions: write
-  contents: write
+  contents: read
+  issues: write
 
 concurrency:
   group: razzo-v7-one-shot-plan-launcher
@@ -17,14 +16,18 @@ concurrency:
 
 jobs:
   dispatch:
-    if: ${{ github.event.head_commit.message == 'RAZZO V7: one-shot plan launcher with receipt' }}
+    if: >-
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.ref == 'razzo/v7-one-shot-plan-trigger' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch, identify and record safe factory plan-only run
+      - name: Dispatch and report safe factory plan-only run
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          CONTROL_SHA: ${{ github.sha }}
+          CONTROL_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -58,9 +61,6 @@ jobs:
                       'run_number': run['run_number'],
                       'html_url': run['html_url'],
                       'status': run['status'],
-                      'head_sha': run['head_sha'],
-                      'mode': 'plan-only',
-                      'max_workers': 3,
                   }))
                   break
           PY
@@ -73,21 +73,21 @@ jobs:
 
           test -n "$run_json"
           export RUN_JSON="$run_json"
-          contents_payload="$(python - <<'PY'
-          import base64, json, os
-          receipt = json.loads(os.environ['RUN_JSON'])
-          receipt['launcher_run_id'] = os.environ.get('GITHUB_RUN_ID')
-          receipt['recorded_by'] = 'RAZZO V7 one-shot launcher'
-          content = json.dumps(receipt, indent=2, sort_keys=True) + '\n'
-          print(json.dumps({
-              'message': 'RAZZO V7: record one-shot plan-only dispatch',
-              'content': base64.b64encode(content.encode()).decode(),
-              'branch': 'main',
-          }))
+          comment_payload="$(python - <<'PY'
+          import json, os
+          run = json.loads(os.environ['RUN_JSON'])
+          body = (
+              'RAZZO V7 one-shot dispatch verified.\n\n'
+              f"- Safe Product Factory run ID: `{run['run_id']}`\n"
+              f"- Run number: `{run['run_number']}`\n"
+              '- Mode: `plan-only`\n'
+              '- Max workers: `3`\n'
+              f"- URL: {run['html_url']}\n"
+          )
+          print(json.dumps({'body': body}))
           PY
           )"
           curl --fail-with-body --silent --show-error \
-            -X PUT "${headers[@]}" \
-            "${api}/contents/razzo/v7/one-shot-dispatch-receipt.json" \
-            -d "$contents_payload" >/dev/null
-          echo "$run_json"
+            -X POST "${headers[@]}" \
+            "${api}/issues/${PR_NUMBER}/comments" \
+            -d "$comment_payload" >/dev/null
