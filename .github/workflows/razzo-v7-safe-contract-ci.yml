@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: read
-  actions: write
+  actions: read
 
 concurrency:
   group: razzo-v7-safe-contract-${{ github.event.pull_request.number }}
@@ -46,12 +46,12 @@ jobs:
           assert 'git push origin HEAD:main' not in trial
           PY
 
-  dispatch-once:
+  report-once:
     if: ${{ github.event.pull_request.head.ref == 'razzo/v7-run-free-wave-once' }}
     needs: contracts
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch corrected free execute trial
+      - name: Report corrected free execute trial
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -59,7 +59,14 @@ jobs:
           set -euo pipefail
           api="https://api.github.com/repos/${REPOSITORY}"
           headers=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
-          curl --fail-with-body --silent --show-error -X POST "${headers[@]}" \
-            "${api}/actions/workflows/razzo-v7-ten-shard-trial.yml/dispatches" \
-            -d '{"ref":"main","inputs":{"mode":"execute-trial"}}'
-          echo 'One corrected free execute-trial wave dispatched.'
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "${api}/actions/workflows/razzo-v7-ten-shard-trial.yml/runs?event=workflow_dispatch&branch=main&per_page=5" \
+            -o "$RUNNER_TEMP/runs.json"
+          python - "$RUNNER_TEMP/runs.json" <<'PY'
+          import json,sys
+          runs=json.load(open(sys.argv[1])).get('workflow_runs',[])
+          if not runs:
+              raise SystemExit('No dispatched free wave found')
+          run=runs[0]
+          print(json.dumps({'run_id':run['id'],'run_number':run['run_number'],'status':run['status'],'conclusion':run.get('conclusion'),'head_sha':run['head_sha'],'url':run['html_url']}))
+          PY
