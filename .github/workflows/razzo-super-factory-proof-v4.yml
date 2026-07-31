@@ -113,9 +113,12 @@ jobs:
                 backend/test_goods_receipt_identifier_validation.py \
                 backend/test_product_manual_reorder_supplier_identifier_safety.py \
                 tools/test_receipt_location_id_validation.py | while read -r f; do [[ -f "$f" ]] && echo "$f"; done)
-              printf 'PFarma focused unittest files:\n%s\n' "${tests[*]}"
+              printf 'PFarma focused executable contract files:\n%s\n' "${tests[*]}"
               test "${#tests[@]}" -ge 6
-              python -m unittest -v "${tests[@]}"
+              for test_file in "${tests[@]}"; do
+                echo "RUNNING $test_file"
+                PYTHONPATH="$(pwd):$(pwd)/backend:$(pwd)/agent/staging:${PYTHONPATH:-}" python "$test_file"
+              done
               ;;
             fc-suite)
               install_npm_deps
