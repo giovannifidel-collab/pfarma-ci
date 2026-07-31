@@ -25,9 +25,13 @@ jobs:
           lines=path.read_text().splitlines()
           marker='      - name: Write truthful receipt'
           index=lines.index(marker)
-          if index < 2 or lines[index-2].strip() != 'env:' or not lines[index-1].strip().startswith('BRANCH:'):
-              raise SystemExit('duplicate env lines not found immediately before receipt step')
-          del lines[index-2:index]
+          env_index=None
+          for pos in range(max(0,index-6),index):
+              if lines[pos].strip()=='env:' and pos+1 < index and lines[pos+1].strip().startswith('BRANCH:'):
+                  env_index=pos
+          if env_index is None:
+              raise SystemExit('duplicate BRANCH environment block not found')
+          del lines[env_index:env_index+2]
           path.write_text('\n'.join(lines)+'\n')
           PY
           git config user.name github-actions[bot]
