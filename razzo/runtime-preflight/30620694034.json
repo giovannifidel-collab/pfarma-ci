@@ -1,0 +1,12 @@
+{
+  "schema": "razzo.secret-access-preflight.v1",
+  "runId": "30620694034",
+  "projectTokenPresent": false,
+  "pfarmaTokenPresent": false,
+  "access": {
+    "projectGiovanni": false,
+    "pfarmaCloud": false,
+    "familyCloud": false
+  },
+  "ready": false
+}
