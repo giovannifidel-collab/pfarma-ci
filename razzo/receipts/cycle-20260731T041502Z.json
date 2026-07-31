@@ -1,0 +1,71 @@
+{
+  "protocol": "RAZZO",
+  "protocolVersion": 5,
+  "engine": "RAZZO_V6_V7",
+  "cycleAt": "2026-07-31T04:15:02Z",
+  "portfolio": {
+    "enabled": ["project-giovanni", "pfarma-cloud", "family-cloud"],
+    "scanned": 3
+  },
+  "reconcile": {
+    "openProductPrs": 0,
+    "operatorRobotOpenIssues": 0,
+    "backpressure": false,
+    "newHumanGates": 0
+  },
+  "discovery": {
+    "project-giovanni": [126, 147],
+    "pfarma-cloud": [345, 335],
+    "family-cloud": [299]
+  },
+  "workItems": [
+    {
+      "workItemId": "FC-DELIVERY-LOCAL-JOURNEY-001",
+      "projectId": "family-cloud",
+      "generationId": "FC-G56",
+      "objective": "Compose upload, integrity/dedup, timeline, album, identity and PWA foundations into a human-testable local family photo journey.",
+      "issue": 299,
+      "targetLane": "agent/bootstrap-family-cloud",
+      "collisionDomain": "product/local-family-journey",
+      "idempotencyKey": "family-cloud:FC-DELIVERY-LOCAL-JOURNEY-001:v1",
+      "exactInputSha": null,
+      "dependencies": ["FC-A-003", "FC-A-005", "FC-A-006", "FC-A-007", "FC-A-008", "FC-A-009", "FC-A-011", "FC-A-012"],
+      "verification": ["focused-journey-tests", "repository-test-suite", "hosted-exact-sha-ci"],
+      "humanGate": null,
+      "lifecycle": "queued"
+    }
+  ],
+  "execution": {
+    "created": 1,
+    "eligible": 1,
+    "dispatched": 0,
+    "shardsUsed": 0,
+    "parallelPeak": 0,
+    "completed": 0,
+    "verified": 0,
+    "integrated": 0,
+    "failures": 0,
+    "retries": 0
+  },
+  "pullRequests": {
+    "created": 0,
+    "updated": 0,
+    "integrated": 0
+  },
+  "exactShaVerified": [],
+  "productProgress": false,
+  "generationPromoted": false,
+  "operatorRobot": {
+    "openIssues": 0,
+    "newFingerprints": [],
+    "closedLoopProvedInThisCycle": false,
+    "readyDeclaredInThisCycle": false
+  },
+  "stateCommit": "28e9b007e00ec15774f39f98b8aa7adff391f4f3",
+  "stopReason": "Connector-backed cycle could safely reconcile and queue the next Family Cloud product delivery item, but no repository worker execution or exact-SHA candidate was materialized in this invocation; integration remains fail-closed.",
+  "nextPlan": [
+    "Resolve the current exact HEAD of agent/bootstrap-family-cloud and dispatch FC-DELIVERY-LOCAL-JOURNEY-001 through the repository worker/data plane.",
+    "Decompose Project Giovanni issue #126 into the highest-value non-duplicated workout-journey blocker after reading the current integration lane.",
+    "Decompose PFarma issue #345 while continuing mandatory discovery of any new machine-marked Operator Robot issue before micro-hardening."
+  ]
+}
