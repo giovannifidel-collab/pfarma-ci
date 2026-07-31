@@ -1,7 +1,7 @@
 name: RAZZO V7 One-Shot Plan Launcher
 
 on:
-  pull_request_target:
+  issues:
     types:
       - opened
 
@@ -17,17 +17,16 @@ concurrency:
 jobs:
   dispatch:
     if: >-
-      github.event.pull_request.base.ref == 'main' &&
-      github.event.pull_request.head.ref == 'razzo/v7-one-shot-plan-trigger' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.issue.title == 'RAZZO V7 ONE-SHOT PLAN TRIGGER 20260731-2237' &&
+      github.actor == 'giovannifidel-collab'
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch and report safe factory plan-only run
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          CONTROL_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CONTROL_SHA: ${{ github.sha }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -89,5 +88,5 @@ jobs:
           )"
           curl --fail-with-body --silent --show-error \
             -X POST "${headers[@]}" \
-            "${api}/issues/${PR_NUMBER}/comments" \
+            "${api}/issues/${ISSUE_NUMBER}/comments" \
             -d "$comment_payload" >/dev/null
