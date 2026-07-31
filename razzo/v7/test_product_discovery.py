@@ -96,7 +96,7 @@ class ProductDiscoveryTests(unittest.TestCase):
         self.assertEqual(state, "NOT_ACTIONABLE")
         self.assertIn("open_pr_overlap", reasons)
 
-    def test_unsafe_target_path_is_rejected(self):
+    def test_forbidden_target_path_is_rejected(self):
         item = contract_from_issue(PROJECT, STATE, actionable_issue(32))
         assert item is not None
         item["target_surfaces"] = [".github/workflows/unsafe.yml"]
@@ -104,7 +104,7 @@ class ProductDiscoveryTests(unittest.TestCase):
         item["fingerprint"] = fingerprint(item)
         state, reasons = validate(item)
         self.assertEqual(state, "NOT_ACTIONABLE")
-        self.assertIn("unsafe_target_surface", reasons)
+        self.assertIn("target_overlaps_forbidden_surfaces", reasons)
 
     def test_safe_negations_do_not_trigger_risk_rejection(self):
         text = "No production writes. Independent of destructive-production. Read-only."
