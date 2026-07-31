@@ -71,6 +71,15 @@ def lease_digest(
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _source_key(item: dict[str, Any]) -> tuple[str, str, str]:
+    """Bind uniqueness to one validated materialized contract, not its umbrella issue."""
+    return (
+        str(item.get("project_id", "")),
+        str(item.get("issue_number") or ""),
+        str(item.get("discovery_source") or item.get("work_item_id") or ""),
+    )
+
+
 def assign_dispatchers(
     work_items: list[dict[str, Any]],
     *,
@@ -84,18 +93,17 @@ def assign_dispatchers(
 
     domains = [str(item["collision_domain"]) for item in work_items]
     fingerprints = [str(item["fingerprint"]) for item in work_items]
-    issue_keys = [
-        (str(item["project_id"]), int(item["issue_number"]))
-        for item in work_items
-        if item.get("issue_number") is not None
-    ]
+    work_item_ids = [str(item["work_item_id"]) for item in work_items]
+    source_keys = [_source_key(item) for item in work_items]
 
     if len(domains) != len(set(domains)):
         raise ValueError("collision domain duplicated before dispatch")
     if len(fingerprints) != len(set(fingerprints)):
         raise ValueError("fingerprint duplicated before dispatch")
-    if len(issue_keys) != len(set(issue_keys)):
-        raise ValueError("same issue duplicated before dispatch")
+    if len(work_item_ids) != len(set(work_item_ids)):
+        raise ValueError("work item duplicated before dispatch")
+    if len(source_keys) != len(set(source_keys)):
+        raise ValueError("materialized source duplicated before dispatch")
     if any(item.get("actionability_state") != "READY" for item in work_items):
         raise ValueError("non-READY item reached dispatch")
 

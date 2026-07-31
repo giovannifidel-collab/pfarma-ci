@@ -7,12 +7,14 @@ from razzo.v7.dispatcher_pool import (
 )
 
 
-def item(number: int) -> dict:
+def item(number: int, *, issue_number: int | None = None) -> dict:
+    issue = issue_number if issue_number is not None else number
     return {
-        "work_item_id": f"p-issue-{number}",
+        "work_item_id": f"p-issue-{issue}-{number}",
         "fingerprint": f"{number:064x}"[-64:],
         "project_id": "p",
-        "issue_number": number,
+        "issue_number": issue,
+        "discovery_source": f"codex-read-only:{issue}:candidate-{number}",
         "collision_domain": f"p/domain-{number}",
         "exact_input_sha": f"{number:040x}"[-40:],
         "actionability_state": "READY",
@@ -41,6 +43,15 @@ class DispatcherPoolTests(unittest.TestCase):
         )
         self.assertEqual(len(leases), 2)
 
+    def test_five_product_shards_can_be_allocated(self):
+        leases = assign_dispatchers(
+            [item(number) for number in range(1, 7)],
+            provider_cap=10,
+            run_id="77",
+        )
+        self.assertEqual(len(leases), 5)
+        self.assertEqual(len({lease.shard_id for lease in leases}), 5)
+
     def test_duplicate_collision_domain_is_rejected(self):
         work = [item(1), item(2)]
         work[1]["collision_domain"] = work[0]["collision_domain"]
@@ -53,11 +64,20 @@ class DispatcherPoolTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fingerprint duplicated"):
             assign_dispatchers(work, provider_cap=2, run_id="77")
 
-    def test_same_issue_is_not_replicated(self):
+    def test_duplicate_materialized_source_is_rejected(self):
         work = [item(1), item(2)]
         work[1]["issue_number"] = work[0]["issue_number"]
-        with self.assertRaisesRegex(ValueError, "same issue duplicated"):
+        work[1]["discovery_source"] = work[0]["discovery_source"]
+        with self.assertRaisesRegex(ValueError, "materialized source duplicated"):
             assign_dispatchers(work, provider_cap=2, run_id="77")
+
+    def test_distinct_contracts_from_same_umbrella_issue_are_allowed(self):
+        leases = assign_dispatchers(
+            [item(1, issue_number=99), item(2, issue_number=99)],
+            provider_cap=2,
+            run_id="77",
+        )
+        self.assertEqual(len(leases), 2)
 
     def test_non_ready_item_never_reaches_dispatch(self):
         work = [item(1)]
