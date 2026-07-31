@@ -1,4 +1,5 @@
 name: Project Giovanni Private Source Hosted CI
+run-name: Project Giovanni exact-SHA ${{ inputs.source_ref || 'project-giovanni-source-ref.txt' }}
 
 on:
   push:
