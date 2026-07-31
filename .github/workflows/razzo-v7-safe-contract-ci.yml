@@ -20,15 +20,15 @@ jobs:
       - name: Remove duplicate publish environment
         run: |
           python - <<'PY'
-          import re
           from pathlib import Path
           path=Path('.github/workflows/razzo-v7-ten-shard-trial.yml')
-          text=path.read_text()
-          pattern=r'\n        env:\n          BRANCH: razzo/v7-free/\$\{\{ matrix\.project_id \}\}/\$\{\{ matrix\.shard_id \}\}-\$\{\{ github\.run_id \}\}\n(?=      - name: Write truthful receipt)'
-          updated,count=re.subn(pattern,'\n',text,count=1)
-          if count != 1:
-              raise SystemExit(f'expected one duplicate env block, removed {count}')
-          path.write_text(updated)
+          lines=path.read_text().splitlines()
+          marker='      - name: Write truthful receipt'
+          index=lines.index(marker)
+          if index < 2 or lines[index-2].strip() != 'env:' or not lines[index-1].strip().startswith('BRANCH:'):
+              raise SystemExit('duplicate env lines not found immediately before receipt step')
+          del lines[index-2:index]
+          path.write_text('\n'.join(lines)+'\n')
           PY
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
