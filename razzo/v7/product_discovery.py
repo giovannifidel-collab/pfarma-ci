@@ -153,6 +153,14 @@ def contract_from_issue(
     if len(criteria) < 2:
         return None
 
+    trusted_tests = [
+        command
+        for command in (project.get("factoryTest", ""), project.get("factoryPlan", ""))
+        if isinstance(command, str) and command.strip()
+    ]
+    if not trusted_tests:
+        return None
+
     issue_number = int(issue["number"])
     item: dict[str, Any] = {
         "work_item_id": f"{project_id}-issue-{issue_number}",
@@ -167,20 +175,23 @@ def contract_from_issue(
         "acceptance_criteria": criteria,
         "definition_of_done": definition_of_done,
         "target_surfaces": target_surfaces,
+        "required_tests": trusted_tests,
         "expected_product_effect": expected_effect,
         "collision_domain": collision_domain,
         "exact_input_sha": project_state["exactSha"],
         "integration_lane": project.get("integrationLane", "integration/razzo"),
         "allowed_surfaces": target_surfaces,
         "forbidden_surfaces": [
-            ".github/workflows/**",
-            "infra/**",
-            "migrations/**",
-            "secrets/**",
-            "factory/policy*",
+            ".github/workflows",
+            "infra",
+            "migrations",
+            "secrets",
+            "factory/policy",
             "factory/task-graph.json",
             "factory/task_graph.json",
         ],
+        "dependencies": [],
+        "risk_class": "safe-product",
         "human_gate": False,
         "evidence_required": evidence,
         "factory_test": project.get("factoryTest", ""),
