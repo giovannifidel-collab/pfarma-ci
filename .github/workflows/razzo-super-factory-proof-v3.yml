@@ -82,14 +82,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          install_npm_deps() {
+            if [[ -f package-lock.json || -f npm-shrinkwrap.json ]]; then
+              npm ci --no-audit --no-fund
+            else
+              npm install --no-audit --no-fund
+            fi
+          }
           case "${{ matrix.command }}" in
             pg-factory)
-              npm ci --no-audit --no-fund
+              install_npm_deps
               npm run test:factory
               ;;
             pg-build)
-              npm ci --no-audit --no-fund
-              npm run build
+              install_npm_deps
+              NEXT_TELEMETRY_DISABLED=1 npm run build
               ;;
             pf-verify)
               python -m compileall -q .
@@ -100,7 +107,7 @@ jobs:
               fi
               ;;
             fc-suite)
-              npm ci --no-audit --no-fund
+              install_npm_deps
               npm run typecheck
               npm test
               npm run factory:plan
