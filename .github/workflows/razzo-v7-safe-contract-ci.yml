@@ -100,7 +100,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          CONTROL_SHA: ${{ github.event.pull_request.base.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
@@ -111,6 +110,12 @@ jobs:
             -H "Accept: application/vnd.github+json"
             -H "X-GitHub-Api-Version: 2022-11-28"
           )
+
+          ref_json="$(curl --fail-with-body --silent --show-error \
+            "${headers[@]}" \
+            "${api}/git/ref/heads/main")"
+          CONTROL_SHA="$(python -c 'import json,sys; print(json.load(sys.stdin)["object"]["sha"])' <<< "$ref_json")"
+          export CONTROL_SHA
 
           curl --fail-with-body --silent --show-error \
             -X PUT "${headers[@]}" \
@@ -127,7 +132,7 @@ jobs:
             response="$(curl --fail-with-body --silent --show-error \
               "${headers[@]}" \
               "${api}/actions/workflows/razzo-v7-product-worker-fabric.yml/runs?event=workflow_dispatch&branch=main&per_page=20")"
-            export RESPONSE="$response" CONTROL_SHA
+            export RESPONSE="$response"
             run_json="$(python - <<'PY'
           import json, os
           payload = json.loads(os.environ['RESPONSE'])
@@ -139,6 +144,7 @@ jobs:
                       'run_number': run['run_number'],
                       'html_url': run['html_url'],
                       'status': run['status'],
+                      'head_sha': run['head_sha'],
                   }))
                   break
           PY
@@ -158,6 +164,7 @@ jobs:
               'RAZZO V7 one-shot dispatch verified.\n\n'
               f"- Safe Product Factory run ID: `{run['run_id']}`\n"
               f"- Run number: `{run['run_number']}`\n"
+              f"- Exact control SHA: `{run['head_sha']}`\n"
               '- Mode: `plan-only`\n'
               '- Max workers: `3`\n'
               f"- URL: {run['html_url']}\n"
