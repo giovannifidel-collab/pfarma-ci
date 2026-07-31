@@ -1,6 +1,5 @@
 name: RAZZO Super Factory Objective Proof
 
-# trigger: 2026-07-31T11:16:00+02:00
 on:
   workflow_dispatch:
   push:
@@ -46,12 +45,29 @@ jobs:
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      SELECTED_PRIVATE_REPO_TOKEN: ${{ matrix.credential == 'project' && secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
     steps:
       - id: clock
         shell: bash
         run: echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private-source credential
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          PFARMA_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          case "${{ matrix.credential }}" in
+            project) token="${GIO_TOKEN:-${PFARMA_TOKEN:-}}" ;;
+            pfarma) token="${PFARMA_TOKEN:-${GIO_TOKEN:-}}" ;;
+            *) exit 64 ;;
+          esac
+          if [ -z "$token" ]; then
+            echo 'No compatible private-source token is configured.' >&2
+            exit 78
+          fi
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
       - name: Validate dispatch
         shell: bash
         run: |
@@ -59,16 +75,18 @@ jobs:
           [[ "${{ matrix.exact_sha }}" =~ ^[0-9a-f]{40}$ ]]
           [[ "${{ matrix.shard_id }}" =~ ^razzo-shard-[0-9]{4}$ ]]
           [[ "${{ matrix.credential }}" =~ ^(project|pfarma)$ ]]
-          test -n "$SELECTED_PRIVATE_REPO_TOKEN"
+          test -n "$PRIVATE_SOURCE_TOKEN"
+
       - name: Checkout exact private product SHA
         uses: actions/checkout@v4
         with:
           repository: ${{ matrix.repository }}
           ref: ${{ matrix.exact_sha }}
-          token: ${{ env.SELECTED_PRIVATE_REPO_TOKEN }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
           path: product
+
       - name: Verify exact checkout
         working-directory: product
         shell: bash
@@ -76,6 +94,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ matrix.exact_sha }}"
           git remote set-url origin REDACTED
+
       - name: Execute real verification
         working-directory: product
         shell: bash
@@ -88,7 +107,7 @@ jobs:
           esac
           case "${{ matrix.command }}" in
             npm-factory) npm run test:factory --if-present ;;
-            npm-build) npm run build ;;
+            npm-build) NEXT_TELEMETRY_DISABLED=1 npm run build ;;
             npm-test) npm test ;;
             python-tests)
               python -m compileall -q .
@@ -96,6 +115,7 @@ jobs:
               ;;
             *) exit 64 ;;
           esac
+
       - name: Write sanitized receipt
         if: success()
         shell: bash
@@ -105,12 +125,14 @@ jobs:
           ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           digest=$(printf '%s' '${{ matrix.shard_id }}|${{ matrix.work_item_id }}|${{ matrix.project_id }}|${{ matrix.exact_sha }}|${{ github.run_id }}' | sha256sum | cut -d' ' -f1)
           jq -n --arg state PRODUCT_EXACT_SHA_VERIFIED --arg shardId '${{ matrix.shard_id }}' --arg workItemId '${{ matrix.work_item_id }}' --arg projectId '${{ matrix.project_id }}' --arg repository '${{ matrix.repository }}' --arg exactInputSha '${{ matrix.exact_sha }}' --arg runId '${{ github.run_id }}' --arg started '${{ steps.clock.outputs.started }}' --arg ended "$ended" --arg digest "$digest" '{schema:"razzo.product-exact-sha-receipt.v1",state:$state,shardId:$shardId,workItemId:$workItemId,projectId:$projectId,repository:$repository,exactInputSha:$exactInputSha,runId:$runId,startedAt:$started,endedAt:$ended,conclusion:"success",digest:$digest}' > "receipts/${{ matrix.work_item_id }}.json"
+
       - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: receipt-${{ matrix.work_item_id }}
           path: receipts/${{ matrix.work_item_id }}.json
           retention-days: 7
+
       - name: Purge private checkout
         if: always()
         shell: bash
@@ -127,6 +149,7 @@ jobs:
           pattern: receipt-*
           path: collected
           merge-multiple: true
+
       - name: Validate receipts and parallel overlap
         shell: bash
         run: |
@@ -154,6 +177,7 @@ jobs:
           (out/'aggregate.json').write_text(json.dumps(proof,indent=2)+'\n')
           print(f'run={rows[0]["runId"]} peak={peak}')
           PY
+
       - name: Persist objective proof
         shell: bash
         run: |
