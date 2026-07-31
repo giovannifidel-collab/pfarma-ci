@@ -1,11 +1,11 @@
 {
   "version": 3,
   "sourceOfTruth": "github-current-open-product-prs-and-enabled-registry",
-  "rediscoveryEpoch": "2026-07-31T04:15:02Z",
+  "rediscoveryEpoch": "2026-07-31T14:07:00Z",
   "projects": [
     {
       "id": "project-giovanni",
-      "exactSha": null,
+      "exactSha": "0e9a63adaea9d261ba4b14ccbf36dd5099ce97f8",
       "ready": 0,
       "backpressure": false,
       "humanGate": false,
@@ -15,7 +15,7 @@
     },
     {
       "id": "pfarma-cloud",
-      "exactSha": null,
+      "exactSha": "99ccd8811f4baf6d1fab69bb8cd6481c658bf051",
       "ready": 0,
       "backpressure": false,
       "humanGate": false,
@@ -25,7 +25,7 @@
     },
     {
       "id": "family-cloud",
-      "exactSha": null,
+      "exactSha": "b9e8f5f08fa2c322ef6782a46d51ccbdeaead1ae",
       "ready": 1,
       "backpressure": false,
       "humanGate": false,
