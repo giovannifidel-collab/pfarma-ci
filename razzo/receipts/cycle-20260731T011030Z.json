@@ -1,0 +1,64 @@
+{
+  "receiptType": "aggregate-cycle",
+  "protocol": "RAZZO",
+  "protocolVersion": 5,
+  "cycleAt": "2026-07-31T01:10:30Z",
+  "sourceOfTruth": "github",
+  "portfolio": {
+    "enabledProjects": [
+      "project-giovanni",
+      "pfarma-cloud",
+      "family-cloud"
+    ],
+    "scanned": 3
+  },
+  "reconcile": {
+    "projectStateReadyTotal": 0,
+    "openProductPullRequests": 0,
+    "backpressure": false,
+    "humanGates": []
+  },
+  "discovery": [
+    {
+      "projectId": "project-giovanni",
+      "status": "discovery-required",
+      "priority": "P0 user journey",
+      "evidence": ["issue#152", "issue#917"]
+    },
+    {
+      "projectId": "pfarma-cloud",
+      "status": "discovery-required",
+      "priority": "P0 Windows pilot and September cutover",
+      "evidence": ["issue#1250", "issue#345", "issue#1272"],
+      "operatorRobotOpenMachineIssues": 0
+    },
+    {
+      "projectId": "family-cloud",
+      "status": "discovery-required",
+      "priority": "delivery candidate required",
+      "evidence": []
+    }
+  ],
+  "execution": {
+    "workItemsCreated": 0,
+    "workItemsEligible": 0,
+    "workItemsDispatched": 0,
+    "shardsUsed": 0,
+    "parallelPeak": 0,
+    "completed": 0,
+    "verified": 0,
+    "integrated": 0,
+    "failures": 0,
+    "retries": 0
+  },
+  "promotion": {
+    "productProgress": false,
+    "generationsPromoted": 0,
+    "reason": "No real product candidate was dispatched, exact-SHA verified and integrated in this cycle."
+  },
+  "nextPlan": [
+    "Materialize a P0 PFarma Windows-pilot vertical slice from issue #1250 on integration/razzo.",
+    "Select the next incomplete Project Giovanni end-to-end journey blocker from issue #152.",
+    "Run Family Cloud delivery discovery and create one non-artificial vertical-slice candidate."
+  ]
+}
