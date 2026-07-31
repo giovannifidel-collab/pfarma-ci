@@ -1,7 +1,7 @@
 {
   "version": 3,
   "sourceOfTruth": "github-current-open-product-prs-and-enabled-registry",
-  "rediscoveryEpoch": "2026-07-31T00:13:31Z",
+  "rediscoveryEpoch": "2026-07-31T04:15:02Z",
   "projects": [
     {
       "id": "project-giovanni",
@@ -10,7 +10,7 @@
       "backpressure": false,
       "humanGate": false,
       "blocker": "none",
-      "queueHint": "product-discovery-required",
+      "queueHint": "product-discovery-required; delivery-issues=#126,#147",
       "collisionDomain": null
     },
     {
@@ -20,18 +20,18 @@
       "backpressure": false,
       "humanGate": false,
       "blocker": "none",
-      "queueHint": "product-discovery-required; operator-robot-open-issues=0",
+      "queueHint": "product-discovery-required; operator-robot-open-issues=0; delivery-issues=#345,#335",
       "collisionDomain": null
     },
     {
       "id": "family-cloud",
       "exactSha": null,
-      "ready": 0,
+      "ready": 1,
       "backpressure": false,
       "humanGate": false,
       "blocker": "none",
-      "queueHint": "product-discovery-required",
-      "collisionDomain": null
+      "queueHint": "queued:FC-DELIVERY-LOCAL-JOURNEY-001; issue=#299; dispatch-requires-current-integration-lane-exact-sha",
+      "collisionDomain": "product/local-family-journey"
     }
   ]
 }
