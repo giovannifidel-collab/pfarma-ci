@@ -6,6 +6,7 @@ on:
       - 'razzo/v7/actionability.py'
       - 'razzo/v7/product_discovery.py'
       - 'razzo/v7/contract_materializer.py'
+      - 'razzo/v7/trial_runtime.py'
       - 'razzo/v7/dispatcher_pool.py'
       - 'razzo/v7/test_actionability.py'
       - 'razzo/v7/test_product_discovery.py'
@@ -13,6 +14,7 @@ on:
       - 'razzo/v7/test_dispatcher_pool.py'
       - 'razzo/v7/shards.json'
       - '.github/workflows/razzo-v7-product-worker-fabric.yml'
+      - '.github/workflows/razzo-v7-ten-shard-trial.yml'
       - '.github/workflows/razzo-v7-safe-contract-ci.yml'
       - '.github/workflows/razzo-v7-elastic-fabric.yml'
       - '.github/workflows/razzo-v7-elastic-autoscaler.yml'
@@ -44,6 +46,7 @@ jobs:
             razzo/v7/actionability.py \
             razzo/v7/product_discovery.py \
             razzo/v7/contract_materializer.py \
+            razzo/v7/trial_runtime.py \
             razzo/v7/dispatcher_pool.py
       - name: Run safe-factory unit contracts
         run: |
@@ -75,31 +78,30 @@ jobs:
           assert declared.get('logical_shard_capacity') == 10
           assert all(declared.get(lane) == count for lane, count in topology.items())
           PY
-      - name: Verify recovery workflows are manual-only and bounded
+      - name: Verify workflows are manual-only and bounded
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          legacy = [
+          manual = [
               '.github/workflows/razzo-v7-elastic-fabric.yml',
               '.github/workflows/razzo-v7-elastic-autoscaler.yml',
               '.github/workflows/razzo-v6-operational-factory.yml',
+              '.github/workflows/razzo-v7-product-worker-fabric.yml',
+              '.github/workflows/razzo-v7-ten-shard-trial.yml',
           ]
-          for path in legacy:
+          for path in manual:
               text = Path(path).read_text()
               assert 'workflow_dispatch:' in text
               assert 'pull_request:' not in text
               assert '\n  push:' not in text
               assert '\n  schedule:' not in text
-          trial = Path('.github/workflows/razzo-v7-product-worker-fabric.yml').read_text()
-          assert 'workflow_dispatch:' in trial
-          assert 'pull_request:' not in trial
-          assert '\n  push:' not in trial
-          assert '\n  schedule:' not in trial
-          assert 'cancel-in-progress: true' in trial
+              assert 'cancel-in-progress: true' in text
+          trial = Path('.github/workflows/razzo-v7-ten-shard-trial.yml').read_text()
           assert 'execute-trial' in trial
+          assert 'max-parallel: 3' in trial
           assert 'max-parallel: 5' in trial
           assert 'git push origin HEAD:main' not in trial
           assert 'bash -lc "$command"' not in trial
-          assert 'auto_merge": False' in trial
+          assert 'auto_merge": False' in Path('razzo/v7/trial_runtime.py').read_text()
           PY
