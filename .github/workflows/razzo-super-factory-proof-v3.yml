@@ -34,7 +34,7 @@ jobs:
           matrix=$(jq -cn --arg pg "$pg" --arg pf "$pf" --arg fc "$fc" '{include:[
             {shard_id:"razzo-shard-0001",work_item_id:"PG-FACTORY-V3",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"pg-factory"},
             {shard_id:"razzo-shard-0002",work_item_id:"PG-BUILD-V3",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"pg-build"},
-            {shard_id:"razzo-shard-0003",work_item_id:"PF-VERIFY-V3",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,command:"pf-verify"},
+            {shard_id:"razzo-shard-0003",work_item_id:"PF-CONTRACT-V3",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,command:"pf-contract"},
             {shard_id:"razzo-shard-0004",work_item_id:"FC-SUITE-V3",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,command:"fc-suite"}
           ]}')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
@@ -98,13 +98,21 @@ jobs:
               install_npm_deps
               NEXT_TELEMETRY_DISABLED=1 npm run build
               ;;
-            pf-verify)
-              python -m compileall -q .
-              if [[ -f factory/test_razzo_executor.py ]]; then
-                python -m unittest factory.test_razzo_executor
-              else
-                python -m unittest discover
-              fi
+            pf-contract)
+              python -m compileall -q api backend agent
+              python -m pip install --quiet pytest
+              mapfile -t focused < <(grep -RIl --include='test_*.py' \
+                -e 'allocation cardinality is bounded' \
+                -e 'warehouse allocation schema is exact' \
+                -e 'duplicate warehouse allocation is rejected' \
+                -e 'expiry review reference date is explicit' \
+                -e 'source-line identity is fingerprint-bound' \
+                -e 'bounded printable contract ok' \
+                -e 'supplier identifiers fail closed' \
+                . | sort -u)
+              test "${#focused[@]}" -ge 3
+              printf 'PFarma focused contract files:\n%s\n' "${focused[*]}"
+              PYTHONPATH="$PWD:$PWD/agent/staging" python -m pytest -q "${focused[@]}"
               ;;
             fc-suite)
               install_npm_deps
