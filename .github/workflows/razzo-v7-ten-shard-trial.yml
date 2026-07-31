@@ -133,6 +133,11 @@ jobs:
         with: {persist-credentials: false}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: product-source/package-lock.json
       - name: Verify signed lease
         env:
           CONTRACT_JSON: ${{ toJSON(matrix) }}
@@ -187,7 +192,13 @@ jobs:
           FACTORY_TEST: ${{ matrix.factory_test }}
           FACTORY_PLAN: ${{ matrix.factory_plan }}
         run: |
+          set -euo pipefail
           test -n "$FACTORY_TEST$FACTORY_PLAN"
+          if [ -f package-lock.json ]; then
+            npm ci
+          elif [ -f package.json ]; then
+            npm install
+          fi
           [ -z "$FACTORY_TEST" ] || bash -lc "$FACTORY_TEST"
           [ -z "$FACTORY_PLAN" ] || bash -lc "$FACTORY_PLAN"
           echo 'executed=true' >> "$GITHUB_OUTPUT"
