@@ -1,0 +1,130 @@
+name: RAZZO Super Factory Wave V2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/razzo-super-factory-wave-v2.yml'
+      - 'project-giovanni-source-ref.txt'
+      - 'source-ref.txt'
+      - 'family-cloud-ref.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PRIVATE_REPO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          pg=$(tr -d '\r\n' < project-giovanni-source-ref.txt)
+          pf=$(tr -d '\r\n' < source-ref.txt)
+          fc=$(tr -d '\r\n' < family-cloud-ref.txt)
+          for sha in "$pg" "$pf" "$fc"; do [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; done
+          matrix=$(jq -cn --arg pg "$pg" --arg pf "$pf" --arg fc "$fc" '{include:[
+            {shard_id:"razzo-shard-0001",work_item_id:"PG-FACTORY",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"npm-factory"},
+            {shard_id:"razzo-shard-0002",work_item_id:"PG-BUILD",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,command:"npm-build"},
+            {shard_id:"razzo-shard-0003",work_item_id:"PF-PYTHON",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,command:"python-tests"},
+            {shard_id:"razzo-shard-0004",work_item_id:"FC-TEST",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,command:"npm-test"}
+          ]}')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  execute:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ matrix.exact_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${{ matrix.shard_id }}" =~ ^razzo-shard-[0-9]{4}$ ]]
+          test -n "$PRIVATE_REPO_TOKEN"
+      - name: Checkout exact product SHA
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.exact_sha }}
+          token: ${{ env.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: product
+      - name: Verify exact SHA
+        working-directory: product
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ matrix.exact_sha }}"
+          git remote set-url origin REDACTED
+      - name: Install and verify
+        id: verify
+        working-directory: product
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          case "${{ matrix.command }}" in
+            npm-*)
+              if [[ -f package-lock.json ]]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+              ;;
+          esac
+          case "${{ matrix.command }}" in
+            npm-factory) npm run test:factory --if-present ;;
+            npm-build) npm run build ;;
+            npm-test) npm test ;;
+            python-tests)
+              python -m compileall -q .
+              if [[ -f factory/test_razzo_executor.py ]]; then python -m unittest factory.test_razzo_executor; else python -m unittest discover; fi
+              ;;
+            *) exit 64 ;;
+          esac
+          echo "ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Write sanitized receipt
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p receipts
+          digest=$(printf '%s' '${{ matrix.shard_id }}|${{ matrix.work_item_id }}|${{ matrix.project_id }}|${{ matrix.exact_sha }}|${{ github.run_id }}' | sha256sum | cut -d' ' -f1)
+          jq -n --arg state PRODUCT_EXACT_SHA_VERIFIED --arg shardId '${{ matrix.shard_id }}' --arg workItemId '${{ matrix.work_item_id }}' --arg projectId '${{ matrix.project_id }}' --arg repository '${{ matrix.repository }}' --arg exactInputSha '${{ matrix.exact_sha }}' --arg runId '${{ github.run_id }}' --arg started '${{ steps.verify.outputs.started }}' --arg ended '${{ steps.verify.outputs.ended }}' --arg digest "$digest" '{schema:"razzo.product-exact-sha-receipt.v1",state:$state,shardId:$shardId,workItemId:$workItemId,projectId:$projectId,repository:$repository,exactInputSha:$exactInputSha,runId:$runId,startedAt:$started,endedAt:$ended,conclusion:"success",digest:$digest}' > "receipts/${{ matrix.work_item_id }}.json"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: razzo-product-receipt-${{ matrix.work_item_id }}-${{ github.run_id }}
+          path: receipts/${{ matrix.work_item_id }}.json
+          retention-days: 7
+      - name: Purge private checkout
+        if: always()
+        shell: bash
+        run: rm -rf product
+
+  aggregate:
+    if: always()
+    needs: [prepare, execute]
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p receipts
+          jq -n --arg runId '${{ github.run_id }}' --arg result '${{ needs.execute.result }}' '{schema:"razzo.aggregate-wave-receipt.v1",runId:$runId,dispatched:4,projects:3,parallelTarget:4,executeResult:$result,operational:($result=="success")}' > receipts/aggregate.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-aggregate-wave-${{ github.run_id }}
+          path: receipts/aggregate.json
+          retention-days: 7
