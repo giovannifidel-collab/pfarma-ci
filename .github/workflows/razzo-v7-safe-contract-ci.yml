@@ -20,7 +20,6 @@ on:
 permissions:
   actions: write
   contents: read
-  issues: write
 
 concurrency:
   group: razzo-v7-safe-contract-${{ github.event.pull_request.number }}
@@ -94,11 +93,10 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - name: Enable, dispatch and report safe factory plan-only run
+      - name: Enable, dispatch and print safe factory plan-only run
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -162,23 +160,4 @@ jobs:
           done
 
           test -n "$run_json"
-          export RUN_JSON="$run_json"
-          comment_payload="$(python - <<'PY'
-          import json, os
-          run = json.loads(os.environ['RUN_JSON'])
-          body = (
-              'RAZZO V7 one-shot dispatch verified.\n\n'
-              f"- Safe Product Factory run ID: `{run['run_id']}`\n"
-              f"- Run number: `{run['run_number']}`\n"
-              f"- Exact control SHA: `{run['head_sha']}`\n"
-              '- Mode: `plan-only`\n'
-              '- Max workers: `3`\n'
-              f"- URL: {run['html_url']}\n"
-          )
-          print(json.dumps({'body': body}))
-          PY
-          )"
-          curl --fail-with-body --silent --show-error \
-            -X POST "${headers[@]}" \
-            "${api}/issues/${PR_NUMBER}/comments" \
-            -d "$comment_payload" >/dev/null
+          echo "SAFE_FACTORY_RUN_JSON=$run_json"
