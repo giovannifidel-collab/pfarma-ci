@@ -34,8 +34,10 @@ jobs:
         if: ${{ steps.productive.outputs.receipt_count != '0' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run razzo-v7-product-worker-fabric.yml --ref main
+        run: |
+          gh workflow run razzo-v7-product-worker-fabric.yml --ref main
 
       - name: Stop cleanly when no safe product work was dispatched
         if: ${{ steps.productive.outputs.receipt_count == '0' }}
-        run: echo 'No worker receipts: event-driven loop stops until the watchdog or a new product/control-plane event wakes it.'
+        run: |
+          echo 'No worker receipts: event-driven loop stops until the watchdog or a new product/control-plane event wakes it.'
