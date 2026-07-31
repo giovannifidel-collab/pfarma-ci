@@ -20,7 +20,6 @@ concurrency:
 
 env:
   PRODUCT_WORKER_CAP_FALLBACK: '32'
-  MATRIX_EXECUTION_CEILING: '64'
   GENERIC_DISPATCHER_POOL_SIZE: '100'
 
 jobs:
@@ -38,9 +37,11 @@ jobs:
       rejected: ${{ steps.plan.outputs.rejected }}
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+        with:
+          python-version: '3.12'
       - name: Verify exact control-plane SHA
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
       - name: Run V7 contract tests
@@ -49,7 +50,8 @@ jobs:
           python -m unittest razzo.v7.test_provider_capacity -v
           python -m unittest razzo.v7.test_dispatcher_pool -v
       - id: capacity
-        env: {GITHUB_TOKEN: '${{ github.token }}'}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -70,15 +72,18 @@ jobs:
           dispatch="$(python - <<'PY'
           import json, os
           from razzo.v7.dispatcher_pool import annotate_work_items
-          payload=json.loads(os.environ['RAW'])
-          items=list(payload.get('include', []))
-          annotated,leases=annotate_work_items(items,provider_cap=int(os.environ['CAP']),run_id=os.environ['RUN_ID'])
+          payload = json.loads(os.environ['RAW'])
+          annotated, leases = annotate_work_items(
+              list(payload.get('include', [])),
+              provider_cap=int(os.environ['CAP']),
+              run_id=os.environ['RUN_ID'],
+          )
           print(json.dumps({
-              'workers':{'include':annotated},
-              'dispatchers':{'include':[x.to_matrix_entry() for x in leases]},
-              'discovery':payload.get('deep_discovery', {'include':[]}),
-              'rejected':payload.get('rejected',[])
-          },separators=(',',':')))
+              'workers': {'include': annotated},
+              'dispatchers': {'include': [lease.to_matrix_entry() for lease in leases]},
+              'discovery': payload.get('deep_discovery', {'include': []}),
+              'rejected': payload.get('rejected', []),
+          }, separators=(',', ':')))
           PY
           )"
           matrix="$(python -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["workers"],separators=(",",":")))' <<< "$dispatch")"
@@ -105,11 +110,14 @@ jobs:
     environment: photo-ai-private
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
-        with: {node-version: '22'}
+        with:
+          node-version: '22'
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+        with:
+          python-version: '3.12'
       - name: Install pinned Codex CLI
         run: npm install --global @openai/codex@0.145.0
       - name: Checkout exact private product source read-only
@@ -140,72 +148,102 @@ jobs:
           You are a read-only RAZZO V7 discovery worker. Inspect the current repository code, tests, open product surfaces, TODOs and incomplete end-to-end journeys. Do not modify any file. Identify exactly one safe, independent, high-value product increment whose real target files already exist. Do not invent files or components. Avoid workflow, infrastructure, governance, receipt, timestamp and cosmetic-only work.
 
           Return exactly one JSON object and no Markdown with these keys:
-          product_objective, user_impact, rationale, acceptance_criteria (array with at least 2 verifiable items), definition_of_done, target_surfaces (array of existing repository paths), required_tests (array of executable repository test commands), expected_product_effect, collision_domain (specific path-like domain without project prefix), allowed_surfaces (same or narrower than target_surfaces), forbidden_surfaces (array), dependencies (array), risk_class, human_gate (boolean), evidence_required (array).
+          product_objective, user_impact, rationale, acceptance_criteria (array with at least 2 verifiable items), definition_of_done, target_surfaces (array of existing repository paths), required_tests (array of executable repository test commands), expected_product_effect, collision_domain (specific path-like domain without project prefix), allowed_surfaces, forbidden_surfaces, dependencies, risk_class, human_gate, evidence_required.
 
           If no target surface can be identified with reasonable certainty, return {"actionability_state":"NEEDS_DEEPER_DISCOVERY","reason":"..."}.
           EOF
       - name: Execute read-only deep discovery
-        id: discover
         working-directory: product-source
-        env: {CODEX_HOME: '${{ runner.temp }}/codex-${{ matrix.shard_id }}'}
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-${{ matrix.shard_id }}
         shell: bash
         run: |
           set -euo pipefail
           codex exec --skip-git-repo-check --ephemeral --sandbox read-only - < "$RUNNER_TEMP/deep-discovery.txt" > "$RUNNER_TEMP/deep-discovery-output.txt"
           test -z "$(git status --porcelain)"
       - name: Validate contract and prepare actionable issue
-        id: contract
         env:
           PROJECT_ID: ${{ matrix.project_id }}
           REPOSITORY: ${{ matrix.repository }}
           EXACT_SHA: ${{ matrix.exact_input_sha }}
           INTEGRATION_LANE: ${{ matrix.integration_lane }}
-          FACTORY_TEST: ${{ matrix.factory_test }}
-          FACTORY_PLAN: ${{ matrix.factory_plan }}
           SHARD_ID: ${{ matrix.shard_id }}
         run: |
           python - <<'PY'
-          import hashlib,json,os,pathlib
-          from razzo.v7.actionability import fingerprint,validate
-          raw=pathlib.Path(os.environ['RUNNER_TEMP'],'deep-discovery-output.txt').read_text()
-          decoder=json.JSONDecoder(); payload=None
-          for pos,ch in enumerate(raw):
-              if ch!='{': continue
+          import hashlib, json, os, pathlib
+          from razzo.v7.actionability import fingerprint, validate
+
+          raw = pathlib.Path(os.environ['RUNNER_TEMP'], 'deep-discovery-output.txt').read_text()
+          decoder = json.JSONDecoder()
+          payload = None
+          for pos, character in enumerate(raw):
+              if character != '{':
+                  continue
               try:
-                  candidate,end=decoder.raw_decode(raw[pos:])
+                  candidate, _ = decoder.raw_decode(raw[pos:])
               except json.JSONDecodeError:
                   continue
-              if isinstance(candidate,dict): payload=candidate
-          out=pathlib.Path(os.environ['RUNNER_TEMP'],'discovery-contract')
-          out.mkdir(parents=True,exist_ok=True)
-          if not payload or payload.get('actionability_state')=='NEEDS_DEEPER_DISCOVERY':
-              receipt={'project_id':os.environ['PROJECT_ID'],'repository':os.environ['REPOSITORY'],'shard_id':os.environ['SHARD_ID'],'exact_input_sha':os.environ['EXACT_SHA'],'outcome':'NEEDS_DEEPER_DISCOVERY','reason':(payload or {}).get('reason','no valid JSON contract'),'contract_materialized':False}
-              (out/'receipt.json').write_text(json.dumps(receipt,indent=2)); raise SystemExit(0)
-          objective=str(payload.get('product_objective','')).strip()
-          slug=hashlib.sha256(objective.encode()).hexdigest()[:12]
-          item={
-              'work_item_id':f"{os.environ['PROJECT_ID']}-deep-{slug}",
-              'fingerprint':'','project_id':os.environ['PROJECT_ID'],'repository':os.environ['REPOSITORY'],
-              'discovery_source':f"deep-discovery:{os.environ['EXACT_SHA']}:{slug}",
-              'product_objective':objective,'user_impact':payload.get('user_impact',''),'rationale':payload.get('rationale',''),
-              'acceptance_criteria':payload.get('acceptance_criteria',[]),'definition_of_done':payload.get('definition_of_done',''),
-              'target_surfaces':payload.get('target_surfaces',[]),'required_tests':payload.get('required_tests',[]),
-              'expected_product_effect':payload.get('expected_product_effect',''),
-              'collision_domain':f"{os.environ['PROJECT_ID']}/{str(payload.get('collision_domain','')).strip('/ ')}",
-              'exact_input_sha':os.environ['EXACT_SHA'],'integration_lane':os.environ['INTEGRATION_LANE'],
-              'allowed_surfaces':payload.get('allowed_surfaces') or payload.get('target_surfaces',[]),
-              'forbidden_surfaces':list(dict.fromkeys((payload.get('forbidden_surfaces') or [])+['.github/workflows','infra','migrations','secrets','factory/policy','factory/task-graph.json','factory/task_graph.json'])),
-              'dependencies':payload.get('dependencies') or [],'risk_class':payload.get('risk_class') or 'safe-product',
-              'human_gate':bool(payload.get('human_gate',False)),'evidence_required':payload.get('evidence_required') or ['non-empty product diff','required tests green','real product PR']
+              if isinstance(candidate, dict):
+                  payload = candidate
+          out = pathlib.Path(os.environ['RUNNER_TEMP'], 'discovery-contract')
+          out.mkdir(parents=True, exist_ok=True)
+          if not payload or payload.get('actionability_state') == 'NEEDS_DEEPER_DISCOVERY':
+              receipt = {
+                  'project_id': os.environ['PROJECT_ID'],
+                  'repository': os.environ['REPOSITORY'],
+                  'shard_id': os.environ['SHARD_ID'],
+                  'exact_input_sha': os.environ['EXACT_SHA'],
+                  'outcome': 'NEEDS_DEEPER_DISCOVERY',
+                  'reason': (payload or {}).get('reason', 'no valid JSON contract'),
+                  'contract_materialized': False,
+              }
+              (out / 'receipt.json').write_text(json.dumps(receipt, indent=2))
+              raise SystemExit(0)
+          objective = str(payload.get('product_objective', '')).strip()
+          slug = hashlib.sha256(objective.encode()).hexdigest()[:12]
+          item = {
+              'work_item_id': f"{os.environ['PROJECT_ID']}-deep-{slug}",
+              'fingerprint': '',
+              'project_id': os.environ['PROJECT_ID'],
+              'repository': os.environ['REPOSITORY'],
+              'discovery_source': f"deep-discovery:{os.environ['EXACT_SHA']}:{slug}",
+              'product_objective': objective,
+              'user_impact': payload.get('user_impact', ''),
+              'rationale': payload.get('rationale', ''),
+              'acceptance_criteria': payload.get('acceptance_criteria', []),
+              'definition_of_done': payload.get('definition_of_done', ''),
+              'target_surfaces': payload.get('target_surfaces', []),
+              'required_tests': payload.get('required_tests', []),
+              'expected_product_effect': payload.get('expected_product_effect', ''),
+              'collision_domain': f"{os.environ['PROJECT_ID']}/{str(payload.get('collision_domain', '')).strip('/ ')}",
+              'exact_input_sha': os.environ['EXACT_SHA'],
+              'integration_lane': os.environ['INTEGRATION_LANE'],
+              'allowed_surfaces': payload.get('allowed_surfaces') or payload.get('target_surfaces', []),
+              'forbidden_surfaces': list(dict.fromkeys((payload.get('forbidden_surfaces') or []) + ['.github/workflows', 'infra', 'migrations', 'secrets', 'factory/policy', 'factory/task-graph.json', 'factory/task_graph.json'])),
+              'dependencies': payload.get('dependencies') or [],
+              'risk_class': payload.get('risk_class') or 'safe-product',
+              'human_gate': bool(payload.get('human_gate', False)),
+              'evidence_required': payload.get('evidence_required') or ['non-empty product diff', 'required tests green', 'real product PR'],
           }
-          item['fingerprint']=fingerprint(item)
-          state,reasons=validate(item)
-          if state!='READY':
-              receipt={'project_id':item['project_id'],'repository':item['repository'],'shard_id':os.environ['SHARD_ID'],'exact_input_sha':item['exact_input_sha'],'outcome':state,'reasons':reasons,'fingerprint':item['fingerprint'],'contract_materialized':False}
-              (out/'receipt.json').write_text(json.dumps(receipt,indent=2)); raise SystemExit(0)
-          def lines(values): return '\n'.join(f'- {value}' for value in values)
-          title=f"[RAZZO ACTIONABLE] {objective}"[:240]
-          body=f"""Product objective: {objective}
+          item['fingerprint'] = fingerprint(item)
+          state, reasons = validate(item)
+          if state != 'READY':
+              receipt = {
+                  'project_id': item['project_id'],
+                  'repository': item['repository'],
+                  'shard_id': os.environ['SHARD_ID'],
+                  'exact_input_sha': item['exact_input_sha'],
+                  'outcome': state,
+                  'reasons': reasons,
+                  'fingerprint': item['fingerprint'],
+                  'contract_materialized': False,
+              }
+              (out / 'receipt.json').write_text(json.dumps(receipt, indent=2))
+              raise SystemExit(0)
+          def lines(values):
+              return '\n'.join(f'- {value}' for value in values)
+          title = f"[RAZZO ACTIONABLE] {objective}"[:240]
+          body = f"""Product objective: {objective}
 
 User impact: {item['user_impact']}
 
@@ -233,12 +271,21 @@ Exact discovery SHA: `{item['exact_input_sha']}`
 Integration lane: `{item['integration_lane']}`
 Discovery fingerprint: `{item['fingerprint']}`
 """
-          (out/'issue.json').write_text(json.dumps({'title':title,'body':body}))
-          receipt={'project_id':item['project_id'],'repository':item['repository'],'shard_id':os.environ['SHARD_ID'],'exact_input_sha':item['exact_input_sha'],'outcome':'READY','fingerprint':item['fingerprint'],'work_item_id':item['work_item_id'],'collision_domain':item['collision_domain'],'contract_materialized':False}
-          (out/'receipt.json').write_text(json.dumps(receipt,indent=2))
+          (out / 'issue.json').write_text(json.dumps({'title': title, 'body': body}))
+          receipt = {
+              'project_id': item['project_id'],
+              'repository': item['repository'],
+              'shard_id': os.environ['SHARD_ID'],
+              'exact_input_sha': item['exact_input_sha'],
+              'outcome': 'READY',
+              'fingerprint': item['fingerprint'],
+              'work_item_id': item['work_item_id'],
+              'collision_domain': item['collision_domain'],
+              'contract_materialized': False,
+          }
+          (out / 'receipt.json').write_text(json.dumps(receipt, indent=2))
           PY
       - name: Create or reuse actionable product issue
-        id: issue
         env:
           GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           REPOSITORY: ${{ matrix.repository }}
@@ -250,16 +297,21 @@ Discovery fingerprint: `{item['fingerprint']}`
           title="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["title"])' "$dir/issue.json")"
           existing="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$REPOSITORY/issues?state=open&per_page=100" | TITLE="$title" python -c 'import json,os,sys; print(next((x["number"] for x in json.load(sys.stdin) if "pull_request" not in x and x.get("title")==os.environ["TITLE"]),""))')"
           if [ -n "$existing" ]; then
-            number="$existing"; outcome='DUPLICATE'
+            number="$existing"
+            outcome='DUPLICATE'
           else
             response="$(curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$REPOSITORY/issues" --data-binary @"$dir/issue.json")"
-            number="$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' <<< "$response")"; outcome='ACTIONABLE_CONTRACT_MATERIALIZED'
+            number="$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' <<< "$response")"
+            outcome='ACTIONABLE_CONTRACT_MATERIALIZED'
           fi
           python - "$dir/receipt.json" "$number" "$outcome" <<'PY'
-          import json,sys
-          path,number,outcome=sys.argv[1:]
-          data=json.load(open(path)); data['issue_number']=int(number); data['outcome']=outcome; data['contract_materialized']=outcome=='ACTIONABLE_CONTRACT_MATERIALIZED'
-          open(path,'w').write(json.dumps(data,indent=2))
+          import json, sys
+          path, number, outcome = sys.argv[1:]
+          data = json.load(open(path))
+          data['issue_number'] = int(number)
+          data['outcome'] = outcome
+          data['contract_materialized'] = outcome == 'ACTIONABLE_CONTRACT_MATERIALIZED'
+          open(path, 'w').write(json.dumps(data, indent=2))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
@@ -281,9 +333,11 @@ Discovery fingerprint: `{item['fingerprint']}`
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+        with:
+          python-version: '3.12'
       - name: Verify shard lease
         env:
           SHARD_ID: ${{ matrix.shard_id }}
@@ -293,9 +347,15 @@ Discovery fingerprint: `{item['fingerprint']}`
           RUN_ID: ${{ github.run_id }}
         run: |
           python - <<'PY'
-          import json,os
+          import json, os
           from razzo.v7.dispatcher_pool import verify_dispatcher_lease
-          verify_dispatcher_lease(os.environ['DISPATCHER_ID'],json.loads(os.environ['ITEMS_JSON']),os.environ['LEASE_DIGEST'],os.environ['SHARD_ID'],os.environ['RUN_ID'])
+          verify_dispatcher_lease(
+              os.environ['DISPATCHER_ID'],
+              json.loads(os.environ['ITEMS_JSON']),
+              os.environ['LEASE_DIGEST'],
+              os.environ['SHARD_ID'],
+              os.environ['RUN_ID'],
+          )
           PY
 
   workers:
@@ -310,9 +370,11 @@ Discovery fingerprint: `{item['fingerprint']}`
     environment: photo-ai-private
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
-        with: {node-version: '22'}
+        with:
+          node-version: '22'
       - name: Install pinned Codex CLI
         run: npm install --global @openai/codex@0.145.0
       - name: Checkout exact private product source
@@ -341,31 +403,33 @@ Discovery fingerprint: `{item['fingerprint']}`
           CODEX_HOME: ${{ runner.temp }}/codex-${{ matrix.shard_id }}
         run: node scripts/codex-auth-state.mjs restore
       - name: Materialize concrete actionability contract
-        env: {CONTRACT_JSON: '${{ toJSON(matrix) }}'}
+        env:
+          CONTRACT_JSON: ${{ toJSON(matrix) }}
         run: |
           python - <<'PY'
-          import json,os,pathlib
-          c=json.loads(os.environ['CONTRACT_JSON'])
-          prompt=f'''You are one RAZZO V7 product worker. Implement this concrete contract only.
-WORK ITEM: {c['work_item_id']}
-PRODUCT OBJECTIVE: {c['product_objective']}
-USER IMPACT: {c['user_impact']}
-RATIONALE: {c['rationale']}
-ACCEPTANCE CRITERIA: {json.dumps(c['acceptance_criteria'])}
-DEFINITION OF DONE: {c['definition_of_done']}
-TARGET SURFACES: {json.dumps(c['target_surfaces'])}
-ALLOWED SURFACES: {json.dumps(c['allowed_surfaces'])}
-FORBIDDEN SURFACES: {json.dumps(c['forbidden_surfaces'])}
-REQUIRED TESTS: {json.dumps(c['required_tests'])}
-EXPECTED PRODUCT EFFECT: {c['expected_product_effect']}
-EVIDENCE REQUIRED: {json.dumps(c['evidence_required'])}
+          import json, os, pathlib
+          contract = json.loads(os.environ['CONTRACT_JSON'])
+          prompt = f'''You are one RAZZO V7 product worker. Implement this concrete contract only.
+WORK ITEM: {contract['work_item_id']}
+PRODUCT OBJECTIVE: {contract['product_objective']}
+USER IMPACT: {contract['user_impact']}
+RATIONALE: {contract['rationale']}
+ACCEPTANCE CRITERIA: {json.dumps(contract['acceptance_criteria'])}
+DEFINITION OF DONE: {contract['definition_of_done']}
+TARGET SURFACES: {json.dumps(contract['target_surfaces'])}
+ALLOWED SURFACES: {json.dumps(contract['allowed_surfaces'])}
+FORBIDDEN SURFACES: {json.dumps(contract['forbidden_surfaces'])}
+REQUIRED TESTS: {json.dumps(contract['required_tests'])}
+EXPECTED PRODUCT EFFECT: {contract['expected_product_effect']}
+EVIDENCE REQUIRED: {json.dumps(contract['evidence_required'])}
 Do not modify workflows, infrastructure, secrets, migrations, factory policy or task graphs. Do not use network commands. Produce the smallest coherent functional increment and meaningful tests. Do not commit or push; the outer worker owns Git operations. If the contract cannot be implemented on the identified real surfaces, leave no diff rather than inventing files or components.'''
-          pathlib.Path(os.environ['RUNNER_TEMP'],'product-work.txt').write_text(prompt)
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'product-work.txt').write_text(prompt)
           PY
       - name: Execute product worker
         id: codex
         working-directory: product-source
-        env: {CODEX_HOME: '${{ runner.temp }}/codex-${{ matrix.shard_id }}'}
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-${{ matrix.shard_id }}
         run: codex exec --skip-git-repo-check --ephemeral --sandbox workspace-write - < "$RUNNER_TEMP/product-work.txt"
       - name: Inspect diff and forbidden surfaces
         id: diff
@@ -374,21 +438,47 @@ Do not modify workflows, infrastructure, secrets, migrations, factory policy or 
         run: |
           set -euo pipefail
           changed="$(git status --porcelain | sed -E 's/^.. //')"
-          if [ -z "$changed" ]; then echo 'has_changes=false' >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ -z "$changed" ]; then
+            echo 'has_changes=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           printf '%s\n' "$changed" > "$RUNNER_TEMP/changed-files.txt"
-          if grep -E '(^|/)(\.github/workflows|migrations|infra|secrets)(/|$)|factory/(policy|task[-_]graph)' "$RUNNER_TEMP/changed-files.txt"; then exit 1; fi
+          if grep -E '(^|/)(\.github/workflows|migrations|infra|secrets)(/|$)|factory/(policy|task[-_]graph)' "$RUNNER_TEMP/changed-files.txt"; then
+            exit 1
+          fi
           echo 'has_changes=true' >> "$GITHUB_OUTPUT"
-      - name: Run real product tests
+      - name: Run real product and contract-specific tests
         id: tests
         if: steps.diff.outputs.has_changes == 'true'
         working-directory: product-source
+        env:
+          FACTORY_TEST: ${{ matrix.factory_test }}
+          FACTORY_PLAN: ${{ matrix.factory_plan }}
+          REQUIRED_TESTS_JSON: ${{ toJSON(matrix.required_tests) }}
         shell: bash
         run: |
           set -euo pipefail
           executed=false
-          if [ -n '${{ matrix.factory_test }}' ]; then executed=true; bash -lc '${{ matrix.factory_test }}'; fi
-          if [ -n '${{ matrix.factory_plan }}' ]; then executed=true; bash -lc '${{ matrix.factory_plan }}'; fi
-          for command in $(python -c 'import json; print("\n".join(json.loads(r'''${{ toJSON(matrix.required_tests) }}''')))' | sed '/^$/d'); do :; done
+          if [ -n "$FACTORY_TEST" ]; then
+            executed=true
+            bash -lc "$FACTORY_TEST"
+          fi
+          if [ -n "$FACTORY_PLAN" ]; then
+            executed=true
+            bash -lc "$FACTORY_PLAN"
+          fi
+          python - <<'PY' > "$RUNNER_TEMP/required-tests.txt"
+          import json, os
+          for command in json.loads(os.environ['REQUIRED_TESTS_JSON']):
+              command = str(command).strip()
+              if command:
+                  print(command)
+          PY
+          while IFS= read -r command; do
+            [ -z "$command" ] && continue
+            executed=true
+            bash -lc "$command"
+          done < "$RUNNER_TEMP/required-tests.txt"
           test "$executed" = true
           echo 'executed=true' >> "$GITHUB_OUTPUT"
           echo 'passed=true' >> "$GITHUB_OUTPUT"
@@ -410,33 +500,63 @@ Do not modify workflows, infrastructure, secrets, migrations, factory policy or 
           git commit -m "RAZZO V7: ${{ matrix.product_objective }}"
           candidate="$(git rev-parse HEAD)"
           git push "https://x-access-token:${SOURCE_TOKEN}@github.com/${{ matrix.repository }}.git" "HEAD:${branch}"
+          export BRANCH="$branch"
           payload="$(python - <<'PY'
-          import json
-          print(json.dumps({'title':'RAZZO V7: ${{ matrix.product_objective }}','head':'PLACEHOLDER','base':'${{ matrix.integration_lane }}','body':'Exact input `${{ matrix.exact_input_sha }}`; work item `${{ matrix.work_item_id }}`; candidate will be verified by product CI.'}))
+          import json, os
+          print(json.dumps({
+              'title': 'RAZZO V7: ${{ matrix.product_objective }}',
+              'head': os.environ['BRANCH'],
+              'base': '${{ matrix.integration_lane }}',
+              'body': 'Exact input `${{ matrix.exact_input_sha }}`; work item `${{ matrix.work_item_id }}`; candidate is verified by the product test contract.',
+          }))
           PY
           )"
-          payload="$(BRANCH="$branch" python -c 'import json,os,sys; p=json.load(sys.stdin); p["head"]=os.environ["BRANCH"]; print(json.dumps(p))' <<< "$payload")"
           response="$(curl -fsS -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${{ matrix.repository }}/pulls" -d "$payload")"
           echo "candidate_sha=$candidate" >> "$GITHUB_OUTPUT"
           echo "pr_number=$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' <<< "$response")" >> "$GITHUB_OUTPUT"
       - name: Write truthful isolated receipt
         if: always()
-        env: {OUT: '${{ runner.temp }}/worker-receipt'}
+        env:
+          OUT: ${{ runner.temp }}/worker-receipt
         run: |
           mkdir -p "$OUT"
           python - <<'PY'
-          import hashlib,json,os,pathlib
-          changed='${{ steps.diff.outputs.has_changes }}' == 'true'
-          tests_executed='${{ steps.tests.outputs.executed }}' == 'true'
-          tests_passed='${{ steps.tests.outputs.passed }}' == 'true'
-          pr='${{ steps.publish.outputs.pr_number }}'; candidate='${{ steps.publish.outputs.candidate_sha }}'
-          if not changed: outcome='NO_ACTIONABLE_CHANGE'
-          elif '${{ steps.tests.outcome }}' != 'success': outcome='PRODUCT_CHANGED_TESTS_FAILED'
-          elif not pr: outcome='PRODUCT_CHANGED_PUBLISH_FAILED'
-          else: outcome='PRODUCT_DELIVERED'
-          data={'execution_success':'${{ steps.codex.outcome }}'=='success','product_progress':outcome=='PRODUCT_DELIVERED','has_changes':changed,'tests_executed':tests_executed,'tests_passed':tests_passed,'candidate_sha':candidate or None,'pr_number':int(pr) if pr else None,'shard_id':'${{ matrix.shard_id }}','dispatcher_id':'${{ matrix.dispatcher_id }}','lease_digest':'${{ matrix.lease_digest }}','work_item_id':'${{ matrix.work_item_id }}','fingerprint':'${{ matrix.fingerprint }}','project_id':'${{ matrix.project_id }}','collision_domain':'${{ matrix.collision_domain }}','exact_input_sha':'${{ matrix.exact_input_sha }}','issue_number':${{ matrix.issue_number }},'outcome':outcome,'run_id':'${{ github.run_id }}'}
-          data['receipt_digest']=hashlib.sha256(json.dumps(data,sort_keys=True).encode()).hexdigest()
-          pathlib.Path(os.environ['OUT'],'receipt.json').write_text(json.dumps(data,indent=2))
+          import hashlib, json, os, pathlib
+          changed = '${{ steps.diff.outputs.has_changes }}' == 'true'
+          tests_executed = '${{ steps.tests.outputs.executed }}' == 'true'
+          tests_passed = '${{ steps.tests.outputs.passed }}' == 'true'
+          pr = '${{ steps.publish.outputs.pr_number }}'
+          candidate = '${{ steps.publish.outputs.candidate_sha }}'
+          if not changed:
+              outcome = 'NO_ACTIONABLE_CHANGE'
+          elif '${{ steps.tests.outcome }}' != 'success':
+              outcome = 'PRODUCT_CHANGED_TESTS_FAILED'
+          elif not pr:
+              outcome = 'PRODUCT_CHANGED_PUBLISH_FAILED'
+          else:
+              outcome = 'PRODUCT_DELIVERED'
+          data = {
+              'execution_success': '${{ steps.codex.outcome }}' == 'success',
+              'product_progress': outcome == 'PRODUCT_DELIVERED',
+              'has_changes': changed,
+              'tests_executed': tests_executed,
+              'tests_passed': tests_passed,
+              'candidate_sha': candidate or None,
+              'pr_number': int(pr) if pr else None,
+              'shard_id': '${{ matrix.shard_id }}',
+              'dispatcher_id': '${{ matrix.dispatcher_id }}',
+              'lease_digest': '${{ matrix.lease_digest }}',
+              'work_item_id': '${{ matrix.work_item_id }}',
+              'fingerprint': '${{ matrix.fingerprint }}',
+              'project_id': '${{ matrix.project_id }}',
+              'collision_domain': '${{ matrix.collision_domain }}',
+              'exact_input_sha': '${{ matrix.exact_input_sha }}',
+              'issue_number': ${{ matrix.issue_number }},
+              'outcome': outcome,
+              'run_id': '${{ github.run_id }}',
+          }
+          data['receipt_digest'] = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+          pathlib.Path(os.environ['OUT'], 'receipt.json').write_text(json.dumps(data, indent=2))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
@@ -446,7 +566,7 @@ Do not modify workflows, infrastructure, secrets, migrations, factory policy or 
           if-no-files-found: error
       - name: Purge private source and auth state
         if: always()
-        run: rm -rf product-source "$RUNNER_TEMP/product-work.txt" "$RUNNER_TEMP/changed-files.txt" "${{ runner.temp }}/codex-${{ matrix.shard_id }}"
+        run: rm -rf product-source "$RUNNER_TEMP/product-work.txt" "$RUNNER_TEMP/changed-files.txt" "$RUNNER_TEMP/required-tests.txt" "${{ runner.temp }}/codex-${{ matrix.shard_id }}"
 
   aggregate:
     needs: [plan, deep_discovery, dispatchers, workers]
@@ -474,39 +594,66 @@ Do not modify workflows, infrastructure, secrets, migrations, factory policy or 
           RUN_ID: ${{ github.run_id }}
         run: |
           python - <<'PY'
-          import json,os,pathlib
-          from razzo.v7.work_item_state import load,record_outcome,write
-          receipts=[json.loads(p.read_text()) for p in pathlib.Path('receipts').glob('**/receipt.json')] if pathlib.Path('receipts').exists() else []
-          discovery=[json.loads(p.read_text()) for p in pathlib.Path('discovery-receipts').glob('**/receipt.json')] if pathlib.Path('discovery-receipts').exists() else []
-          if len(receipts)!=int(os.environ.get('EXPECTED_COUNT') or 0): raise SystemExit('product receipt count mismatch')
-          if len(discovery)!=int(os.environ.get('EXPECTED_DISCOVERY_COUNT') or 0): raise SystemExit('discovery receipt count mismatch')
-          for key in ('shard_id','fingerprint','collision_domain','work_item_id'):
-              vals=[r[key] for r in receipts]
-              if len(vals)!=len(set(vals)): raise SystemExit(f'duplicate {key}')
-          discovery_shards=[r['shard_id'] for r in discovery]
-          if len(discovery_shards)!=len(set(discovery_shards)): raise SystemExit('duplicate discovery shard')
-          state_path=pathlib.Path('razzo/v7/work-item-state.json'); state=load(state_path)
-          for r in receipts:
-              item={k:r.get(k) for k in ('fingerprint','work_item_id','project_id','issue_number','collision_domain','exact_input_sha')}
-              record_outcome(state,item,outcome=r['outcome'],run_id=os.environ['RUN_ID'],candidate_sha=r.get('candidate_sha'),pr_number=r.get('pr_number'))
-          if receipts: write(state_path,state)
-          changed=sum(bool(r['has_changes']) for r in receipts); delivered=sum(r['outcome']=='PRODUCT_DELIVERED' for r in receipts)
-          materialized=sum(bool(r.get('contract_materialized')) for r in discovery)
-          classification='PRODUCTIVE' if delivered else ('PARTIALLY_PRODUCTIVE' if changed else 'NON_PRODUCTIVE')
-          rejected=json.loads(os.environ.get('REJECTED_JSON') or '[]')
-          registry=json.loads(pathlib.Path('razzo/projects.json').read_text())
-          summary={'enabled_projects':sum(bool(p.get('enabled')) for p in registry['projects']),'eligible_projects':len(set([r['project_id'] for r in receipts]+[r['project_id'] for r in discovery])),'actionable_items':len(receipts),'deep_discovery_items':len(discovery),'actionable_contracts_materialized':materialized,'rejected_not_actionable':sum(x.get('state')=='NOT_ACTIONABLE' for x in rejected),'cooldown_items':sum('cooldown' in x.get('reasons',[]) for x in rejected),'dispatched_items':len(receipts),'active_shards':len(set([r['shard_id'] for r in receipts]+discovery_shards)),'changed_workers':changed,'tested_workers':sum(bool(r['tests_executed']) for r in receipts),'delivered_prs':delivered,'no_actionable_change':sum(r['outcome']=='NO_ACTIONABLE_CHANGE' for r in receipts),'product_progress':delivered>0,'classification':classification,'run_id':os.environ['RUN_ID']}
+          import json, os, pathlib
+          from razzo.v7.work_item_state import load, record_outcome, write
+
+          receipts = [json.loads(path.read_text()) for path in pathlib.Path('receipts').glob('**/receipt.json')] if pathlib.Path('receipts').exists() else []
+          discovery = [json.loads(path.read_text()) for path in pathlib.Path('discovery-receipts').glob('**/receipt.json')] if pathlib.Path('discovery-receipts').exists() else []
+          if len(receipts) != int(os.environ.get('EXPECTED_COUNT') or 0):
+              raise SystemExit('product receipt count mismatch')
+          if len(discovery) != int(os.environ.get('EXPECTED_DISCOVERY_COUNT') or 0):
+              raise SystemExit('discovery receipt count mismatch')
+          for key in ('shard_id', 'fingerprint', 'collision_domain', 'work_item_id'):
+              values = [receipt[key] for receipt in receipts]
+              if len(values) != len(set(values)):
+                  raise SystemExit(f'duplicate {key}')
+          discovery_shards = [receipt['shard_id'] for receipt in discovery]
+          if len(discovery_shards) != len(set(discovery_shards)):
+              raise SystemExit('duplicate discovery shard')
+          state_path = pathlib.Path('razzo/v7/work-item-state.json')
+          state = load(state_path)
+          for receipt in receipts:
+              item = {key: receipt.get(key) for key in ('fingerprint', 'work_item_id', 'project_id', 'issue_number', 'collision_domain', 'exact_input_sha')}
+              record_outcome(state, item, outcome=receipt['outcome'], run_id=os.environ['RUN_ID'], candidate_sha=receipt.get('candidate_sha'), pr_number=receipt.get('pr_number'))
+          if receipts:
+              write(state_path, state)
+          changed = sum(bool(receipt['has_changes']) for receipt in receipts)
+          delivered = sum(receipt['outcome'] == 'PRODUCT_DELIVERED' for receipt in receipts)
+          materialized = sum(bool(receipt.get('contract_materialized')) for receipt in discovery)
+          classification = 'PRODUCTIVE' if delivered else ('PARTIALLY_PRODUCTIVE' if changed else 'NON_PRODUCTIVE')
+          rejected = json.loads(os.environ.get('REJECTED_JSON') or '[]')
+          registry = json.loads(pathlib.Path('razzo/projects.json').read_text())
+          summary = {
+              'enabled_projects': sum(bool(project.get('enabled')) for project in registry['projects']),
+              'eligible_projects': len(set([receipt['project_id'] for receipt in receipts] + [receipt['project_id'] for receipt in discovery])),
+              'actionable_items': len(receipts),
+              'deep_discovery_items': len(discovery),
+              'actionable_contracts_materialized': materialized,
+              'rejected_not_actionable': sum(item.get('state') == 'NOT_ACTIONABLE' for item in rejected),
+              'cooldown_items': sum('cooldown' in item.get('reasons', []) for item in rejected),
+              'dispatched_items': len(receipts),
+              'active_shards': len(set([receipt['shard_id'] for receipt in receipts] + discovery_shards)),
+              'changed_workers': changed,
+              'tested_workers': sum(bool(receipt['tests_executed']) for receipt in receipts),
+              'delivered_prs': delivered,
+              'no_actionable_change': sum(receipt['outcome'] == 'NO_ACTIONABLE_CHANGE' for receipt in receipts),
+              'product_progress': delivered > 0,
+              'classification': classification,
+              'run_id': os.environ['RUN_ID'],
+          }
           if receipts or materialized:
-              pathlib.Path('razzo/v7/last-wave-receipt.json').write_text(json.dumps(summary,indent=2)+'\n')
-          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
-              f.write('# RAZZO V7 wave\n\n```json\n'+json.dumps(summary,indent=2)+'\n```\n')
+              pathlib.Path('razzo/v7/last-wave-receipt.json').write_text(json.dumps(summary, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary_file:
+              summary_file.write('# RAZZO V7 wave\n\n```json\n' + json.dumps(summary, indent=2) + '\n```\n')
           PY
       - name: Persist operational state and trigger intelligent continuation
         run: |
           git config user.name 'RAZZO V7 State Controller'
           git config user.email 'razzo-v7@users.noreply.github.com'
           git add razzo/v7/work-item-state.json razzo/v7/last-wave-receipt.json
-          if git diff --cached --quiet; then exit 0; fi
+          if git diff --cached --quiet; then
+            exit 0
+          fi
           git commit -m "RAZZO V7: persist wave ${{ github.run_id }} outcomes"
           git pull --rebase origin main
           git push origin HEAD:main
