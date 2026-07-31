@@ -232,12 +232,15 @@ leave the tree unchanged.
 
 def command_receipt(args: argparse.Namespace) -> int:
     contract = json.loads(os.environ["CONTRACT_JSON"])
+    environment_blocked = args.environment_blocked == "true"
     codex_ok = args.codex_outcome == "success"
     diff_ok = args.diff_outcome in {"success", "skipped"}
     changed = args.has_changes == "true"
     tests_executed = args.tests_executed == "true"
     tests_passed = args.tests_passed == "true"
-    if not codex_ok or not diff_ok:
+    if environment_blocked:
+        outcome = "BLOCKED_ENVIRONMENT"
+    elif not codex_ok or not diff_ok:
         outcome = "FAILED"
     elif not changed:
         outcome = "NO_ACTIONABLE_CHANGE"
@@ -325,6 +328,9 @@ def command_verify(args: argparse.Namespace) -> int:
         "no_actionable_change": sum(
             receipt["outcome"] == "NO_ACTIONABLE_CHANGE" for receipt in receipts
         ),
+        "blocked_environment": sum(
+            receipt["outcome"] == "BLOCKED_ENVIRONMENT" for receipt in receipts
+        ),
         "failed_workers": sum(receipt["outcome"] == "FAILED" for receipt in receipts),
         "stale_base": sum(receipt["outcome"] == "STALE_BASE" for receipt in receipts),
         "product_progress": delivered > 0,
@@ -401,8 +407,9 @@ def parser() -> argparse.ArgumentParser:
 
     receipt = sub.add_parser("receipt")
     for name in (
-        "run_id", "codex_outcome", "diff_outcome", "has_changes", "tests_outcome",
-        "tests_executed", "tests_passed", "fresh", "pr_number", "candidate_sha", "output",
+        "run_id", "environment_blocked", "codex_outcome", "diff_outcome",
+        "has_changes", "tests_outcome", "tests_executed", "tests_passed",
+        "fresh", "pr_number", "candidate_sha", "output",
     ):
         receipt.add_argument("--" + name.replace("_", "-"), default="")
     receipt.set_defaults(func=command_receipt)
