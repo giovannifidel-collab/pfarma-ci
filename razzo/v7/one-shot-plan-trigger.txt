@@ -1,4 +1,5 @@
-This branch exists only to trigger one controlled pull_request_target dispatch.
+This branch exists only to trigger one controlled plan-only dispatch.
 Mode: plan-only
 Max workers: 3
 No product execution is permitted by this trigger.
+Trigger generation: 2
