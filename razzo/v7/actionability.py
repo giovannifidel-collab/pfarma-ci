@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -18,6 +18,19 @@ _NONEMPTY_FIELDS = (
     "risk_class", "evidence_required",
 )
 _REQUIRED_PRESENT_FIELDS = ("dependencies", "human_gate")
+_ALLOWED_OUTCOMES = {
+    "PRODUCT_DELIVERED",
+    "PRODUCT_CHANGED_TESTS_GREEN",
+    "PRODUCT_CHANGED_TESTS_FAILED",
+    "PRODUCT_CHANGED_PUBLISH_FAILED",
+    "NO_ACTIONABLE_CHANGE",
+    "DUPLICATE",
+    "COOLDOWN",
+    "BLOCKED",
+    "HUMAN_GATE",
+    "FAILED",
+    "REQUIRES_REDISCOVERY",
+}
 
 
 def normalize(value: str) -> str:
@@ -94,6 +107,68 @@ def validate(item: dict[str, Any], *, open_pr_issue_numbers: set[int] | None = N
     if not reasons:
         return "READY", []
     return state_name, reasons
+
+
+def record_outcome(
+    state: dict[str, Any],
+    item: dict[str, Any],
+    *,
+    outcome: str,
+    run_id: str,
+    now: datetime | None = None,
+    candidate_sha: str | None = None,
+    pr_number: int | None = None,
+    integration_state: str | None = None,
+) -> dict[str, Any]:
+    """Persist an operational result and enforce deterministic cooldown escalation."""
+    if outcome not in _ALLOWED_OUTCOMES:
+        raise ValueError(f"unsupported outcome: {outcome}")
+    now = now or datetime.now(timezone.utc)
+    fp = fingerprint(item)
+    if item.get("fingerprint") != fp:
+        raise ValueError("fingerprint mismatch")
+
+    items = state.setdefault("items", {})
+    previous = dict(items.get(fp, {}))
+    attempts = int(previous.get("attempts", 0)) + 1
+    repeated_no_change = int(previous.get("consecutive_no_actionable_change", 0))
+    cooldown_until: str | None = None
+    effective_outcome = outcome
+
+    if outcome == "NO_ACTIONABLE_CHANGE":
+        repeated_no_change += 1
+        if repeated_no_change == 1:
+            cooldown_until = (now + timedelta(hours=6)).isoformat().replace("+00:00", "Z")
+        elif repeated_no_change == 2:
+            cooldown_until = (now + timedelta(hours=24)).isoformat().replace("+00:00", "Z")
+        else:
+            effective_outcome = "REQUIRES_REDISCOVERY"
+    else:
+        repeated_no_change = 0
+
+    source = item.get("issue_number") or item.get("discovery_source")
+    record = {
+        "work_item_id": item["work_item_id"],
+        "project_id": item["project_id"],
+        "issue_number": item.get("issue_number"),
+        "discovery_source": item.get("discovery_source"),
+        "source": source,
+        "collision_domain": item["collision_domain"],
+        "exact_input_sha": item["exact_input_sha"],
+        "attempts": attempts,
+        "consecutive_no_actionable_change": repeated_no_change,
+        "last_run_id": str(run_id),
+        "last_outcome": effective_outcome,
+        "last_attempt_at": now.isoformat().replace("+00:00", "Z"),
+        "cooldown_until": cooldown_until,
+        "candidate_sha": candidate_sha,
+        "pr_number": pr_number,
+        "integration_state": integration_state or previous.get("integration_state") or "not_started",
+    }
+    items[fp] = record
+    state["version"] = max(int(state.get("version", 1)), 1)
+    state["updated_at"] = record["last_attempt_at"]
+    return record
 
 
 def canonical_json(item: dict[str, Any]) -> str:
