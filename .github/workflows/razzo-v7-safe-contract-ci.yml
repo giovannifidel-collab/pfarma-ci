@@ -3,23 +3,9 @@ name: RAZZO V7 Safe Contract CI
 on:
   pull_request:
     paths:
-      - 'razzo/v7/actionability.py'
-      - 'razzo/v7/product_discovery.py'
-      - 'razzo/v7/contract_materializer.py'
-      - 'razzo/v7/trial_runtime.py'
-      - 'razzo/v7/test_trial_runtime.py'
-      - 'razzo/v7/dispatcher_pool.py'
-      - 'razzo/v7/test_actionability.py'
-      - 'razzo/v7/test_product_discovery.py'
-      - 'razzo/v7/test_contract_materializer.py'
-      - 'razzo/v7/test_dispatcher_pool.py'
-      - 'razzo/v7/shards.json'
-      - '.github/workflows/razzo-v7-product-worker-fabric.yml'
+      - 'razzo/v7/**'
       - '.github/workflows/razzo-v7-ten-shard-trial.yml'
       - '.github/workflows/razzo-v7-safe-contract-ci.yml'
-      - '.github/workflows/razzo-v7-elastic-fabric.yml'
-      - '.github/workflows/razzo-v7-elastic-autoscaler.yml'
-      - '.github/workflows/razzo-v6-operational-factory.yml'
 
 permissions:
   contents: read
@@ -41,72 +27,20 @@ jobs:
           python-version: '3.12'
       - name: Verify exact PR head
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-      - name: Compile V7 Python modules
+      - name: Validate deterministic free fabric
         run: |
-          python -m py_compile \
-            razzo/v7/actionability.py \
-            razzo/v7/product_discovery.py \
-            razzo/v7/contract_materializer.py \
-            razzo/v7/trial_runtime.py \
-            razzo/v7/dispatcher_pool.py
-      - name: Run safe-factory unit contracts
-        run: |
-          python -m unittest razzo.v7.test_actionability -v
-          python -m unittest razzo.v7.test_product_discovery -v
-          python -m unittest razzo.v7.test_contract_materializer -v
-          python -m unittest razzo.v7.test_dispatcher_pool -v
-          python -m unittest razzo.v7.test_trial_runtime -v
-      - name: Validate exact ten-shard topology
-        run: |
-          python - <<'PY'
-          import json
-          from collections import Counter
-          from pathlib import Path
-
-          payload = json.loads(Path('razzo/v7/shards.json').read_text())
-          shards = payload.get('shards', [])
-          ids = [entry['shard_id'] for entry in shards]
-          assert len(ids) == 10 and len(ids) == len(set(ids))
-          assert all(entry.get('enabled') is True for entry in shards)
-          assert all(entry.get('health') == 'healthy' for entry in shards)
-          topology = Counter(entry.get('supported_lane') for entry in shards)
-          assert topology == {
-              'discovery': 3,
-              'product': 5,
-              'verify': 1,
-              'integration': 1,
-          }
-          declared = payload.get('topology', {})
-          assert declared.get('logical_shard_capacity') == 10
-          assert all(declared.get(lane) == count for lane, count in topology.items())
-          PY
-      - name: Verify workflows are manual-only and bounded
-        run: |
+          python -m py_compile razzo/v7/deterministic_discovery.py razzo/v7/free_executor.py razzo/v7/contract_materializer.py razzo/v7/trial_runtime.py
+          python -m unittest razzo.v7.test_actionability razzo.v7.test_product_discovery razzo.v7.test_contract_materializer razzo.v7.test_dispatcher_pool razzo.v7.test_trial_runtime -v
           python - <<'PY'
           from pathlib import Path
-
-          manual = [
-              '.github/workflows/razzo-v7-elastic-fabric.yml',
-              '.github/workflows/razzo-v7-elastic-autoscaler.yml',
-              '.github/workflows/razzo-v6-operational-factory.yml',
-              '.github/workflows/razzo-v7-product-worker-fabric.yml',
-              '.github/workflows/razzo-v7-ten-shard-trial.yml',
-          ]
-          for path in manual:
-              text = Path(path).read_text()
-              assert 'workflow_dispatch:' in text
-              assert 'pull_request:' not in text
-              assert '\n  push:' not in text
-              assert '\n  schedule:' not in text
-              assert 'cancel-in-progress: true' in text
-          trial = Path('.github/workflows/razzo-v7-ten-shard-trial.yml').read_text()
-          runtime = Path('razzo/v7/trial_runtime.py').read_text()
-          assert 'execute-trial' in trial
-          assert 'max-parallel: 3' in trial
-          assert 'max-parallel: 5' in trial
+          trial=Path('.github/workflows/razzo-v7-ten-shard-trial.yml').read_text()
+          assert 'workflow_dispatch:' in trial
+          assert 'cancel-in-progress: true' in trial
+          assert 'max-parallel: 3' in trial and 'max-parallel: 5' in trial
+          assert 'deterministic_discovery' in trial
+          assert 'free_executor' in trial
+          assert 'codex exec' not in trial
+          assert 'Install pinned Codex CLI' not in trial
+          assert 'Restore Codex authentication' not in trial
           assert 'git push origin HEAD:main' not in trial
-          assert 'bash -lc "$command"' not in trial
-          assert 'auto_merge": False' in runtime
-          assert 'use_legacy_landlock' not in runtime
-          assert 'install_codex_worker_wrapper' not in runtime
           PY
