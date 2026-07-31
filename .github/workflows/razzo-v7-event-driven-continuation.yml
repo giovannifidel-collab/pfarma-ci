@@ -34,8 +34,10 @@ jobs:
         if: ${{ steps.productive.outputs.receipt_count != '0' }}
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          gh workflow run razzo-v7-product-worker-fabric.yml --ref main
+          set -euo pipefail
+          gh workflow run razzo-v7-product-worker-fabric.yml --repo "$GITHUB_REPOSITORY" --ref main
 
       - name: Stop cleanly when no safe product work was dispatched
         if: ${{ steps.productive.outputs.receipt_count == '0' }}
