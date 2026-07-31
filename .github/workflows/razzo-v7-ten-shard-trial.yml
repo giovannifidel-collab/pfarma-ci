@@ -163,7 +163,7 @@ jobs:
         run: |
           python -m razzo.v7.free_executor --contract-json "$CONTRACT_JSON" --product-root product-source --output "$RUNNER_TEMP/executor.json"
       - id: diff
-        name: Enforce changed-file boundaries
+        name: Enforce initial changed-file boundaries
         if: ${{ steps.executor.outcome == 'success' }}
         working-directory: product-source
         env:
@@ -183,7 +183,7 @@ jobs:
           PY
           echo 'has_changes=true' >> "$GITHUB_OUTPUT"
       - id: tests
-        name: Run registry-controlled tests
+        name: Run registry-controlled tests without mutating product files
         if: ${{ steps.diff.outputs.has_changes == 'true' }}
         working-directory: product-source
         env:
@@ -196,14 +196,34 @@ jobs:
           if [ -f package-lock.json ]; then
             npm ci
           elif [ -f package.json ]; then
-            npm install
+            npm install --no-package-lock --ignore-scripts
           fi
           [ -z "$FACTORY_TEST" ] || bash -lc "$FACTORY_TEST"
           [ -z "$FACTORY_PLAN" ] || bash -lc "$FACTORY_PLAN"
           echo 'passed=true' >> "$GITHUB_OUTPUT"
+      - id: postdiff
+        name: Enforce post-test changed-file boundaries
+        if: ${{ steps.tests.outcome == 'success' }}
+        working-directory: product-source
+        env:
+          ALLOWED_JSON: ${{ toJSON(matrix.allowed_surfaces) }}
+        run: |
+          git status --porcelain | sed -E 's/^.. //' > "$RUNNER_TEMP/post-test-changed-files.txt"
+          test -s "$RUNNER_TEMP/post-test-changed-files.txt"
+          python - <<'PY'
+          import fnmatch,json,os
+          from pathlib import Path
+          changed=[x.strip() for x in Path(os.environ['RUNNER_TEMP'],'post-test-changed-files.txt').read_text().splitlines() if x.strip()]
+          allowed=[str(x).strip().rstrip('/') for x in json.loads(os.environ['ALLOWED_JSON'])]
+          forbidden=('.github/workflows/','infra/','migrations/','secrets/','factory/policy','factory/task-graph','factory/task_graph')
+          for path in changed:
+              assert not path.startswith(forbidden), f'post-test forbidden path: {path}'
+              assert any(fnmatch.fnmatch(path,r) if any(c in r for c in '*?[') else path==r or path.startswith(r+'/') for r in allowed), f'post-test outside contract: {path}'
+          PY
+          echo 'clean=true' >> "$GITHUB_OUTPUT"
       - id: base
         name: Verify expected integration head
-        if: ${{ steps.tests.outcome == 'success' }}
+        if: ${{ steps.postdiff.outputs.clean == 'true' }}
         working-directory: product-source
         env:
           SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
@@ -229,7 +249,7 @@ jobs:
           payload=$(python - <<'PY'
           import json,os
           c=json.loads(os.environ['CONTRACT_JSON'])
-          print(json.dumps({'title':'RAZZO V7 FREE: '+c['product_objective'],'head':os.environ['BRANCH'],'base':c['integration_lane'],'body':f"Deterministic free delivery for work item `{c['work_item_id']}` from exact SHA `{c['exact_input_sha']}`. Registry tests passed."}))
+          print(json.dumps({'title':'RAZZO V7 FREE: '+c['product_objective'],'head':os.environ['BRANCH'],'base':c['integration_lane'],'body':f"Deterministic free delivery for work item `{c['work_item_id']}` from exact SHA `{c['exact_input_sha']}`. Registry tests passed and post-test boundaries were revalidated."}))
           PY
           )
           response=$(curl --fail-with-body --silent --show-error -X POST -H "Authorization: Bearer ${SOURCE_TOKEN}" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${{ matrix.repository }}/pulls" -d "$payload")
@@ -241,7 +261,7 @@ jobs:
           CONTRACT_JSON: ${{ toJSON(matrix) }}
         run: |
           mkdir -p "$RUNNER_TEMP/receipt"
-          python -m razzo.v7.trial_runtime receipt --run-id "${{ github.run_id }}" --codex-outcome "${{ steps.executor.outcome }}" --diff-outcome "${{ steps.diff.outcome }}" --has-changes "${{ steps.diff.outputs.has_changes }}" --tests-outcome "${{ steps.tests.outcome }}" --tests-executed "${{ steps.tests.outputs.executed }}" --tests-passed "${{ steps.tests.outputs.passed }}" --fresh "${{ steps.base.outputs.fresh }}" --pr-number "${{ steps.publish.outputs.pr_number }}" --candidate-sha "${{ steps.publish.outputs.candidate_sha }}" --output "$RUNNER_TEMP/receipt/receipt.json"
+          python -m razzo.v7.trial_runtime receipt --run-id "${{ github.run_id }}" --codex-outcome "${{ steps.executor.outcome }}" --diff-outcome "${{ steps.postdiff.outcome || steps.diff.outcome }}" --has-changes "${{ steps.diff.outputs.has_changes }}" --tests-outcome "${{ steps.tests.outcome }}" --tests-executed "${{ steps.tests.outputs.executed }}" --tests-passed "${{ steps.tests.outputs.passed }}" --fresh "${{ steps.base.outputs.fresh }}" --pr-number "${{ steps.publish.outputs.pr_number }}" --candidate-sha "${{ steps.publish.outputs.candidate_sha }}" --output "$RUNNER_TEMP/receipt/receipt.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -249,7 +269,7 @@ jobs:
           path: ${{ runner.temp }}/receipt/receipt.json
       - name: Purge product source
         if: always()
-        run: rm -rf product-source "$RUNNER_TEMP/executor.json" "$RUNNER_TEMP/changed-files.txt"
+        run: rm -rf product-source "$RUNNER_TEMP/executor.json" "$RUNNER_TEMP/changed-files.txt" "$RUNNER_TEMP/post-test-changed-files.txt"
 
   verify:
     needs: [materialize, workers]
