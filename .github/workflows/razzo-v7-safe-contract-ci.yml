@@ -8,92 +8,35 @@ on:
       - '.github/workflows/razzo-v7-safe-contract-ci.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: razzo-v7-safe-contract-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  migrate-free-executor:
-    if: ${{ github.head_ref == 'razzo/v7-free-executor' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-          token: ${{ github.token }}
-      - name: Replace Codex discovery and product execution
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('.github/workflows/razzo-v7-ten-shard-trial.yml')
-          text = path.read_text()
-          text = text.replace('''      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-''', '')
-          text = text.replace('''      - name: Install pinned Codex CLI
-        run: npm install --global @openai/codex@0.145.0
-''', '')
-          start = text.index('      - name: Fetch explicit portfolio issue\n', text.index('  discovery:'))
-          end = text.index('      - name: Deterministically validate discovered contracts\n', start)
-          replacement = '''      - name: Run deterministic free discovery
-        run: |
-          python -m razzo.v7.deterministic_discovery \\
-            --project-id "${{ matrix.project_id }}" \\
-            --product-root product-source \\
-            --output "$RUNNER_TEMP/discovery-output.txt"
-'''
-          text = text[:start] + replacement + text[end:]
-          start = text.index('      - name: Restore Codex authentication\n', text.index('  workers:'))
-          end = text.index('      - name: Enforce changed-file boundaries\n', start)
-          replacement = '''      - name: Execute deterministic free product recipe
-        id: executor
-        continue-on-error: true
-        env:
-          CONTRACT_JSON: ${{ toJSON(matrix) }}
-        run: |
-          python -m razzo.v7.free_executor \\
-            --contract-json "$CONTRACT_JSON" \\
-            --product-root product-source \\
-            --output "$RUNNER_TEMP/free-executor-result.json"
-'''
-          text = text[:start] + replacement + text[end:]
-          text = text.replace("if: ${{ steps.codex.outcome == 'success' }}", "if: ${{ steps.executor.outcome == 'success' }}")
-          text = text.replace('--codex-outcome "${{ steps.codex.outcome }}"', '--codex-outcome "${{ steps.executor.outcome }}"')
-          text = text.replace('rm -rf product-source "$RUNNER_TEMP/product-work.txt" "$RUNNER_TEMP/changed-files.txt" \\\n            "${{ runner.temp }}/codex-product-${{ matrix.shard_id }}"', 'rm -rf product-source "$RUNNER_TEMP/free-executor-result.json" "$RUNNER_TEMP/changed-files.txt"')
-          if 'codex exec' in text or 'Install pinned Codex CLI' in text or 'Restore Codex authentication' in text:
-              raise SystemExit('Codex execution remained in ten-shard workflow')
-          path.write_text(text)
-          PY
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .github/workflows/razzo-v7-ten-shard-trial.yml
-          git diff --cached --quiet || git commit -m 'feat: use deterministic free shard execution'
-          git push origin HEAD:${{ github.head_ref }}
-
   contracts:
-    needs: migrate-free-executor
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Validate free execution fabric
+      - name: Verify exact PR head
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - name: Validate deterministic free fabric
         run: |
           python -m py_compile razzo/v7/deterministic_discovery.py razzo/v7/free_executor.py razzo/v7/contract_materializer.py razzo/v7/trial_runtime.py
+          python -m unittest razzo.v7.test_actionability razzo.v7.test_product_discovery razzo.v7.test_contract_materializer razzo.v7.test_dispatcher_pool razzo.v7.test_trial_runtime -v
           python - <<'PY'
           from pathlib import Path
-          trial = Path('.github/workflows/razzo-v7-ten-shard-trial.yml').read_text()
+          trial=Path('.github/workflows/razzo-v7-ten-shard-trial.yml').read_text()
           assert 'workflow_dispatch:' in trial
           assert 'cancel-in-progress: true' in trial
-          assert 'max-parallel: 3' in trial
-          assert 'max-parallel: 5' in trial
+          assert 'max-parallel: 3' in trial and 'max-parallel: 5' in trial
           assert 'deterministic_discovery' in trial
           assert 'free_executor' in trial
           assert 'codex exec' not in trial
@@ -101,4 +44,3 @@ jobs:
           assert 'Restore Codex authentication' not in trial
           assert 'git push origin HEAD:main' not in trial
           PY
-          python -m unittest razzo.v7.test_actionability razzo.v7.test_product_discovery razzo.v7.test_contract_materializer razzo.v7.test_dispatcher_pool razzo.v7.test_trial_runtime -v
