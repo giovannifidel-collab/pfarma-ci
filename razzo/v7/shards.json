@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "shards": [
+    {"shard_id":"razzo-shard-0001","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"discovery","last_run_id":null,"last_outcome":null},
+    {"shard_id":"razzo-shard-0002","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"product","last_run_id":null,"last_outcome":null},
+    {"shard_id":"razzo-shard-0003","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"product","last_run_id":null,"last_outcome":null},
+    {"shard_id":"razzo-shard-0004","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"product","last_run_id":null,"last_outcome":null},
+    {"shard_id":"razzo-shard-0005","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"verify","last_run_id":null,"last_outcome":null},
+    {"shard_id":"razzo-shard-0006","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"integration","last_run_id":null,"last_outcome":null}
+  ]
+}
