@@ -133,11 +133,6 @@ jobs:
         with: {persist-credentials: false}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: product-source/package-lock.json
       - name: Verify signed lease
         env:
           CONTRACT_JSON: ${{ toJSON(matrix) }}
@@ -157,6 +152,9 @@ jobs:
           path: product-source
           persist-credentials: false
           fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - id: executor
         name: Apply deterministic free product recipe
         continue-on-error: true
@@ -194,6 +192,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$FACTORY_TEST$FACTORY_PLAN"
+          echo 'executed=true' >> "$GITHUB_OUTPUT"
           if [ -f package-lock.json ]; then
             npm ci
           elif [ -f package.json ]; then
@@ -201,7 +200,6 @@ jobs:
           fi
           [ -z "$FACTORY_TEST" ] || bash -lc "$FACTORY_TEST"
           [ -z "$FACTORY_PLAN" ] || bash -lc "$FACTORY_PLAN"
-          echo 'executed=true' >> "$GITHUB_OUTPUT"
           echo 'passed=true' >> "$GITHUB_OUTPUT"
       - id: base
         name: Verify expected integration head
