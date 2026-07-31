@@ -100,7 +100,10 @@ jobs:
               ;;
             pg-build)
               install_npm_deps
-              NEXT_TELEMETRY_DISABLED=1 npm run build
+              NEXT_PUBLIC_SUPABASE_URL=https://factory-build.invalid \
+              NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=factory-build-publishable-key \
+              NEXT_TELEMETRY_DISABLED=1 \
+              npm run build
               ;;
             pf-contract)
               python -m compileall -q api backend agent tools
