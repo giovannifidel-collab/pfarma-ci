@@ -9,8 +9,7 @@ on:
 
 permissions:
   actions: write
-  contents: read
-  statuses: write
+  contents: write
 
 concurrency:
   group: razzo-v7-one-shot-plan-launcher
@@ -18,10 +17,10 @@ concurrency:
 
 jobs:
   dispatch:
-    if: ${{ github.event.head_commit.message == 'RAZZO V7: one-shot plan-only launcher verified' }}
+    if: ${{ github.event.head_commit.message == 'RAZZO V7: one-shot plan launcher with receipt' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch and identify safe factory plan-only run
+      - name: Dispatch, identify and record safe factory plan-only run
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -55,10 +54,13 @@ jobs:
           for run in payload.get('workflow_runs', []):
               if run.get('head_sha') == sha and run.get('event') == 'workflow_dispatch':
                   print(json.dumps({
-                      'id': run['id'],
+                      'run_id': run['id'],
                       'run_number': run['run_number'],
                       'html_url': run['html_url'],
                       'status': run['status'],
+                      'head_sha': run['head_sha'],
+                      'mode': 'plan-only',
+                      'max_workers': 3,
                   }))
                   break
           PY
@@ -69,29 +71,23 @@ jobs:
             sleep 2
           done
 
-          if [ -z "$run_json" ]; then
-            status_payload='{"state":"failure","context":"razzo-v7-one-shot-dispatch","description":"Safe Factory dispatch was not observed"}'
-            curl --fail-with-body --silent --show-error \
-              -X POST "${headers[@]}" \
-              "${api}/statuses/${CONTROL_SHA}" \
-              -d "$status_payload" >/dev/null
-            exit 1
-          fi
-
+          test -n "$run_json"
           export RUN_JSON="$run_json"
-          status_payload="$(python - <<'PY'
-          import json, os
-          run = json.loads(os.environ['RUN_JSON'])
+          contents_payload="$(python - <<'PY'
+          import base64, json, os
+          receipt = json.loads(os.environ['RUN_JSON'])
+          receipt['launcher_run_id'] = os.environ.get('GITHUB_RUN_ID')
+          receipt['recorded_by'] = 'RAZZO V7 one-shot launcher'
+          content = json.dumps(receipt, indent=2, sort_keys=True) + '\n'
           print(json.dumps({
-              'state': 'success',
-              'context': 'razzo-v7-one-shot-dispatch',
-              'description': f"Safe Factory run {run['id']} plan-only max_workers=3",
-              'target_url': run['html_url'],
+              'message': 'RAZZO V7: record one-shot plan-only dispatch',
+              'content': base64.b64encode(content.encode()).decode(),
+              'branch': 'main',
           }))
           PY
           )"
           curl --fail-with-body --silent --show-error \
-            -X POST "${headers[@]}" \
-            "${api}/statuses/${CONTROL_SHA}" \
-            -d "$status_payload" >/dev/null
+            -X PUT "${headers[@]}" \
+            "${api}/contents/razzo/v7/one-shot-dispatch-receipt.json" \
+            -d "$contents_payload" >/dev/null
           echo "$run_json"
