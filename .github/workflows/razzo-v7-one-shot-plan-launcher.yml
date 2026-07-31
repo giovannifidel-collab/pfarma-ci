@@ -10,6 +10,7 @@ on:
 permissions:
   actions: write
   contents: read
+  statuses: write
 
 concurrency:
   group: razzo-v7-one-shot-plan-launcher
@@ -17,22 +18,80 @@ concurrency:
 
 jobs:
   dispatch:
-    if: ${{ github.event.head_commit.message == 'RAZZO V7: one-shot plan-only launcher' }}
+    if: ${{ github.event.head_commit.message == 'RAZZO V7: one-shot plan-only launcher verified' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch safe factory in plan-only mode
+      - name: Dispatch and identify safe factory plan-only run
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          CONTROL_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
+          api="https://api.github.com/repos/${REPOSITORY}"
+          headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+
           payload='{"ref":"main","inputs":{"mode":"plan-only","max_workers":"3"}}'
           curl --fail-with-body --silent --show-error \
-            -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${REPOSITORY}/actions/workflows/razzo-v7-product-worker-fabric.yml/dispatches" \
+            -X POST "${headers[@]}" \
+            "${api}/actions/workflows/razzo-v7-product-worker-fabric.yml/dispatches" \
             -d "${payload}"
-          echo "Dispatched RAZZO V7 Safe Product Factory with mode=plan-only and max_workers=3."
+
+          run_json=''
+          for attempt in $(seq 1 30); do
+            response="$(curl --fail-with-body --silent --show-error \
+              "${headers[@]}" \
+              "${api}/actions/workflows/razzo-v7-product-worker-fabric.yml/runs?event=workflow_dispatch&branch=main&per_page=20")"
+            export RESPONSE="$response" CONTROL_SHA
+            run_json="$(python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ['RESPONSE'])
+          sha = os.environ['CONTROL_SHA']
+          for run in payload.get('workflow_runs', []):
+              if run.get('head_sha') == sha and run.get('event') == 'workflow_dispatch':
+                  print(json.dumps({
+                      'id': run['id'],
+                      'run_number': run['run_number'],
+                      'html_url': run['html_url'],
+                      'status': run['status'],
+                  }))
+                  break
+          PY
+            )"
+            if [ -n "$run_json" ]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [ -z "$run_json" ]; then
+            status_payload='{"state":"failure","context":"razzo-v7-one-shot-dispatch","description":"Safe Factory dispatch was not observed"}'
+            curl --fail-with-body --silent --show-error \
+              -X POST "${headers[@]}" \
+              "${api}/statuses/${CONTROL_SHA}" \
+              -d "$status_payload" >/dev/null
+            exit 1
+          fi
+
+          export RUN_JSON="$run_json"
+          status_payload="$(python - <<'PY'
+          import json, os
+          run = json.loads(os.environ['RUN_JSON'])
+          print(json.dumps({
+              'state': 'success',
+              'context': 'razzo-v7-one-shot-dispatch',
+              'description': f"Safe Factory run {run['id']} plan-only max_workers=3",
+              'target_url': run['html_url'],
+          }))
+          PY
+          )"
+          curl --fail-with-body --silent --show-error \
+            -X POST "${headers[@]}" \
+            "${api}/statuses/${CONTROL_SHA}" \
+            -d "$status_payload" >/dev/null
+          echo "$run_json"
