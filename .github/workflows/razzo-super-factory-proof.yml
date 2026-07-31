@@ -1,5 +1,6 @@
 name: RAZZO Super Factory Objective Proof
 
+# trigger: 2026-07-31T11:14:00+02:00
 on:
   workflow_dispatch:
   push:
