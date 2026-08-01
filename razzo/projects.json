@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "protocol": "RAZZO",
   "dynamicPortfolio": true,
   "totalNormalSlots": 64,
@@ -42,7 +42,7 @@
       "protectMain": true,
       "sourceRefFile": "source-ref.txt",
       "portfolioRefFile": "razzo/pfarma-ref.txt",
-      "factoryTest": "python -m unittest factory.test_razzo_executor",
+      "factoryTest": "python -m unittest factory.test_razzo_executor tests.test_stock_threshold_preview tests.test_interwarehouse_transfer_preview",
       "factoryPlan": "python -m factory.plan"
     },
     {
