@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +12,33 @@ def ensure_before(text: str, marker: str, insertion: str) -> str:
     if marker not in text:
         raise ValueError(f"required marker not found: {marker}")
     return text.replace(marker, insertion + "\n" + marker, 1)
+
+
+def execute_project_giovanni(contract: dict[str, Any], root: Path) -> list[str]:
+    objective = str(contract.get("product_objective", "")).lower()
+    app = root / "app"
+    if not app.is_dir() or not (root / "package.json").exists():
+        raise ValueError("Project Giovanni App Router structure not found")
+    changed: list[str] = []
+
+    if "error recovery" in objective or "error recovery screen" in objective:
+        path = app / "error.tsx"
+        if not path.exists():
+            path.write_text(
+                """\"use client\";\n\nimport { useEffect } from \"react\";\n\nexport default function GlobalError({\n  error,\n  reset\n}: {\n  error: Error & { digest?: string };\n  reset: () => void;\n}) {\n  useEffect(() => {\n    console.error(\"Project Giovanni route error\", error);\n  }, [error]);\n\n  return (\n    <main className=\"shell\" aria-labelledby=\"global-error-title\">\n      <section role=\"alert\">\n        <p className=\"eyebrow\">ERRORE TEMPORANEO</p>\n        <h1 id=\"global-error-title\">Questa schermata non si è caricata correttamente.</h1>\n        <p>I tuoi dati non sono stati modificati. Puoi riprovare senza uscire dalla sessione.</p>\n        <button type=\"button\" onClick={reset}>Riprova</button>\n      </section>\n    </main>\n  );\n}\n""",
+                encoding="utf-8",
+            )
+            changed.append("app/error.tsx")
+
+    if "loading feedback" in objective or "route transitions" in objective:
+        path = app / "loading.tsx"
+        if not path.exists():
+            path.write_text(
+                """export default function GlobalLoading() {\n  return (\n    <main className=\"shell\" aria-busy=\"true\" aria-live=\"polite\">\n      <section role=\"status\" aria-label=\"Caricamento in corso\">\n        <p className=\"eyebrow\">PROJECT GIOVANNI</p>\n        <h1>Sto preparando la schermata…</h1>\n        <p>Attendi qualche istante.</p>\n      </section>\n    </main>\n  );\n}\n""",
+                encoding="utf-8",
+            )
+            changed.append("app/loading.tsx")
+    return sorted(set(changed))
 
 
 def execute_family_cloud(contract: dict[str, Any], root: Path) -> list[str]:
@@ -81,7 +107,9 @@ def execute(contract: dict[str, Any], root: Path) -> dict[str, Any]:
     if contract.get("actionability_state") != "READY":
         return {"state": "UNSUPPORTED", "reason": "contract_not_ready", "changed_files": []}
     project_id = str(contract.get("project_id", ""))
-    if project_id == "family-cloud":
+    if project_id == "project-giovanni":
+        changed = execute_project_giovanni(contract, root)
+    elif project_id == "family-cloud":
         changed = execute_family_cloud(contract, root)
     else:
         return {"state": "UNSUPPORTED", "reason": "no_deterministic_recipe", "changed_files": []}
