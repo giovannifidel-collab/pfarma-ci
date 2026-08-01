@@ -2,8 +2,13 @@ name: RAZZO V7 Native Scheduler
 
 on:
   schedule:
-    - cron: '2/5 * * * *'
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/razzo-v7-scheduler.yml
 
 permissions:
   actions: write
