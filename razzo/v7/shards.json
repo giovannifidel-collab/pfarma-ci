@@ -1,9 +1,9 @@
 {
-  "version": 3,
+  "version": 4,
   "topology": {
-    "logical_shard_capacity": 10,
+    "logical_shard_capacity": 13,
     "discovery": 3,
-    "product": 5,
+    "product": 8,
     "verify": 1,
     "integration": 1
   },
@@ -17,6 +17,9 @@
     {"shard_id":"razzo-shard-0007","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"discovery","last_run_id":null,"last_outcome":null},
     {"shard_id":"razzo-shard-0008","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"discovery","last_run_id":null,"last_outcome":null},
     {"shard_id":"razzo-shard-0009","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"product","last_run_id":null,"last_outcome":null},
-    {"shard_id":"razzo-shard-0010","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"product","last_run_id":null,"last_outcome":null}
+    {"shard_id":"razzo-shard-0010","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"product","last_run_id":null,"last_outcome":null},
+    {"shard_id":"razzo-shard-0011","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"product","last_run_id":null,"last_outcome":null},
+    {"shard_id":"razzo-shard-0012","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"product","last_run_id":null,"last_outcome":null},
+    {"shard_id":"razzo-shard-0013","enabled":true,"health":"healthy","current_lease":null,"supported_lane":"product","last_run_id":null,"last_outcome":null}
   ]
 }
