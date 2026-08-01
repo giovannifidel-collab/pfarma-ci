@@ -1,0 +1,80 @@
+name: RAZZO V7 Continuous Controller
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/razzo-v7-continuous-controller.yml
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: razzo-v7-continuous-controller
+  cancel-in-progress: false
+
+jobs:
+  controller:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - name: Keep one productive wave active
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_WORKFLOW: razzo-v7-ten-shard-trial.yml
+          SELF_WORKFLOW: razzo-v7-continuous-controller.yml
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${REPOSITORY}"
+          headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+
+          for cycle in $(seq 1 330); do
+            curl --fail-with-body --silent --show-error "${headers[@]}" \
+              "${api}/actions/workflows/${TARGET_WORKFLOW}/runs?branch=main&per_page=20" \
+              -o "$RUNNER_TEMP/runs.json"
+
+            active=$(python - "$RUNNER_TEMP/runs.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          active = [
+              r for r in data.get("workflow_runs", [])
+              if r.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
+          ]
+          print(len(active))
+          PY
+            )
+
+            if [ "$active" = "0" ]; then
+              curl --fail-with-body --silent --show-error -X POST "${headers[@]}" \
+                "${api}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
+                -d '{"ref":"main","inputs":{"mode":"execute-trial"}}'
+              echo "cycle=${cycle} DISPATCHED_EXECUTE_TRIAL"
+            else
+              echo "cycle=${cycle} ACTIVE_WAVE_COUNT=${active}"
+            fi
+
+            sleep 60
+          done
+
+      - name: Renew controller before runner timeout
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SELF_WORKFLOW: razzo-v7-continuous-controller.yml
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${REPOSITORY}/actions/workflows/${SELF_WORKFLOW}/dispatches" \
+            -d '{"ref":"main"}'
+          echo "CONTROLLER_RENEWAL_DISPATCHED"
