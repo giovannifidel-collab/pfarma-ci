@@ -1,4 +1,5 @@
 name: RAZZO V7 Ten-Shard Free Product Trial
+run-name: "RAZZO V7 scaled productive wave #${{ github.run_number }}"
 
 on:
   workflow_dispatch:
@@ -33,13 +34,13 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
       - name: Run deterministic contracts
         run: |
-          python -m py_compile razzo/v7/deterministic_discovery.py razzo/v7/free_executor.py
+          python -m py_compile razzo/v7/deterministic_discovery.py razzo/v7/free_executor.py razzo/v7/scaled_runtime.py
           python -m unittest razzo.v7.test_actionability razzo.v7.test_product_discovery razzo.v7.test_contract_materializer razzo.v7.test_dispatcher_pool razzo.v7.test_trial_runtime -v
       - id: plan
         env:
           PFARMA_SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: |
-          python -m razzo.v7.trial_runtime plan --run-id "${{ github.run_id }}" --mode "${{ inputs.mode }}" --output "$RUNNER_TEMP/topology.json"
+          python -m razzo.v7.scaled_runtime plan --run-id "${{ github.run_id }}" --mode "${{ inputs.mode }}" --output "$RUNNER_TEMP/topology.json"
       - uses: actions/upload-artifact@v4
         with:
           name: razzo-v7-free-topology-${{ github.run_id }}
@@ -112,7 +113,7 @@ jobs:
           path: discovery-results
       - id: aggregate
         run: |
-          python -m razzo.v7.trial_runtime aggregate --discovery-root discovery-results --run-id "${{ github.run_id }}" --mode "${{ inputs.mode }}" --output "$RUNNER_TEMP/materialized-plan.json"
+          python -m razzo.v7.scaled_runtime aggregate --discovery-root discovery-results --run-id "${{ github.run_id }}" --mode "${{ inputs.mode }}" --output "$RUNNER_TEMP/materialized-plan.json"
       - uses: actions/upload-artifact@v4
         with:
           name: razzo-v7-free-plan-${{ github.run_id }}
@@ -123,7 +124,7 @@ jobs:
     if: ${{ inputs.mode == 'execute-trial' && needs.materialize.outputs.worker_count != '0' }}
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 8
       matrix: ${{ fromJSON(needs.materialize.outputs.worker_matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
