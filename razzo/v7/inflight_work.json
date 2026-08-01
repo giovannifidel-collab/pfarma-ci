@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "project_id": "family-cloud",
+      "candidate_id": "free-local-pwa",
+      "exact_input_sha": "94c99ab313224045da9e9bf2f5786119c92149b5",
+      "pr_number": 358,
+      "state": "open"
+    },
+    {
+      "project_id": "family-cloud",
+      "candidate_id": "free-local-vault-identity",
+      "exact_input_sha": "94c99ab313224045da9e9bf2f5786119c92149b5",
+      "pr_number": 359,
+      "state": "open"
+    }
+  ]
+}
