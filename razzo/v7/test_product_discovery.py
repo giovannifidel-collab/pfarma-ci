@@ -1,6 +1,11 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from razzo.v7.actionability import fingerprint, validate
+from razzo.v7.deterministic_discovery import discover
+from razzo.v7.free_executor import execute
 from razzo.v7.product_discovery import (
     contains_unsafe_action,
     contract_from_issue,
@@ -121,6 +126,48 @@ class ProductDiscoveryTests(unittest.TestCase):
     def test_pr_reference_matching_is_exact(self):
         self.assertTrue(references_issue({"title": "Fix #152", "body": ""}, 152))
         self.assertFalse(references_issue({"title": "Fix #1520", "body": ""}, 152))
+
+    def test_project_giovanni_discovery_feeds_two_independent_workers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "app").mkdir()
+            (root / "package.json").write_text(
+                json.dumps({"dependencies": {"next": "^15.2.4"}}),
+                encoding="utf-8",
+            )
+            payload = discover("project-giovanni", root)
+            self.assertEqual(payload["engine"], "deterministic-free-v2")
+            self.assertEqual(len(payload["candidates"]), 2)
+            self.assertEqual(
+                {item["collision_domain"] for item in payload["candidates"]},
+                {"product/global-error-recovery", "product/global-loading-feedback"},
+            )
+
+    def test_project_giovanni_recipes_create_bounded_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "app").mkdir()
+            (root / "package.json").write_text("{}\n", encoding="utf-8")
+            error_result = execute(
+                {
+                    "project_id": "project-giovanni",
+                    "actionability_state": "READY",
+                    "product_objective": "Add a bounded global application error recovery screen for Project Giovanni.",
+                },
+                root,
+            )
+            loading_result = execute(
+                {
+                    "project_id": "project-giovanni",
+                    "actionability_state": "READY",
+                    "product_objective": "Add accessible global loading feedback for Project Giovanni route transitions.",
+                },
+                root,
+            )
+            self.assertEqual(error_result["changed_files"], ["app/error.tsx"])
+            self.assertEqual(loading_result["changed_files"], ["app/loading.tsx"])
+            self.assertIn('"use client"', (root / "app" / "error.tsx").read_text(encoding="utf-8"))
+            self.assertIn('aria-live="polite"', (root / "app" / "loading.tsx").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
