@@ -136,7 +136,8 @@ class ProductDiscoveryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             payload = discover("project-giovanni", root)
-            self.assertEqual(payload["engine"], "deterministic-free-v2")
+            self.assertEqual(payload["engine"], "deterministic-free-v3")
+            self.assertEqual(payload["suppressed_inflight"], [])
             self.assertEqual(len(payload["candidates"]), 2)
             self.assertEqual(
                 {item["collision_domain"] for item in payload["candidates"]},
