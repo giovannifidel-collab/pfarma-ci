@@ -1,0 +1,60 @@
+name: RAZZO V7 Native Scheduler
+
+on:
+  schedule:
+    - cron: '0,12,24,36,48 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: razzo-v7-native-scheduler
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check active wave and dispatch one execute trial
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_WORKFLOW: razzo-v7-ten-shard-trial.yml
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${REPOSITORY}"
+          headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "${api}/actions/workflows/${TARGET_WORKFLOW}/runs?branch=main&per_page=20" \
+            -o "$RUNNER_TEMP/runs.json"
+
+          active=$(python - "$RUNNER_TEMP/runs.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          active = [r for r in data.get('workflow_runs', []) if r.get('status') in {'queued', 'in_progress', 'waiting', 'requested', 'pending'}]
+          print(len(active))
+          if active:
+              r = active[0]
+              print(f"active_run_id={r['id']}", file=sys.stderr)
+              print(f"active_status={r['status']}", file=sys.stderr)
+              print(f"active_url={r['html_url']}", file=sys.stderr)
+          PY
+          )
+
+          if [ "$active" != "0" ]; then
+            echo "SKIPPED_ACTIVE_WAVE"
+            exit 0
+          fi
+
+          curl --fail-with-body --silent --show-error -X POST "${headers[@]}" \
+            "${api}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
+            -d '{"ref":"main","inputs":{"mode":"execute-trial"}}'
+
+          echo "DISPATCHED_EXECUTE_TRIAL"
