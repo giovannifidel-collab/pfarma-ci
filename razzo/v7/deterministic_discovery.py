@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[2]
+INFLIGHT_LEDGER = ROOT / "razzo" / "v7" / "inflight_work.json"
 
 
 def candidate(
@@ -33,6 +37,55 @@ def candidate(
         "evidence_required": evidence_required,
         "human_gate": False,
     }
+
+
+def exact_sha(root: Path) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+
+def inflight_keys() -> set[tuple[str, str, str]]:
+    try:
+        payload = json.loads(INFLIGHT_LEDGER.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return {
+        (
+            str(item.get("project_id", "")),
+            str(item.get("candidate_id", "")),
+            str(item.get("exact_input_sha", "")),
+        )
+        for item in payload.get("items", [])
+        if item.get("state") == "open"
+    }
+
+
+def remove_inflight(
+    project_id: str,
+    root: Path,
+    candidates: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    sha = exact_sha(root)
+    blocked = inflight_keys()
+    ready: list[dict[str, Any]] = []
+    suppressed: list[dict[str, Any]] = []
+    for item in candidates:
+        key = (project_id, str(item.get("candidate_id", "")), sha)
+        if key in blocked:
+            suppressed.append({
+                "candidate_id": item.get("candidate_id"),
+                "exact_input_sha": sha,
+                "reason": "matching_open_product_pr",
+            })
+        else:
+            ready.append(item)
+    return ready, suppressed
 
 
 def discover_project_giovanni(root: Path) -> list[dict[str, Any]]:
@@ -133,8 +186,13 @@ def discover(project_id: str, root: Path) -> dict[str, Any]:
         "family-cloud": discover_family_cloud,
     }
     detector = detectors.get(project_id)
-    candidates = detector(root) if detector else []
-    return {"engine": "deterministic-free-v2", "candidates": candidates}
+    detected = detector(root) if detector else []
+    candidates, suppressed = remove_inflight(project_id, root, detected)
+    return {
+        "engine": "deterministic-free-v3",
+        "candidates": candidates,
+        "suppressed_inflight": suppressed,
+    }
 
 
 def main() -> int:
@@ -147,7 +205,11 @@ def main() -> int:
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"engine": payload["engine"], "candidates": len(payload["candidates"])}, separators=(",", ":")))
+    print(json.dumps({
+        "engine": payload["engine"],
+        "candidates": len(payload["candidates"]),
+        "suppressed_inflight": len(payload["suppressed_inflight"]),
+    }, separators=(",", ":")))
     return 0
 
 
