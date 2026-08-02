@@ -3,6 +3,15 @@ run-name: "RAZZO shred pilot #${{ github.run_number }}"
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/razzo-v7-shred-pilot.yml
+      - razzo/v7/shred_planner.py
+      - razzo/v7/shred_worker.py
+      - razzo/v7/shred_assembler.py
+      - razzo/v7/test_shred_pipeline.py
+      - source-ref.txt
 
 permissions:
   contents: read
