@@ -126,11 +126,18 @@ jobs:
           else
             echo "factory/test_razzo_executor.py is absent at exact source SHA; not claiming that suite was executed"
           fi
+      - name: Checkout current PFarma integration head
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: integration/razzo
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: integration-head
+          persist-credentials: false
+          fetch-depth: 1
       - name: Verify integration head is unchanged
-        env:
-          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: |
-          head=$(git ls-remote "https://x-access-token:${SOURCE_TOKEN}@github.com/giovannifidel-collab/pfarma-cloud.git" refs/heads/integration/razzo | awk '{print $1}')
+          head=$(git -C integration-head rev-parse HEAD)
           test "$head" = "${{ needs.plan.outputs.exact_sha }}"
       - name: Publish exactly one canonical PR
         working-directory: product-source
