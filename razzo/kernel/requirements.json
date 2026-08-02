@@ -1,0 +1,35 @@
+{
+  "schema": "razzo-kernel-requirements-v1",
+  "status": "canonical-draft",
+  "principles": [
+    "github-source-of-truth",
+    "product-first",
+    "objective-oriented",
+    "event-driven",
+    "single-pr-per-objective",
+    "exact-head-verification",
+    "fail-closed"
+  ],
+  "requirements": [
+    {"id":"RZ-001","name":"Dynamic portfolio","component":"portfolio_reconciler","acceptance":"Every cycle loads enabled projects from razzo/projects.json without hard-coded project lists.","state":"planned"},
+    {"id":"RZ-002","name":"Live canonical state","component":"github_reconciler","acceptance":"Integration HEAD, open objective PRs, candidate SHA and checks are read live from GitHub; snapshots never authorize execution alone.","state":"planned"},
+    {"id":"RZ-003","name":"Delivery Objective identity","component":"model.DeliveryObjective","acceptance":"One deterministic fingerprint is stable across reruns and excludes run IDs.","state":"implemented"},
+    {"id":"RZ-004","name":"Single canonical branch and PR","component":"objective_governor","acceptance":"One objective fingerprint maps to one canonical branch and at most one open PR.","state":"partial"},
+    {"id":"RZ-005","name":"Dynamic decomposition","component":"planner","acceptance":"Planner derives a DAG from the exact repository and objective without embedding solution code in the control plane.","state":"planned"},
+    {"id":"RZ-006","name":"Bounded real parallelism","component":"builder_pool","acceptance":"At most five builders run concurrently until higher capacity is measured; every builder owns one independent shred contract.","state":"planned"},
+    {"id":"RZ-007","name":"Collision-safe leases","component":"lease_store","acceptance":"No two active shreds may share a collision domain or objective responsibility; leases survive workflow retries.","state":"planned"},
+    {"id":"RZ-008","name":"Repository-local execution contract","component":"project_manifest","acceptance":"Each product declares setup, unit, candidate, functional test and merge policy locally.","state":"planned"},
+    {"id":"RZ-009","name":"Builder isolation","component":"builder","acceptance":"Builders modify only allowed surfaces, create non-empty commits, never open product PRs and never receive prewritten solution code.","state":"planned"},
+    {"id":"RZ-010","name":"Objective assembly","component":"assembler","acceptance":"Verified shred commits are composed into the canonical objective branch with deterministic conflict handling.","state":"planned"},
+    {"id":"RZ-011","name":"Product CI exact-head","component":"product_ci_gate","acceptance":"Required product checks run on and report success for the exact candidate SHA of the PR.","state":"planned"},
+    {"id":"RZ-012","name":"Independent functional QA","component":"collaudatore","acceptance":"The Collaudatore tests acceptance criteria on the same candidate SHA and can emit PASS, FAIL or INCONCLUSIVE.","state":"planned"},
+    {"id":"RZ-013","name":"Expected-head protection","component":"merge_gate","acceptance":"Merge is forbidden when PR head, tested candidate, CI head or QA head differ.","state":"implemented"},
+    {"id":"RZ-014","name":"Truthful evidence","component":"evidence_log","acceptance":"Append-only events reference real GitHub objects and never classify control-plane activity as product progress.","state":"planned"},
+    {"id":"RZ-015","name":"Human gates are action-scoped","component":"policy_gate","acceptance":"Only sensitive actions are blocked; unrelated safe work remains runnable.","state":"planned"},
+    {"id":"RZ-016","name":"Self-replan","component":"continuation_engine","acceptance":"After verified merge the system reassesses the product and creates or selects the next useful objective without operator task enumeration.","state":"planned"},
+    {"id":"RZ-017","name":"Event-driven continuation","component":"controller","acceptance":"Primary progress resumes from GitHub events; scheduled jobs act only as watchdog and recovery.","state":"planned"},
+    {"id":"RZ-018","name":"Multi-project fairness","component":"portfolio_scheduler","acceptance":"Enabled projects receive bounded fair capacity while preserving product priority and backpressure.","state":"planned"},
+    {"id":"RZ-019","name":"Private-source hygiene","component":"security_boundary","acceptance":"Private checkouts, tokens and generated source are purged; public control-plane artifacts contain no private source or secrets.","state":"planned"},
+    {"id":"RZ-020","name":"Operational proof","component":"acceptance_gate","acceptance":"A real non-hard-coded objective completes decomposition, multi-builder delivery, one PR, exact-head CI, QA, merge, zero duplicates and self-replan.","state":"planned"}
+  ]
+}
