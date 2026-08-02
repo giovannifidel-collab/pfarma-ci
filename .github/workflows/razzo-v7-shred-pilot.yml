@@ -116,8 +116,8 @@ jobs:
       - name: Run focused and registry tests
         working-directory: product-source
         run: |
-          python tests/test_interwarehouse_transfer_preview.py
-          python -m unittest factory.test_razzo_executor
+          PYTHONPATH="$PWD" python tests/test_interwarehouse_transfer_preview.py
+          PYTHONPATH="$PWD" python -m unittest factory.test_razzo_executor
       - name: Verify integration head is unchanged
         env:
           SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
@@ -158,5 +158,3 @@ jobs:
           p=json.load(open(sys.argv[1]))
           print(f"PR #{p['number']} {p['html_url']}")
           PY
-
-# trigger: 2026-08-02T15:26+02:00
