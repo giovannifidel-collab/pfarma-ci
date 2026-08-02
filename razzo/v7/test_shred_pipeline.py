@@ -40,6 +40,30 @@ class ShredPipelineTests(unittest.TestCase):
             self.assertEqual(changed, ["api/interwarehouse_transfer_preview.py", "tests/test_interwarehouse_transfer_preview.py"])
             self.assertEqual(assemble(artifacts, product), [])
 
+    def test_assembler_ignores_non_shred_json_downloaded_by_pattern(self):
+        plan = build_plan(repository="repo", exact_input_sha="d" * 40, integration_lane="integration/razzo")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            artifacts = root / "artifacts"
+            product = root / "product"
+            artifacts.mkdir()
+            (artifacts / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+            for shred in plan["shreds"]:
+                payload = {
+                    "schema": "razzo-shred-artifact-v1",
+                    "shred_id": shred["shred_id"],
+                    "artifact": shred["artifact"],
+                    "idempotency_key": shred["idempotency_key"],
+                    "payload": ARTIFACTS[shred["artifact"]],
+                }
+                nested = artifacts / f"shred-{shred['shred_id']}"
+                nested.mkdir()
+                (nested / f"{shred['shred_id']}.json").write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(
+                assemble(artifacts, product),
+                ["api/interwarehouse_transfer_preview.py", "tests/test_interwarehouse_transfer_preview.py"],
+            )
+
     def test_duplicate_artifact_is_rejected(self):
         plan = build_plan(repository="repo", exact_input_sha="c" * 40, integration_lane="integration/razzo")
         shred = plan["shreds"][0]
