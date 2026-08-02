@@ -144,4 +144,8 @@ jobs:
           PY
           )
           curl --fail-with-body --silent --show-error -X POST "${auth[@]}" "$api/pulls" -d "$payload" > "$RUNNER_TEMP/pr.json"
-          python -c 'import json,sys; p=json.load(open(sys.argv[1])); print(f"PR #{p["number"]} {p["html_url"]}")' "$RUNNER_TEMP/pr.json"
+          python - "$RUNNER_TEMP/pr.json" <<'PY'
+          import json,sys
+          p=json.load(open(sys.argv[1]))
+          print(f"PR #{p['number']} {p['html_url']}")
+          PY
