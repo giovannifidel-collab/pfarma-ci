@@ -47,8 +47,8 @@ jobs:
             --output "$RUNNER_TEMP/plan.json"
           matrix=$(python - "$RUNNER_TEMP/plan.json" <<'PY'
           import json,sys
-          p=json.load(open(sys.argv[1]))
-          print(json.dumps({'include':p['shreds']}, separators=(',',':')))
+          plan=json.load(open(sys.argv[1]))
+          print(json.dumps({'include':plan['shreds']}, separators=(',',':')))
           PY
           )
           branch=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["canonical_branch"])' "$RUNNER_TEMP/plan.json")
@@ -113,11 +113,17 @@ jobs:
           git status --porcelain | sed -E 's/^.. //' | sort > "$RUNNER_TEMP/changed.txt"
           printf '%s\n' api/interwarehouse_transfer_preview.py tests/test_interwarehouse_transfer_preview.py | sort > "$RUNNER_TEMP/allowed.txt"
           diff -u "$RUNNER_TEMP/allowed.txt" "$RUNNER_TEMP/changed.txt"
-      - name: Run focused and registry tests
+      - name: Run exact-source PFarma preview tests
         working-directory: product-source
         run: |
+          set -euo pipefail
           PYTHONPATH="$PWD" python tests/test_interwarehouse_transfer_preview.py
-          PYTHONPATH="$PWD" python -m unittest factory.test_razzo_executor
+          PYTHONPATH="$PWD" python -m unittest discover -s tests -p 'test_*preview.py' -v
+          if [ -f factory/test_razzo_executor.py ]; then
+            PYTHONPATH="$PWD" python -m unittest factory.test_razzo_executor -v
+          else
+            echo "factory/test_razzo_executor.py is absent at exact source SHA; not claiming that suite was executed"
+          fi
       - name: Verify integration head is unchanged
         env:
           SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
@@ -148,13 +154,13 @@ jobs:
             'title':'RAZZO SHRED: add read-only interwarehouse transfer preview',
             'head':os.environ['BRANCH'],
             'base':'integration/razzo',
-            'body':f"Single-objective delivery assembled from 6 deterministic shreds on exact SHA `{os.environ['EXACT_SHA']}`. One canonical branch, one PR, focused tests and registry executor tests passed."
+            'body':f"Single-objective delivery assembled from 6 deterministic shreds on exact SHA `{os.environ['EXACT_SHA']}`. One canonical branch and one PR. Focused preview tests and all preview tests available at the exact source SHA passed."
           }))
           PY
           )
           curl --fail-with-body --silent --show-error -X POST "${auth[@]}" "$api/pulls" -d "$payload" > "$RUNNER_TEMP/pr.json"
           python - "$RUNNER_TEMP/pr.json" <<'PY'
           import json,sys
-          p=json.load(open(sys.argv[1]))
-          print(f"PR #{p['number']} {p['html_url']}")
+          pr=json.load(open(sys.argv[1]))
+          print(f"PR #{pr['number']} {pr['html_url']}")
           PY
