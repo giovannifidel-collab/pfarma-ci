@@ -66,7 +66,12 @@ def surface_matches(surface: str, files: list[str]) -> bool:
         return False
     if any(token in rule for token in "*?["):
         return any(fnmatch.fnmatch(path, rule) for path in files)
-    return any(path == rule or path.startswith(rule + "/") for path in files)
+    if any(path == rule or path.startswith(rule + "/") for path in files):
+        return True
+    parent = str(Path(rule).parent).replace("\\", "/").strip("./")
+    if parent in {"", "."}:
+        return False
+    return any(path.startswith(parent + "/") for path in files)
 
 
 def _strings(value: Any) -> list[str]:
