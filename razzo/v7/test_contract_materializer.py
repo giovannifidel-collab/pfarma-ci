@@ -66,15 +66,12 @@ class ContractMaterializerTests(unittest.TestCase):
         item = result["ready"][0]
         self.assertEqual(item["actionability_state"], "READY")
         self.assertEqual(item["collision_domain"], "demo/journey/resume")
-        self.assertEqual(item["required_tests"], [
-            "python -m unittest",
-            "python -m factory.plan",
-        ])
+        self.assertEqual(item["required_tests"], ["python -m unittest", "python -m factory.plan"])
 
-    def test_nonexistent_surface_is_rejected(self):
+    def test_new_leaf_under_tracked_parent_is_ready(self):
         root = self.make_repo()
         candidate = self.candidate()
-        candidate["target_surfaces"] = ["app/missing.py"]
+        candidate["target_surfaces"] = ["app/new_recovery.py", "tests/test_new_recovery.py"]
         result = materialize(
             json.dumps([candidate]),
             project=PROJECT,
@@ -83,11 +80,22 @@ class ContractMaterializerTests(unittest.TestCase):
             issue_title="Journey",
             product_root=root,
         )
-        self.assertFalse(result["ready"])
-        self.assertIn(
-            "target_surface_not_verified_in_exact_checkout",
-            result["rejected"][0]["reasons"],
+        self.assertEqual(len(result["ready"]), 1)
+
+    def test_surface_under_untracked_parent_is_rejected(self):
+        root = self.make_repo()
+        candidate = self.candidate()
+        candidate["target_surfaces"] = ["missing_dir/missing.py"]
+        result = materialize(
+            json.dumps([candidate]),
+            project=PROJECT,
+            exact_sha="c" * 40,
+            issue_number=14,
+            issue_title="Journey",
+            product_root=root,
         )
+        self.assertFalse(result["ready"])
+        self.assertIn("target_surface_not_verified_in_exact_checkout", result["rejected"][0]["reasons"])
 
     def test_unsafe_candidate_is_rejected(self):
         root = self.make_repo()
@@ -96,8 +104,8 @@ class ContractMaterializerTests(unittest.TestCase):
         result = materialize(
             json.dumps([candidate]),
             project=PROJECT,
-            exact_sha="c" * 40,
-            issue_number=14,
+            exact_sha="d" * 40,
+            issue_number=15,
             issue_title="Journey",
             product_root=root,
         )
