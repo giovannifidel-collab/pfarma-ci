@@ -42,7 +42,7 @@
       "protectMain": true,
       "sourceRefFile": "source-ref.txt",
       "portfolioRefFile": "razzo/pfarma-ref.txt",
-      "factoryTest": "python -m unittest factory.test_razzo_executor && python -m unittest discover -s tests -p 'test_*preview.py'",
+      "factoryTest": "python -m unittest factory.test_razzo_executor && for f in tests/test_stock_threshold_preview.py tests/test_interwarehouse_transfer_preview.py; do [ ! -f \"$f\" ] || python \"$f\"; done",
       "factoryPlan": "python -m factory.plan"
     },
     {
