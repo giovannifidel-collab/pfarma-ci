@@ -33,7 +33,7 @@ concurrency:
 jobs:
   verify-kernel:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +53,12 @@ jobs:
           razzo/kernel/execution.py
           razzo/kernel/continuation.py
           razzo/kernel/organism.py
+          razzo/kernel/capability.py
+          razzo/kernel/canonical.py
+          razzo/kernel/runtime.py
+          razzo/kernel/simulator.py
+          razzo/kernel/shadow.py
+          razzo/kernel/pilot.py
       - name: Run kernel tests
         run: >-
           python -m unittest
@@ -63,8 +69,52 @@ jobs:
           razzo.kernel.test_execution
           razzo.kernel.test_continuation
           razzo.kernel.test_organism
+          razzo.kernel.test_capability
+          razzo.kernel.test_canonical
+          razzo.kernel.test_runtime
+          razzo.kernel.test_simulator
+          razzo.kernel.test_shadow
+          razzo.kernel.test_pilot
           razzo.kernel.test_requirements
           -v
+
+  protected-prelaunch-pilot:
+    needs: verify-kernel
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run fixture-only protected pilot
+        run: >-
+          python -m razzo.kernel.pilot
+          --runs 1000
+          --output /tmp/razzo-protected-pilot.json
+      - name: Assert non-mutating pilot boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('/tmp/razzo-protected-pilot.json').read_text())
+          assert report['activation_status'] == 'PRELAUNCH_GATES_GREEN'
+          assert report['fixture_only'] is True
+          assert report['product_writes_allowed'] is False
+          assert report['merge_allowed'] is False
+          assert report['shadow_mutations'] == 0
+          assert report['simulation_failures'] == 0
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-protected-pilot-${{ github.run_id }}
+          path: /tmp/razzo-protected-pilot.json
+          retention-days: 14
 
   plan-objective:
     needs: verify-kernel
