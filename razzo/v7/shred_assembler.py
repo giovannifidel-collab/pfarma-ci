@@ -78,11 +78,20 @@ def load_artifacts(root: Path) -> dict[str, dict]:
     keys: set[str] = set()
     for path in sorted(root.rglob("*.json")):
         item = json.loads(path.read_text(encoding="utf-8"))
-        key = item["idempotency_key"]
+        if item.get("schema") != "razzo-shred-artifact-v1":
+            continue
+        required_fields = {"shred_id", "artifact", "idempotency_key", "payload"}
+        missing_fields = sorted(required_fields - set(item))
+        if missing_fields:
+            raise ValueError(f"invalid shred artifact {path}: missing {missing_fields}")
+        key = str(item["idempotency_key"])
         if key in keys:
             raise ValueError(f"duplicate shred artifact {key}")
         keys.add(key)
-        artifacts[item["artifact"]] = item
+        artifact_name = str(item["artifact"])
+        if artifact_name in artifacts:
+            raise ValueError(f"duplicate artifact type {artifact_name}")
+        artifacts[artifact_name] = item
     required = {"contract", "logic", "safety", "happy_tests", "error_tests", "integrate"}
     missing = required - set(artifacts)
     if missing:
