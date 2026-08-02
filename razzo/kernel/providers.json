@@ -1,0 +1,57 @@
+{
+  "schema": "razzo-online-provider-v1",
+  "verified_at": "2026-08-02",
+  "constraints": {
+    "online_only": true,
+    "additional_cost_allowed": false,
+    "chatgpt_scheduled_tasks_allowed": false,
+    "self_hosted_runner_allowed": false
+  },
+  "providers": [
+    {
+      "id": "github-models",
+      "state": "RETIRED",
+      "online_only": true,
+      "additional_cost_required": false,
+      "unattended_trigger": false,
+      "can_write_code": false,
+      "evidence": [
+        "GitHub announced full retirement of Models, inference API and BYOK on 2026-07-30"
+      ]
+    },
+    {
+      "id": "codex-github-mention",
+      "state": "PENDING_PROBE",
+      "online_only": true,
+      "additional_cost_required": false,
+      "unattended_trigger": false,
+      "can_write_code": true,
+      "evidence": [
+        "Capability probe opened as pfarma-ci issue 746; no Codex response observed at registry creation time",
+        "Codex cloud is included in ChatGPT Plus and can work on connected GitHub repositories"
+      ]
+    },
+    {
+      "id": "chatgpt-automation-github-connector",
+      "state": "UNAVAILABLE",
+      "online_only": true,
+      "additional_cost_required": false,
+      "unattended_trigger": true,
+      "can_write_code": true,
+      "evidence": [
+        "Technically usable but excluded by the explicit no-ChatGPT-scheduled-activities constraint"
+      ]
+    },
+    {
+      "id": "openai-api-github-actions",
+      "state": "UNAVAILABLE",
+      "online_only": true,
+      "additional_cost_required": true,
+      "unattended_trigger": true,
+      "can_write_code": true,
+      "evidence": [
+        "Requires separately billed API usage and is excluded by the zero-additional-cost constraint"
+      ]
+    }
+  ]
+}
