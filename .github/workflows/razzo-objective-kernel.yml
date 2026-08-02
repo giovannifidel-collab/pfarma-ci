@@ -1,0 +1,104 @@
+name: RAZZO Objective Kernel
+run-name: "RAZZO objective kernel #${{ github.run_number }}"
+
+on:
+  pull_request:
+    paths:
+      - 'razzo/kernel/**'
+      - 'razzo/projects.json'
+      - '.github/workflows/razzo-objective-kernel.yml'
+      - 'tools/validate_public_repo.py'
+  workflow_dispatch:
+    inputs:
+      objective_json:
+        description: 'Optional Delivery Objective JSON. Empty runs kernel verification only.'
+        required: false
+        type: string
+      live_integration_head:
+        description: 'Exact 40-character integration HEAD required when objective_json is supplied.'
+        required: false
+        type: string
+  repository_dispatch:
+    types: [razzo_objective]
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: razzo-objective-kernel-${{ github.event.pull_request.number || github.event.client_payload.objective_key || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify-kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate public repository boundary
+        run: python tools/validate_public_repo.py
+      - name: Compile kernel
+        run: python -m py_compile razzo/kernel/model.py razzo/kernel/controller.py
+      - name: Run kernel tests
+        run: >-
+          python -m unittest
+          razzo.kernel.test_model
+          razzo.kernel.test_controller
+          razzo.kernel.test_requirements
+          -v
+
+  plan-objective:
+    needs: verify-kernel
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.objective_json != '') || github.event_name == 'repository_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Materialize event payload
+        env:
+          DISPATCH_OBJECTIVE: ${{ inputs.objective_json }}
+          DISPATCH_HEAD: ${{ inputs.live_integration_head }}
+          EVENT_OBJECTIVE: ${{ toJSON(github.event.client_payload.objective) }}
+          EVENT_HEAD: ${{ github.event.client_payload.live_integration_head }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          if os.environ.get('DISPATCH_OBJECTIVE'):
+              objective = json.loads(os.environ['DISPATCH_OBJECTIVE'])
+              head = os.environ.get('DISPATCH_HEAD', '')
+          else:
+              objective = json.loads(os.environ.get('EVENT_OBJECTIVE') or 'null')
+              head = os.environ.get('EVENT_HEAD', '')
+          if not isinstance(objective, dict):
+              raise SystemExit('objective payload must be a JSON object')
+          if len(head) != 40 or any(ch not in '0123456789abcdef' for ch in head):
+              raise SystemExit('live_integration_head must be an exact lowercase 40-character SHA')
+          Path('/tmp/objective.json').write_text(json.dumps(objective), encoding='utf-8')
+          Path('/tmp/live-head.txt').write_text(head, encoding='ascii')
+          PY
+      - name: Plan objective fail closed
+        run: |
+          python -m razzo.kernel.controller \
+            --projects razzo/projects.json \
+            --objective /tmp/objective.json \
+            --live-head "$(cat /tmp/live-head.txt)" \
+            --output /tmp/controller-decision.json
+          cat /tmp/controller-decision.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-objective-decision-${{ github.run_id }}
+          path: /tmp/controller-decision.json
+          retention-days: 7
