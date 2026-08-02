@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - .github/workflows/razzo-v7-continuous-controller.yml
+      - .github/workflows/razzo-v7-ten-shard-trial.yml
+      - razzo/projects.json
+      - razzo/v7/**
 
 permissions:
   actions: write
@@ -13,7 +16,7 @@ permissions:
 
 concurrency:
   group: razzo-v7-continuous-controller
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   controller:
