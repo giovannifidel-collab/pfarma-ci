@@ -1,0 +1,147 @@
+name: RAZZO V7 PFarma Shred Pilot
+run-name: "RAZZO shred pilot #${{ github.run_number }}"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: razzo-v7-pfarma-shred-pilot
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      exact_sha: ${{ steps.plan.outputs.exact_sha }}
+      branch: ${{ steps.plan.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Validate control-plane shred contracts
+        run: |
+          python -m py_compile razzo/v7/shred_planner.py razzo/v7/shred_worker.py razzo/v7/shred_assembler.py
+          python -m unittest razzo.v7.test_shred_pipeline -v
+      - id: plan
+        run: |
+          exact_sha=$(tr -d '\n' < source-ref.txt)
+          python -m razzo.v7.shred_planner \
+            --repository giovannifidel-collab/pfarma-cloud \
+            --exact-input-sha "$exact_sha" \
+            --integration-lane integration/razzo \
+            --output "$RUNNER_TEMP/plan.json"
+          matrix=$(python - "$RUNNER_TEMP/plan.json" <<'PY'
+          import json,sys
+          p=json.load(open(sys.argv[1]))
+          print(json.dumps({'include':p['shreds']}, separators=(',',':')))
+          PY
+          )
+          branch=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["canonical_branch"])' "$RUNNER_TEMP/plan.json")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "exact_sha=$exact_sha" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shred-plan-${{ github.run_id }}
+          path: ${{ runner.temp }}/plan.json
+
+  shreds:
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Produce deterministic shred artifact
+        env:
+          SHRED_JSON: ${{ toJSON(matrix) }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/shred"
+          python -m razzo.v7.shred_worker --shred-json "$SHRED_JSON" --output "$RUNNER_TEMP/shred/${{ matrix.shred_id }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shred-${{ matrix.shred_id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/shred/${{ matrix.shred_id }}.json
+
+  assemble-test-publish:
+    needs: [plan, shreds]
+    runs-on: ubuntu-latest
+    environment: photo-ai-private
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Checkout exact PFarma source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ needs.plan.outputs.exact_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product-source
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shred-*-${{ github.run_id }}
+          path: shred-artifacts
+      - name: Assemble one objective workspace
+        run: python -m razzo.v7.shred_assembler --artifacts-root shred-artifacts --product-root product-source --output "$RUNNER_TEMP/assembly.json"
+      - name: Enforce exact two-file boundary
+        working-directory: product-source
+        run: |
+          git status --porcelain | sed -E 's/^.. //' | sort > "$RUNNER_TEMP/changed.txt"
+          printf '%s\n' api/interwarehouse_transfer_preview.py tests/test_interwarehouse_transfer_preview.py | sort > "$RUNNER_TEMP/allowed.txt"
+          diff -u "$RUNNER_TEMP/allowed.txt" "$RUNNER_TEMP/changed.txt"
+      - name: Run focused and registry tests
+        working-directory: product-source
+        run: |
+          python tests/test_interwarehouse_transfer_preview.py
+          python -m unittest factory.test_razzo_executor
+      - name: Verify integration head is unchanged
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          head=$(git ls-remote "https://x-access-token:${SOURCE_TOKEN}@github.com/giovannifidel-collab/pfarma-cloud.git" refs/heads/integration/razzo | awk '{print $1}')
+          test "$head" = "${{ needs.plan.outputs.exact_sha }}"
+      - name: Publish exactly one canonical PR
+        working-directory: product-source
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          BRANCH: ${{ needs.plan.outputs.branch }}
+          EXACT_SHA: ${{ needs.plan.outputs.exact_sha }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/giovannifidel-collab/pfarma-cloud"
+          auth=(-H "Authorization: Bearer ${SOURCE_TOKEN}" -H "Accept: application/vnd.github+json")
+          existing=$(curl --fail-with-body --silent --show-error "${auth[@]}" "$api/pulls?state=open&head=giovannifidel-collab:${BRANCH}" | python -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          test "$existing" = "0" || { echo "canonical PR already open"; exit 0; }
+          git config user.name 'RAZZO Shred Assembler'
+          git config user.email 'razzo-shred@users.noreply.github.com'
+          git switch -c "$BRANCH"
+          git add api/interwarehouse_transfer_preview.py tests/test_interwarehouse_transfer_preview.py
+          git commit -m 'feat(inventory): add read-only interwarehouse transfer preview'
+          git push "https://x-access-token:${SOURCE_TOKEN}@github.com/giovannifidel-collab/pfarma-cloud.git" "HEAD:${BRANCH}"
+          payload=$(python - <<'PY'
+          import json,os
+          print(json.dumps({
+            'title':'RAZZO SHRED: add read-only interwarehouse transfer preview',
+            'head':os.environ['BRANCH'],
+            'base':'integration/razzo',
+            'body':f"Single-objective delivery assembled from 6 deterministic shreds on exact SHA `{os.environ['EXACT_SHA']}`. One canonical branch, one PR, focused tests and registry executor tests passed."
+          }))
+          PY
+          )
+          curl --fail-with-body --silent --show-error -X POST "${auth[@]}" "$api/pulls" -d "$payload" > "$RUNNER_TEMP/pr.json"
+          python -c 'import json,sys; p=json.load(open(sys.argv[1])); print(f"PR #{p["number"]} {p["html_url"]}")' "$RUNNER_TEMP/pr.json"
