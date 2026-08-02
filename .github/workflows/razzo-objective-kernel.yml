@@ -52,6 +52,7 @@ jobs:
           razzo/kernel/portfolio.py
           razzo/kernel/execution.py
           razzo/kernel/continuation.py
+          razzo/kernel/organism.py
       - name: Run kernel tests
         run: >-
           python -m unittest
@@ -61,6 +62,7 @@ jobs:
           razzo.kernel.test_portfolio
           razzo.kernel.test_execution
           razzo.kernel.test_continuation
+          razzo.kernel.test_organism
           razzo.kernel.test_requirements
           -v
 
