@@ -158,3 +158,5 @@ jobs:
           p=json.load(open(sys.argv[1]))
           print(f"PR #{p['number']} {p['html_url']}")
           PY
+
+# trigger: 2026-08-02T15:26+02:00
