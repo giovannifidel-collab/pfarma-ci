@@ -113,6 +113,8 @@ jobs:
           git status --porcelain | sed -E 's/^.. //' | sort > "$RUNNER_TEMP/changed.txt"
           printf '%s\n' api/interwarehouse_transfer_preview.py tests/test_interwarehouse_transfer_preview.py | sort > "$RUNNER_TEMP/allowed.txt"
           diff -u "$RUNNER_TEMP/allowed.txt" "$RUNNER_TEMP/changed.txt"
+      - name: Install exact-source test dependency
+        run: python -m pip install --disable-pip-version-check --no-input pytest
       - name: Run exact-source PFarma preview tests
         working-directory: product-source
         run: |
