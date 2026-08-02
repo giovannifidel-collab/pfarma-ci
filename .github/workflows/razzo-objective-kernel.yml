@@ -44,13 +44,21 @@ jobs:
       - name: Validate public repository boundary
         run: python tools/validate_public_repo.py
       - name: Compile kernel
-        run: python -m py_compile razzo/kernel/model.py razzo/kernel/controller.py razzo/kernel/provider.py
+        run: >-
+          python -m py_compile
+          razzo/kernel/model.py
+          razzo/kernel/controller.py
+          razzo/kernel/provider.py
+          razzo/kernel/portfolio.py
+          razzo/kernel/execution.py
       - name: Run kernel tests
         run: >-
           python -m unittest
           razzo.kernel.test_model
           razzo.kernel.test_controller
           razzo.kernel.test_provider
+          razzo.kernel.test_portfolio
+          razzo.kernel.test_execution
           razzo.kernel.test_requirements
           -v
 
