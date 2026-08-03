@@ -1,14 +1,14 @@
 {
-  "acquired_at": "2026-08-03T22:02:03Z",
-  "canonical_pr": 660,
-  "canonical_repository": "giovannifidel-collab/family-cloud",
-  "capability_fingerprint": "family-cloud:browser-local-alpha-export:v1",
-  "control_plane_sha": "02ce945c2681ec22a79c491480854473c755f3e0",
-  "expires_at": "2026-08-03T23:32:03Z",
-  "generation": 5,
-  "owner_run_id": "RAZZO-Cell-00-20260803T220203Z",
+  "acquired_at": null,
+  "canonical_pr": null,
+  "canonical_repository": null,
+  "capability_fingerprint": null,
+  "control_plane_sha": "f43989167de022ceb5cb536e2fc9eec83e08cbbe",
+  "expires_at": null,
+  "generation": 6,
+  "owner_run_id": null,
   "schema_version": 1,
-  "state": "HELD",
-  "terminal_reason": null,
-  "updated_at": "2026-08-03T22:05:30Z"
+  "state": "FREE",
+  "terminal_reason": "INTEGRATED_TO_LANE",
+  "updated_at": "2026-08-03T22:06:30Z"
 }
