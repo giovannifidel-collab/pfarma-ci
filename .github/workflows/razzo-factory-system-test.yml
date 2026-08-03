@@ -1,0 +1,75 @@
+name: RAZZO Factory Total System Test
+run-name: "RAZZO total system test #${{ github.run_number }}"
+
+on:
+  pull_request:
+    paths:
+      - 'razzo/kernel/**'
+      - 'razzo/state/**'
+      - 'razzo/protocol.json'
+      - 'razzo/projects.json'
+      - 'razzo/project-state.json'
+      - '.github/workflows/razzo-factory-system-test.yml'
+      - '.github/workflows/razzo-objective-kernel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: razzo-factory-system-test-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  total-system-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate public repository boundary
+        run: python tools/validate_public_repo.py
+      - name: Compile complete kernel
+        run: python -m compileall -q razzo/kernel
+      - name: Run complete kernel regression suite
+        run: python -m unittest discover -s razzo/kernel -p 'test_*.py' -v
+      - name: Run 1000-cycle five-trigger operational proof
+        run: >-
+          python -m razzo.kernel.system_test
+          --runs 1000
+          --contenders 5
+          --report /tmp/razzo-system-test-report.json
+      - name: Assert total-system invariants
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/razzo-system-test-report.json').read_text())
+          assert report['status'] == 'SYSTEM_SIMULATION_GREEN'
+          assert report['fixture_only'] is True
+          assert report['product_writes_allowed'] is False
+          assert report['merge_allowed'] is False
+          assert report['simulations'] == 1000
+          assert report['contenders_per_simulation'] == 5
+          assert report['lease_winners'] == 1000
+          assert report['blocked_contenders'] == 4000
+          assert report['stale_evidence_rejections'] == 1000
+          assert report['duplicate_capabilities'] == 0
+          assert report['paused_dispatches'] == 0
+          assert report['invariant_violations'] == []
+          assert set(report['enabled_projects']) == {
+              'project-giovanni', 'pfarma-cloud', 'family-cloud'
+          }
+          assert all(value > 0 for value in report['project_selection_counts'].values())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-total-system-test-${{ github.run_id }}
+          path: /tmp/razzo-system-test-report.json
+          retention-days: 30
