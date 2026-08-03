@@ -1,20 +1,18 @@
 {
-  "active_capability": "project-giovanni:progress-profile-snapshot:v1",
-  "capability_state": "READY_FOR_HUMAN_REVIEW",
-  "control_plane_sha": "542c864935ab36b8012e5245055cf85e88204ad8",
-  "enabled_cells": [
-    "RAZZO-Cell-00"
-  ],
-  "factory_state": "RUNNING",
-  "generation": 0,
+  "active_capability": null,
+  "capability_state": "NONE",
+  "control_plane_sha": "f92de10a0bee1f21dcc0bc2ed3be36dd02352671",
+  "enabled_cells": [],
+  "factory_state": "PAUSED",
+  "generation": 1,
   "last_heartbeat": {
     "cell_id": "RAZZO-Cell-00",
-    "control_plane_sha": "542c864935ab36b8012e5245055cf85e88204ad8",
-    "message": "Factory pilot active with one protected cell; live operations are recorded in the canonical issue.",
-    "observed_at": "2026-08-03T15:50:00Z",
+    "control_plane_sha": "f92de10a0bee1f21dcc0bc2ed3be36dd02352671",
+    "message": "Owner stop confirmed. All RAZZO automations are disabled; no product dispatch or merge is authorized.",
+    "observed_at": "2026-08-03T20:20:19Z",
     "run_id": null,
-    "schedule_minute": 0,
-    "state": "SCHEDULED"
+    "schedule_minute": 58,
+    "state": "DISABLED"
   },
   "limits": {
     "max_active_capabilities": 1,
@@ -22,34 +20,7 @@
   },
   "live_log_issue": 753,
   "mode": "PILOT",
-  "product_receipt": {
-    "base_branch": "integration/razzo",
-    "base_sha": "b4e6b44f325124b7146638e528b0835252c45a00",
-    "candidate_sha": "6ad5f9c7f6e8f96e4462f4f8ed7eff7d33a7f708",
-    "capability_fingerprint": "project-giovanni:progress-profile-snapshot:v1",
-    "changed_files": [
-      ".github/workflows/razzo-progress-profile-product-ci.yml",
-      ".github/workflows/razzo-progress-profile-robot.yml",
-      "factory/progress-profile-snapshot.test.mjs",
-      "lib/progressProfileSnapshot.ts",
-      "tools/test_progress_profile_snapshot.mjs"
-    ],
-    "product_ci": {
-      "conclusion": "success",
-      "name": "RAZZO Progress Profile Product CI exact-head",
-      "run_id": 30827588438,
-      "sha": "6ad5f9c7f6e8f96e4462f4f8ed7eff7d33a7f708"
-    },
-    "pull_request": 964,
-    "repository": "giovannifidel-collab/project-giovanni",
-    "robot_qa": {
-      "conclusion": "success",
-      "name": "RAZZO Progress Profile Robot Collaudatore exact-head",
-      "run_id": 30827586905,
-      "sha": "6ad5f9c7f6e8f96e4462f4f8ed7eff7d33a7f708"
-    },
-    "state": "READY_FOR_HUMAN_REVIEW"
-  },
+  "product_receipt": null,
   "schema_version": 1,
-  "updated_at": "2026-08-03T15:50:00Z"
+  "updated_at": "2026-08-03T20:20:19Z"
 }
