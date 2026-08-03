@@ -38,10 +38,10 @@
       "unattended_trigger": true,
       "can_write_code": true,
       "evidence": [
-        "Five enabled RAZZO Cell automations execute hourly at minutes 00, 12, 24, 36 and 48 in Europe/Rome",
+        "Five RAZZO Cell automations are configured hourly at minutes 00, 12, 24, 36 and 48 in Europe/Rome and remain disabled pending explicit activation",
         "Each cell uses ChatGPT with the connected GitHub app as orchestrator and code-writing worker",
         "The cells implement the canonical ORGANISM 2-2-1 method and require real commit/PR, CI/QA correction or an evidenced technical block",
-        "Recent successful scheduled executions were observed on 2026-08-03",
+        "Scheduled ChatGPT execution with the connected GitHub app was verified on 2026-08-03",
         "No Codex, OpenAI API, GitHub Models, Copilot, self-hosted runner or additional paid provider is required"
       ]
     },
