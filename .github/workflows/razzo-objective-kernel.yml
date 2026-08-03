@@ -62,6 +62,8 @@ jobs:
           razzo/kernel/pilot.py
           razzo/kernel/prelaunch.py
           razzo/kernel/observability.py
+          razzo/kernel/coordination.py
+          razzo/kernel/system_test.py
       - name: Run kernel tests
         run: >-
           python -m unittest
@@ -80,6 +82,7 @@ jobs:
           razzo.kernel.test_pilot
           razzo.kernel.test_prelaunch
           razzo.kernel.test_observability
+          razzo.kernel.test_coordination
           razzo.kernel.test_requirements
           -v
 
