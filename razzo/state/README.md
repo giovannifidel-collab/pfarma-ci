@@ -1,18 +1,18 @@
 # RAZZO Factory Live Status
 
-- **Factory:** `PAUSED`
+- **Factory:** `RUNNING`
 - **Mode:** `PILOT`
-- **Updated:** `2026-08-03T20:20:19Z`
-- **Observed control-plane SHA:** `f92de10a0bee1f21dcc0bc2ed3be36dd02352671`
-- **Enabled cells:** `none`
+- **Updated:** `2026-08-03T21:16:00Z`
+- **Observed control-plane SHA:** `09f34616be712c7987976685faec5df137f2d770`
+- **Enabled cells:** `RAZZO-Cell-00`
 - **Active capability:** `none`
 - **Global lease:** `FREE`
 - **Pilot limits:** `1` capability / `2` shreds
 - **Live operations issue:** `#753`
 
-## Stop boundary
+## Active boundary
 
-The owner stop is authoritative. All ChatGPT RAZZO automations are disabled. No product dispatch, branch creation, pull request creation, integration merge or production action is authorized while this state remains `PAUSED`.
+Only `RAZZO-Cell-00` is authorized. It may handle one capability at a time with at most two independent shreds. Integration requires exact-head Product CI and independent Robot QA on the same candidate SHA. All higher-risk surfaces remain gated.
 
 ## Coordination contract
 
@@ -20,20 +20,18 @@ The owner stop is authoritative. All ChatGPT RAZZO automations are disabled. No 
 
 ## Total system simulation
 
-The non-mutating test entry point is:
-
 ```bash
 python -m razzo.kernel.system_test --runs 1000 --contenders 5 --report /tmp/razzo-system-test-report.json
 ```
 
-It validates the dynamic portfolio, paused boundary, global lease race handling, stale exact-SHA rejection, enabled-project coverage and zero product writes/merges. GitHub Actions publishes the JSON report as an artifact.
+The test validates portfolio discovery, lease race handling, stale exact-SHA rejection, project coverage and authorization boundaries.
 
 ## Last heartbeat
 
 - **Cell:** `RAZZO-Cell-00`
-- **State:** `DISABLED`
-- **Observed:** `2026-08-03T20:20:19Z`
-- **Message:** Owner stop confirmed. All RAZZO automations are disabled; no product dispatch or merge is authorized.
+- **State:** `SCHEDULED`
+- **Observed:** `2026-08-03T21:16:00Z`
+- **Message:** Owner restart authorized after the repaired total-system test; protected pilot scheduled.
 
 > Machine-readable status: `razzo/state/factory-status.json`.
 > Machine-readable lease: `razzo/state/global-lease.json`.

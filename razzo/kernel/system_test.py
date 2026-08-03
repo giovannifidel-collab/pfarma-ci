@@ -119,19 +119,31 @@ def _validate_projects(projects: dict[str, Any]) -> tuple[str, ...]:
     return tuple(enabled)
 
 
-def _validate_paused_status(status: dict[str, Any]) -> None:
-    if status.get("factory_state") != "PAUSED":
-        raise ValueError("system test requires the Factory to remain paused")
-    if status.get("enabled_cells") != []:
-        raise ValueError("paused Factory cannot have enabled cells")
+def _validate_safe_status(status: dict[str, Any]) -> str:
+    state = str(status.get("factory_state", ""))
     if status.get("active_capability") is not None:
-        raise ValueError("paused Factory cannot retain an active capability")
+        raise ValueError("preflight system test requires no active capability")
     if status.get("capability_state") != "NONE" or status.get("product_receipt") is not None:
-        raise ValueError("paused Factory cannot retain a product receipt")
+        raise ValueError("preflight system test requires no product receipt")
     heartbeat = status.get("last_heartbeat", {})
-    if heartbeat.get("state") != "DISABLED" or heartbeat.get("run_id") is not None:
-        raise ValueError("paused Factory heartbeat must be disabled and ownerless")
+    if not isinstance(heartbeat, dict):
+        raise ValueError("last heartbeat must be an object")
+    if heartbeat.get("run_id") is not None:
+        raise ValueError("preflight system test requires an ownerless heartbeat")
+    if state == "PAUSED":
+        if status.get("enabled_cells") != []:
+            raise ValueError("paused Factory cannot have enabled cells")
+        if heartbeat.get("state") != "DISABLED":
+            raise ValueError("paused Factory heartbeat must be disabled")
+    elif state == "RUNNING":
+        if status.get("enabled_cells") != ["RAZZO-Cell-00"]:
+            raise ValueError("protected pilot must enable exactly RAZZO-Cell-00")
+        if heartbeat.get("state") != "SCHEDULED":
+            raise ValueError("protected pilot preflight heartbeat must be scheduled")
+    else:
+        raise ValueError("system test supports only PAUSED or protected RUNNING preflight state")
     _exact_sha(str(status.get("control_plane_sha", "")), "factory status control_plane_sha")
+    return state
 
 
 def run_total_system_test(
@@ -151,9 +163,9 @@ def run_total_system_test(
     lease = GlobalLease.from_dict(_load_json(lease_path))
     protocol_version = _validate_protocol(protocol)
     enabled_projects = _validate_projects(projects)
-    _validate_paused_status(status)
+    _validate_safe_status(status)
     if lease.state is not LeaseState.FREE:
-        raise ValueError("global lease must be free while Factory is paused")
+        raise ValueError("global lease must be free during non-mutating preflight simulation")
 
     violations: list[str] = []
     winners = 0
@@ -196,9 +208,6 @@ def run_total_system_test(
             if len(violations) < 20:
                 violations.append(f"seed {seed}: {type(exc).__name__}: {exc}")
 
-        if status.get("factory_state") != "PAUSED":
-            paused_dispatches += 1
-
     expected_blocked = runs * (contenders - 1)
     if winners != runs:
         violations.append(f"lease winners {winners} != simulations {runs}")
@@ -209,7 +218,7 @@ def run_total_system_test(
     if any(count == 0 for count in selection_counts.values()):
         violations.append("portfolio fairness simulation skipped an enabled project")
     if paused_dispatches != 0:
-        violations.append("paused simulation produced a dispatch")
+        violations.append("non-mutating simulation produced an unauthorized dispatch")
 
     status_name = "SYSTEM_SIMULATION_GREEN" if not violations else "SYSTEM_SIMULATION_FAILED"
     return SystemTestReport(

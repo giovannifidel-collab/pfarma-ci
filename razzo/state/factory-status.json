@@ -1,18 +1,20 @@
 {
   "active_capability": null,
   "capability_state": "NONE",
-  "control_plane_sha": "f92de10a0bee1f21dcc0bc2ed3be36dd02352671",
-  "enabled_cells": [],
-  "factory_state": "PAUSED",
-  "generation": 1,
+  "control_plane_sha": "09f34616be712c7987976685faec5df137f2d770",
+  "enabled_cells": [
+    "RAZZO-Cell-00"
+  ],
+  "factory_state": "RUNNING",
+  "generation": 2,
   "last_heartbeat": {
     "cell_id": "RAZZO-Cell-00",
-    "control_plane_sha": "f92de10a0bee1f21dcc0bc2ed3be36dd02352671",
-    "message": "Owner stop confirmed. All RAZZO automations are disabled; no product dispatch or merge is authorized.",
-    "observed_at": "2026-08-03T20:20:19Z",
+    "control_plane_sha": "09f34616be712c7987976685faec5df137f2d770",
+    "message": "Owner restart authorized after repaired total-system test. Protected pilot is scheduled for one cell, one capability and two shreds maximum.",
+    "observed_at": "2026-08-03T21:16:00Z",
     "run_id": null,
-    "schedule_minute": 58,
-    "state": "DISABLED"
+    "schedule_minute": 20,
+    "state": "SCHEDULED"
   },
   "limits": {
     "max_active_capabilities": 1,
@@ -22,5 +24,5 @@
   "mode": "PILOT",
   "product_receipt": null,
   "schema_version": 1,
-  "updated_at": "2026-08-03T20:20:19Z"
+  "updated_at": "2026-08-03T21:16:00Z"
 }
