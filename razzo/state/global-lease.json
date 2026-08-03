@@ -1,14 +1,14 @@
 {
   "acquired_at": "2026-08-03T23:13:33Z",
-  "canonical_pr": null,
-  "canonical_repository": null,
-  "capability_fingerprint": null,
+  "canonical_pr": 967,
+  "canonical_repository": "giovannifidel-collab/project-giovanni",
+  "capability_fingerprint": "project-giovanni:history-browser-download-runtime:v1",
   "control_plane_sha": "66effb8339c03bc365e5207075c566740ba87c0e",
   "expires_at": "2026-08-04T00:43:33Z",
-  "generation": 16,
+  "generation": 17,
   "owner_run_id": "RAZZO-Cell-12-20260803T231333Z",
   "schema_version": 1,
   "state": "HELD",
   "terminal_reason": null,
-  "updated_at": "2026-08-03T23:13:33Z"
+  "updated_at": "2026-08-03T23:15:40Z"
 }
