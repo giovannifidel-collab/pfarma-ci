@@ -1,28 +1,29 @@
 {
   "active_capability": null,
   "capability_state": "NONE",
-  "control_plane_sha": "44e5812bbb284f02866ad6ff0d51876de4d8f5db",
-  "enabled_cells": [
-    "RAZZO-Cell-00"
-  ],
+  "control_plane_sha": "4ba4b918ba1541d8189601bd588598168c8388b9",
+  "enabled_cells": ["RAZZO-Cell-00"],
   "factory_state": "RUNNING",
-  "generation": 3,
+  "generation": 4,
   "last_heartbeat": {
     "cell_id": "RAZZO-Cell-00",
-    "control_plane_sha": "44e5812bbb284f02866ad6ff0d51876de4d8f5db",
-    "message": "Protected wave blocked: all discovered product work is complete or behind an explicit human gate; no artificial work was created.",
-    "observed_at": "2026-08-03T21:24:00Z",
-    "run_id": "RAZZO-Cell-00-20260803T212134Z",
-    "schedule_minute": 22,
-    "state": "BLOCKED"
+    "control_plane_sha": "4ba4b918ba1541d8189601bd588598168c8388b9",
+    "message": "Integrated a bounded browser-local Family Cloud alpha export after real cross-project discovery, exact-head Product CI and independent Robot QA.",
+    "observed_at": "2026-08-03T22:06:30Z",
+    "run_id": "RAZZO-Cell-00-20260803T220203Z",
+    "schedule_minute": 2,
+    "state": "INTEGRATED_TO_LANE"
   },
-  "limits": {
-    "max_active_capabilities": 1,
-    "max_shreds": 2
-  },
+  "limits": {"max_active_capabilities": 1, "max_shreds": 2},
   "live_log_issue": 753,
   "mode": "PILOT",
-  "product_receipt": null,
+  "product_receipt": {
+    "repository": "giovannifidel-collab/family-cloud",
+    "pr": 660,
+    "candidate_sha": "d04359564b2e5712a25864d960ae2099f5fa09eb",
+    "merge_sha": "ee9218538a2f34f004d4c0d9c2f5e823ceb5b73a",
+    "fingerprint": "family-cloud:browser-local-alpha-export:v1"
+  },
   "schema_version": 1,
-  "updated_at": "2026-08-03T21:24:00Z"
+  "updated_at": "2026-08-03T22:06:30Z"
 }
