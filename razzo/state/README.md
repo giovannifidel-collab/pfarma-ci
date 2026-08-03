@@ -1,29 +1,39 @@
 # RAZZO Factory Live Status
 
-- **Factory:** `RUNNING`
+- **Factory:** `PAUSED`
 - **Mode:** `PILOT`
-- **Updated:** `2026-08-03T15:50:00Z`
-- **Control plane SHA:** `542c864935ab36b8012e5245055cf85e88204ad8`
-- **Enabled cells:** `RAZZO-Cell-00`
+- **Updated:** `2026-08-03T20:20:19Z`
+- **Observed control-plane SHA:** `f92de10a0bee1f21dcc0bc2ed3be36dd02352671`
+- **Enabled cells:** `none`
+- **Active capability:** `none`
+- **Global lease:** `FREE`
 - **Pilot limits:** `1` capability / `2` shreds
 - **Live operations issue:** `#753`
 
-## Active capability
+## Stop boundary
 
-- **Fingerprint:** `project-giovanni:progress-profile-snapshot:v1`
-- **Repository / PR:** `giovannifidel-collab/project-giovanni#964`
-- **State:** `READY_FOR_HUMAN_REVIEW`
-- **Candidate SHA:** `6ad5f9c7f6e8f96e4462f4f8ed7eff7d33a7f708`
-- **Changed files:** `5`
-- **Product CI:** `success` on `6ad5f9c7f6e8f96e4462f4f8ed7eff7d33a7f708` (run `30827588438`)
-- **Robot QA:** `success` on `6ad5f9c7f6e8f96e4462f4f8ed7eff7d33a7f708` (run `30827586905`)
+The owner stop is authoritative. All ChatGPT RAZZO automations are disabled. No product dispatch, branch creation, pull request creation, integration merge or production action is authorized while this state remains `PAUSED`.
+
+## Coordination contract
+
+`razzo/state/global-lease.json` is the canonical global lease record. A trigger must acquire it with compare-and-swap semantics before creating product work. Exactly one contender may win; stale writers must fail closed. Expired leases are recoverable and capability binding is idempotent for the owning run.
+
+## Total system simulation
+
+The non-mutating test entry point is:
+
+```bash
+python -m razzo.kernel.system_test --runs 1000 --contenders 5 --report /tmp/razzo-system-test-report.json
+```
+
+It validates the dynamic portfolio, paused boundary, global lease race handling, stale exact-SHA rejection, enabled-project coverage and zero product writes/merges. GitHub Actions publishes the JSON report as an artifact.
 
 ## Last heartbeat
 
 - **Cell:** `RAZZO-Cell-00`
-- **State:** `SCHEDULED`
-- **Observed:** `2026-08-03T15:50:00Z`
-- **Message:** Factory pilot active with one protected cell; live operations are recorded in the canonical issue.
+- **State:** `DISABLED`
+- **Observed:** `2026-08-03T20:20:19Z`
+- **Message:** Owner stop confirmed. All RAZZO automations are disabled; no product dispatch or merge is authorized.
 
-> Machine-readable source: `razzo/state/factory-status.json`.
-> Every scheduled cell must write a start and terminal receipt to the live operations issue.
+> Machine-readable status: `razzo/state/factory-status.json`.
+> Machine-readable lease: `razzo/state/global-lease.json`.

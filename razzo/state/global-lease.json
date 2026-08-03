@@ -1,0 +1,14 @@
+{
+  "acquired_at": null,
+  "canonical_pr": null,
+  "canonical_repository": null,
+  "capability_fingerprint": null,
+  "control_plane_sha": "f92de10a0bee1f21dcc0bc2ed3be36dd02352671",
+  "expires_at": null,
+  "generation": 0,
+  "owner_run_id": null,
+  "schema_version": 1,
+  "state": "FREE",
+  "terminal_reason": "OWNER_PAUSED",
+  "updated_at": "2026-08-03T20:23:00Z"
+}
