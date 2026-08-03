@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'razzo/kernel/**'
+      - 'razzo/super_factory/**'
       - 'razzo/state/**'
       - 'razzo/protocol.json'
       - 'razzo/projects.json'
@@ -36,10 +37,31 @@ jobs:
         run: python -m pip install --disable-pip-version-check pytest
       - name: Validate public repository boundary
         run: python tools/validate_public_repo.py
-      - name: Compile complete kernel
+      - name: Compile complete RAZZO Python surface
         run: python -m compileall -q razzo
-      - name: Run complete RAZZO regression suite
-        run: python -m pytest -q razzo
+      - name: Run complete Objective Kernel regression suite
+        run: >-
+          python -m unittest
+          razzo.kernel.test_model
+          razzo.kernel.test_controller
+          razzo.kernel.test_provider
+          razzo.kernel.test_portfolio
+          razzo.kernel.test_execution
+          razzo.kernel.test_continuation
+          razzo.kernel.test_organism
+          razzo.kernel.test_capability
+          razzo.kernel.test_canonical
+          razzo.kernel.test_runtime
+          razzo.kernel.test_simulator
+          razzo.kernel.test_shadow
+          razzo.kernel.test_pilot
+          razzo.kernel.test_prelaunch
+          razzo.kernel.test_observability
+          razzo.kernel.test_coordination
+          razzo.kernel.test_requirements
+          -v
+      - name: Run complete Super Factory regression suite
+        run: python -m pytest -q razzo/super_factory
       - name: Run 1000-cycle five-trigger operational proof
         run: >-
           python -m razzo.kernel.system_test
