@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'razzo/kernel/**'
+      - 'razzo/state/**'
       - 'razzo/projects.json'
       - '.github/workflows/razzo-objective-kernel.yml'
       - 'tools/validate_public_repo.py'
@@ -60,6 +61,7 @@ jobs:
           razzo/kernel/shadow.py
           razzo/kernel/pilot.py
           razzo/kernel/prelaunch.py
+          razzo/kernel/observability.py
       - name: Run kernel tests
         run: >-
           python -m unittest
@@ -77,6 +79,7 @@ jobs:
           razzo.kernel.test_shadow
           razzo.kernel.test_pilot
           razzo.kernel.test_prelaunch
+          razzo.kernel.test_observability
           razzo.kernel.test_requirements
           -v
 
