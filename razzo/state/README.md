@@ -2,8 +2,8 @@
 
 - **Factory:** `RUNNING`
 - **Mode:** `PILOT`
-- **Updated:** `2026-08-03T21:10:00Z`
-- **Observed control-plane SHA:** `9a8d298523f68ff44da3a163831a127e649c83e6`
+- **Updated:** `2026-08-03T21:13:00Z`
+- **Observed control-plane SHA:** `09f34616be712c7987976685faec5df137f2d770`
 - **Enabled cells:** `RAZZO-Cell-00`
 - **Active capability:** `none`
 - **Global lease:** `FREE`
@@ -12,7 +12,7 @@
 
 ## Active boundary
 
-The owner restart is authoritative. Only `RAZZO-Cell-00` is authorized. It may operate on one product capability at a time with at most two independent shreds. It may merge only into registered integration lanes after exact-head Product CI and independent Robot QA both succeed on the same candidate SHA. Product `main`, production deploys, credentials, irreversible migrations and sensitive writes remain prohibited.
+Only `RAZZO-Cell-00` is authorized. It may handle one capability at a time with at most two independent shreds. Integration requires exact-head Product CI and independent Robot QA on the same candidate SHA. All higher-risk surfaces remain gated.
 
 ## Coordination contract
 
@@ -20,19 +20,17 @@ The owner restart is authoritative. Only `RAZZO-Cell-00` is authorized. It may o
 
 ## Total system simulation
 
-The non-mutating test entry point is:
-
 ```bash
 python -m razzo.kernel.system_test --runs 1000 --contenders 5 --report /tmp/razzo-system-test-report.json
 ```
 
-It validates the dynamic portfolio, global lease race handling, stale exact-SHA rejection, enabled-project coverage and zero unauthorized product writes/merges. GitHub Actions publishes the JSON report as an artifact.
+The test validates portfolio discovery, lease race handling, stale exact-SHA rejection, project coverage and authorization boundaries.
 
 ## Last heartbeat
 
 - **Cell:** `RAZZO-Cell-00`
 - **State:** `START_AUTHORIZED`
-- **Observed:** `2026-08-03T21:10:00Z`
+- **Observed:** `2026-08-03T21:13:00Z`
 - **Message:** Owner restart authorized after the repaired total-system test; protected pilot start enabled.
 
 > Machine-readable status: `razzo/state/factory-status.json`.
