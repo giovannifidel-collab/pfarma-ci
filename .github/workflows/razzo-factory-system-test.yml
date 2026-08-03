@@ -37,7 +37,7 @@ jobs:
       - name: Compile complete kernel
         run: python -m compileall -q razzo/kernel
       - name: Run complete kernel regression suite
-        run: python -m unittest discover -s razzo/kernel -p 'test_*.py' -v
+        run: python -m unittest discover -s razzo -t . -p 'test_*.py' -v
       - name: Run 1000-cycle five-trigger operational proof
         run: >-
           python -m razzo.kernel.system_test
