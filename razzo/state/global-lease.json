@@ -1,14 +1,14 @@
 {
-  "acquired_at": null,
+  "acquired_at": "2026-08-03T23:13:33Z",
   "canonical_pr": null,
   "canonical_repository": null,
   "capability_fingerprint": null,
   "control_plane_sha": "66effb8339c03bc365e5207075c566740ba87c0e",
-  "expires_at": null,
-  "generation": 15,
-  "owner_run_id": null,
+  "expires_at": "2026-08-04T00:43:33Z",
+  "generation": 16,
+  "owner_run_id": "RAZZO-Cell-12-20260803T231333Z",
   "schema_version": 1,
-  "state": "FREE",
-  "terminal_reason": "INTEGRATED_TO_LANE",
-  "updated_at": "2026-08-03T23:11:40Z"
+  "state": "HELD",
+  "terminal_reason": null,
+  "updated_at": "2026-08-03T23:13:33Z"
 }
