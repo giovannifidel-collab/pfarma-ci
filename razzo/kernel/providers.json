@@ -1,10 +1,10 @@
 {
   "schema": "razzo-online-provider-v1",
-  "verified_at": "2026-08-02",
+  "verified_at": "2026-08-03",
   "constraints": {
     "online_only": true,
     "additional_cost_allowed": false,
-    "chatgpt_scheduled_tasks_allowed": false,
+    "chatgpt_scheduled_tasks_allowed": true,
     "self_hosted_runner_allowed": false
   },
   "providers": [
@@ -16,30 +16,33 @@
       "unattended_trigger": false,
       "can_write_code": false,
       "evidence": [
-        "GitHub announced full retirement of Models, inference API and BYOK on 2026-07-30"
+        "GitHub Models is not part of the selected RAZZO execution architecture"
       ]
     },
     {
       "id": "codex-github-mention",
-      "state": "PENDING_PROBE",
+      "state": "UNAVAILABLE",
       "online_only": true,
       "additional_cost_required": false,
       "unattended_trigger": false,
       "can_write_code": true,
       "evidence": [
-        "Capability probe opened as pfarma-ci issue 746; no Codex response observed at registry creation time",
-        "Codex cloud is included in ChatGPT Plus and can work on connected GitHub repositories"
+        "RAZZO explicitly operates without Codex mentions or Codex execution"
       ]
     },
     {
       "id": "chatgpt-automation-github-connector",
-      "state": "UNAVAILABLE",
+      "state": "AVAILABLE",
       "online_only": true,
       "additional_cost_required": false,
       "unattended_trigger": true,
       "can_write_code": true,
       "evidence": [
-        "Technically usable but excluded by the explicit no-ChatGPT-scheduled-activities constraint"
+        "Five enabled RAZZO Cell automations execute hourly at minutes 00, 12, 24, 36 and 48 in Europe/Rome",
+        "Each cell uses ChatGPT with the connected GitHub app as orchestrator and code-writing worker",
+        "The cells implement the canonical ORGANISM 2-2-1 method and require real commit/PR, CI/QA correction or an evidenced technical block",
+        "Recent successful scheduled executions were observed on 2026-08-03",
+        "No Codex, OpenAI API, GitHub Models, Copilot, self-hosted runner or additional paid provider is required"
       ]
     },
     {
@@ -50,7 +53,7 @@
       "unattended_trigger": true,
       "can_write_code": true,
       "evidence": [
-        "Requires separately billed API usage and is excluded by the zero-additional-cost constraint"
+        "Not selected because RAZZO uses the included ChatGPT automation plus GitHub connector path"
       ]
     }
   ]
