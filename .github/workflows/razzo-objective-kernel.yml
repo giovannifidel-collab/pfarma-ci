@@ -59,6 +59,7 @@ jobs:
           razzo/kernel/simulator.py
           razzo/kernel/shadow.py
           razzo/kernel/pilot.py
+          razzo/kernel/prelaunch.py
       - name: Run kernel tests
         run: >-
           python -m unittest
@@ -75,6 +76,7 @@ jobs:
           razzo.kernel.test_simulator
           razzo.kernel.test_shadow
           razzo.kernel.test_pilot
+          razzo.kernel.test_prelaunch
           razzo.kernel.test_requirements
           -v
 
