@@ -1,18 +1,18 @@
 # RAZZO Factory Live Status
 
-- **Factory:** `PAUSED`
+- **Factory:** `RUNNING`
 - **Mode:** `PILOT`
-- **Updated:** `2026-08-03T20:20:19Z`
-- **Observed control-plane SHA:** `f92de10a0bee1f21dcc0bc2ed3be36dd02352671`
-- **Enabled cells:** `none`
+- **Updated:** `2026-08-03T21:10:00Z`
+- **Observed control-plane SHA:** `9a8d298523f68ff44da3a163831a127e649c83e6`
+- **Enabled cells:** `RAZZO-Cell-00`
 - **Active capability:** `none`
 - **Global lease:** `FREE`
 - **Pilot limits:** `1` capability / `2` shreds
 - **Live operations issue:** `#753`
 
-## Stop boundary
+## Active boundary
 
-The owner stop is authoritative. All ChatGPT RAZZO automations are disabled. No product dispatch, branch creation, pull request creation, integration merge or production action is authorized while this state remains `PAUSED`.
+The owner restart is authoritative. Only `RAZZO-Cell-00` is authorized. It may operate on one product capability at a time with at most two independent shreds. It may merge only into registered integration lanes after exact-head Product CI and independent Robot QA both succeed on the same candidate SHA. Product `main`, production deploys, credentials, irreversible migrations and sensitive writes remain prohibited.
 
 ## Coordination contract
 
@@ -26,14 +26,14 @@ The non-mutating test entry point is:
 python -m razzo.kernel.system_test --runs 1000 --contenders 5 --report /tmp/razzo-system-test-report.json
 ```
 
-It validates the dynamic portfolio, paused boundary, global lease race handling, stale exact-SHA rejection, enabled-project coverage and zero product writes/merges. GitHub Actions publishes the JSON report as an artifact.
+It validates the dynamic portfolio, global lease race handling, stale exact-SHA rejection, enabled-project coverage and zero unauthorized product writes/merges. GitHub Actions publishes the JSON report as an artifact.
 
 ## Last heartbeat
 
 - **Cell:** `RAZZO-Cell-00`
-- **State:** `DISABLED`
-- **Observed:** `2026-08-03T20:20:19Z`
-- **Message:** Owner stop confirmed. All RAZZO automations are disabled; no product dispatch or merge is authorized.
+- **State:** `START_AUTHORIZED`
+- **Observed:** `2026-08-03T21:10:00Z`
+- **Message:** Owner restart authorized after the repaired total-system test; protected pilot start enabled.
 
 > Machine-readable status: `razzo/state/factory-status.json`.
 > Machine-readable lease: `razzo/state/global-lease.json`.
