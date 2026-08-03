@@ -1,8 +1,8 @@
 {
   "acquired_at": "2026-08-03T22:48:37Z",
-  "canonical_pr": null,
-  "canonical_repository": null,
-  "capability_fingerprint": null,
+  "canonical_pr": 661,
+  "canonical_repository": "giovannifidel-collab/family-cloud",
+  "capability_fingerprint": "family-cloud:alpha-import-preview:v1",
   "control_plane_sha": "f43989167de022ceb5cb536e2fc9eec83e08cbbe",
   "expires_at": "2026-08-04T00:18:37Z",
   "generation": 10,
@@ -10,5 +10,5 @@
   "schema_version": 1,
   "state": "HELD",
   "terminal_reason": null,
-  "updated_at": "2026-08-03T22:48:37Z"
+  "updated_at": "2026-08-03T22:50:20Z"
 }
