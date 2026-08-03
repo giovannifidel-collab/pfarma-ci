@@ -2,37 +2,37 @@
 
 - **Factory:** `RUNNING`
 - **Mode:** `PILOT`
-- **Updated:** `2026-08-03T22:06:30Z`
-- **Observed control-plane SHA:** `2886a487eacb3c2e1ed3772f52f82ef201f0001c`
-- **Enabled cells:** `RAZZO-Cell-00`
+- **Updated:** `2026-08-03T22:52:30Z`
+- **Observed control-plane SHA:** `8159928f43a8576a2f73abd31a04ea551f41884f`
+- **Enabled cells:** `RAZZO-Cell-00`, `RAZZO-Cell-12`, `RAZZO-Cell-24`, `RAZZO-Cell-36`, `RAZZO-Cell-48`
 - **Active capability:** `none`
 - **Global lease:** `FREE`
-- **Pilot limits:** `1` capability / `2` shreds
+- **Pilot limits:** `1` capability / `3` shreds
 - **Live operations issue:** `#753`
 
 ## Active boundary
 
-Only `RAZZO-Cell-00` is authorized. It may handle one capability at a time with at most two independent shreds. Integration requires exact-head Product CI and independent Robot QA on the same candidate SHA. Product `main`, production writes, credentials, sensitive auth/RLS, fiscal actions, purchase orders, EasyFarm mutations and irreversible migrations remain gated.
+Five staggered trigger cells may attempt work, but the canonical global lease permits only one active capability and one canonical product PR at a time. Integration requires exact-head Product CI and independent Robot QA on the same candidate SHA. Product `main`, production writes, credentials, sensitive auth/RLS, fiscal actions, purchase orders, EasyFarm mutations and irreversible migrations remain gated.
 
 ## Last productive wave
 
-- **Run:** `RAZZO-Cell-00-20260803T220203Z`
+- **Run:** `RAZZO-Cell-48-20260803T224837Z`
 - **State:** `INTEGRATED_TO_LANE`
 - **Repository:** `giovannifidel-collab/family-cloud`
-- **Capability:** bounded browser-local alpha export
-- **PR:** `#660`
-- **Candidate SHA:** `d04359564b2e5712a25864d960ae2099f5fa09eb`
-- **Merge SHA:** `ee9218538a2f34f004d4c0d9c2f5e823ceb5b73a`
-- **Product CI:** run `30857311269` — success
-- **Robot Collaudatore:** run `30857311488` — success
+- **Capability:** bounded browser-local alpha backup import preview
+- **PR:** `#661`
+- **Candidate SHA:** `811b8172d0c4133aa3eb5158447b5f9157d96bbe`
+- **Merge SHA:** `3378f8b06a719cff343055e8eae1400a7ed2f434`
+- **Product CI:** run `30860144818` — success
+- **Robot Collaudatore:** run `30860144798` — success
 
-## Discovery outcome
+## Correction applied
 
-The wave inspected all enabled products and selected the highest-value independent safe candidate:
+The previous dedicated gates failed because the repository has no package lock and the workflows invoked `npm ci`. Cell 48 corrected the same canonical PR without creating duplicates, replaced the dependency installation with Node 22 native type stripping, added syntax and boundary checks, and revalidated the exact candidate head.
 
-- Project Giovanni: progress-assessment explanation/export refinement; safe but lower incremental value after the newly integrated deterministic assessment.
-- PFarma Cloud: batch recall evaluation preview; useful but overlapping the newly integrated recall-guard domain.
-- Family Cloud: local alpha backup export; selected because it is user-visible, browser-local, reversible and independent of the gated repair execution.
+## Safety properties
+
+The preview validates the existing `family-cloud.alpha-export.v1` backup schema, enforces a 1 MB file limit and bounded record counts, and performs no import, persistent browser mutation, network request or production write.
 
 ## Current human gates
 
