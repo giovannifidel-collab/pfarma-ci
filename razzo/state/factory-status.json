@@ -1,20 +1,20 @@
 {
   "active_capability": null,
   "capability_state": "NONE",
-  "control_plane_sha": "09f34616be712c7987976685faec5df137f2d770",
+  "control_plane_sha": "44e5812bbb284f02866ad6ff0d51876de4d8f5db",
   "enabled_cells": [
     "RAZZO-Cell-00"
   ],
   "factory_state": "RUNNING",
-  "generation": 2,
+  "generation": 3,
   "last_heartbeat": {
     "cell_id": "RAZZO-Cell-00",
-    "control_plane_sha": "09f34616be712c7987976685faec5df137f2d770",
-    "message": "Owner restart authorized after repaired total-system test. Protected pilot is scheduled for one cell, one capability and two shreds maximum.",
-    "observed_at": "2026-08-03T21:16:00Z",
-    "run_id": null,
-    "schedule_minute": 20,
-    "state": "SCHEDULED"
+    "control_plane_sha": "44e5812bbb284f02866ad6ff0d51876de4d8f5db",
+    "message": "Protected wave blocked: all discovered product work is complete or behind an explicit human gate; no artificial work was created.",
+    "observed_at": "2026-08-03T21:24:00Z",
+    "run_id": "RAZZO-Cell-00-20260803T212134Z",
+    "schedule_minute": 22,
+    "state": "BLOCKED"
   },
   "limits": {
     "max_active_capabilities": 1,
@@ -24,5 +24,5 @@
   "mode": "PILOT",
   "product_receipt": null,
   "schema_version": 1,
-  "updated_at": "2026-08-03T21:16:00Z"
+  "updated_at": "2026-08-03T21:24:00Z"
 }
