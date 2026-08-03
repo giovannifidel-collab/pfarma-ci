@@ -1,29 +1,29 @@
 {
   "active_capability": null,
   "capability_state": "NONE",
-  "control_plane_sha": "4ba4b918ba1541d8189601bd588598168c8388b9",
-  "enabled_cells": ["RAZZO-Cell-00"],
+  "control_plane_sha": "8159928f43a8576a2f73abd31a04ea551f41884f",
+  "enabled_cells": ["RAZZO-Cell-00", "RAZZO-Cell-12", "RAZZO-Cell-24", "RAZZO-Cell-36", "RAZZO-Cell-48"],
   "factory_state": "RUNNING",
-  "generation": 4,
+  "generation": 5,
   "last_heartbeat": {
-    "cell_id": "RAZZO-Cell-00",
-    "control_plane_sha": "4ba4b918ba1541d8189601bd588598168c8388b9",
-    "message": "Integrated a bounded browser-local Family Cloud alpha export after real cross-project discovery, exact-head Product CI and independent Robot QA.",
-    "observed_at": "2026-08-03T22:06:30Z",
-    "run_id": "RAZZO-Cell-00-20260803T220203Z",
-    "schedule_minute": 2,
+    "cell_id": "RAZZO-Cell-48",
+    "control_plane_sha": "8159928f43a8576a2f73abd31a04ea551f41884f",
+    "message": "Corrected the canonical Family Cloud alpha import preview CI, obtained exact-head Product CI and independent Robot QA success, and integrated it into the registered lane.",
+    "observed_at": "2026-08-03T22:52:30Z",
+    "run_id": "RAZZO-Cell-48-20260803T224837Z",
+    "schedule_minute": 48,
     "state": "INTEGRATED_TO_LANE"
   },
-  "limits": {"max_active_capabilities": 1, "max_shreds": 2},
+  "limits": {"max_active_capabilities": 1, "max_shreds": 3},
   "live_log_issue": 753,
   "mode": "PILOT",
   "product_receipt": {
     "repository": "giovannifidel-collab/family-cloud",
-    "pr": 660,
-    "candidate_sha": "d04359564b2e5712a25864d960ae2099f5fa09eb",
-    "merge_sha": "ee9218538a2f34f004d4c0d9c2f5e823ceb5b73a",
-    "fingerprint": "family-cloud:browser-local-alpha-export:v1"
+    "pr": 661,
+    "candidate_sha": "811b8172d0c4133aa3eb5158447b5f9157d96bbe",
+    "merge_sha": "3378f8b06a719cff343055e8eae1400a7ed2f434",
+    "fingerprint": "family-cloud:alpha-import-preview:v1"
   },
   "schema_version": 1,
-  "updated_at": "2026-08-03T22:06:30Z"
+  "updated_at": "2026-08-03T22:52:30Z"
 }
