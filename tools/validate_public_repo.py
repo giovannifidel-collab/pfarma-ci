@@ -34,6 +34,7 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/project-giovanni-ref.txt"),
     PurePosixPath("razzo/project-history-ref.txt"),
     PurePosixPath("razzo/project-offline-ref.txt"),
+    PurePosixPath("razzo/state/README.md"),
 }
 
 ALLOWED_CODE_PREFIXES = (
@@ -52,6 +53,7 @@ RUNTIME_JSON_PREFIXES = (
     PurePosixPath("razzo/runtime-receipts"),
     PurePosixPath("razzo/runtime-diagnostics"),
     PurePosixPath("razzo/runtime-preflight"),
+    PurePosixPath("razzo/state"),
 )
 
 BUNDLE_REQUIRED_FIELDS = {
