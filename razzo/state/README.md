@@ -2,8 +2,8 @@
 
 - **Factory:** `RUNNING`
 - **Mode:** `PILOT`
-- **Updated:** `2026-08-03T21:24:00Z`
-- **Observed control-plane SHA:** `44e5812bbb284f02866ad6ff0d51876de4d8f5db`
+- **Updated:** `2026-08-03T22:06:30Z`
+- **Observed control-plane SHA:** `2886a487eacb3c2e1ed3772f52f82ef201f0001c`
 - **Enabled cells:** `RAZZO-Cell-00`
 - **Active capability:** `none`
 - **Global lease:** `FREE`
@@ -12,24 +12,32 @@
 
 ## Active boundary
 
-Only `RAZZO-Cell-00` is authorized. It may handle one capability at a time with at most two independent shreds. Integration requires exact-head Product CI and independent Robot QA on the same candidate SHA. Product `main`, production writes, credentials, sensitive auth/RLS, fiscal actions, purchase orders and irreversible migrations remain gated.
+Only `RAZZO-Cell-00` is authorized. It may handle one capability at a time with at most two independent shreds. Integration requires exact-head Product CI and independent Robot QA on the same candidate SHA. Product `main`, production writes, credentials, sensitive auth/RLS, fiscal actions, purchase orders, EasyFarm mutations and irreversible migrations remain gated.
 
-## Coordination contract
+## Last productive wave
 
-`razzo/state/global-lease.json` is the canonical global lease record. A trigger must acquire it with compare-and-swap semantics before creating product work. Exactly one contender may win; stale writers fail closed. The latest lease was released normally after the protected wave found no safe ready product capability.
+- **Run:** `RAZZO-Cell-00-20260803T220203Z`
+- **State:** `INTEGRATED_TO_LANE`
+- **Repository:** `giovannifidel-collab/family-cloud`
+- **Capability:** bounded browser-local alpha export
+- **PR:** `#660`
+- **Candidate SHA:** `d04359564b2e5712a25864d960ae2099f5fa09eb`
+- **Merge SHA:** `ee9218538a2f34f004d4c0d9c2f5e823ceb5b73a`
+- **Product CI:** run `30857311269` — success
+- **Robot Collaudatore:** run `30857311488` — success
 
-## Last heartbeat
+## Discovery outcome
 
-- **Cell:** `RAZZO-Cell-00`
-- **State:** `BLOCKED`
-- **Run:** `RAZZO-Cell-00-20260803T212134Z`
-- **Observed:** `2026-08-03T21:24:00Z`
-- **Message:** All three enabled project task graphs contain only completed work or explicit human-gated work. No artificial capability, product branch or PR was created.
+The wave inspected all enabled products and selected the highest-value independent safe candidate:
+
+- Project Giovanni: progress-assessment explanation/export refinement; safe but lower incremental value after the newly integrated deterministic assessment.
+- PFarma Cloud: batch recall evaluation preview; useful but overlapping the newly integrated recall-guard domain.
+- Family Cloud: local alpha backup export; selected because it is user-visible, browser-local, reversible and independent of the gated repair execution.
 
 ## Current human gates
 
 - Project Giovanni: persisted user-data write.
-- PFarma Cloud: purchase-order / destructive production write.
+- PFarma Cloud: purchase-order / destructive production write and EasyFarm mutation.
 - Family Cloud: irreplaceable-data storage repair execution.
 
 > Machine-readable status: `razzo/state/factory-status.json`.
