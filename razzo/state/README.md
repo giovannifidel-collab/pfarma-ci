@@ -2,7 +2,7 @@
 
 - **Factory:** `RUNNING`
 - **Mode:** `PILOT`
-- **Updated:** `2026-08-03T21:13:00Z`
+- **Updated:** `2026-08-03T21:16:00Z`
 - **Observed control-plane SHA:** `09f34616be712c7987976685faec5df137f2d770`
 - **Enabled cells:** `RAZZO-Cell-00`
 - **Active capability:** `none`
@@ -29,9 +29,9 @@ The test validates portfolio discovery, lease race handling, stale exact-SHA rej
 ## Last heartbeat
 
 - **Cell:** `RAZZO-Cell-00`
-- **State:** `START_AUTHORIZED`
-- **Observed:** `2026-08-03T21:13:00Z`
-- **Message:** Owner restart authorized after the repaired total-system test; protected pilot start enabled.
+- **State:** `SCHEDULED`
+- **Observed:** `2026-08-03T21:16:00Z`
+- **Message:** Owner restart authorized after the repaired total-system test; protected pilot scheduled.
 
 > Machine-readable status: `razzo/state/factory-status.json`.
 > Machine-readable lease: `razzo/state/global-lease.json`.
