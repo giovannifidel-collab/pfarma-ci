@@ -1,7 +1,7 @@
 {
   "active_capability": null,
   "capability_state": "NONE",
-  "control_plane_sha": "9a8d298523f68ff44da3a163831a127e649c83e6",
+  "control_plane_sha": "09f34616be712c7987976685faec5df137f2d770",
   "enabled_cells": [
     "RAZZO-Cell-00"
   ],
@@ -9,11 +9,11 @@
   "generation": 2,
   "last_heartbeat": {
     "cell_id": "RAZZO-Cell-00",
-    "control_plane_sha": "9a8d298523f68ff44da3a163831a127e649c83e6",
+    "control_plane_sha": "09f34616be712c7987976685faec5df137f2d770",
     "message": "Owner restart authorized after repaired total-system test. Protected pilot start is enabled for one cell, one capability and two shreds maximum.",
-    "observed_at": "2026-08-03T21:10:00Z",
+    "observed_at": "2026-08-03T21:13:00Z",
     "run_id": null,
-    "schedule_minute": 12,
+    "schedule_minute": 15,
     "state": "START_AUTHORIZED"
   },
   "limits": {
@@ -24,5 +24,5 @@
   "mode": "PILOT",
   "product_receipt": null,
   "schema_version": 1,
-  "updated_at": "2026-08-03T21:10:00Z"
+  "updated_at": "2026-08-03T21:13:00Z"
 }
