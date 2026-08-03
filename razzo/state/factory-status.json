@@ -1,29 +1,29 @@
 {
-  "active_capability": null,
-  "capability_state": "NONE",
-  "control_plane_sha": "8159928f43a8576a2f73abd31a04ea551f41884f",
+  "active_capability": "project-giovanni:history-browser-download-runtime:v1",
+  "capability_state": "CORRECTED_EXISTING_PR",
+  "control_plane_sha": "1ded0e895c76682c806f7aa81243ec937a254a41",
   "enabled_cells": ["RAZZO-Cell-00", "RAZZO-Cell-12", "RAZZO-Cell-24", "RAZZO-Cell-36", "RAZZO-Cell-48"],
   "factory_state": "RUNNING",
-  "generation": 5,
+  "generation": 6,
   "last_heartbeat": {
-    "cell_id": "RAZZO-Cell-48",
-    "control_plane_sha": "8159928f43a8576a2f73abd31a04ea551f41884f",
-    "message": "Corrected the canonical Family Cloud alpha import preview CI, obtained exact-head Product CI and independent Robot QA success, and integrated it into the registered lane.",
-    "observed_at": "2026-08-03T22:52:30Z",
-    "run_id": "RAZZO-Cell-48-20260803T224837Z",
-    "schedule_minute": 48,
-    "state": "INTEGRATED_TO_LANE"
+    "cell_id": "RAZZO-Cell-12",
+    "control_plane_sha": "1ded0e895c76682c806f7aa81243ec937a254a41",
+    "message": "Discovered and implemented a safe browser runtime for verified local workout-history downloads, opened canonical PR 967, and corrected its dependency-free exact-head Product CI after the first failure.",
+    "observed_at": "2026-08-03T23:18:30Z",
+    "run_id": "RAZZO-Cell-12-20260803T231333Z",
+    "schedule_minute": 12,
+    "state": "CORRECTED_EXISTING_PR"
   },
   "limits": {"max_active_capabilities": 1, "max_shreds": 3},
   "live_log_issue": 753,
   "mode": "PILOT",
   "product_receipt": {
-    "repository": "giovannifidel-collab/family-cloud",
-    "pr": 661,
-    "candidate_sha": "811b8172d0c4133aa3eb5158447b5f9157d96bbe",
-    "merge_sha": "3378f8b06a719cff343055e8eae1400a7ed2f434",
-    "fingerprint": "family-cloud:alpha-import-preview:v1"
+    "repository": "giovannifidel-collab/project-giovanni",
+    "pr": 967,
+    "candidate_sha": "d4e9e0a59b3dcf7554fbc28aae413deb453e6968",
+    "merge_sha": null,
+    "fingerprint": "project-giovanni:history-browser-download-runtime:v1"
   },
   "schema_version": 1,
-  "updated_at": "2026-08-03T22:52:30Z"
+  "updated_at": "2026-08-03T23:18:30Z"
 }
