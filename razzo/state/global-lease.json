@@ -3,12 +3,12 @@
   "canonical_pr": null,
   "canonical_repository": null,
   "capability_fingerprint": null,
-  "control_plane_sha": "9a8d298523f68ff44da3a163831a127e649c83e6",
+  "control_plane_sha": "09f34616be712c7987976685faec5df137f2d770",
   "expires_at": null,
   "generation": 1,
   "owner_run_id": null,
   "schema_version": 1,
   "state": "FREE",
   "terminal_reason": "OWNER_RESTART_AUTHORIZED",
-  "updated_at": "2026-08-03T21:10:00Z"
+  "updated_at": "2026-08-03T21:13:00Z"
 }
