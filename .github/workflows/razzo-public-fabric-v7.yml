@@ -23,10 +23,14 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: razzo-public-fabric-v7-${{ github.ref }}-${{ github.event.client_payload.workItemId || github.run_id }}
   cancel-in-progress: false
+
+env:
+  RAZZO_LIVE_ISSUE: '753'
 
 jobs:
   proof:
@@ -56,6 +60,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Publish dispatch start
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          cat > /tmp/razzo-start.md <<EOF
+          \`PUBLIC_FABRIC_DISPATCH_STARTED\`
+
+          - workflow run: \`${RUN_ID}\`;
+          - attempt: \`${RUN_ATTEMPT}\`;
+          - trigger SHA: \`${TRIGGER_SHA}\`;
+          - requested fan-out: \`12\` active public shards;
+          - hard maximum: \`24\`;
+          - mode: \`dispatch\`;
+          - secrets or product source published: \`0\`.
+          EOF
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${RAZZO_LIVE_ISSUE}/comments" -F body=@/tmp/razzo-start.md
+
       - name: Resolve exact portfolio refs
         shell: bash
         run: |
@@ -84,12 +110,58 @@ jobs:
 
           json.dump(refs, open('exact-refs.json', 'w', encoding='utf-8'), indent=2)
           PY
-      - run: python -m razzo.public_fabric.runtime dispatch --exact-refs exact-refs.json --output razzo-dispatch
+
+      - name: Dispatch public shard leases
+        run: python -m razzo.public_fabric.runtime dispatch --exact-refs exact-refs.json --output razzo-dispatch
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: razzo-public-fabric-v7-dispatch
           path: razzo-dispatch
+
+      - name: Publish dispatch terminal state
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          leases_path = Path('razzo-dispatch/dispatched-leases.json')
+          status = os.environ['JOB_STATUS']
+          run_id = os.environ['RUN_ID']
+          if leases_path.exists():
+              leases = json.loads(leases_path.read_text(encoding='utf-8'))
+              cycle = leases[0]['cycleId'] if leases else 'unknown'
+              projects = sorted({item['projectId'] for item in leases})
+              shards = [item['shard'] for item in leases]
+              body = (
+                  '`PUBLIC_FABRIC_DISPATCH_TERMINAL`\n\n'
+                  f'- workflow run: `{run_id}`;\n'
+                  f'- job status: `{status}`;\n'
+                  f'- cycle ID: `{cycle}`;\n'
+                  f'- leases dispatched: `{len(leases)}`;\n'
+                  f'- projects: `{", ".join(projects)}`;\n'
+                  f'- public shards: `{", ".join(shards)}`;\n'
+                  '- exact-SHA resolution: `completed`;\n'
+                  '- next expected events: sanitized `PUBLIC_FABRIC_SHARD_RECEIPT` comments.\n'
+              )
+          else:
+              body = (
+                  '`PUBLIC_FABRIC_DISPATCH_TERMINAL`\n\n'
+                  f'- workflow run: `{run_id}`;\n'
+                  f'- job status: `{status}`;\n'
+                  '- leases dispatched: `0 or unknown`;\n'
+                  '- state: dispatch artifact was not produced; inspect this run before retrying.\n'
+              )
+          Path('/tmp/razzo-terminal.md').write_text(body, encoding='utf-8')
+          PY
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${RAZZO_LIVE_ISSUE}/comments" -F body=@/tmp/razzo-terminal.md
 
   collect-receipt:
     if: github.event_name == 'repository_dispatch' && github.event.action == 'razzo-receipt'
@@ -111,7 +183,36 @@ jobs:
           allowed = {key: receipt[key] for key in receipt if key in allowed_keys}
           pathlib.Path('receipt/receipt.json').write_text(json.dumps(allowed, indent=2) + '\n', encoding='utf-8')
           PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: razzo-receipt-${{ github.event.client_payload.cycleId }}-${{ github.event.client_payload.workItemId }}
           path: receipt/receipt.json
+
+      - name: Publish sanitized shard receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          r = json.loads(Path('receipt/receipt.json').read_text(encoding='utf-8'))
+          body = (
+              '`PUBLIC_FABRIC_SHARD_RECEIPT`\n\n'
+              f'- cycle ID: `{r["cycleId"]}`;\n'
+              f'- generation: `{r["generation"]}`;\n'
+              f'- work item: `{r["workItemId"]}`;\n'
+              f'- shard: `{r["shard"]}`;\n'
+              f'- project: `{r.get("projectId", "unknown")}`;\n'
+              f'- repository: `{r.get("repository", "unknown")}`;\n'
+              f'- status: `{r["status"]}`;\n'
+              f'- exact input SHA: `{r["exactInputSha"]}`;\n'
+              f'- observed SHA: `{r.get("observedSha", "not-reported")}`;\n'
+              f'- duration seconds: `{r.get("durationSeconds", r["endedEpoch"] - r["startedEpoch"])}`;\n'
+              f'- error: `{r.get("error", "none")}`.\n'
+          )
+          Path('/tmp/razzo-receipt.md').write_text(body, encoding='utf-8')
+          PY
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${RAZZO_LIVE_ISSUE}/comments" -F body=@/tmp/razzo-receipt.md
