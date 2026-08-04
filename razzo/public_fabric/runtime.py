@@ -9,7 +9,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -68,20 +68,22 @@ class FabricPlanner:
             collision = f"{project['id']}:{vertical.split('-g')[0]}"
             exact_sha = exact_refs[project["id"]]
             item_id = stable(cycle_id, str(generation), project["id"], vertical)
-            leases.append(Lease(
-                cycleId=cycle_id,
-                generation=generation,
-                workItemId=item_id,
-                shard=shards[len(leases)],
-                projectId=project["id"],
-                repository=project["repository"],
-                targetLane=project.get("integrationLane", "main"),
-                exactInputSha=exact_sha,
-                verticalSlice=vertical,
-                collisionDomain=collision,
-                idempotencyKey=stable(project["id"], vertical, exact_sha),
-                attempt=1,
-            ))
+            leases.append(
+                Lease(
+                    cycleId=cycle_id,
+                    generation=generation,
+                    workItemId=item_id,
+                    shard=shards[len(leases)],
+                    projectId=project["id"],
+                    repository=project["repository"],
+                    targetLane=project.get("integrationLane", "main"),
+                    exactInputSha=exact_sha,
+                    verticalSlice=vertical,
+                    collisionDomain=collision,
+                    idempotencyKey=stable(project["id"], vertical, exact_sha),
+                    attempt=1,
+                )
+            )
             counts[project["id"]] += 1
             cursor += 1
         return leases
@@ -107,10 +109,19 @@ class GitHubAPI:
             raise RuntimeError(f"GitHub API {exc.code}: {exc.read().decode()}") from exc
 
     def dispatch(self, owner: str, shard: str, event: str, lease: Lease) -> None:
-        self.request("POST", f"https://api.github.com/repos/{owner}/{shard}/dispatches", {
-            "event_type": event,
-            "client_payload": asdict(lease),
-        })
+        # GitHub repository_dispatch accepts no more than 10 top-level
+        # client_payload properties. Keep the identity searchable and place
+        # the complete lease in one nested envelope.
+        envelope = {
+            "schema": "razzo.work-item-envelope.v1",
+            "workItemId": lease.workItemId,
+            "lease": asdict(lease),
+        }
+        self.request(
+            "POST",
+            f"https://api.github.com/repos/{owner}/{shard}/dispatches",
+            {"event_type": event, "client_payload": envelope},
+        )
 
 
 class ReceiptVerifier:
@@ -146,11 +157,15 @@ def proof(output: Path) -> dict[str, Any]:
     for generation in range(1, cfg["maxGenerationsPerTrigger"] + 1):
         leases = planner.materialize(cycle, generation, refs)
         all_leases.extend(leases)
-        telemetry.append({
-            "generation": generation,
-            "leases": len(leases),
-            "replanPreparedAtRemaining": cfg["queueRefillThreshold"] if generation < cfg["maxGenerationsPerTrigger"] else 0,
-        })
+        telemetry.append(
+            {
+                "generation": generation,
+                "leases": len(leases),
+                "replanPreparedAtRemaining": cfg["queueRefillThreshold"]
+                if generation < cfg["maxGenerationsPerTrigger"]
+                else 0,
+            }
+        )
     aggregate = {
         "cycleId": cycle,
         "status": "green",
@@ -183,11 +198,24 @@ def dispatch(output: Path, exact_refs_path: Path) -> dict[str, Any]:
     api = GitHubAPI(token)
     cycle = f"razzo-{uuid.uuid4().hex[:12]}"
     leases = planner.materialize(cycle, 1, refs)
-    for lease in leases:
-        api.dispatch(cfg["owner"], lease.shard, cfg["dispatchEvent"], lease)
+
     output.mkdir(parents=True, exist_ok=True)
-    (output / "dispatched-leases.json").write_text(json.dumps([asdict(x) for x in leases], indent=2) + "\n")
-    return {"cycleId": cycle, "status": "dispatched", "leases": len(leases)}
+    (output / "planned-leases.json").write_text(json.dumps([asdict(x) for x in leases], indent=2) + "\n")
+
+    dispatched: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    for lease in leases:
+        try:
+            api.dispatch(cfg["owner"], lease.shard, cfg["dispatchEvent"], lease)
+            dispatched.append(asdict(lease))
+        except Exception as exc:
+            failures.append({"workItemId": lease.workItemId, "shard": lease.shard, "error": str(exc)})
+
+    (output / "dispatched-leases.json").write_text(json.dumps(dispatched, indent=2) + "\n")
+    (output / "dispatch-failures.json").write_text(json.dumps(failures, indent=2) + "\n")
+    if failures:
+        raise RuntimeError(f"{len(failures)} of {len(leases)} shard dispatches failed")
+    return {"cycleId": cycle, "status": "dispatched", "leases": len(dispatched)}
 
 
 def main() -> None:
