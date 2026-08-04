@@ -1,6 +1,6 @@
 {
-  "requestedAt": "2026-08-04T20:08:00+02:00",
+  "requestedAt": "2026-08-04T20:12:00+02:00",
   "requestedBy": "ChatGPT",
   "mode": "dispatch",
-  "reason": "Capture live Actions permission diagnostics and verify shard execution after owner enablement"
+  "reason": "Diagnose worker workflow state and repository_dispatch runs after enabling Actions"
 }
