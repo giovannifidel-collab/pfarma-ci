@@ -13,6 +13,13 @@ def run(command: list[str], cwd: Path | None = None, capture: bool = False) -> s
     return result.stdout.strip() if capture else ""
 
 
+def unwrap_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    payload = raw.get("lease", raw)
+    if not isinstance(payload, dict):
+        raise RuntimeError("invalid work-item envelope")
+    return payload
+
+
 def execute(payload: dict[str, Any], output: Path) -> dict[str, Any]:
     started = time.time()
     shard = os.environ.get("GITHUB_REPOSITORY", "unknown/unknown").split("/")[-1]
@@ -40,7 +47,6 @@ def execute(payload: dict[str, Any], output: Path) -> dict[str, Any]:
         observed = run(["git", "rev-parse", "HEAD"], cwd=work, capture=True)
         if observed != payload["exactInputSha"]:
             raise RuntimeError("exact SHA mismatch after checkout")
-        # Free deterministic execution fabric: validation, tests and bounded repairs only.
         commands = payload.get("commands") or []
         results: list[dict[str, Any]] = []
         for command in commands:
@@ -60,7 +66,8 @@ def execute(payload: dict[str, Any], output: Path) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    payload = json.loads(os.environ["RAZZO_WORK_ITEM"])
+    raw_payload = json.loads(os.environ["RAZZO_WORK_ITEM"])
+    payload = unwrap_payload(raw_payload)
     receipt = execute(payload, Path("receipt.json"))
     print(json.dumps(receipt, indent=2))
     raise SystemExit(0 if receipt["status"] == "completed" else 2)
