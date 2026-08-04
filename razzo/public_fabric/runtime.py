@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import statistics
-import time
 import urllib.error
 import urllib.request
 import uuid
@@ -108,10 +107,10 @@ class GitHubAPI:
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f"GitHub API {exc.code}: {exc.read().decode()}") from exc
 
+    def actions_permissions(self, owner: str, shard: str) -> dict[str, Any]:
+        return self.request("GET", f"https://api.github.com/repos/{owner}/{shard}/actions/permissions")
+
     def dispatch(self, owner: str, shard: str, event: str, lease: Lease) -> None:
-        # GitHub repository_dispatch accepts no more than 10 top-level
-        # client_payload properties. Keep the identity searchable and place
-        # the complete lease in one nested envelope.
         envelope = {
             "schema": "razzo.work-item-envelope.v1",
             "workItemId": lease.workItemId,
@@ -202,6 +201,23 @@ def dispatch(output: Path, exact_refs_path: Path) -> dict[str, Any]:
     output.mkdir(parents=True, exist_ok=True)
     (output / "planned-leases.json").write_text(json.dumps([asdict(x) for x in leases], indent=2) + "\n")
 
+    permission_rows: list[dict[str, Any]] = []
+    for shard in dict.fromkeys(lease.shard for lease in leases):
+        row: dict[str, Any] = {"shard": shard}
+        try:
+            permission = api.actions_permissions(cfg["owner"], shard)
+            row.update(
+                {
+                    "enabled": permission.get("enabled"),
+                    "allowed_actions": permission.get("allowed_actions"),
+                    "selected_actions_url": permission.get("selected_actions_url"),
+                }
+            )
+        except Exception as exc:
+            row["error"] = str(exc)
+        permission_rows.append(row)
+    (output / "actions-permissions.json").write_text(json.dumps(permission_rows, indent=2) + "\n")
+
     dispatched: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
     for lease in leases:
@@ -215,7 +231,13 @@ def dispatch(output: Path, exact_refs_path: Path) -> dict[str, Any]:
     (output / "dispatch-failures.json").write_text(json.dumps(failures, indent=2) + "\n")
     if failures:
         raise RuntimeError(f"{len(failures)} of {len(leases)} shard dispatches failed")
-    return {"cycleId": cycle, "status": "dispatched", "leases": len(dispatched)}
+    return {
+        "cycleId": cycle,
+        "status": "dispatched",
+        "leases": len(dispatched),
+        "actionsEnabled": sum(1 for row in permission_rows if row.get("enabled") is True),
+        "actionsChecked": len(permission_rows),
+    }
 
 
 def main() -> None:
