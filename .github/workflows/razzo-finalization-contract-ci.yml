@@ -1,0 +1,35 @@
+name: RAZZO Finalization Contract CI
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/kernel/finalization.py'
+      - 'razzo/kernel/tests/test_finalization.py'
+      - '.github/workflows/razzo-finalization-contract-ci.yml'
+permissions:
+  contents: read
+jobs:
+  finalization-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest
+      - name: Finalization contract tests
+        run: python -m pytest -q razzo/kernel/tests/test_finalization.py
+      - name: Compile contract
+        run: python -m py_compile razzo/kernel/finalization.py
+      - name: Exact head and boundary
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          git diff --check
+          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD)"
+          printf '%s\n' "$changed"
+          ! printf '%s\n' "$changed" | grep -E '(^|/)(\.env|secrets?|credentials?)(\.|/|$)'
+          test "$(printf '%s\n' "$changed" | grep -Ev '^(razzo/kernel/finalization.py|razzo/kernel/tests/test_finalization.py|\.github/workflows/razzo-finalization-contract-ci.yml)$' | wc -l)" -eq 0
