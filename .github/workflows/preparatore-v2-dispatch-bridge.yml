@@ -1,0 +1,112 @@
+name: Preparatore V2 · Dispatch Bridge
+
+run-name: Preparatore V2 bridge · ${{ github.event.client_payload.job_id || github.event.pull_request.number || 'manual' }}
+
+on:
+  repository_dispatch:
+    types: [preparatore-v2-request]
+  pull_request:
+    paths:
+      - '.github/workflows/preparatore-v2-dispatch-bridge.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preparatore-v2-bridge-${{ github.event.client_payload.job_id || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  forward:
+    if: github.event_name == 'repository_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Validate requested job
+        id: validate
+        env:
+          JOB_ID: ${{ github.event.client_payload.job_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$JOB_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+            echo 'Invalid or missing Preparatore job id.' >&2
+            exit 1
+          fi
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private-repository token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo 'No token capable of dispatching the private Project Giovanni workflow is configured.' >&2
+            exit 1
+          fi
+          echo "PRIVATE_REPO_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Forward dispatch to private Preparatore workflow
+        env:
+          JOB_ID: ${{ steps.validate.outputs.job_id }}
+          GH_TOKEN: ${{ env.PRIVATE_REPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl --silent --show-error --output /tmp/dispatch-response.txt --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --header 'Content-Type: application/json' \
+            'https://api.github.com/repos/giovannifidel-collab/project-giovanni/dispatches' \
+            --data "{\"event_type\":\"preparatore-v2-request\",\"client_payload\":{\"job_id\":\"$JOB_ID\"}}")"
+          if [ "$code" != '204' ]; then
+            cat /tmp/dispatch-response.txt >&2 || true
+            echo "Private dispatch failed with HTTP $code." >&2
+            exit 1
+          fi
+          echo "Private Preparatore dispatch accepted for $JOB_ID."
+
+  smoke-cross-repository:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Resolve private-repository token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_REPO_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Prove private repository dispatch acceptance
+        env:
+          GH_TOKEN: ${{ env.PRIVATE_REPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          smoke_id="smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          code="$(curl --silent --show-error --output /tmp/smoke-response.txt --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --header 'Content-Type: application/json' \
+            'https://api.github.com/repos/giovannifidel-collab/project-giovanni/dispatches' \
+            --data "{\"event_type\":\"preparatore-v2-smoke\",\"client_payload\":{\"smoke_id\":\"$smoke_id\"}}")"
+          if [ "$code" != '204' ]; then
+            cat /tmp/smoke-response.txt >&2 || true
+            echo "Cross-repository dispatch failed with HTTP $code." >&2
+            exit 1
+          fi
+          echo "Cross-repository dispatch accepted: $smoke_id"
