@@ -8,7 +8,7 @@ on:
       - 'razzo/runtime_v6/high_throughput.json'
       - 'tests/test_razzo_high_throughput.py'
       - '.github/workflows/razzo-high-throughput-factory.yml'
-      - 'scripts/install-razzo-runner.sh'
+      - 'scripts/install_razzo_runner.py'
   workflow_dispatch:
     inputs:
       mode:
