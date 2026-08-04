@@ -1,0 +1,36 @@
+name: RAZZO Factory Finalization Proof CI
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/state/factory-finalization.json'
+      - 'razzo/kernel/tests/test_factory_finalization_proof.py'
+      - '.github/workflows/razzo-factory-finalization-proof-ci.yml'
+permissions:
+  contents: read
+jobs:
+  finalization-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test runner
+        run: python -m pip install pytest
+      - name: Exact head evidence
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - name: Finalization proof tests
+        run: python -m pytest -q razzo/kernel/tests/test_factory_finalization_proof.py
+      - name: Safety boundary
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --check
+          changed="$(git diff --name-only "$BASE_SHA"...HEAD)"
+          printf '%s\n' "$changed"
+          ! printf '%s\n' "$changed" | grep -E '(^|/)(\.env|secrets?|credentials?)(\.|/|$)'
+          test "$(printf '%s\n' "$changed" | wc -l)" -eq 3

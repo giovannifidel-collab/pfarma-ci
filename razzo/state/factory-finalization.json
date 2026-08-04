@@ -1,0 +1,61 @@
+{
+  "schema": "razzo.factory-finalization.v1",
+  "status": "FINALIZED_PRODUCT_FIRST",
+  "finalized_at": "2026-08-04T07:24:00Z",
+  "control_plane": {
+    "repository": "giovannifidel-collab/pfarma-ci",
+    "part1_pr": 763,
+    "part1_candidate_sha": "61b82848ee55f90e156d74b75480f1010e8f054a",
+    "part1_merge_sha": "6fe4ba8e3df81fb5c14e1918351e38089143f2a6",
+    "mode": "FROZEN_PRODUCT_FIRST",
+    "future_change_policy": "PRODUCT_BLOCKING_BUG_ONLY"
+  },
+  "deliveries": [
+    {
+      "repository": "giovannifidel-collab/project-giovanni",
+      "pr": 970,
+      "integration_lane": "integration/razzo",
+      "candidate_sha": "ed7572b3122d6e1abf91f8ac665ef40410816a39",
+      "merge_sha": "c1e1eeff1d84890b92aba2c12b63ad812ba28496",
+      "user_journey": "post-workout recovery guidance",
+      "product_ci_run": 30887369577,
+      "robot_qa_run": 30887369551,
+      "corrected_from_red": true,
+      "sensitive_writes": 0
+    },
+    {
+      "repository": "giovannifidel-collab/pfarma-cloud",
+      "pr": 2056,
+      "integration_lane": "integration/razzo",
+      "candidate_sha": "d97608411b365242f290a31feaca97cc627682cb",
+      "merge_sha": "f6fcd611d59b5b5e4d775f2a50360a19739bcc68",
+      "user_journey": "simulated goods receiving workspace",
+      "product_ci_run": 30887041569,
+      "robot_qa_run": 30887041779,
+      "corrected_from_red": false,
+      "sensitive_writes": 0
+    },
+    {
+      "repository": "giovannifidel-collab/family-cloud",
+      "pr": 667,
+      "integration_lane": "agent/bootstrap-family-cloud",
+      "candidate_sha": "7966bc13b69677077412c1ef02873597d76b5f8b",
+      "merge_sha": "5f84575fda55ecd0cc8c71da6185919fe24d87fa",
+      "user_journey": "local storage readiness and capacity guidance",
+      "product_ci_run": 30880769543,
+      "robot_qa_run": 30880769497,
+      "corrected_from_red": false,
+      "sensitive_writes": 0
+    }
+  ],
+  "proof": {
+    "product_repositories": 3,
+    "integrations": 3,
+    "autonomous_red_repairs": 1,
+    "robot_journeys_green": 3,
+    "duplicate_deliveries": 0,
+    "collision_violations": 0,
+    "sensitive_writes": 0,
+    "product_main_writes": 0
+  }
+}
