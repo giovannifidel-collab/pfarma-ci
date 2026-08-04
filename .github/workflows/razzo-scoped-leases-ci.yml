@@ -1,0 +1,26 @@
+name: RAZZO Scoped Leases CI
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/kernel/scoped_leases.py'
+      - 'tests/test_scoped_leases.py'
+      - '.github/workflows/razzo-scoped-leases-ci.yml'
+permissions:
+  contents: read
+jobs:
+  scoped-leases:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest
+      - run: python -m pytest -q tests/test_scoped_leases.py
+      - name: Exact head and secret boundary
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          ! git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD | grep -E '(^|/)(\.env|secrets?|credentials?)(\.|/|$)'
