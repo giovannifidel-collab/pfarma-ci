@@ -102,8 +102,12 @@ def publish_receipt(receipt: dict[str, Any]) -> None:
 
 
 def run_git(command: list[str], cwd: Path | None = None, capture: bool = False) -> str:
-    result = subprocess.run(command, cwd=cwd, check=True, text=True, capture_output=capture, timeout=300)
-    return result.stdout.strip() if capture else ""
+    completed = subprocess.run(command, cwd=cwd, text=False, capture_output=True, timeout=300)
+    output = (completed.stdout or b"") + b"\n" + (completed.stderr or b"")
+    if completed.returncode != 0:
+        digest = hashlib.sha256(output).hexdigest()
+        raise RuntimeError(f"git operation failed with exit code {completed.returncode}; output digest {digest}")
+    return (completed.stdout or b"").decode("utf-8", errors="replace").strip() if capture else ""
 
 
 def run_shell(command: str, cwd: Path, command_id: str) -> dict[str, Any]:
@@ -214,6 +218,7 @@ def execute(lease: dict[str, Any]) -> dict[str, Any]:
         observed = run_git(["git", "rev-parse", "HEAD"], cwd=work, capture=True)
         if observed != lease["exactInputSha"]:
             raise RuntimeError("exact SHA mismatch after checkout")
+        receipt["observedSha"] = observed
 
         results: list[dict[str, Any]] = []
         for index, command in enumerate(lease.get("commands") or []):
