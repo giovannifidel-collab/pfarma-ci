@@ -25,6 +25,34 @@ def test_same_repository_and_domain_is_fail_closed():
         table.acquire(lease("pfarma-cloud", "recall", "run-b"), NOW)
 
 
+def test_same_repository_different_domain_is_fail_closed():
+    table = ScopedLeaseTable([lease("pfarma-cloud", "recall", "run-a")])
+    with pytest.raises(LeaseConflict, match="repository slot occupied"):
+        table.acquire(lease("pfarma-cloud", "bookings", "run-b"), NOW)
+
+
+def test_owner_cannot_switch_domain_during_active_lease():
+    table = ScopedLeaseTable([lease("family-cloud", "library", "run-a")])
+    with pytest.raises(LeaseConflict, match="cannot switch collision domain"):
+        table.acquire(lease("family-cloud", "albums", "run-a"), NOW)
+
+
+def test_constructor_rejects_multiple_domains_for_one_repository():
+    with pytest.raises(LeaseConflict, match="multiple active capabilities"):
+        ScopedLeaseTable([
+            lease("project-giovanni", "profile", "run-a"),
+            lease("project-giovanni", "questionnaire", "run-b"),
+        ])
+
+
+def test_expired_repository_slot_is_recovered_before_new_domain_acquire():
+    expired = Lease("family-cloud", "library", "old", NOW - timedelta(hours=2), NOW - timedelta(hours=1))
+    table = ScopedLeaseTable([expired])
+    acquired = table.acquire(lease("family-cloud", "albums", "new"), NOW)
+    assert acquired.owner_run_id == "new"
+    assert acquired.collision_domain == "albums"
+
+
 def test_expired_lease_is_recovered_before_acquire():
     expired = Lease("family-cloud", "library", "old", NOW - timedelta(hours=2), NOW - timedelta(hours=1))
     table = ScopedLeaseTable([expired])
@@ -51,3 +79,9 @@ def test_throughput_snapshot_counts_active_and_completed():
     assert snapshot["active_capabilities"] == 2
     assert snapshot["total_completed"] == 5
     assert snapshot["active_by_repository"] == {"family-cloud": 1, "pfarma-cloud": 1}
+
+
+def test_throughput_snapshot_rejects_duplicate_repository_slots():
+    active = [lease("pfarma-cloud", "recall", "run-a"), lease("pfarma-cloud", "bookings", "run-b")]
+    with pytest.raises(LeaseConflict, match="multiple active capabilities"):
+        throughput_snapshot(active, {"pfarma-cloud": 0})
