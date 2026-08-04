@@ -1,6 +1,6 @@
 {
-  "requestedAt": "2026-08-04T18:26:00+02:00",
+  "requestedAt": "2026-08-04T18:38:00+02:00",
   "requestedBy": "ChatGPT",
   "mode": "dispatch",
-  "reason": "Retry after bounded work-item and receipt envelope correction"
+  "reason": "Centralized worker entrypoint and durable shard status validation"
 }
