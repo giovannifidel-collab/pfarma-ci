@@ -20,15 +20,11 @@ def _exact_sha(value: str, label: str) -> None:
 
 
 def _candidate_sha(seed: int, project_id: str) -> str:
-    return hashlib.sha1(f"{seed}:{project_id}:candidate".encode("utf-8"), usedforsecurity=False).hexdigest()
+    return hashlib.sha1(f"{seed}:{project_id}:candidate".encode(), usedforsecurity=False).hexdigest()
 
 
 def _verify_exact_head(candidate_sha: str, product_ci_sha: str, robot_qa_sha: str) -> None:
-    for label, value in (
-        ("candidate_sha", candidate_sha),
-        ("product_ci_sha", product_ci_sha),
-        ("robot_qa_sha", robot_qa_sha),
-    ):
+    for label, value in (("candidate_sha", candidate_sha), ("product_ci_sha", product_ci_sha), ("robot_qa_sha", robot_qa_sha)):
         _exact_sha(value, label)
     if not candidate_sha == product_ci_sha == robot_qa_sha:
         raise ValueError("candidate, Product CI and Robot QA must use one exact SHA")
@@ -80,13 +76,11 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _validate_protocol(protocol: dict[str, Any]) -> int:
-    if protocol.get("protocol") != "RAZZO":
-        raise ValueError("protocol identity mismatch")
+    if protocol.get("protocol") != "RAZZO" or protocol.get("sourceOfTruth") != "github":
+        raise ValueError("protocol identity or source of truth mismatch")
     version = int(protocol.get("protocolVersion", 0))
     if version <= 0:
         raise ValueError("protocolVersion must be positive")
-    if protocol.get("sourceOfTruth") != "github":
-        raise ValueError("GitHub must remain the source of truth")
     discovery = protocol.get("discovery", {})
     if not discovery.get("dynamicProjects") or not discovery.get("requireEnabled"):
         raise ValueError("portfolio discovery must remain dynamic and enabled-only")
@@ -108,7 +102,7 @@ def _validate_projects(projects: dict[str, Any]) -> tuple[str, ...]:
         project_id = str(project.get("id", ""))
         repository = str(project.get("repository", ""))
         lane = str(project.get("integrationLane", ""))
-        if not project_id or not repository or "/" not in repository or not lane:
+        if not project_id or "/" not in repository or not lane:
             raise ValueError("enabled project is missing id, repository or integration lane")
         if project_id in enabled or repository in repositories:
             raise ValueError("enabled portfolio contains duplicate project identity")
@@ -120,41 +114,63 @@ def _validate_projects(projects: dict[str, Any]) -> tuple[str, ...]:
 
 
 def _validate_safe_status(status: dict[str, Any]) -> str:
+    """Validate the real runtime envelope without requiring it to be idle.
+
+    The total-system campaign is fixture-only. A coherent live capability must not
+    invalidate that simulation, but partial/mismatched runtime state remains a
+    hard failure. This separates operational observation from synthetic mutation.
+    """
     state = str(status.get("factory_state", ""))
-    if status.get("active_capability") is not None:
-        raise ValueError("preflight system test requires no active capability")
-    if status.get("capability_state") != "NONE" or status.get("product_receipt") is not None:
-        raise ValueError("preflight system test requires no product receipt")
-    heartbeat = status.get("last_heartbeat", {})
+    heartbeat = status.get("last_heartbeat")
     if not isinstance(heartbeat, dict):
         raise ValueError("last heartbeat must be an object")
-    if heartbeat.get("run_id") is not None:
-        raise ValueError("preflight system test requires an ownerless heartbeat")
-    if state == "PAUSED":
-        if status.get("enabled_cells") != []:
-            raise ValueError("paused Factory cannot have enabled cells")
-        if heartbeat.get("state") != "DISABLED":
-            raise ValueError("paused Factory heartbeat must be disabled")
-    elif state == "RUNNING":
-        if status.get("enabled_cells") != ["RAZZO-Cell-00"]:
-            raise ValueError("protected pilot must enable exactly RAZZO-Cell-00")
-        if heartbeat.get("state") != "SCHEDULED":
-            raise ValueError("protected pilot preflight heartbeat must be scheduled")
-    else:
-        raise ValueError("system test supports only PAUSED or protected RUNNING preflight state")
     _exact_sha(str(status.get("control_plane_sha", "")), "factory status control_plane_sha")
+
+    active = status.get("active_capability")
+    capability_state = str(status.get("capability_state", ""))
+    receipt = status.get("product_receipt")
+    run_id = heartbeat.get("run_id")
+
+    if state == "PAUSED":
+        if status.get("enabled_cells") != [] or heartbeat.get("state") != "DISABLED":
+            raise ValueError("paused Factory must have no enabled cells and a disabled heartbeat")
+        if active is not None or capability_state != "NONE" or receipt is not None or run_id is not None:
+            raise ValueError("paused preflight contains active runtime residue")
+        return state
+
+    if state != "RUNNING":
+        raise ValueError("system test supports only PAUSED or RUNNING state")
+    cells = status.get("enabled_cells")
+    if not isinstance(cells, list) or not cells or any(not isinstance(cell, str) or not cell.startswith("RAZZO-Cell-") for cell in cells):
+        raise ValueError("running Factory requires explicit RAZZO cells")
+
+    if active is None:
+        if capability_state != "NONE" or receipt is not None or run_id is not None:
+            raise ValueError("idle runtime snapshot is internally inconsistent")
+        if heartbeat.get("state") != "SCHEDULED":
+            raise ValueError("idle running Factory heartbeat must be scheduled")
+        return state
+
+    if not isinstance(active, str) or not active.strip():
+        raise ValueError("active capability fingerprint must be non-empty")
+    if capability_state in ("", "NONE") or not isinstance(receipt, dict) or not isinstance(run_id, str) or not run_id:
+        raise ValueError("active runtime requires state, receipt and owned heartbeat")
+    if receipt.get("fingerprint") != active:
+        raise ValueError("active capability and receipt fingerprint mismatch")
+    if not isinstance(receipt.get("repository"), str) or "/" not in receipt["repository"]:
+        raise ValueError("active receipt repository is invalid")
+    if not isinstance(receipt.get("pr"), int) or receipt["pr"] <= 0:
+        raise ValueError("active receipt PR is invalid")
+    _exact_sha(str(receipt.get("candidate_sha", "")), "active receipt candidate_sha")
+    merge_sha = receipt.get("merge_sha")
+    if merge_sha is not None:
+        _exact_sha(str(merge_sha), "active receipt merge_sha")
+    if heartbeat.get("state") != capability_state:
+        raise ValueError("heartbeat and capability state mismatch")
     return state
 
 
-def run_total_system_test(
-    *,
-    protocol_path: Path,
-    projects_path: Path,
-    status_path: Path,
-    lease_path: Path,
-    runs: int,
-    contenders: int,
-) -> SystemTestReport:
+def run_total_system_test(*, protocol_path: Path, projects_path: Path, status_path: Path, lease_path: Path, runs: int, contenders: int) -> SystemTestReport:
     if runs < 1 or contenders < 2:
         raise ValueError("runs must be positive and contenders must be at least two")
     protocol = _load_json(protocol_path)
@@ -168,11 +184,7 @@ def run_total_system_test(
         raise ValueError("global lease must be free during non-mutating preflight simulation")
 
     violations: list[str] = []
-    winners = 0
-    blocked = 0
-    stale_rejections = 0
-    duplicate_capabilities = 0
-    paused_dispatches = 0
+    winners = blocked = stale_rejections = duplicate_capabilities = paused_dispatches = 0
     selection_counts = {project_id: 0 for project_id in enabled_projects}
     contender_ids = tuple(f"RAZZO-Cell-{index:02d}" for index in range(contenders))
     now = datetime(2026, 8, 3, 20, 23, tzinfo=timezone.utc)
@@ -181,18 +193,12 @@ def run_total_system_test(
         order = list(range(contenders))
         random.Random(seed).shuffle(order)
         try:
-            race = simulate_trigger_race(
-                lease,
-                contenders=contender_ids,
-                attempt_order=order,
-                now=now,
-            )
+            race = simulate_trigger_race(lease, contenders=contender_ids, attempt_order=order, now=now)
             winners += 1
             blocked += len(race.blocked_runs)
             if len(set((race.winner, *race.blocked_runs))) != contenders:
                 duplicate_capabilities += 1
                 violations.append(f"seed {seed}: contender accounting mismatch")
-
             project_id = enabled_projects[seed % len(enabled_projects)]
             selection_counts[project_id] += 1
             candidate = _candidate_sha(seed, project_id)
@@ -220,9 +226,8 @@ def run_total_system_test(
     if paused_dispatches != 0:
         violations.append("non-mutating simulation produced an unauthorized dispatch")
 
-    status_name = "SYSTEM_SIMULATION_GREEN" if not violations else "SYSTEM_SIMULATION_FAILED"
     return SystemTestReport(
-        status=status_name,
+        status="SYSTEM_SIMULATION_GREEN" if not violations else "SYSTEM_SIMULATION_FAILED",
         fixture_only=True,
         product_writes_allowed=False,
         merge_allowed=False,
@@ -254,14 +259,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    report = run_total_system_test(
-        protocol_path=args.protocol,
-        projects_path=args.projects,
-        status_path=args.status,
-        lease_path=args.lease,
-        runs=args.runs,
-        contenders=args.contenders,
-    )
+    report = run_total_system_test(protocol_path=args.protocol, projects_path=args.projects, status_path=args.status, lease_path=args.lease, runs=args.runs, contenders=args.contenders)
     encoded = json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n"
     print(encoded, end="")
     if args.report is not None:
