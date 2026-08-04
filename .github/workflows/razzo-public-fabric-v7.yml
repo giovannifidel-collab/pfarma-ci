@@ -6,6 +6,10 @@ on:
     paths:
       - 'razzo/public_fabric/**'
       - '.github/workflows/razzo-public-fabric-v7.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'razzo/public_fabric/trigger.json'
   workflow_dispatch:
     inputs:
       mode:
@@ -43,7 +47,7 @@ jobs:
           path: razzo-public-proof
 
   dispatch:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'dispatch'
+    if: (github.event_name == 'workflow_dispatch' && inputs.mode == 'dispatch') || github.event_name == 'push'
     runs-on: ubuntu-latest
     env:
       RAZZO_FABRIC_TOKEN: ${{ secrets.RAZZO_FABRIC_TOKEN }}
@@ -56,16 +60,29 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import json, subprocess
-          p=json.load(open('razzo/projects.json'))
-          refs={}
-          for x in p['projects']:
-            if not x.get('enabled', True): continue
-            lane=x.get('integrationLane','main')
-            out=subprocess.check_output(['git','ls-remote',f"https://github.com/{x['repository']}.git",f'refs/heads/{lane}'], text=True).split()
-            if not out: raise SystemExit(f"missing lane {x['repository']}:{lane}")
-            refs[x['id']]=out[0]
-          json.dump(refs, open('exact-refs.json','w'), indent=2)
+          import json, os, urllib.parse, urllib.request
+
+          token = os.environ.get('RAZZO_FABRIC_TOKEN', '').strip()
+          if not token:
+              raise SystemExit('RAZZO_FABRIC_TOKEN is missing')
+
+          portfolio = json.load(open('razzo/projects.json', encoding='utf-8'))
+          refs = {}
+          for project in portfolio['projects']:
+              if not project.get('enabled', True):
+                  continue
+              lane = project.get('integrationLane', 'main')
+              ref = urllib.parse.quote(f'heads/{lane}', safe='/')
+              url = f"https://api.github.com/repos/{project['repository']}/git/ref/{ref}"
+              request = urllib.request.Request(url)
+              request.add_header('Authorization', f'Bearer {token}')
+              request.add_header('Accept', 'application/vnd.github+json')
+              request.add_header('X-GitHub-Api-Version', '2022-11-28')
+              with urllib.request.urlopen(request, timeout=45) as response:
+                  payload = json.load(response)
+              refs[project['id']] = payload['object']['sha']
+
+          json.dump(refs, open('exact-refs.json', 'w', encoding='utf-8'), indent=2)
           PY
       - run: python -m razzo.public_fabric.runtime dispatch --exact-refs exact-refs.json --output razzo-dispatch
       - uses: actions/upload-artifact@v4
@@ -85,12 +102,14 @@ jobs:
           mkdir -p receipt
           python - <<'PY'
           import json, os, pathlib
-          r=json.loads(os.environ['RECEIPT'])
-          required={'cycleId','generation','workItemId','shard','status','startedEpoch','endedEpoch','exactInputSha'}
-          missing=sorted(required-set(r))
-          if missing: raise SystemExit(f'missing receipt fields: {missing}')
-          allowed={k:r[k] for k in r if k in required|{'projectId','repository','collisionDomain','attempt','durationSeconds','observedSha','commands','error'}}
-          pathlib.Path('receipt/receipt.json').write_text(json.dumps(allowed, indent=2)+'\n')
+          receipt = json.loads(os.environ['RECEIPT'])
+          required = {'cycleId', 'generation', 'workItemId', 'shard', 'status', 'startedEpoch', 'endedEpoch', 'exactInputSha'}
+          missing = sorted(required - set(receipt))
+          if missing:
+              raise SystemExit(f'missing receipt fields: {missing}')
+          allowed_keys = required | {'projectId', 'repository', 'collisionDomain', 'attempt', 'durationSeconds', 'observedSha', 'commands', 'error'}
+          allowed = {key: receipt[key] for key in receipt if key in allowed_keys}
+          pathlib.Path('receipt/receipt.json').write_text(json.dumps(allowed, indent=2) + '\n', encoding='utf-8')
           PY
       - uses: actions/upload-artifact@v4
         with:
