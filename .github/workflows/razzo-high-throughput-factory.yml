@@ -6,7 +6,7 @@ on:
     paths:
       - 'razzo/runtime_v6/high_throughput.py'
       - 'razzo/runtime_v6/high_throughput.json'
-      - 'tests/test_razzo_high_throughput.py'
+      - 'razzo/runtime_v6/test_high_throughput.py'
       - '.github/workflows/razzo-high-throughput-factory.yml'
       - 'scripts/install_razzo_runner.py'
   workflow_dispatch:
@@ -39,7 +39,7 @@ jobs:
           python-version: '3.12'
       - id: mode
         run: echo "value=${{ github.event_name == 'pull_request' && 'proof' || inputs.mode || 'proof' }}" >> "$GITHUB_OUTPUT"
-      - run: python -m unittest -v tests/test_razzo_high_throughput.py
+      - run: python -m unittest -v razzo.runtime_v6.test_high_throughput
       - run: python -m razzo.runtime_v6.high_throughput preflight --mode proof
 
   proof-wave:
