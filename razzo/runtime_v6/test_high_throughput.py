@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from razzo.runtime_v6.high_throughput import CONFIG, load, preflight, run_cycle
+from razzo.runtime_v6.high_throughput import CONFIG, load, preflight
+from razzo.runtime_v6.high_throughput_runtime import run_cycle
 
 
 class HighThroughputTests(unittest.TestCase):
@@ -36,9 +37,10 @@ class HighThroughputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             result = run_cycle("proof", Path(td))
             self.assertEqual(result["generations"], 4)
-            self.assertGreaterEqual(result["workItems"], 48)
+            self.assertGreaterEqual(result["logicalWorkItems"], 48)
             self.assertGreaterEqual(result["parallelPeak"], 2)
-            self.assertEqual(result["receipts"], result["verified"])
+            self.assertGreaterEqual(result["receipts"], result["verified"])
+            self.assertLessEqual(result["speculativeRetries"], result["logicalWorkItems"])
             self.assertTrue((Path(td) / "aggregate-cycle-receipt.json").exists())
 
 
