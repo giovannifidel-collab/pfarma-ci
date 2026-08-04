@@ -27,10 +27,22 @@ class LeaseConflict(RuntimeError):
 
 
 class ScopedLeaseTable:
-    """Fail-closed lease table allowing one independent capability per repository/domain."""
+    """Fail-closed lease table with exactly one active capability per repository.
+
+    The collision domain remains part of the canonical identity and release contract,
+    but a repository owns only one product slot at a time. This permits three-way
+    parallelism across the three product repositories without admitting two
+    capabilities that can still interfere through shared repository state.
+    """
 
     def __init__(self, leases: Iterable[Lease] = ()) -> None:
-        self._leases = {lease.key: lease for lease in leases}
+        self._leases: dict[tuple[str, str], Lease] = {}
+        for lease in leases:
+            if lease.key in self._leases:
+                raise LeaseConflict(f"duplicate lease key for {lease.repository}:{lease.collision_domain}")
+            if any(active.repository == lease.repository for active in self._leases.values()):
+                raise LeaseConflict(f"multiple active capabilities for repository {lease.repository}")
+            self._leases[lease.key] = lease
 
     def recover_expired(self, now: datetime) -> list[Lease]:
         expired = [lease for lease in self._leases.values() if lease.expired(now)]
@@ -43,10 +55,23 @@ class ScopedLeaseTable:
             raise ValueError("lease timestamps must be timezone-aware")
         if lease.expires_at <= now or lease.expires_at <= lease.acquired_at:
             raise ValueError("lease must expire in the future")
-        existing = self._leases.get(lease.key)
-        if existing and not existing.expired(now) and existing.owner_run_id != lease.owner_run_id:
-            raise LeaseConflict(f"active lease for {lease.repository}:{lease.collision_domain}")
-        generation = (existing.generation + 1) if existing else lease.generation
+
+        self.recover_expired(now)
+        same_key = self._leases.get(lease.key)
+        repository_lease = next(
+            (active for active in self._leases.values() if active.repository == lease.repository),
+            None,
+        )
+        if repository_lease is not None and repository_lease.owner_run_id != lease.owner_run_id:
+            raise LeaseConflict(
+                f"repository slot occupied by {repository_lease.collision_domain} for {lease.repository}"
+            )
+        if repository_lease is not None and repository_lease.key != lease.key:
+            raise LeaseConflict(
+                f"owner cannot switch collision domain while repository slot is active: {lease.repository}"
+            )
+
+        generation = (same_key.generation + 1) if same_key else lease.generation
         acquired = replace(lease, generation=generation)
         self._leases[lease.key] = acquired
         return acquired
@@ -60,7 +85,11 @@ class ScopedLeaseTable:
 
     def active(self, now: datetime) -> list[Lease]:
         self.recover_expired(now)
-        return sorted(self._leases.values(), key=lambda lease: lease.key)
+        active = sorted(self._leases.values(), key=lambda lease: lease.key)
+        repositories = [lease.repository for lease in active]
+        if len(repositories) != len(set(repositories)):
+            raise LeaseConflict("runtime contains multiple active capabilities for one repository")
+        return active
 
 
 def choose_fair_repository(repositories: list[str], last_served: str | None) -> str:
@@ -74,11 +103,14 @@ def choose_fair_repository(repositories: list[str], last_served: str | None) -> 
 
 def throughput_snapshot(active: Iterable[Lease], completed: dict[str, int]) -> dict[str, object]:
     leases = list(active)
+    repositories = [lease.repository for lease in leases]
+    if len(repositories) != len(set(repositories)):
+        raise LeaseConflict("throughput snapshot rejects multiple active capabilities per repository")
     per_repository = {repo: completed.get(repo, 0) for repo in sorted(completed)}
     return {
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "active_capabilities": len(leases),
-        "active_by_repository": {repo: sum(1 for lease in leases if lease.repository == repo) for repo in sorted({lease.repository for lease in leases})},
+        "active_by_repository": {repo: 1 for repo in sorted(repositories)},
         "completed_by_repository": per_repository,
         "total_completed": sum(per_repository.values()),
     }
