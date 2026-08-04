@@ -1,0 +1,81 @@
+name: RAZZO High Throughput Factory V2
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/runtime_v6/high_throughput.py'
+      - 'razzo/runtime_v6/high_throughput_runtime.py'
+      - 'razzo/runtime_v6/high_throughput.json'
+      - 'razzo/runtime_v6/test_high_throughput.py'
+      - '.github/workflows/razzo-high-throughput-factory-v2.yml'
+      - 'scripts/install_razzo_runner.py'
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [proof, product]
+        default: proof
+  schedule:
+    - cron: '0 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: razzo-high-throughput-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.mode.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - id: mode
+        run: echo "value=${{ github.event_name == 'pull_request' && 'proof' || inputs.mode || 'proof' }}" >> "$GITHUB_OUTPUT"
+      - run: python -m unittest -v razzo.runtime_v6.test_high_throughput
+      - run: python -m razzo.runtime_v6.high_throughput_runtime preflight --mode proof
+
+  proof-wave:
+    needs: preflight
+    if: needs.preflight.outputs.mode == 'proof'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m razzo.runtime_v6.high_throughput_runtime cycle --mode proof --output razzo-proof
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-high-throughput-proof-v2
+          path: razzo-proof
+
+  product-wave:
+    needs: preflight
+    if: needs.preflight.outputs.mode == 'product'
+    runs-on: [self-hosted, linux, x64, razzo-persistent]
+    permissions:
+      contents: read
+    env:
+      RUNNER_ENVIRONMENT: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail closed unless runner service environment provides writer and coding executor
+        run: python -m razzo.runtime_v6.high_throughput_runtime preflight --mode product
+      - name: Four-generation incremental product cycle
+        run: python -m razzo.runtime_v6.high_throughput_runtime cycle --mode product --output razzo-product
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: razzo-high-throughput-product-receipts-v2
+          path: razzo-product
