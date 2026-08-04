@@ -5,7 +5,9 @@ import hashlib
 import json
 import os
 import statistics
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import asdict, dataclass
@@ -110,6 +112,13 @@ class GitHubAPI:
     def actions_permissions(self, owner: str, shard: str) -> dict[str, Any]:
         return self.request("GET", f"https://api.github.com/repos/{owner}/{shard}/actions/permissions")
 
+    def workflows(self, owner: str, shard: str) -> dict[str, Any]:
+        return self.request("GET", f"https://api.github.com/repos/{owner}/{shard}/actions/workflows?per_page=100")
+
+    def repository_dispatch_runs(self, owner: str, shard: str) -> dict[str, Any]:
+        query = urllib.parse.urlencode({"event": "repository_dispatch", "per_page": 10})
+        return self.request("GET", f"https://api.github.com/repos/{owner}/{shard}/actions/runs?{query}")
+
     def dispatch(self, owner: str, shard: str, event: str, lease: Lease) -> None:
         envelope = {
             "schema": "razzo.work-item-envelope.v1",
@@ -197,16 +206,18 @@ def dispatch(output: Path, exact_refs_path: Path) -> dict[str, Any]:
     api = GitHubAPI(token)
     cycle = f"razzo-{uuid.uuid4().hex[:12]}"
     leases = planner.materialize(cycle, 1, refs)
+    shards = list(dict.fromkeys(lease.shard for lease in leases))
 
     output.mkdir(parents=True, exist_ok=True)
     (output / "planned-leases.json").write_text(json.dumps([asdict(x) for x in leases], indent=2) + "\n")
 
     permission_rows: list[dict[str, Any]] = []
-    for shard in dict.fromkeys(lease.shard for lease in leases):
-        row: dict[str, Any] = {"shard": shard}
+    workflow_rows: list[dict[str, Any]] = []
+    for shard in shards:
+        permission_row: dict[str, Any] = {"shard": shard}
         try:
             permission = api.actions_permissions(cfg["owner"], shard)
-            row.update(
+            permission_row.update(
                 {
                     "enabled": permission.get("enabled"),
                     "allowed_actions": permission.get("allowed_actions"),
@@ -214,9 +225,40 @@ def dispatch(output: Path, exact_refs_path: Path) -> dict[str, Any]:
                 }
             )
         except Exception as exc:
-            row["error"] = str(exc)
-        permission_rows.append(row)
+            permission_row["error"] = str(exc)
+        permission_rows.append(permission_row)
+
+        workflow_row: dict[str, Any] = {"shard": shard}
+        try:
+            workflows = api.workflows(cfg["owner"], shard).get("workflows", [])
+            target = next(
+                (
+                    item
+                    for item in workflows
+                    if item.get("path") == ".github/workflows/razzo-public-worker-v7.yml"
+                    or item.get("name") == "RAZZO Public Worker V7"
+                ),
+                None,
+            )
+            workflow_row.update(
+                {
+                    "workflowCount": len(workflows),
+                    "workerWorkflow": {
+                        "id": target.get("id"),
+                        "name": target.get("name"),
+                        "path": target.get("path"),
+                        "state": target.get("state"),
+                    }
+                    if target
+                    else None,
+                }
+            )
+        except Exception as exc:
+            workflow_row["error"] = str(exc)
+        workflow_rows.append(workflow_row)
+
     (output / "actions-permissions.json").write_text(json.dumps(permission_rows, indent=2) + "\n")
+    (output / "worker-workflows.json").write_text(json.dumps(workflow_rows, indent=2) + "\n")
 
     dispatched: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
@@ -231,12 +273,49 @@ def dispatch(output: Path, exact_refs_path: Path) -> dict[str, Any]:
     (output / "dispatch-failures.json").write_text(json.dumps(failures, indent=2) + "\n")
     if failures:
         raise RuntimeError(f"{len(failures)} of {len(leases)} shard dispatches failed")
+
+    time.sleep(12)
+    run_rows: list[dict[str, Any]] = []
+    for shard in shards:
+        row: dict[str, Any] = {"shard": shard}
+        try:
+            runs = api.repository_dispatch_runs(cfg["owner"], shard).get("workflow_runs", [])
+            compact = []
+            for run in runs[:5]:
+                compact.append(
+                    {
+                        "id": run.get("id"),
+                        "name": run.get("name"),
+                        "event": run.get("event"),
+                        "status": run.get("status"),
+                        "conclusion": run.get("conclusion"),
+                        "head_sha": run.get("head_sha"),
+                        "path": run.get("path"),
+                        "created_at": run.get("created_at"),
+                        "updated_at": run.get("updated_at"),
+                        "html_url": run.get("html_url"),
+                    }
+                )
+            row["runs"] = compact
+        except Exception as exc:
+            row["error"] = str(exc)
+        run_rows.append(row)
+    (output / "repository-dispatch-runs.json").write_text(json.dumps(run_rows, indent=2) + "\n")
+
+    active_workflows = sum(
+        1
+        for row in workflow_rows
+        if isinstance(row.get("workerWorkflow"), dict) and row["workerWorkflow"].get("state") == "active"
+    )
+    observed_runs = sum(1 for row in run_rows if row.get("runs"))
     return {
         "cycleId": cycle,
         "status": "dispatched",
         "leases": len(dispatched),
-        "actionsEnabled": sum(1 for row in permission_rows if row.get("enabled") is True),
-        "actionsChecked": len(permission_rows),
+        "activeWorkerWorkflows": active_workflows,
+        "workerWorkflowsChecked": len(workflow_rows),
+        "shardsWithObservedDispatchRuns": observed_runs,
+        "shardsChecked": len(run_rows),
     }
 
 
