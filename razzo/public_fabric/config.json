@@ -1,15 +1,27 @@
 {
-  "version": 7,
+  "version": 8,
   "owner": "giovannifidel-collab",
   "controlRepository": "pfarma-ci",
-  "targetFanout": {"min": 12, "max": 20, "hardMax": 24},
-  "buildersPerRepository": {"min": 4, "max": 8},
-  "verifiers": {"min": 2, "max": 4},
+  "targetFanout": {
+    "min": 12,
+    "max": 20,
+    "hardMax": 24
+  },
+  "buildersPerRepository": {
+    "min": 4,
+    "max": 8
+  },
+  "verifiers": {
+    "min": 2,
+    "max": 4
+  },
   "integratorPerCollisionDomain": 1,
   "maxGenerationsPerTrigger": 4,
   "queueRefillThreshold": 8,
   "incrementalReplan": true,
   "speculativeRetry": "p95",
+  "leaseTtlSeconds": 1800,
+  "receiptWaitSeconds": 900,
   "receiptPerJob": true,
   "aggregateReceipt": true,
   "oneProductPrPerVerticalSlice": true,
@@ -17,13 +29,31 @@
   "receiptEvent": "razzo-receipt",
   "tokenSecret": "RAZZO_FABRIC_TOKEN",
   "shards": [
-    "razzo-shard-0003", "razzo-shard-0004", "razzo-shard-0008", "razzo-shard-0009",
-    "razzo-shard-0016", "razzo-shard-0018", "razzo-shard-0019", "razzo-shard-0020",
-    "razzo-shard-0023", "razzo-shard-0024", "razzo-shard-0027", "razzo-shard-0032"
+    "razzo-shard-0003",
+    "razzo-shard-0004",
+    "razzo-shard-0008",
+    "razzo-shard-0009",
+    "razzo-shard-0016",
+    "razzo-shard-0018",
+    "razzo-shard-0019",
+    "razzo-shard-0020",
+    "razzo-shard-0023",
+    "razzo-shard-0024",
+    "razzo-shard-0027",
+    "razzo-shard-0032"
   ],
   "reserveShards": [
-    "razzo-shard-0040", "razzo-shard-0041", "razzo-shard-0042", "razzo-shard-0052",
-    "razzo-shard-0056", "razzo-shard-0060", "razzo-shard-0061", "razzo-shard-0062",
-    "razzo-shard-0064", "razzo-shard-0069", "razzo-shard-0071", "razzo-shard-0074"
+    "razzo-shard-0040",
+    "razzo-shard-0041",
+    "razzo-shard-0042",
+    "razzo-shard-0052",
+    "razzo-shard-0056",
+    "razzo-shard-0060",
+    "razzo-shard-0061",
+    "razzo-shard-0062",
+    "razzo-shard-0064",
+    "razzo-shard-0069",
+    "razzo-shard-0071",
+    "razzo-shard-0074"
   ]
 }

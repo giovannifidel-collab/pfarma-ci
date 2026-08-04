@@ -1,10 +1,11 @@
-name: RAZZO Public Execution Fabric V7
+name: RAZZO Public Execution Fabric V8
 
 on:
   pull_request:
     branches: [main]
     paths:
       - 'razzo/public_fabric/**'
+      - 'razzo/projects.json'
       - '.github/workflows/razzo-public-fabric-v7.yml'
   push:
     branches: [main]
@@ -26,7 +27,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: razzo-public-fabric-v7-${{ github.ref }}-${{ github.event.client_payload.workItemId || github.run_id }}
+  group: razzo-public-fabric-${{ github.ref }}-${{ github.event.client_payload.workItemId || github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -47,12 +48,13 @@ jobs:
       - run: python -m razzo.public_fabric.runtime proof --output razzo-public-proof
       - uses: actions/upload-artifact@v4
         with:
-          name: razzo-public-fabric-v7-proof
+          name: razzo-public-fabric-contract-proof
           path: razzo-public-proof
 
   dispatch:
     if: (github.event_name == 'workflow_dispatch' && inputs.mode == 'dispatch') || github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       RAZZO_FABRIC_TOKEN: ${{ secrets.RAZZO_FABRIC_TOKEN }}
     steps:
@@ -76,8 +78,8 @@ jobs:
           - attempt: \`${RUN_ATTEMPT}\`;
           - trigger SHA: \`${TRIGGER_SHA}\`;
           - requested fan-out: \`12\` active public shards;
-          - hard maximum: \`24\`;
           - mode: \`dispatch\`;
+          - queue contract: \`razzo.public-queue.v1\`;
           - secrets or product source published: \`0\`.
           EOF
           gh api "repos/${GITHUB_REPOSITORY}/issues/${RAZZO_LIVE_ISSUE}/comments" -F body=@/tmp/razzo-start.md
@@ -91,7 +93,6 @@ jobs:
           token = os.environ.get('RAZZO_FABRIC_TOKEN', '').strip()
           if not token:
               raise SystemExit('RAZZO_FABRIC_TOKEN is missing')
-
           portfolio = json.load(open('razzo/projects.json', encoding='utf-8'))
           refs = {}
           for project in portfolio['projects']:
@@ -107,17 +108,66 @@ jobs:
               with urllib.request.urlopen(request, timeout=45) as response:
                   payload = json.load(response)
               refs[project['id']] = payload['object']['sha']
-
           json.dump(refs, open('exact-refs.json', 'w', encoding='utf-8'), indent=2)
           PY
 
-      - name: Dispatch public shard leases
+      - name: Dispatch leased public work items
         run: python -m razzo.public_fabric.runtime dispatch --exact-refs exact-refs.json --output razzo-dispatch
+
+      - name: Persist queue manifest in the live ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          queue = json.loads(Path('razzo-dispatch/queue-manifest.json').read_text(encoding='utf-8'))
+          compact = {
+              'schema': queue['schema'],
+              'cycleId': queue['cycleId'],
+              'generationId': queue['generationId'],
+              'status': queue['status'],
+              'workItems': [
+                  {
+                      'workItemId': item['workItemId'],
+                      'projectId': item['projectId'],
+                      'shard': item['shard'],
+                      'title': item['title'],
+                      'kind': item['kind'],
+                      'collisionDomain': item['collisionDomain'],
+                      'exactInputSha': item['exactInputSha'],
+                      'status': item['status'],
+                  }
+                  for item in queue['workItems']
+              ],
+          }
+          body = (
+              '`PUBLIC_FABRIC_CYCLE_MANIFEST`\n\n'
+              f'- cycle ID: `{compact["cycleId"]}`;\n'
+              f'- generation ID: `{compact["generationId"]}`;\n'
+              f'- queue status: `{compact["status"]}`;\n'
+              f'- work items: `{len(compact["workItems"])}`.\n'
+              f'<!-- RAZZO_QUEUE_JSON {json.dumps(compact, separators=(",", ":"))} -->'
+          )
+          Path('/tmp/razzo-queue.md').write_text(body, encoding='utf-8')
+          PY
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${RAZZO_LIVE_ISSUE}/comments" -F body=@/tmp/razzo-queue.md
+
+      - name: Wait for receipts and verify cycle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -m razzo.public_fabric.aggregate_receipts \
+            --leases razzo-dispatch/dispatched-leases.json \
+            --output razzo-dispatch \
+            --issue "${RAZZO_LIVE_ISSUE}" \
+            --timeout 900
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: razzo-public-fabric-v7-dispatch
+          name: razzo-public-fabric-cycle
           path: razzo-dispatch
 
       - name: Publish dispatch terminal state
@@ -131,33 +181,24 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-
-          leases_path = Path('razzo-dispatch/dispatched-leases.json')
-          status = os.environ['JOB_STATUS']
-          run_id = os.environ['RUN_ID']
-          if leases_path.exists():
-              leases = json.loads(leases_path.read_text(encoding='utf-8'))
-              cycle = leases[0]['cycleId'] if leases else 'unknown'
-              projects = sorted({item['projectId'] for item in leases})
-              shards = [item['shard'] for item in leases]
+          aggregate_path = Path('razzo-dispatch/aggregate-cycle-receipt.json')
+          if aggregate_path.exists():
+              aggregate = json.loads(aggregate_path.read_text(encoding='utf-8'))
               body = (
                   '`PUBLIC_FABRIC_DISPATCH_TERMINAL`\n\n'
-                  f'- workflow run: `{run_id}`;\n'
-                  f'- job status: `{status}`;\n'
-                  f'- cycle ID: `{cycle}`;\n'
-                  f'- leases dispatched: `{len(leases)}`;\n'
-                  f'- projects: `{", ".join(projects)}`;\n'
-                  f'- public shards: `{", ".join(shards)}`;\n'
-                  '- exact-SHA resolution: `completed`;\n'
-                  '- next expected events: sanitized `PUBLIC_FABRIC_SHARD_RECEIPT` comments.\n'
+                  f'- workflow run: `{os.environ["RUN_ID"]}`;\n'
+                  f'- job status: `{os.environ["JOB_STATUS"]}`;\n'
+                  f'- cycle ID: `{aggregate["cycleId"]}`;\n'
+                  f'- completed/verified: `{aggregate["workstreamsCompleted"]}/{aggregate["workstreamsVerified"]}`;\n'
+                  f'- parallel peak: `{aggregate["parallelPeak"]}`;\n'
+                  f'- aggregate status: `{aggregate["status"]}`.\n'
               )
           else:
               body = (
                   '`PUBLIC_FABRIC_DISPATCH_TERMINAL`\n\n'
-                  f'- workflow run: `{run_id}`;\n'
-                  f'- job status: `{status}`;\n'
-                  '- leases dispatched: `0 or unknown`;\n'
-                  '- state: dispatch artifact was not produced; inspect this run before retrying.\n'
+                  f'- workflow run: `{os.environ["RUN_ID"]}`;\n'
+                  f'- job status: `{os.environ["JOB_STATUS"]}`;\n'
+                  '- aggregate status: `missing`; inspect the cycle artifact.\n'
               )
           Path('/tmp/razzo-terminal.md').write_text(body, encoding='utf-8')
           PY
@@ -178,11 +219,18 @@ jobs:
           receipt = envelope.get('receipt', envelope)
           if not isinstance(receipt, dict):
               raise SystemExit('invalid receipt envelope')
-          required = {'cycleId', 'generation', 'workItemId', 'shard', 'status', 'startedEpoch', 'endedEpoch', 'exactInputSha'}
+          required = {
+              'cycleId', 'generation', 'generationId', 'workItemId', 'shard', 'projectId',
+              'status', 'startedEpoch', 'endedEpoch', 'exactInputSha',
+              'title', 'kind', 'collisionDomain', 'verification', 'idempotencyKey'
+          }
           missing = sorted(required - set(receipt))
           if missing:
               raise SystemExit(f'missing receipt fields: {missing}')
-          allowed_keys = required | {'projectId', 'repository', 'collisionDomain', 'attempt', 'durationSeconds', 'observedSha', 'commands', 'error'}
+          allowed_keys = required | {
+              'repository', 'targetLane', 'priority', 'attempt', 'durationSeconds',
+              'observedSha', 'commands', 'metrics', 'error'
+          }
           allowed = {key: receipt[key] for key in receipt if key in allowed_keys}
           pathlib.Path('receipt/receipt.json').write_text(json.dumps(allowed, indent=2) + '\n', encoding='utf-8')
           PY
@@ -200,21 +248,22 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-
           r = json.loads(Path('receipt/receipt.json').read_text(encoding='utf-8'))
           body = (
               '`PUBLIC_FABRIC_SHARD_RECEIPT`\n\n'
               f'- cycle ID: `{r["cycleId"]}`;\n'
-              f'- generation: `{r["generation"]}`;\n'
+              f'- generation ID: `{r["generationId"]}`;\n'
               f'- work item: `{r["workItemId"]}`;\n'
               f'- shard: `{r["shard"]}`;\n'
-              f'- project: `{r.get("projectId", "unknown")}`;\n'
-              f'- repository: `{r.get("repository", "unknown")}`;\n'
+              f'- project: `{r["projectId"]}`;\n'
+              f'- title: `{r["title"]}`;\n'
+              f'- kind: `{r["kind"]}`;\n'
               f'- status: `{r["status"]}`;\n'
               f'- exact input SHA: `{r["exactInputSha"]}`;\n'
               f'- observed SHA: `{r.get("observedSha", "not-reported")}`;\n'
               f'- duration seconds: `{r.get("durationSeconds", r["endedEpoch"] - r["startedEpoch"])}`;\n'
               f'- error: `{r.get("error", "none")}`.\n'
+              f'<!-- RAZZO_RECEIPT_JSON {json.dumps(r, separators=(",", ":"))} -->'
           )
           Path('/tmp/razzo-receipt.md').write_text(body, encoding='utf-8')
           PY
