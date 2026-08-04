@@ -12,6 +12,8 @@ on:
         type: choice
         options: [proof, dispatch]
         default: proof
+  repository_dispatch:
+    types: [razzo-receipt]
   schedule:
     - cron: '7 * * * *'
 
@@ -19,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: razzo-public-fabric-v7-${{ github.ref }}
+  group: razzo-public-fabric-v7-${{ github.ref }}-${{ github.event.client_payload.workItemId || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -71,3 +73,26 @@ jobs:
         with:
           name: razzo-public-fabric-v7-dispatch
           path: razzo-dispatch
+
+  collect-receipt:
+    if: github.event_name == 'repository_dispatch' && github.event.action == 'razzo-receipt'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate and persist sanitized receipt
+        env:
+          RECEIPT: ${{ toJson(github.event.client_payload) }}
+        run: |
+          mkdir -p receipt
+          python - <<'PY'
+          import json, os, pathlib
+          r=json.loads(os.environ['RECEIPT'])
+          required={'cycleId','generation','workItemId','shard','status','startedEpoch','endedEpoch','exactInputSha'}
+          missing=sorted(required-set(r))
+          if missing: raise SystemExit(f'missing receipt fields: {missing}')
+          allowed={k:r[k] for k in r if k in required|{'projectId','repository','collisionDomain','attempt','durationSeconds','observedSha','commands','error'}}
+          pathlib.Path('receipt/receipt.json').write_text(json.dumps(allowed, indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-receipt-${{ github.event.client_payload.cycleId }}-${{ github.event.client_payload.workItemId }}
+          path: receipt/receipt.json
