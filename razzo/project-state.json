@@ -1,37 +1,38 @@
 {
-  "version": 4,
+  "version": 5,
   "sourceOfTruth": "github-current-integration-heads-open-product-prs-and-enabled-registry",
-  "rediscoveryEpoch": "2026-08-03T20:23:00Z",
-  "factoryAllocationPaused": true,
+  "rediscoveryEpoch": "2026-08-04T23:05:00Z",
+  "factoryAllocationPaused": false,
+  "resumeReason": "owner explicitly instructed the Factory to calculate, resume and continue without routine authorization",
   "projects": [
     {
       "id": "project-giovanni",
-      "exactSha": "ab726e0f98c4ae6988cd160ae8e52273f992ef88",
-      "ready": 1,
+      "exactSha": "0cec483667809d44e72f8e4e514f46cd29399379",
+      "ready": 4,
       "backpressure": false,
       "humanGate": false,
-      "blocker": "factory-allocation-paused-by-owner",
-      "queueHint": "queued:PG-DELIVERY-DAILY-TRAINING-001; issue=#126; allocation-suspended-until-explicit-restart",
+      "blocker": null,
+      "queueHint": "active:P0 usable release #152; premium UI #147; offline/PWA #142; public-fabric verification wave enabled",
       "collisionDomain": "product/daily-training-journey"
     },
     {
       "id": "pfarma-cloud",
-      "exactSha": "91b47fd980c7263aa64735ede0ecbfb4c4885b3a",
-      "ready": 1,
+      "exactSha": "4ec4c68669be40b1b6e48fab018c42b4a908362b",
+      "ready": 4,
       "backpressure": false,
       "humanGate": false,
-      "blocker": "factory-allocation-paused-by-owner",
-      "queueHint": "queued:PF-DELIVERY-SEPTEMBER-CORE-001; allocation-suspended-until-explicit-restart",
+      "blocker": null,
+      "queueHint": "active:September operational core; public-fabric verification and discovery wave enabled",
       "collisionDomain": "product/september-operational-core"
     },
     {
       "id": "family-cloud",
-      "exactSha": "d1db864e683e7920db0dc19e0954916e07a460f6",
-      "ready": 1,
+      "exactSha": "6b9cdfc6e865204a490456688c55e1d61c5ced41",
+      "ready": 4,
       "backpressure": false,
       "humanGate": false,
-      "blocker": "factory-allocation-paused-by-owner",
-      "queueHint": "queued:FC-DELIVERY-LOCAL-JOURNEY-001; allocation-suspended-until-explicit-restart",
+      "blocker": null,
+      "queueHint": "active:local family journey; public-fabric verification and discovery wave enabled",
       "collisionDomain": "product/local-family-journey"
     }
   ]
