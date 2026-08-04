@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "mode": "PRODUCT",
+  "fanout": {
+    "targetMin": 12,
+    "targetMax": 20,
+    "hardMax": 24,
+    "builderPerRepoMin": 4,
+    "builderPerRepoMax": 8,
+    "verifierMin": 2,
+    "verifierMax": 4,
+    "integratorPerCollisionDomain": 1,
+    "queueRefillThreshold": 8
+  },
+  "generations": {
+    "maxPerTrigger": 4,
+    "incrementalReplan": true,
+    "overlapVerification": true
+  },
+  "retry": {
+    "strategy": "speculative-p95",
+    "maxAttempts": 2,
+    "cancelLoser": true,
+    "minimumSamples": 5
+  },
+  "receipts": {
+    "perJob": true,
+    "aggregate": true,
+    "exactSha": true
+  },
+  "pullRequests": {
+    "onePerVerticalSlice": true,
+    "draftUntilVerified": true,
+    "expectedHeadRequired": true
+  },
+  "runner": {
+    "preferredLabels": [
+      "self-hosted",
+      "linux",
+      "x64",
+      "razzo-persistent"
+    ],
+    "hostedFallback": true,
+    "cacheRoot": "/opt/razzo/cache",
+    "workspaceRoot": "/opt/razzo/work"
+  },
+  "requirements": {
+    "githubWriteTokenEnv": "RAZZO_FACTORY_TOKEN",
+    "builderCommandEnv": "RAZZO_BUILDER_COMMAND",
+    "productionRequiresPersistentRunner": true
+  }
+}
