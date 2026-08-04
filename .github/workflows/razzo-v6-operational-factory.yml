@@ -1,30 +1,182 @@
-name: RAZZO V6 Legacy Regression (Manual)
+name: RAZZO V6 Operational Factory
 
 on:
-  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/runtime_v6/**'
+      - 'tests/test_razzo_runtime_v6.py'
+      - '.github/workflows/razzo-v6-operational-factory.yml'
 
 permissions:
   contents: read
 
-concurrency:
-  group: razzo-v6-legacy-regression
-  cancel-in-progress: true
-
 jobs:
-  regression:
+  trigger_dispatch:
+    runs-on: ubuntu-latest
+    outputs:
+      cycle_id: ${{ steps.plan.outputs.cycle_id }}
+      generation_id: ${{ steps.plan.outputs.generation_id }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install dynamic portfolio ref resolver
+        run: |
+          chmod +x razzo/runtime_v6/bin/git
+          echo "$GITHUB_WORKSPACE/razzo/runtime_v6/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Runtime unit tests
+        run: python -m unittest -v tests/test_razzo_runtime_v6.py
+      - id: plan
+        name: Materialize generation 1 queue
+        run: python -m razzo.runtime_v6.runtime materialize --generation 1 --minimum-items 8 --output generation-1-plan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generation-1-plan
+          path: generation-1-plan.json
+
+  workers_generation_1:
+    needs: trigger_dispatch
+    name: g1 / ${{ matrix.workerId }} / ${{ matrix.projectId }} / ${{ matrix.kind }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJson(needs.trigger_dispatch.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install dynamic portfolio ref resolver
+        run: |
+          chmod +x razzo/runtime_v6/bin/git
+          echo "$GITHUB_WORKSPACE/razzo/runtime_v6/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute leased work item
+        env:
+          ITEM: ${{ toJson(matrix) }}
+        run: python -m razzo.runtime_v6.runtime worker --item "$ITEM" --receipt "receipt-${{ matrix.workItemId }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g1-receipt-${{ matrix.workItemId }}
+          path: receipt-${{ matrix.workItemId }}.json
+
+  verify_replan:
+    needs: [trigger_dispatch, workers_generation_1]
+    runs-on: ubuntu-latest
+    outputs:
+      generation_id: ${{ steps.replan.outputs.generation_id }}
+      matrix: ${{ steps.replan.outputs.matrix }}
+      g1_peak: ${{ steps.verify.outputs.concurrent_peak }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install dynamic portfolio ref resolver
+        run: |
+          chmod +x razzo/runtime_v6/bin/git
+          echo "$GITHUB_WORKSPACE/razzo/runtime_v6/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: g1-receipt-*
+          path: receipts-g1
+          merge-multiple: true
+      - id: verify
+        name: Verify every generation 1 receipt
+        run: python -m razzo.runtime_v6.runtime verify --receipts receipts-g1 --generation-id "${{ needs.trigger_dispatch.outputs.generation_id }}" --summary generation-1-summary.json
+      - id: replan
+        name: Immediate same-run replan and generation 2 fan-out
+        run: python -m razzo.runtime_v6.runtime replan --previous-summary generation-1-summary.json --cycle-id "${{ needs.trigger_dispatch.outputs.cycle_id }}" --generation 2 --output generation-2-plan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generation-1-verification-and-generation-2-plan
+          path: |
+            generation-1-summary.json
+            generation-2-plan.json
+
+  workers_generation_2:
+    needs: [trigger_dispatch, verify_replan]
+    name: g2 / ${{ matrix.workerId }} / ${{ matrix.projectId }} / ${{ matrix.kind }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJson(needs.verify_replan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install dynamic portfolio ref resolver
+        run: |
+          chmod +x razzo/runtime_v6/bin/git
+          echo "$GITHUB_WORKSPACE/razzo/runtime_v6/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute replanned work item
+        env:
+          ITEM: ${{ toJson(matrix) }}
+        run: python -m razzo.runtime_v6.runtime worker --item "$ITEM" --receipt "receipt-${{ matrix.workItemId }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g2-receipt-${{ matrix.workItemId }}
+          path: receipt-${{ matrix.workItemId }}.json
+
+  verifier_integrator_cycle_receipt:
+    needs: [trigger_dispatch, verify_replan, workers_generation_2]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install dynamic portfolio ref resolver
+        run: |
+          chmod +x razzo/runtime_v6/bin/git
+          echo "$GITHUB_WORKSPACE/razzo/runtime_v6/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Verify exact SHA
-        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-      - name: Run V6 unit regression only
-        run: python -m unittest razzo.v6.test_runtime -v
-      - name: State legacy boundary
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: g1-receipt-*
+          path: receipts-g1
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: g2-receipt-*
+          path: receipts-g2
+          merge-multiple: true
+      - name: Verify generation 2
+        run: python -m razzo.runtime_v6.runtime verify --receipts receipts-g2 --generation-id "${{ needs.verify_replan.outputs.generation_id }}" --summary generation-2-summary.json
+      - name: Integrator and aggregate cycle receipt
+        run: python -m razzo.runtime_v6.runtime aggregate --cycle-id "${{ needs.trigger_dispatch.outputs.cycle_id }}" --receipts receipts-g1 --receipts receipts-g2 --output aggregate-cycle-receipt.json
+      - name: Acceptance gates
         run: |
-          echo "V6 is retained only for manual regression compatibility."
-          echo "It cannot dispatch proof waves, claim product progress, publish, or trigger continuation."
+          python - <<'PY'
+          import json
+          receipt=json.load(open('aggregate-cycle-receipt.json'))
+          assert receipt['workstreams_dispatched'] >= 12
+          assert receipt['parallel_peak'] >= 2
+          assert len(receipt['generations_executed']) >= 2
+          assert receipt['verifier'] == 'green'
+          assert receipt['proof_mode'] == 'OPERATIONAL_PROOF'
+          assert receipt['product_progress'] is False
+          print(json.dumps(receipt, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: razzo-v6-operational-proof
+          path: |
+            generation-2-summary.json
+            aggregate-cycle-receipt.json

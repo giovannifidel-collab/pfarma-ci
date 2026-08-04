@@ -35,6 +35,8 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/project-history-ref.txt"),
     PurePosixPath("razzo/project-offline-ref.txt"),
     PurePosixPath("razzo/state/README.md"),
+    PurePosixPath("razzo/runtime_v6/bin/git"),
+    PurePosixPath("tests/test_razzo_runtime_v6.py"),
 }
 
 ALLOWED_CODE_PREFIXES = (
@@ -43,6 +45,7 @@ ALLOWED_CODE_PREFIXES = (
     PurePosixPath("razzo/super_factory"),
     PurePosixPath("razzo/v6"),
     PurePosixPath("razzo/v7"),
+    PurePosixPath("razzo/runtime_v6"),
     PurePosixPath("razzo/kernel"),
     PurePosixPath("razzo/audits"),
 )
