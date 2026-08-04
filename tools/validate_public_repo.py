@@ -46,6 +46,7 @@ ALLOWED_CODE_PREFIXES = (
     PurePosixPath("razzo/v6"),
     PurePosixPath("razzo/v7"),
     PurePosixPath("razzo/runtime_v6"),
+    PurePosixPath("razzo/public_fabric"),
     PurePosixPath("razzo/kernel"),
     PurePosixPath("razzo/audits"),
 )
