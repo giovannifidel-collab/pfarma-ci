@@ -2,14 +2,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from razzo.public_fabric.runtime import CONFIG, FabricPlanner, ReceiptVerifier, Lease, load, proof
+from razzo.public_fabric.runtime import CONFIG, ReceiptVerifier, Lease, load, proof
 
 
 class PublicFabricTests(unittest.TestCase):
     def test_configuration(self):
         cfg = load(CONFIG)
         self.assertEqual(cfg["targetFanout"], {"min": 12, "max": 20, "hardMax": 24})
-        self.assertEqual(len(cfg["shards"]), 24)
+        self.assertEqual(len(cfg["shards"]), 12)
+        self.assertEqual(len(cfg["reserveShards"]), 12)
+        self.assertEqual(len(cfg["shards"]) + len(cfg["reserveShards"]), 24)
         self.assertEqual(cfg["maxGenerationsPerTrigger"], 4)
         self.assertTrue(cfg["incrementalReplan"])
         self.assertEqual(cfg["speculativeRetry"], "p95")
@@ -19,8 +21,8 @@ class PublicFabricTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             result = proof(Path(td))
             self.assertEqual(result["generations"], 4)
-            self.assertEqual(result["logicalWorkItems"], 80)
-            self.assertEqual(result["configuredShards"], 24)
+            self.assertEqual(result["logicalWorkItems"], 48)
+            self.assertEqual(result["configuredShards"], 12)
             self.assertTrue((Path(td) / "aggregate-cycle-receipt.json").exists())
 
     def test_receipt_identity(self):
