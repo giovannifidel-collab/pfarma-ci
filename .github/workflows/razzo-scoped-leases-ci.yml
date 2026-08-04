@@ -4,7 +4,7 @@ on:
     branches: [main]
     paths:
       - 'razzo/kernel/scoped_leases.py'
-      - 'tests/test_scoped_leases.py'
+      - 'razzo/kernel/tests/test_scoped_leases.py'
       - '.github/workflows/razzo-scoped-leases-ci.yml'
 permissions:
   contents: read
@@ -15,11 +15,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install pytest
-      - run: python -m pytest -q tests/test_scoped_leases.py
+      - run: python -m pytest -q razzo/kernel/tests/test_scoped_leases.py
       - name: Exact head and secret boundary
         run: |
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
