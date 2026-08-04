@@ -6,6 +6,7 @@ import os
 import time
 import urllib.request
 from collections import Counter
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
@@ -111,12 +112,17 @@ def compact_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
 
 
 def aggregate(leases: list[dict[str, Any]], receipts: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
-    expected = {lease["workItemId"]: Lease(**lease) for lease in leases}
+    lease_fields = {field.name for field in fields(Lease)}
+    expected = {
+        lease["workItemId"]: Lease(**{key: lease[key] for key in lease_fields})
+        for lease in leases
+    }
     counts = Counter(receipt.get("workItemId") for receipt in receipts)
     duplicates = sorted(item for item, count in counts.items() if item and count > 1)
+    receipt_ids = {receipt.get("workItemId") for receipt in receipts if receipt.get("workItemId")}
     by_id = {receipt["workItemId"]: receipt for receipt in receipts if receipt.get("workItemId") in expected}
     missing = sorted(set(expected) - set(by_id))
-    unexpected = sorted(set(by_id) - set(expected))
+    unexpected = sorted(receipt_ids - set(expected))
 
     verifier = ReceiptVerifier()
     checks = []
