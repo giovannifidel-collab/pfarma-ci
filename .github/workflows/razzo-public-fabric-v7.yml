@@ -169,12 +169,15 @@ jobs:
     steps:
       - name: Validate and persist sanitized receipt
         env:
-          RECEIPT: ${{ toJson(github.event.client_payload) }}
+          RECEIPT_ENVELOPE: ${{ toJson(github.event.client_payload) }}
         run: |
           mkdir -p receipt
           python - <<'PY'
           import json, os, pathlib
-          receipt = json.loads(os.environ['RECEIPT'])
+          envelope = json.loads(os.environ['RECEIPT_ENVELOPE'])
+          receipt = envelope.get('receipt', envelope)
+          if not isinstance(receipt, dict):
+              raise SystemExit('invalid receipt envelope')
           required = {'cycleId', 'generation', 'workItemId', 'shard', 'status', 'startedEpoch', 'endedEpoch', 'exactInputSha'}
           missing = sorted(required - set(receipt))
           if missing:
@@ -186,7 +189,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: razzo-receipt-${{ github.event.client_payload.cycleId }}-${{ github.event.client_payload.workItemId }}
+          name: razzo-receipt-${{ github.event.client_payload.workItemId }}
           path: receipt/receipt.json
 
       - name: Publish sanitized shard receipt
