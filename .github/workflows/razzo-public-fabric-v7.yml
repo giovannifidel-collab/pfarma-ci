@@ -221,7 +221,7 @@ jobs:
               raise SystemExit('invalid receipt envelope')
           required = {
               'cycleId', 'generation', 'generationId', 'workItemId', 'shard', 'projectId',
-              'status', 'startedEpoch', 'endedEpoch', 'exactInputSha', 'observedSha',
+              'status', 'startedEpoch', 'endedEpoch', 'exactInputSha',
               'title', 'kind', 'collisionDomain', 'verification', 'idempotencyKey'
           }
           missing = sorted(required - set(receipt))
@@ -229,7 +229,7 @@ jobs:
               raise SystemExit(f'missing receipt fields: {missing}')
           allowed_keys = required | {
               'repository', 'targetLane', 'priority', 'attempt', 'durationSeconds',
-              'commands', 'metrics', 'error'
+              'observedSha', 'commands', 'metrics', 'error'
           }
           allowed = {key: receipt[key] for key in receipt if key in allowed_keys}
           pathlib.Path('receipt/receipt.json').write_text(json.dumps(allowed, indent=2) + '\n', encoding='utf-8')
@@ -260,7 +260,7 @@ jobs:
               f'- kind: `{r["kind"]}`;\n'
               f'- status: `{r["status"]}`;\n'
               f'- exact input SHA: `{r["exactInputSha"]}`;\n'
-              f'- observed SHA: `{r["observedSha"]}`;\n'
+              f'- observed SHA: `{r.get("observedSha", "not-reported")}`;\n'
               f'- duration seconds: `{r.get("durationSeconds", r["endedEpoch"] - r["startedEpoch"])}`;\n'
               f'- error: `{r.get("error", "none")}`.\n'
               f'<!-- RAZZO_RECEIPT_JSON {json.dumps(r, separators=(",", ":"))} -->'
