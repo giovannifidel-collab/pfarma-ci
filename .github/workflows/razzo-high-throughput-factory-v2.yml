@@ -9,7 +9,6 @@ on:
       - 'razzo/runtime_v6/high_throughput.json'
       - 'razzo/runtime_v6/test_high_throughput.py'
       - '.github/workflows/razzo-high-throughput-factory-v2.yml'
-      - 'scripts/install_razzo_runner.py'
   workflow_dispatch:
     inputs:
       mode:
@@ -38,8 +37,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - id: mode
-        run: echo "value=${{ github.event_name == 'pull_request' && 'proof' || inputs.mode || 'proof' }}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "value=proof" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "value=product" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ inputs.mode || 'proof' }}" >> "$GITHUB_OUTPUT"
+          fi
       - run: python -m unittest -v razzo.runtime_v6.test_high_throughput
       - run: python -m razzo.runtime_v6.high_throughput_runtime preflight --mode proof
 
@@ -63,16 +73,48 @@ jobs:
   product-wave:
     needs: preflight
     if: needs.preflight.outputs.mode == 'product'
-    runs-on: [self-hosted, linux, x64, razzo-persistent]
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
     permissions:
       contents: read
     env:
+      RAZZO_FACTORY_TOKEN: ${{ secrets.RAZZO_FACTORY_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      RAZZO_BUILDER_COMMAND: codex exec --full-auto
       RUNNER_ENVIRONMENT: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - name: Fail closed unless runner service environment provides writer and coding executor
-        run: python -m razzo.runtime_v6.high_throughput_runtime preflight --mode product
-      - name: Four-generation incremental product cycle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Restore persistent online repository cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/.cache/razzo/repos
+          key: razzo-repo-cache-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            razzo-repo-cache-${{ runner.os }}-
+      - name: Prepare online workspaces
+        run: |
+          mkdir -p /home/runner/.cache/razzo/repos
+          mkdir -p /home/runner/work/_razzo-workspaces
+      - name: Install Codex CLI online
+        run: npm install --global @openai/codex
+      - name: Verify online credentials and coding executor
+        shell: bash
+        run: |
+          test -n "$RAZZO_FACTORY_TOKEN" || { echo 'Missing RAZZO_FACTORY_TOKEN'; exit 2; }
+          test -n "$OPENAI_API_KEY" || { echo 'Missing OPENAI_API_KEY'; exit 2; }
+          command -v codex
+          command -v gh
+          codex --version
+          python -m razzo.runtime_v6.high_throughput_runtime preflight --mode product
+      - name: Four-generation incremental online product cycle
         run: python -m razzo.runtime_v6.high_throughput_runtime cycle --mode product --output razzo-product
       - uses: actions/upload-artifact@v4
         if: always()

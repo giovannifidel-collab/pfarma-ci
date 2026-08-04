@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "mode": "PRODUCT",
   "fanout": {
     "targetMin": 12,
@@ -34,19 +34,18 @@
     "expectedHeadRequired": true
   },
   "runner": {
-    "preferredLabels": [
-      "self-hosted",
-      "linux",
-      "x64",
-      "razzo-persistent"
-    ],
-    "hostedFallback": true,
-    "cacheRoot": "/opt/razzo/cache",
-    "workspaceRoot": "/opt/razzo/work"
+    "execution": "github-hosted",
+    "preferredLabels": ["ubuntu-latest"],
+    "hostedFallback": false,
+    "cacheRoot": "/home/runner/.cache/razzo/repos",
+    "workspaceRoot": "/home/runner/work/_razzo-workspaces",
+    "persistentCacheProvider": "actions/cache"
   },
   "requirements": {
     "githubWriteTokenEnv": "RAZZO_FACTORY_TOKEN",
     "builderCommandEnv": "RAZZO_BUILDER_COMMAND",
-    "productionRequiresPersistentRunner": true
+    "openAiKeyEnv": "OPENAI_API_KEY",
+    "productionRequiresPersistentRunner": false,
+    "productionRequiresOnlineRunner": true
   }
 }
