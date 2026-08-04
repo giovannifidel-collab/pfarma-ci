@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "protocol": "RAZZO",
   "dynamicPortfolio": true,
   "totalNormalSlots": 64,
@@ -8,9 +8,19 @@
     "enabled": true,
     "protectMain": true,
     "taskGraphPath": "factory/task-graph.json",
-    "projectManifestCandidates": [".razzo/project.json", "factory/project.json"],
-    "policyCandidates": ["factory/policy.json", ".razzo/policy.json"],
-    "executorCandidates": ["factory/executor", "factory/executor.py", "factory/executor.ts"],
+    "projectManifestCandidates": [
+      ".razzo/project.json",
+      "factory/project.json"
+    ],
+    "policyCandidates": [
+      "factory/policy.json",
+      ".razzo/policy.json"
+    ],
+    "executorCandidates": [
+      "factory/executor",
+      "factory/executor.py",
+      "factory/executor.ts"
+    ],
     "productFirst": true,
     "selfReplan": true,
     "continuousDiscovery": true,
@@ -29,7 +39,40 @@
       "sourceRefFile": "project-giovanni-source-ref.txt",
       "portfolioRefFile": "razzo/project-giovanni-ref.txt",
       "factoryTest": "npm run test:factory --if-present",
-      "factoryPlan": "npm run factory:plan --if-present"
+      "factoryPlan": "npm run factory:plan --if-present",
+      "publicFabricWorkstreams": [
+        {
+          "id": "factory-tests",
+          "title": "Project Giovanni Factory regression suite",
+          "kind": "verification",
+          "priority": "P0",
+          "command": "npm run test:factory --if-present",
+          "verification": "exit-zero+exact-sha"
+        },
+        {
+          "id": "factory-plan",
+          "title": "Project Giovanni Factory planner execution",
+          "kind": "planning",
+          "priority": "P1",
+          "command": "npm run factory:plan --if-present",
+          "verification": "exit-zero+exact-sha"
+        },
+        {
+          "id": "repository-integrity",
+          "title": "Project Giovanni repository object integrity",
+          "kind": "integrity",
+          "priority": "P1",
+          "command": "git fsck --no-dangling",
+          "verification": "exit-zero+exact-sha"
+        },
+        {
+          "id": "product-discovery",
+          "title": "Project Giovanni sanitized product discovery scan",
+          "kind": "discovery",
+          "priority": "P1",
+          "verification": "sanitized-metrics+exact-sha"
+        }
+      ]
     },
     {
       "id": "pfarma-cloud",
@@ -43,7 +86,40 @@
       "sourceRefFile": "source-ref.txt",
       "portfolioRefFile": "razzo/pfarma-ref.txt",
       "factoryTest": "python -m unittest factory.test_razzo_executor && for f in tests/test_stock_threshold_preview.py tests/test_interwarehouse_transfer_preview.py; do [ ! -f \"$f\" ] || python \"$f\"; done",
-      "factoryPlan": "python -m factory.plan"
+      "factoryPlan": "python -m factory.plan",
+      "publicFabricWorkstreams": [
+        {
+          "id": "factory-tests",
+          "title": "PFarma Factory and focused regression suite",
+          "kind": "verification",
+          "priority": "P0",
+          "command": "python -m unittest factory.test_razzo_executor && for f in tests/test_stock_threshold_preview.py tests/test_interwarehouse_transfer_preview.py; do [ ! -f \"$f\" ] || python \"$f\"; done",
+          "verification": "exit-zero+exact-sha"
+        },
+        {
+          "id": "factory-plan",
+          "title": "PFarma Factory planner execution",
+          "kind": "planning",
+          "priority": "P1",
+          "command": "python -m factory.plan",
+          "verification": "exit-zero+exact-sha"
+        },
+        {
+          "id": "repository-integrity",
+          "title": "PFarma repository object integrity",
+          "kind": "integrity",
+          "priority": "P1",
+          "command": "git fsck --no-dangling",
+          "verification": "exit-zero+exact-sha"
+        },
+        {
+          "id": "product-discovery",
+          "title": "PFarma sanitized product discovery scan",
+          "kind": "discovery",
+          "priority": "P1",
+          "verification": "sanitized-metrics+exact-sha"
+        }
+      ]
     },
     {
       "id": "family-cloud",
@@ -57,12 +133,55 @@
       "sourceRefFile": "family-cloud-ref.txt",
       "portfolioRefFile": "family-cloud-ref.txt",
       "factoryTest": "npm test",
-      "factoryPlan": "npm run factory:plan"
+      "factoryPlan": "npm run factory:plan",
+      "publicFabricWorkstreams": [
+        {
+          "id": "factory-tests",
+          "title": "Family Cloud full test suite",
+          "kind": "verification",
+          "priority": "P0",
+          "command": "npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm test",
+          "verification": "exit-zero+exact-sha"
+        },
+        {
+          "id": "typecheck",
+          "title": "Family Cloud TypeScript exact-SHA gate",
+          "kind": "verification",
+          "priority": "P0",
+          "command": "npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm run typecheck",
+          "verification": "exit-zero+exact-sha"
+        },
+        {
+          "id": "factory-plan",
+          "title": "Family Cloud Factory planner execution",
+          "kind": "planning",
+          "priority": "P1",
+          "command": "npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm run factory:plan",
+          "verification": "exit-zero+exact-sha"
+        },
+        {
+          "id": "product-discovery",
+          "title": "Family Cloud sanitized product discovery scan",
+          "kind": "discovery",
+          "priority": "P1",
+          "verification": "sanitized-metrics+exact-sha"
+        }
+      ]
     }
   ],
   "onboarding": {
     "rule": "Add or enable a project here; do not edit the AVANZA TUTTO operator command or scheduled task prompts.",
-    "minimumFields": ["id", "repository", "enabled"],
-    "recommendedFields": ["integrationLane", "taskGraphPath", "normalConcurrency", "burstConcurrency", "portfolioRefFile"]
+    "minimumFields": [
+      "id",
+      "repository",
+      "enabled"
+    ],
+    "recommendedFields": [
+      "integrationLane",
+      "taskGraphPath",
+      "normalConcurrency",
+      "burstConcurrency",
+      "portfolioRefFile"
+    ]
   }
 }
