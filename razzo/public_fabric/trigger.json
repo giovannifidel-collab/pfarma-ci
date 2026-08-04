@@ -1,6 +1,6 @@
 {
-  "requestedAt": "2026-08-04T20:12:00+02:00",
+  "requestedAt": "2026-08-04T20:16:00+02:00",
   "requestedBy": "ChatGPT",
   "mode": "dispatch",
-  "reason": "Diagnose worker workflow state and repository_dispatch runs after enabling Actions"
+  "reason": "Validate strict YAML worker workflow on razzo-shard-0003 before fleet rollout"
 }
