@@ -1,6 +1,6 @@
 {
-  "requestedAt": "2026-08-04T18:12:00+02:00",
+  "requestedAt": "2026-08-04T18:26:00+02:00",
   "requestedBy": "ChatGPT",
   "mode": "dispatch",
-  "reason": "Observable status validation after live receipt instrumentation"
+  "reason": "Retry after bounded work-item and receipt envelope correction"
 }
