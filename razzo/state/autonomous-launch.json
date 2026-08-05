@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "factory": "RAZZO HOMO NOVUS AUTONOMOUS PRODUCT FACTORY",
+  "status": "RUNNING",
+  "mode": "AUTONOMOUS_MULTI_PROJECT",
+  "launchedAt": "2026-08-05T06:35:30Z",
+  "operatorCommand": "AVANZA TUTTO",
+  "sourceOfTruth": "github",
+  "controlPlane": {
+    "repository": "giovannifidel-collab/pfarma-ci",
+    "branch": "main",
+    "protocolPath": "razzo/protocol.json",
+    "registryPath": "razzo/projects.json",
+    "statePath": "razzo/project-state.json",
+    "liveOperationsIssue": 753
+  },
+  "cognitiveController": {
+    "type": "chatgpt-scheduled-automations",
+    "role": "repository inspection, product discovery, design, code editing, PR management, failure correction, integration and self-replan",
+    "promptDigestSha256": "7825e9cefd924d6c86430b832c8d8ad1c9dc9d036996fadc34ed278d27f53a80",
+    "triggers": [
+      {
+        "title": "RAZZO AVANZA TUTTO 00",
+        "id": "6a6f85e880d88191bb19e9e8bd10192b",
+        "minute": 0,
+        "enabled": true
+      },
+      {
+        "title": "RAZZO AVANZA TUTTO 12",
+        "id": "6a6f83205af081919d41154c789619ed",
+        "minute": 12,
+        "enabled": true
+      },
+      {
+        "title": "RAZZO AVANZA TUTTO 24",
+        "id": "6a6f83355070819180ded43bc173420f",
+        "minute": 24,
+        "enabled": true
+      },
+      {
+        "title": "RAZZO AVANZA TUTTO 36",
+        "id": "6a6f83447de88191bb0a64ceb7cc499a",
+        "minute": 36,
+        "enabled": true
+      },
+      {
+        "title": "RAZZO AVANZA TUTTO 48",
+        "id": "6a6f8357a65081918afacfd809309ea0",
+        "minute": 48,
+        "enabled": true
+      }
+    ],
+    "timezone": "Europe/Rome",
+    "cadence": "five equivalent complete cycles per hour"
+  },
+  "executionFabric": {
+    "type": "github-public-execution-fabric",
+    "version": 8,
+    "role": "deterministic checkout, tests, discovery metrics, exact-SHA verification and sanitized receipts",
+    "configuredActiveShards": 12,
+    "lastVerifiedWave": {
+      "cycleId": "razzo-9fc39d8816c4",
+      "workflowRunId": 30960418965,
+      "dispatched": 12,
+      "completed": 12,
+      "verified": 12,
+      "failures": 0,
+      "productProgress": false
+    },
+    "truthBoundary": "Public shards do not generate novel code or provide AI inference. Product reasoning and edits are owned by the cognitive controller."
+  },
+  "portfolio": {
+    "dynamic": true,
+    "enabledProjects": [
+      "project-giovanni",
+      "pfarma-cloud",
+      "family-cloud"
+    ],
+    "oneActiveCapabilityPerRepository": true,
+    "crossRepositoryParallelism": true
+  },
+  "integrationPolicy": {
+    "productMainWrites": false,
+    "registeredIntegrationLanesOnly": true,
+    "exactCandidateShaRequired": true,
+    "productCiRequired": true,
+    "independentRobotQaRequired": true,
+    "expectedHeadRequired": true,
+    "automaticLaneMergeWhenSafe": true,
+    "humanGateClasses": [
+      "real-secrets",
+      "real-credentials",
+      "paid-activation",
+      "destructive-production",
+      "irreversible-migration",
+      "crypto-release",
+      "irreplaceable-data"
+    ]
+  },
+  "launchGate": {
+    "fiveControllersEnabled": true,
+    "dynamicPortfolioLoaded": true,
+    "durableQueueAvailable": true,
+    "dispatcherAvailable": true,
+    "workerReceiptsAvailable": true,
+    "aggregateVerifierAvailable": true,
+    "exactShaEnforced": true,
+    "selfReplanMandated": true,
+    "immediateCycleStarted": true
+  }
+}
