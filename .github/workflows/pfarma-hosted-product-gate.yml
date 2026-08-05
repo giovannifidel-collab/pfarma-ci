@@ -7,12 +7,61 @@ on:
         description: Exact lower-case 40-character pfarma-cloud commit SHA to verify
         required: true
         type: string
+      product_test:
+        description: Python unittest module for the focused Product CI gate
+        required: true
+        default: tests.test_inventory_dashboard_low_stock_missing_product_link
+        type: string
+      robot_command:
+        description: Independent Robot QA command to execute from the private checkout
+        required: true
+        default: python -m unittest tests.test_inventory_dashboard_low_stock_product_placeholder
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  hosted-product-gate:
+  product-ci:
+    name: Product CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.target_sha }}" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid target_sha"; exit 1; }
+          [[ "${{ inputs.product_test }}" =~ ^[A-Za-z0-9_.]+$ ]] || { echo "Invalid product_test"; exit 1; }
+
+      - name: Checkout exact PFarma product SHA
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ inputs.target_sha }}
+          token: ${{ secrets.RAZZO_FACTORY_TOKEN }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: pfarma-cloud
+
+      - name: Prove exact checkout
+        shell: bash
+        working-directory: pfarma-cloud
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.target_sha }}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run focused product test
+        working-directory: pfarma-cloud
+        run: python -m unittest "${{ inputs.product_test }}"
+
+      - name: Cleanup private source
+        if: always()
+        run: rm -rf pfarma-cloud
+
+  robot-qa:
+    name: Robot QA
     runs-on: ubuntu-latest
     steps:
       - name: Validate exact SHA input
@@ -27,23 +76,32 @@ jobs:
           repository: giovannifidel-collab/pfarma-cloud
           ref: ${{ inputs.target_sha }}
           token: ${{ secrets.RAZZO_FACTORY_TOKEN }}
-          fetch-depth: 0
+          fetch-depth: 1
+          persist-credentials: false
           path: pfarma-cloud
 
       - name: Prove exact checkout
         shell: bash
         working-directory: pfarma-cloud
-        run: |
-          set -euo pipefail
-          actual="$(git rev-parse HEAD)"
-          test "$actual" = "${{ inputs.target_sha }}"
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.target_sha }}"
 
-      - name: Run focused product regressions
-        shell: bash
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run independent Robot QA
         working-directory: pfarma-cloud
+        shell: bash
+        env:
+          ROBOT_COMMAND: ${{ inputs.robot_command }}
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check pytest
-          python -m pytest -q \
-            tests/test_inventory_dashboard_low_stock_missing_product_link.py \
-            tests/test_inventory_dashboard_low_stock_product_placeholder.py
+          case "$ROBOT_COMMAND" in
+            "python tools/robot_replenishment_approval_review.py"|"python -m unittest tests.test_inventory_dashboard_low_stock_product_placeholder") ;;
+            *) echo "Robot command is not allow-listed"; exit 1 ;;
+          esac
+          eval "$ROBOT_COMMAND"
+
+      - name: Cleanup private source
+        if: always()
+        run: rm -rf pfarma-cloud
