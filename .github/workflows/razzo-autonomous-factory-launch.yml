@@ -4,8 +4,8 @@ on:
   pull_request:
     paths:
       - "razzo/state/autonomous-launch.json"
-      - "razzo/state/validate_autonomous_launch.py"
-      - "razzo/state/test_validate_autonomous_launch.py"
+      - "razzo/kernel/autonomous_launch.py"
+      - "razzo/kernel/tests/test_autonomous_launch.py"
       - "razzo/projects.json"
       - "razzo/project-state.json"
       - "razzo/public_fabric/config.json"
@@ -15,8 +15,8 @@ on:
       - main
     paths:
       - "razzo/state/autonomous-launch.json"
-      - "razzo/state/validate_autonomous_launch.py"
-      - "razzo/state/test_validate_autonomous_launch.py"
+      - "razzo/kernel/autonomous_launch.py"
+      - "razzo/kernel/tests/test_autonomous_launch.py"
       - "razzo/projects.json"
       - "razzo/project-state.json"
       - "razzo/public_fabric/config.json"
@@ -50,7 +50,7 @@ jobs:
           test "$OBSERVED" = "$EXPECTED"
 
       - name: Run launch validator
-        run: python razzo/state/validate_autonomous_launch.py
+        run: python razzo/kernel/autonomous_launch.py
 
       - name: Run launch tests
-        run: python -m unittest razzo.state.test_validate_autonomous_launch
+        run: python -m unittest razzo.kernel.tests.test_autonomous_launch
