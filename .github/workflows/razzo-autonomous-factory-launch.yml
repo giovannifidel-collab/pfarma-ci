@@ -1,0 +1,56 @@
+name: RAZZO Autonomous Factory Launch Gate
+
+on:
+  pull_request:
+    paths:
+      - "razzo/state/autonomous-launch.json"
+      - "razzo/state/validate_autonomous_launch.py"
+      - "razzo/state/test_validate_autonomous_launch.py"
+      - "razzo/projects.json"
+      - "razzo/project-state.json"
+      - "razzo/public_fabric/config.json"
+      - ".github/workflows/razzo-autonomous-factory-launch.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "razzo/state/autonomous-launch.json"
+      - "razzo/state/validate_autonomous_launch.py"
+      - "razzo/state/test_validate_autonomous_launch.py"
+      - "razzo/projects.json"
+      - "razzo/project-state.json"
+      - "razzo/public_fabric/config.json"
+      - ".github/workflows/razzo-autonomous-factory-launch.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: razzo-autonomous-factory-launch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact candidate SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          OBSERVED="$(git rev-parse HEAD)"
+          test "$OBSERVED" = "$EXPECTED"
+
+      - name: Run launch validator
+        run: python razzo/state/validate_autonomous_launch.py
+
+      - name: Run launch tests
+        run: python -m unittest razzo.state.test_validate_autonomous_launch
