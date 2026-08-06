@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "schema": "razzo.macrocycle-state.v1",
+  "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
+  "updatedAt": "2026-08-06T07:27:00Z",
+  "baselineMode": "incremental-non-destructive",
+  "projects": [
+    {
+      "id": "project-giovanni",
+      "repository": "giovannifidel-collab/project-giovanni",
+      "baseline": {
+        "id": "MC-00",
+        "status": "INCREMENTAL_RECONCILIATION_REQUIRED",
+        "mustNotBlockSafeProductWork": true
+      },
+      "productiveMacrocycles": 20,
+      "completed": [],
+      "active": {
+        "id": "MC-08",
+        "title": "Risultato, storico e progressione",
+        "status": "ACTIVE",
+        "selectionBasis": "Recent verified delivery completed result publication and weekly planning, while durable history and progression remain the structural composition target.",
+        "exitCriteria": [
+          {"id":"PG-MC08-EC01","description":"Workout result is stored durably and linked to the authenticated user and exact plan/session version.","status":"MISSING"},
+          {"id":"PG-MC08-EC02","description":"History can be reopened after restart and displays completed, partial and safely stopped sessions.","status":"MISSING"},
+          {"id":"PG-MC08-EC03","description":"Progression consumes persisted results rather than browser-local or query-only state.","status":"MISSING"},
+          {"id":"PG-MC08-EC04","description":"Product CI, independent Robot QA and realistic end-to-end flow pass on the exact integrated SHA.","status":"MISSING"}
+        ]
+      },
+      "next": "MC-09"
+    },
+    {
+      "id": "pfarma-cloud",
+      "repository": "giovannifidel-collab/pfarma-cloud",
+      "baseline": {
+        "id": "MC-00",
+        "status": "INCREMENTAL_RECONCILIATION_REQUIRED",
+        "mustNotBlockSafeProductWork": true
+      },
+      "productiveMacrocycles": 20,
+      "completed": [],
+      "active": {
+        "id": "MC-04",
+        "title": "Database operativo, persistenza e audit foundation",
+        "status": "ACTIVE",
+        "selectionBasis": "Current operator previews and read-only workspaces are verified, but the largest structural gap is real persistence, audit and reversible recovery.",
+        "exitCriteria": [
+          {"id":"PF-MC04-EC01","description":"A canonical operational database schema exists for at least products, stock movements, users and audit events.","status":"MISSING"},
+          {"id":"PF-MC04-EC02","description":"A reversible migration creates the development/staging database without mutating EasyFarm or production data.","status":"MISSING"},
+          {"id":"PF-MC04-EC03","description":"At least one real operator journey writes and reloads persistent state transactionally.","status":"MISSING"},
+          {"id":"PF-MC04-EC04","description":"Every mutation produces an attributable immutable audit event.","status":"MISSING"},
+          {"id":"PF-MC04-EC05","description":"Backup, rollback and recovery are tested in an isolated environment.","status":"MISSING"},
+          {"id":"PF-MC04-EC06","description":"Delta Robot QA, full cumulative Robot simulation and post-merge replay pass on exact SHA before completion.","status":"MISSING"}
+        ]
+      },
+      "next": "MC-05"
+    },
+    {
+      "id": "family-cloud",
+      "repository": "giovannifidel-collab/family-cloud",
+      "baseline": {
+        "id": "MC-00",
+        "status": "INCREMENTAL_RECONCILIATION_REQUIRED",
+        "mustNotBlockSafeProductWork": true
+      },
+      "productiveMacrocycles": 20,
+      "completed": [],
+      "active": {
+        "id": "MC-04",
+        "title": "Upload reale e persistenza durevole",
+        "status": "ACTIVE",
+        "selectionBasis": "Browser-local alpha journeys are extensive, while real upload and durable reopenable storage remain the main product bottleneck.",
+        "exitCriteria": [
+          {"id":"FC-MC04-EC01","description":"An authenticated user can upload a bounded real photo into an isolated development environment.","status":"MISSING"},
+          {"id":"FC-MC04-EC02","description":"Media metadata and object reference persist across restart and a new authenticated session.","status":"MISSING"},
+          {"id":"FC-MC04-EC03","description":"Upload is idempotent and rejects malformed, oversized or unsupported content fail closed.","status":"MISSING"},
+          {"id":"FC-MC04-EC04","description":"Delete and rollback behavior preserve consistency between metadata and object storage.","status":"MISSING"},
+          {"id":"FC-MC04-EC05","description":"Product CI, independent Robot QA and a realistic upload-reopen journey pass on exact integrated SHA.","status":"MISSING"}
+        ]
+      },
+      "next": "MC-05"
+    }
+  ],
+  "transitionRule": "Activate the next productive macrocycle only after every exit criterion is verified and a completion receipt is persisted for the current macrocycle.",
+  "reconciliationRule": "Before every wave, replace stale PR, SHA, integration and completion fields using live GitHub API evidence and commit ancestry. Operational comments are append-only evidence, never authoritative current state."
+}
