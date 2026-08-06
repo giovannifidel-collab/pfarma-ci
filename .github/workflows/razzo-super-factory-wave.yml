@@ -48,6 +48,7 @@ jobs:
       max-parallel: 20
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
     timeout-minutes: 30
     concurrency:
       group: razzo-${{ matrix.collision_domain }}-${{ matrix.exact_sha }}
