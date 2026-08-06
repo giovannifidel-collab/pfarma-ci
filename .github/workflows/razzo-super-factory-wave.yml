@@ -31,8 +31,9 @@ jobs:
           matrix=$(jq -cn --arg pg "$pg" --arg pf "$pf" --arg fc "$fc" '{include:[
             {shard_id:"razzo-shard-0001",work_item_id:"PG-VERIFY-FACTORY",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,collision_domain:"project-giovanni/factory",command:"npm run test:factory --if-present"},
             {shard_id:"razzo-shard-0002",work_item_id:"PG-VERIFY-BUILD",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,collision_domain:"project-giovanni/build",command:"npm run build"},
-            {shard_id:"razzo-shard-0003",work_item_id:"PF-VERIFY-HEALTH",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,collision_domain:"pfarma-cloud/health",command:"pfarma-health-smoke"},
-            {shard_id:"razzo-shard-0004",work_item_id:"FC-VERIFY-SUITE",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,collision_domain:"family-cloud/suite",command:"npm test"}
+            {shard_id:"razzo-shard-0003",work_item_id:"PF-PRODUCT-CI-PERSISTENCE",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,collision_domain:"pfarma-cloud/persistence-product-ci",command:"pfarma-persistence-product-ci"},
+            {shard_id:"razzo-shard-0004",work_item_id:"PF-ROBOT-PERSISTENCE",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,collision_domain:"pfarma-cloud/persistence-robot",command:"pfarma-persistence-robot"},
+            {shard_id:"razzo-shard-0005",work_item_id:"FC-VERIFY-SUITE",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,collision_domain:"family-cloud/suite",command:"npm test"}
           ]}')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
@@ -101,7 +102,58 @@ jobs:
             "npm run test:factory --if-present") npm run test:factory --if-present ;;
             "npm run build") NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_SUPABASE_URL=https://ci-placeholder.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci_placeholder npm run build ;;
             "npm test") npm test ;;
-            "pfarma-health-smoke") python -m unittest tests.test_operational_persistence ;;
+            "pfarma-persistence-product-ci") python -m unittest tests.test_operational_persistence ;;
+            "pfarma-persistence-robot")
+              python - <<'PY'
+          import sqlite3
+          import tempfile
+          from pathlib import Path
+          from backend.operational_persistence import OperationalStore
+
+          with tempfile.TemporaryDirectory() as tmp:
+              db = Path(tmp) / "robot.sqlite3"
+              store = OperationalStore(db)
+              store.migrate()
+              event_id = store.record(
+                  aggregate_type="inventory-item",
+                  aggregate_id="ROBOT-001",
+                  action="stock-adjusted",
+                  payload={"delta": 3, "reason": "robot-check"},
+                  actor_id="robot-qa",
+              )
+              reopened = OperationalStore(db)
+              events = reopened.events()
+              assert len(events) == 1
+              assert events[0].event_id == event_id
+              assert events[0].payload == {"delta": 3, "reason": "robot-check"}
+              assert reopened.audit_count() == 1
+              try:
+                  store.record(
+                      aggregate_type="inventory-item",
+                      aggregate_id="ROBOT-ROLLBACK",
+                      action="stock-adjusted",
+                      payload={"delta": -2},
+                      actor_id="robot-qa",
+                      fail_after_event=True,
+                  )
+              except RuntimeError:
+                  pass
+              else:
+                  raise AssertionError("fault injection did not fail")
+              assert len(reopened.events()) == 1
+              connection = sqlite3.connect(db)
+              try:
+                  try:
+                      connection.execute("DELETE FROM audit_entry")
+                  except sqlite3.IntegrityError:
+                      pass
+                  else:
+                      raise AssertionError("audit delete was not rejected")
+              finally:
+                  connection.close()
+          print("PFARMA_PERSISTENCE_ROBOT_PASS")
+          PY
+              ;;
             *) exit 64 ;;
           esac
           echo "ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
@@ -137,7 +189,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p receipts
-          jq -n --arg runId '${{ github.run_id }}' --arg executeResult '${{ needs.execute.result }}' '{schema:"razzo.aggregate-wave-receipt.v1",runId:$runId,dispatched:4,projects:3,parallelTarget:4,executeResult:$executeResult,operational:($executeResult=="success")}' > receipts/aggregate.json
+          jq -n --arg runId '${{ github.run_id }}' --arg executeResult '${{ needs.execute.result }}' '{schema:"razzo.aggregate-wave-receipt.v1",runId:$runId,dispatched:5,projects:3,parallelTarget:5,executeResult:$executeResult,operational:($executeResult=="success")}' > receipts/aggregate.json
       - uses: actions/upload-artifact@v4
         with:
           name: razzo-aggregate-wave-${{ github.run_id }}
