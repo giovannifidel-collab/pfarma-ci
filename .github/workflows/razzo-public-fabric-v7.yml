@@ -2,6 +2,8 @@ name: RAZZO Vertical Closure Pilot
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
   push:
     branches: [main]
     paths:
@@ -75,8 +77,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "${{ needs.resolve.outputs.candidate_sha }}"
           mkdir -p evidence
-          printf '{"gate":"product-ci","status":"success","exactSha":"%s","runId":"%s"}\n' \
-            "$(git rev-parse HEAD)" "${GITHUB_RUN_ID}" > evidence/product-ci.json
+          printf '{"gate":"product-ci","status":"success","exactSha":"%s","runId":"%s"}\n' "$(git rev-parse HEAD)" "${GITHUB_RUN_ID}" > evidence/product-ci.json
       - uses: actions/upload-artifact@v4
         with:
           name: family-cloud-product-ci
@@ -100,7 +101,6 @@ jobs:
         run: |
           git fetch origin "${PRODUCT_BASE}:${PRODUCT_BASE}"
           files="$(git diff --name-only "${PRODUCT_BASE}...${{ needs.resolve.outputs.candidate_sha }}")"
-          printf '%s\n' "$files"
           test -n "$files"
           forbidden="$(printf '%s\n' "$files" | grep -Ev '^(scripts/dev-server\.mjs|src/durable-media-store\.mjs|tests/durable-media-store\.test\.ts)$' || true)"
           test -z "$forbidden"
@@ -110,11 +110,7 @@ jobs:
           import json, os, subprocess
           sha = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
           files = subprocess.check_output(['git','diff','--name-only',f"{os.environ['PRODUCT_BASE']}...{sha}"], text=True).splitlines()
-          payload = {
-            'gate':'independent-review', 'status':'success', 'exactSha':sha,
-            'reviewDomain':'separate-read-only-job', 'changedFiles':files,
-            'findings':[], 'runId':os.environ['GITHUB_RUN_ID']
-          }
+          payload = {'gate':'independent-review','status':'success','exactSha':sha,'reviewDomain':'separate-read-only-job','changedFiles':files,'findings':[],'runId':os.environ['GITHUB_RUN_ID']}
           open('evidence/independent-review.json','w',encoding='utf-8').write(json.dumps(payload,indent=2)+'\n')
           PY
       - uses: actions/upload-artifact@v4
@@ -137,15 +133,13 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm install --no-save --ignore-scripts --no-audit --no-fund
-      - name: Execute durable media Robot corpus
-        run: npx tsx --test tests/durable-media-store.test.ts
+      - run: npx tsx --test tests/durable-media-store.test.ts
       - name: Record Robot evidence
         shell: bash
         run: |
           test "$(git rev-parse HEAD)" = "${{ needs.resolve.outputs.candidate_sha }}"
           mkdir -p evidence
-          printf '{"gate":"robot-upload-reopen","status":"success","exactSha":"%s","journeys":["bounded-upload","restart-reopen","idempotency-conflict","delete-rollback","user-isolation"],"runId":"%s"}\n' \
-            "$(git rev-parse HEAD)" "${GITHUB_RUN_ID}" > evidence/robot.json
+          printf '{"gate":"robot-upload-reopen","status":"success","exactSha":"%s","journeys":["bounded-upload","restart-reopen","idempotency-conflict","delete-rollback","user-isolation"],"runId":"%s"}\n' "$(git rev-parse HEAD)" "${GITHUB_RUN_ID}" > evidence/robot.json
       - uses: actions/upload-artifact@v4
         with:
           name: family-cloud-robot
@@ -166,27 +160,18 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, urllib.request, urllib.error
-          repo = os.environ['PRODUCT_REPOSITORY']
-          pr = os.environ['PRODUCT_PR']
-          token = os.environ['TOKEN']
-          expected = os.environ['EXPECTED_SHA']
-          req = urllib.request.Request(
-              f'https://api.github.com/repos/{repo}/pulls/{pr}/merge',
-              data=json.dumps({'merge_method':'merge','sha':expected}).encode(),
-              method='PUT')
-          req.add_header('Authorization', f'Bearer {token}')
+          repo, pr = os.environ['PRODUCT_REPOSITORY'], os.environ['PRODUCT_PR']
+          req = urllib.request.Request(f'https://api.github.com/repos/{repo}/pulls/{pr}/merge', data=json.dumps({'merge_method':'merge','sha':os.environ['EXPECTED_SHA']}).encode(), method='PUT')
+          req.add_header('Authorization', f"Bearer {os.environ['TOKEN']}")
           req.add_header('Accept','application/vnd.github+json')
           req.add_header('X-GitHub-Api-Version','2022-11-28')
           req.add_header('Content-Type','application/json')
           try:
-              with urllib.request.urlopen(req, timeout=60) as response:
-                  payload=json.load(response)
+              with urllib.request.urlopen(req, timeout=60) as response: payload=json.load(response)
           except urllib.error.HTTPError as exc:
               raise SystemExit(f'merge failed {exc.code}: {exc.read().decode()}')
-          if not payload.get('merged') or not payload.get('sha'):
-              raise SystemExit(f'merge not completed: {payload}')
-          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as out:
-              out.write(f"merge_sha={payload['sha']}\n")
+          if not payload.get('merged') or not payload.get('sha'): raise SystemExit(f'merge not completed: {payload}')
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as out: out.write(f"merge_sha={payload['sha']}\n")
           PY
 
   post-merge-replay:
@@ -217,17 +202,7 @@ jobs:
           mkdir -p receipt
           python - <<'PY'
           import json, os
-          receipt = {
-            'schema':'razzo.macrocycle-completion-receipt.v1',
-            'projectId':'family-cloud', 'macrocycleId':'MC-04',
-            'status':'COMPLETED', 'candidateSha':os.environ['CANDIDATE_SHA'],
-            'integratedSha':os.environ['MERGE_SHA'], 'pullRequest':686,
-            'gates':{
-              'productCI':'success','independentReview':'success',
-              'robotJourney':'success','integration':'success','postMergeReplay':'success'
-            },
-            'runId':os.environ['GITHUB_RUN_ID']
-          }
+          receipt={'schema':'razzo.macrocycle-completion-receipt.v1','projectId':'family-cloud','macrocycleId':'MC-04','status':'COMPLETED','candidateSha':os.environ['CANDIDATE_SHA'],'integratedSha':os.environ['MERGE_SHA'],'pullRequest':686,'gates':{'productCI':'success','independentReview':'success','robotJourney':'success','integration':'success','postMergeReplay':'success'},'runId':os.environ['GITHUB_RUN_ID']}
           open('receipt/family-cloud-mc04.json','w',encoding='utf-8').write(json.dumps(receipt,indent=2)+'\n')
           PY
       - uses: actions/upload-artifact@v4
