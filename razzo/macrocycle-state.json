@@ -1,8 +1,8 @@
 {
-  "version": 4,
+  "version": 5,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-06T14:35:00Z",
+  "updatedAt": "2026-08-06T15:03:00Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST",
@@ -29,8 +29,8 @@
           "priority": 1,
           "objective": "Implement and verify one authenticated durable result write/reopen path tied to exact plan and session version.",
           "mustAdvance": ["PG-MC08-EC01","PG-MC08-EC02"],
-          "commands": ["npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm run test:factory","npm run build"],
-          "lastAttempt": {"cycleId":"razzo-ccbb314bbe3d","exactSha":"c83b962268abe4586731bb96ff0777cdaca754fd","status":"FAILED_INFRASTRUCTURE_COMMAND","error":"cmd-2 exit 127 because build dependencies were not installed before npm run build"},
+          "commands": ["npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm run test:factory","NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_SUPABASE_URL=https://ci-placeholder.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci_placeholder npm run build"],
+          "lastAttempt": {"cycleId":"razzo-061f1eca2be5","exactSha":"c83b962268abe4586731bb96ff0777cdaca754fd","observedSha":"c83b962268abe4586731bb96ff0777cdaca754fd","status":"FAILED_BUILD_ENVIRONMENT","error":"cmd-2 exited 1 after dependencies were installed; build is now re-planned with isolated CI placeholder environment variables","outputDigest":"12c43f866ba395ec8ac41d6f06102ee99b5d0af81efbed9154987e2eb81b5b44"},
           "forbiddenWork": "UI polish, refactors or unrelated workout features"
         },
         "exitCriteria": [
@@ -60,7 +60,7 @@
           "candidateSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
           "mustAdvance": ["PF-MC04-EC01","PF-MC04-EC02","PF-MC04-EC03","PF-MC04-EC04","PF-MC04-EC05","PF-MC04-EC06"],
           "commands": ["python -m unittest tests.test_operational_store","python -m unittest factory.test_razzo_executor"],
-          "lastAttempt": {"cycleId":"razzo-ccbb314bbe3d","exactSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","observedSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","status":"PRODUCT_CI_COMMANDS_VERIFIED","commandsPassed":2},
+          "lastAttempt": {"cycleId":"razzo-061f1eca2be5","exactSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","observedSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","status":"PRODUCT_CI_COMMANDS_VERIFIED","commandsPassed":2,"receiptWorkItemId":"033565ee0ed012491ca48888"},
           "forbiddenWork": "Any further SQLite hardening or generic test expansion not required by a failing closure gate"
         },
         "exitCriteria": [
@@ -91,7 +91,7 @@
           "objective": "Implement and verify one bounded authenticated upload that persists metadata and object reference across restart and a new session.",
           "mustAdvance": ["FC-MC04-EC01","FC-MC04-EC02"],
           "commands": ["npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm test","npm run typecheck"],
-          "lastAttempt": {"cycleId":"razzo-ccbb314bbe3d","exactSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","observedSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","status":"BASELINE_TESTS_VERIFIED","commandsPassed":2,"note":"Passing generic tests and typecheck do not establish upload persistence exit criteria."},
+          "lastAttempt": {"cycleId":"razzo-061f1eca2be5","exactSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","observedSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","status":"BASELINE_TESTS_VERIFIED","commandsPassed":2,"receiptWorkItemId":"be4257b2da9bcb8ca022d8b2","note":"Passing generic tests and typecheck do not establish upload persistence exit criteria."},
           "forbiddenWork": "Gallery polish, local-only flows or unrelated media features"
         },
         "exitCriteria": [
