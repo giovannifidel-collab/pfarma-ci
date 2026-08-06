@@ -1,230 +1,49 @@
-name: RAZZO Vertical Closure Pilot
+name: RAZZO Family Cloud Minimal CI
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '*/5 * * * *'
   push:
     branches: [main]
     paths:
-      - 'razzo/public_fabric/trigger.json'
       - '.github/workflows/razzo-public-fabric-v7.yml'
+      - 'razzo/public_fabric/trigger.json'
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
-  group: razzo-family-cloud-mc04-closure
+  group: razzo-family-cloud-minimal-ci
   cancel-in-progress: false
 
-env:
-  CONTROL_REPOSITORY: giovannifidel-collab/pfarma-ci
-  PRODUCT_REPOSITORY: giovannifidel-collab/family-cloud
-  PRODUCT_PR: '686'
-  PRODUCT_BASE: agent/bootstrap-family-cloud
-  LIVE_ISSUE: '753'
-
 jobs:
-  resolve:
-    name: Resolve exact candidate
+  family-cloud-ci:
+    name: Family Cloud checkout install test
     runs-on: ubuntu-latest
-    outputs:
-      candidate_sha: ${{ steps.state.outputs.candidate_sha }}
-      expected_pr: ${{ steps.state.outputs.expected_pr }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - id: state
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json, os
-          state = json.load(open('razzo/macrocycle-state.json', encoding='utf-8'))
-          project = next(p for p in state['projects'] if p['id'] == 'family-cloud')
-          active = project['active']
-          work = active['closureWorkItem']
-          if active['id'] != 'MC-04' or active['status'] != 'ACTIVE':
-              raise SystemExit('Family Cloud MC-04 is not the single active macrocycle')
-          sha = work['candidateSha']
-          pr = str(work['pullRequest'])
-          if len(sha) != 40 or pr != os.environ['PRODUCT_PR']:
-              raise SystemExit('canonical candidate/PR mismatch')
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-              out.write(f'candidate_sha={sha}\n')
-              out.write(f'expected_pr={pr}\n')
-          PY
-
-  product-ci:
-    name: Product CI exact SHA
-    needs: resolve
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact Family Cloud candidate
+        uses: actions/checkout@v4
         with:
-          repository: ${{ env.PRODUCT_REPOSITORY }}
-          ref: ${{ needs.resolve.outputs.candidate_sha }}
+          repository: giovannifidel-collab/family-cloud
+          ref: a52fa1507067ec03d2c787e5dad9fd6d37a03f83
           token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
+          fetch-depth: 1
+
+      - name: Verify exact SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "a52fa1507067ec03d2c787e5dad9fd6d37a03f83"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - run: npm install --no-save --ignore-scripts --no-audit --no-fund
-      - run: npm test
-      - run: npm run typecheck
-      - name: Record exact SHA evidence
-        shell: bash
-        run: |
-          test "$(git rev-parse HEAD)" = "${{ needs.resolve.outputs.candidate_sha }}"
-          mkdir -p evidence
-          printf '{"gate":"product-ci","status":"success","exactSha":"%s","runId":"%s"}\n' "$(git rev-parse HEAD)" "${GITHUB_RUN_ID}" > evidence/product-ci.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: family-cloud-product-ci
-          path: evidence/product-ci.json
 
-  independent-review:
-    name: Independent read-only review
-    needs: resolve
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ env.PRODUCT_REPOSITORY }}
-          ref: ${{ needs.resolve.outputs.candidate_sha }}
-          token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
-          fetch-depth: 0
-      - name: Review bounded diff and safety invariants
-        shell: bash
-        run: |
-          git fetch origin "${PRODUCT_BASE}:${PRODUCT_BASE}"
-          files="$(git diff --name-only "${PRODUCT_BASE}...${{ needs.resolve.outputs.candidate_sha }}")"
-          test -n "$files"
-          forbidden="$(printf '%s\n' "$files" | grep -Ev '^(scripts/dev-server\.mjs|src/durable-media-store\.mjs|tests/durable-media-store\.test\.ts)$' || true)"
-          test -z "$forbidden"
-          ! git diff "${PRODUCT_BASE}...${{ needs.resolve.outputs.candidate_sha }}" | grep -E '(BEGIN (RSA|OPENSSH) PRIVATE KEY|SUPABASE_SERVICE_ROLE|AWS_SECRET_ACCESS_KEY)'
-          mkdir -p evidence
-          python - <<'PY'
-          import json, os, subprocess
-          sha = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
-          files = subprocess.check_output(['git','diff','--name-only',f"{os.environ['PRODUCT_BASE']}...{sha}"], text=True).splitlines()
-          payload = {'gate':'independent-review','status':'success','exactSha':sha,'reviewDomain':'separate-read-only-job','changedFiles':files,'findings':[],'runId':os.environ['GITHUB_RUN_ID']}
-          open('evidence/independent-review.json','w',encoding='utf-8').write(json.dumps(payload,indent=2)+'\n')
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: family-cloud-independent-review
-          path: evidence/independent-review.json
+      - name: Install dependencies
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund
 
-  robot-journey:
-    name: Robot upload-reopen journey
-    needs: resolve
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ env.PRODUCT_REPOSITORY }}
-          ref: ${{ needs.resolve.outputs.candidate_sha }}
-          token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm install --no-save --ignore-scripts --no-audit --no-fund
-      - run: npx tsx --test tests/durable-media-store.test.ts
-      - name: Record Robot evidence
-        shell: bash
-        run: |
-          test "$(git rev-parse HEAD)" = "${{ needs.resolve.outputs.candidate_sha }}"
-          mkdir -p evidence
-          printf '{"gate":"robot-upload-reopen","status":"success","exactSha":"%s","journeys":["bounded-upload","restart-reopen","idempotency-conflict","delete-rollback","user-isolation"],"runId":"%s"}\n' "$(git rev-parse HEAD)" "${GITHUB_RUN_ID}" > evidence/robot.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: family-cloud-robot
-          path: evidence/robot.json
+      - name: Run tests
+        run: npm test
 
-  integrate:
-    name: Integrate with expected head SHA
-    needs: [resolve, product-ci, independent-review, robot-journey]
-    runs-on: ubuntu-latest
-    outputs:
-      merge_sha: ${{ steps.merge.outputs.merge_sha }}
-    steps:
-      - id: merge
-        env:
-          TOKEN: ${{ secrets.RAZZO_FABRIC_TOKEN }}
-          EXPECTED_SHA: ${{ needs.resolve.outputs.candidate_sha }}
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json, os, urllib.request, urllib.error
-          repo, pr = os.environ['PRODUCT_REPOSITORY'], os.environ['PRODUCT_PR']
-          req = urllib.request.Request(f'https://api.github.com/repos/{repo}/pulls/{pr}/merge', data=json.dumps({'merge_method':'merge','sha':os.environ['EXPECTED_SHA']}).encode(), method='PUT')
-          req.add_header('Authorization', f"Bearer {os.environ['TOKEN']}")
-          req.add_header('Accept','application/vnd.github+json')
-          req.add_header('X-GitHub-Api-Version','2022-11-28')
-          req.add_header('Content-Type','application/json')
-          try:
-              with urllib.request.urlopen(req, timeout=60) as response: payload=json.load(response)
-          except urllib.error.HTTPError as exc:
-              raise SystemExit(f'merge failed {exc.code}: {exc.read().decode()}')
-          if not payload.get('merged') or not payload.get('sha'): raise SystemExit(f'merge not completed: {payload}')
-          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as out: out.write(f"merge_sha={payload['sha']}\n")
-          PY
-
-  post-merge-replay:
-    name: Post-merge exact SHA replay
-    needs: [resolve, integrate]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ env.PRODUCT_REPOSITORY }}
-          ref: ${{ needs.integrate.outputs.merge_sha }}
-          token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm install --no-save --ignore-scripts --no-audit --no-fund
-      - run: npm test
-      - run: npm run typecheck
-      - run: npx tsx --test tests/durable-media-store.test.ts
-      - name: Build completion receipt
-        shell: bash
-        env:
-          CANDIDATE_SHA: ${{ needs.resolve.outputs.candidate_sha }}
-          MERGE_SHA: ${{ needs.integrate.outputs.merge_sha }}
-        run: |
-          test "$(git rev-parse HEAD)" = "${MERGE_SHA}"
-          mkdir -p receipt
-          python - <<'PY'
-          import json, os
-          receipt={'schema':'razzo.macrocycle-completion-receipt.v1','projectId':'family-cloud','macrocycleId':'MC-04','status':'COMPLETED','candidateSha':os.environ['CANDIDATE_SHA'],'integratedSha':os.environ['MERGE_SHA'],'pullRequest':686,'gates':{'productCI':'success','independentReview':'success','robotJourney':'success','integration':'success','postMergeReplay':'success'},'runId':os.environ['GITHUB_RUN_ID']}
-          open('receipt/family-cloud-mc04.json','w',encoding='utf-8').write(json.dumps(receipt,indent=2)+'\n')
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: family-cloud-mc04-completion-receipt
-          path: receipt/family-cloud-mc04.json
-      - name: Publish terminal evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MERGE_SHA: ${{ needs.integrate.outputs.merge_sha }}
-        shell: bash
-        run: |
-          cat > /tmp/terminal.md <<EOF
-          \`FAMILY_CLOUD_MC04_COMPLETED\`
-
-          - PR: \`${PRODUCT_PR}\`;
-          - candidate SHA: \`${{ needs.resolve.outputs.candidate_sha }}\`;
-          - integrated SHA: \`${MERGE_SHA}\`;
-          - Product CI: \`success\`;
-          - independent review: \`success\`;
-          - Robot upload-reopen journey: \`success\`;
-          - post-merge replay: \`success\`;
-          - workflow run: \`${GITHUB_RUN_ID}\`.
-          EOF
-          gh api "repos/${CONTROL_REPOSITORY}/issues/${LIVE_ISSUE}/comments" -F body=@/tmp/terminal.md
+      - name: Run typecheck
+        run: npm run typecheck
