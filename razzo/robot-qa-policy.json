@@ -1,0 +1,46 @@
+{
+  "schema": "razzo.robot-qa-policy.v1",
+  "status": "mandatory",
+  "publicExecutionFabricOnly": true,
+  "levels": {
+    "delta": {"requiredEachWave": true},
+    "fullMacrocycleRegression": {"requiredBeforePfarmaCompletion": true, "cumulative": true},
+    "postMergeReplay": {"requiredBeforePfarmaCompletionReceipt": true, "exactIntegratedSha": true}
+  },
+  "truthRules": {
+    "http200AloneIsInsufficient": true,
+    "noFakeCanariesAsProductProgress": true,
+    "noInventedMissionCounts": true,
+    "privateSourceArtifactsForbidden": true,
+    "failClosedOnShaAmbiguity": true
+  },
+  "requiredAssertions": [
+    "browser-actions",
+    "http-and-network",
+    "dom-and-user-messages",
+    "frontend-state",
+    "api",
+    "database",
+    "audit-log",
+    "persistence-after-refresh",
+    "persistence-after-new-session",
+    "cross-module-effects",
+    "authorization",
+    "idempotency"
+  ],
+  "closedLoop": [
+    "reproducible-failure",
+    "fingerprint",
+    "deduplicated-issue",
+    "active-macrocycle-work-item",
+    "fix",
+    "self-review",
+    "independent-review",
+    "exact-sha-test",
+    "robot-retest",
+    "merge",
+    "post-merge-replay",
+    "issue-close"
+  ],
+  "receiptSchema": "razzo.operator-robot-receipt.v1"
+}
