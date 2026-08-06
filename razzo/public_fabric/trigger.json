@@ -1,41 +1,20 @@
 {
-  "requestedAt": "2026-08-06T18:05:00+02:00",
-  "requestedBy": "RAZZO Factory automation",
-  "mode": "dispatch",
-  "controlPlaneSha": "799ccb43c3152f7df2e806f8f20ec5f613b6f4aa",
-  "executionPolicy": "MACROCYCLE_CLOSURE_FIRST",
-  "plannerContract": "ACTIVE_MACROCYCLE_CLOSURE_WORK_ITEM_V1",
-  "workItems": ["PG-MC08-CLOSE-01","PF-MC04-CLOSE-01","FC-MC04-CLOSE-01"],
-  "requiredExactCandidates": {
-    "project-giovanni": "80480a1031dec81b09aa40fcf494e3f42942f074",
-    "pfarma-cloud": "7e30322973310b29ee8bf3db24464b713b7d81b9",
-    "family-cloud": "a52fa1507067ec03d2c787e5dad9fd6d37a03f83"
-  },
-  "requiredExecution": {
-    "nonEmptyCommandsPerWorkItem": true,
-    "exactShaObservedEqualsInput": true,
-    "receiptPerProject": true,
-    "pfarmaDeltaRobot": true,
-    "pfarmaCumulativeRegression": true,
-    "independentPublicReview": true,
-    "reviewerExecutionIdentityMustDifferFromBuilder": true,
-    "reviewerRepositoryMustDifferFromProductRepository": true,
-    "reviewReceiptMustBindExactCandidateSha": true
-  },
-  "reviewTopology": {
-    "mode": "PUBLIC_REPOSITORY_REVIEW_SHARDS",
-    "minimumIndependentReviewersPerCandidate": 1,
-    "builderAndReviewerContextIsolation": true,
-    "humanCollaboratorNotRequired": true
-  },
-  "failClosed": {
-    "rejectGenericWorkstreams": true,
-    "rejectIntegrationShaWhenCandidateExists": true,
-    "rejectNoProductProgress": true,
-    "rejectFalseCanary": true,
-    "rejectEmptyCommands": true,
-    "rejectSelfReviewIdentity": true,
-    "rejectReviewWithoutExactShaBinding": true
-  },
-  "reason": "Run exact-SHA Product CI and independent review through isolated public repository reviewer shards. A second human collaborator is not required; independence is established by separate execution identity, repository context and signed receipt."
+  "requestedAt": "2026-08-06T19:25:00+02:00",
+  "requestedBy": "RAZZO recovery intervention",
+  "mode": "family-cloud-mc04-vertical-closure",
+  "workflow": ".github/workflows/razzo-public-fabric-v7.yml",
+  "controlPlaneCommit": "de0c0c19465648b513d3e7e98bb691b5f7faafb5",
+  "project": "family-cloud",
+  "macrocycle": "MC-04",
+  "pullRequest": 686,
+  "candidateSha": "a52fa1507067ec03d2c787e5dad9fd6d37a03f83",
+  "requiredGates": [
+    "product-ci-exact-sha",
+    "independent-read-only-review",
+    "robot-upload-reopen-journey",
+    "expected-head-integration",
+    "post-merge-replay",
+    "completion-receipt"
+  ],
+  "failClosed": true
 }
