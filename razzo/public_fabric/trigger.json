@@ -1,6 +1,13 @@
 {
-  "requestedAt": "2026-08-05T01:32:00+02:00",
-  "requestedBy": "ChatGPT",
+  "requestedAt": "2026-08-06T15:34:47+02:00",
+  "requestedBy": "RAZZO Factory automation",
   "mode": "dispatch",
-  "reason": "RAZZO V8 operational proof: real tests, planning, integrity and sanitized discovery across 12 shards"
+  "controlPlaneSha": "d501c9cbd9086da39850c8892cac09e9e1ba912a",
+  "executionPolicy": "MACROCYCLE_CLOSURE_FIRST",
+  "workItems": [
+    "PG-MC08-CLOSE-01",
+    "PF-MC04-CLOSE-01",
+    "FC-MC04-CLOSE-01"
+  ],
+  "reason": "Execute enabled projects in parallel against their single active macrocycle; prioritize closure gates, exact-SHA Product CI, Robot QA, integration, replay and receipts; prohibit unrelated refinement."
 }
