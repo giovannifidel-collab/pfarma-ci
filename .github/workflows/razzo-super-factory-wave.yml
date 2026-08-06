@@ -13,9 +13,6 @@ on:
 permissions:
   contents: read
 
-env:
-  PRIVATE_REPO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN || secrets.PFARMA_REPO_TOKEN || secrets.PFARMA_GITHUB_TOKEN || secrets.RAZZO_PRIVATE_REPO_TOKEN || secrets.RAZZO_GITHUB_TOKEN || secrets.GH_PAT || secrets.REPO_TOKEN }}
-
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -48,7 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 30
-    environment: pfarma-ci-trusted
+    env:
+      PRIVATE_REPO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN || secrets.PFARMA_REPO_TOKEN || secrets.PFARMA_GITHUB_TOKEN || secrets.RAZZO_PRIVATE_REPO_TOKEN || secrets.RAZZO_GITHUB_TOKEN || secrets.GH_PAT || secrets.REPO_TOKEN }}
     concurrency:
       group: razzo-${{ matrix.collision_domain }}-${{ matrix.exact_sha }}
       cancel-in-progress: false
@@ -103,9 +101,7 @@ jobs:
             "npm run test:factory --if-present") npm run test:factory --if-present ;;
             "npm run build") NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_SUPABASE_URL=https://ci-placeholder.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci_placeholder npm run build ;;
             "npm test") npm test ;;
-            "pfarma-health-smoke")
-              python -m unittest tests.test_operational_persistence
-              ;;
+            "pfarma-health-smoke") python -m unittest tests.test_operational_persistence ;;
             *) exit 64 ;;
           esac
           echo "ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
