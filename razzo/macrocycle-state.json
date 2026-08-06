@@ -1,8 +1,8 @@
 {
-  "version": 3,
+  "version": 4,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-06T14:20:00Z",
+  "updatedAt": "2026-08-06T14:35:00Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST",
@@ -10,26 +10,13 @@
     "waveSuccessRule": "A wave is productive only if it verifies an exit criterion, clears a named completion gate, integrates an exact-SHA candidate, emits a receipt, or advances to the next macrocycle.",
     "blockedProjectRule": "A human or infrastructure gate blocks only the sensitive action; all other enabled projects must continue on their own active macrocycle.",
     "fanOutRule": "Dispatch one closure work item per enabled project in every wave unless that project is already waiting solely on an external human gate.",
-    "completionOrder": [
-      "BUILD_EXIT_CRITERIA",
-      "PRODUCT_CI_EXACT_SHA",
-      "INDEPENDENT_REVIEW",
-      "ROBOT_VERIFY",
-      "INTEGRATE",
-      "POST_MERGE_ROBOT_REPLAY",
-      "COMPLETION_RECEIPT",
-      "ACTIVATE_NEXT_MACROCYCLE"
-    ]
+    "completionOrder": ["BUILD_EXIT_CRITERIA","PRODUCT_CI_EXACT_SHA","INDEPENDENT_REVIEW","ROBOT_VERIFY","INTEGRATE","POST_MERGE_ROBOT_REPLAY","COMPLETION_RECEIPT","ACTIVATE_NEXT_MACROCYCLE"]
   },
   "projects": [
     {
       "id": "project-giovanni",
       "repository": "giovannifidel-collab/project-giovanni",
-      "baseline": {
-        "id": "MC-00",
-        "status": "INCREMENTAL_RECONCILIATION_REQUIRED",
-        "mustNotBlockSafeProductWork": true
-      },
+      "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
       "productiveMacrocycles": 20,
       "completed": [],
       "active": {
@@ -41,11 +28,9 @@
           "id": "PG-MC08-CLOSE-01",
           "priority": 1,
           "objective": "Implement and verify one authenticated durable result write/reopen path tied to exact plan and session version.",
-          "mustAdvance": ["PG-MC08-EC01", "PG-MC08-EC02"],
-          "commands": [
-            "npm run test:factory --if-present",
-            "npm run build"
-          ],
+          "mustAdvance": ["PG-MC08-EC01","PG-MC08-EC02"],
+          "commands": ["npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm run test:factory","npm run build"],
+          "lastAttempt": {"cycleId":"razzo-ccbb314bbe3d","exactSha":"c83b962268abe4586731bb96ff0777cdaca754fd","status":"FAILED_INFRASTRUCTURE_COMMAND","error":"cmd-2 exit 127 because build dependencies were not installed before npm run build"},
           "forbiddenWork": "UI polish, refactors or unrelated workout features"
         },
         "exitCriteria": [
@@ -60,11 +45,7 @@
     {
       "id": "pfarma-cloud",
       "repository": "giovannifidel-collab/pfarma-cloud",
-      "baseline": {
-        "id": "MC-00",
-        "status": "INCREMENTAL_RECONCILIATION_REQUIRED",
-        "mustNotBlockSafeProductWork": true
-      },
+      "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
       "productiveMacrocycles": 20,
       "completed": [],
       "active": {
@@ -75,18 +56,16 @@
         "closureWorkItem": {
           "id": "PF-MC04-CLOSE-01",
           "priority": 1,
-          "objective": "Stop product refinements and execute the existing exact-SHA candidate through Product CI, Robot R01-R03, independent review, integration and post-merge replay.",
+          "objective": "Execute the exact-SHA candidate through delta Robot R01-R03, cumulative Robot simulation, independent review, integration and post-merge replay.",
           "candidateSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
-          "mustAdvance": ["PF-MC04-EC01", "PF-MC04-EC02", "PF-MC04-EC03", "PF-MC04-EC04", "PF-MC04-EC05", "PF-MC04-EC06"],
-          "commands": [
-            "python -m unittest tests.test_operational_store",
-            "python -m unittest factory.test_razzo_executor"
-          ],
+          "mustAdvance": ["PF-MC04-EC01","PF-MC04-EC02","PF-MC04-EC03","PF-MC04-EC04","PF-MC04-EC05","PF-MC04-EC06"],
+          "commands": ["python -m unittest tests.test_operational_store","python -m unittest factory.test_razzo_executor"],
+          "lastAttempt": {"cycleId":"razzo-ccbb314bbe3d","exactSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","observedSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","status":"PRODUCT_CI_COMMANDS_VERIFIED","commandsPassed":2},
           "forbiddenWork": "Any further SQLite hardening or generic test expansion not required by a failing closure gate"
         },
         "exitCriteria": [
-          {"id":"PF-MC04-EC01","description":"A canonical operational database schema exists for at least products, stock movements, users and audit events.","status":"MISSING","evidenceState":"READY_FOR_EXACT_SHA_VERIFICATION"},
-          {"id":"PF-MC04-EC02","description":"A reversible migration creates the development/staging database without mutating EasyFarm or production data.","status":"MISSING","evidenceState":"READY_FOR_EXACT_SHA_VERIFICATION"},
+          {"id":"PF-MC04-EC01","description":"A canonical operational database schema exists for at least products, stock movements, users and audit events.","status":"MISSING","evidenceState":"EXACT_SHA_COMMANDS_VERIFIED"},
+          {"id":"PF-MC04-EC02","description":"A reversible migration creates the development/staging database without mutating EasyFarm or production data.","status":"MISSING","evidenceState":"EXACT_SHA_COMMANDS_VERIFIED"},
           {"id":"PF-MC04-EC03","description":"At least one real operator journey writes and reloads persistent state transactionally.","status":"MISSING","evidenceState":"READY_FOR_ROBOT_EXECUTION"},
           {"id":"PF-MC04-EC04","description":"Every mutation produces an attributable immutable audit event.","status":"MISSING","evidenceState":"READY_FOR_ROBOT_EXECUTION"},
           {"id":"PF-MC04-EC05","description":"Backup, rollback and recovery are tested in an isolated environment.","status":"MISSING","evidenceState":"READY_FOR_ROBOT_EXECUTION"},
@@ -98,11 +77,7 @@
     {
       "id": "family-cloud",
       "repository": "giovannifidel-collab/family-cloud",
-      "baseline": {
-        "id": "MC-00",
-        "status": "INCREMENTAL_RECONCILIATION_REQUIRED",
-        "mustNotBlockSafeProductWork": true
-      },
+      "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
       "productiveMacrocycles": 20,
       "completed": [],
       "active": {
@@ -114,11 +89,9 @@
           "id": "FC-MC04-CLOSE-01",
           "priority": 1,
           "objective": "Implement and verify one bounded authenticated upload that persists metadata and object reference across restart and a new session.",
-          "mustAdvance": ["FC-MC04-EC01", "FC-MC04-EC02"],
-          "commands": [
-            "npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm test",
-            "npm run typecheck"
-          ],
+          "mustAdvance": ["FC-MC04-EC01","FC-MC04-EC02"],
+          "commands": ["npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm test","npm run typecheck"],
+          "lastAttempt": {"cycleId":"razzo-ccbb314bbe3d","exactSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","observedSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","status":"BASELINE_TESTS_VERIFIED","commandsPassed":2,"note":"Passing generic tests and typecheck do not establish upload persistence exit criteria."},
           "forbiddenWork": "Gallery polish, local-only flows or unrelated media features"
         },
         "exitCriteria": [
