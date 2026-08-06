@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: preparatore-v2-public-codex-auth
+  group: preparatore-v2-public-${{ github.event.client_payload.job_id || 'cleanup' }}
   cancel-in-progress: false
 
 jobs:
