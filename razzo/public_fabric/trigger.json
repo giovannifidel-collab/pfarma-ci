@@ -1,8 +1,8 @@
 {
-  "requestedAt": "2026-08-06T16:46:29+02:00",
+  "requestedAt": "2026-08-06T17:03:00+02:00",
   "requestedBy": "RAZZO Factory automation",
   "mode": "dispatch",
-  "controlPlaneSha": "423e298fb543235a73b84cff9572c3190b60c1be",
+  "controlPlaneSha": "cdfc5bb9b3cef18fc539558944a383b5d4ad95c1",
   "executionPolicy": "MACROCYCLE_CLOSURE_FIRST",
   "plannerContract": "ACTIVE_MACROCYCLE_CLOSURE_WORK_ITEM_V1",
   "workItems": [
@@ -25,5 +25,5 @@
     "rejectFalseCanary": true,
     "rejectEmptyCommands": true
   },
-  "reason": "Execute the corrected active macrocycle closure commands from the current canonical control-plane state and persist truthful exact-SHA receipts."
+  "reason": "Reconcile cycle razzo-061f1eca2be5, retain verified PFarma and Family evidence, retry Giovanni with isolated CI build environment, and persist truthful exact-SHA receipts."
 }
