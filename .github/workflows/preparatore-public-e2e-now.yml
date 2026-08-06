@@ -51,6 +51,7 @@ jobs:
           GITHUB_PHOTO_AI_REPOSITORY: giovannifidel-collab/pfarma-ci
           PREPARATORE_E2E_BASE_URL: https://project-giovanni.vercel.app
           APP_BASE_URL: https://project-giovanni.vercel.app
+          PREPARATORE_E2E_TRIGGER: '2026-08-07T01:25:00+02:00'
         shell: bash
         run: |
           set -euo pipefail
