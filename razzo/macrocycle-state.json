@@ -2,12 +2,12 @@
   "version": 2,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-06T13:10:00Z",
+  "updatedAt": "2026-08-06T13:16:00Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST",
     "antiLoopRule": "Reject any new refinement, hardening or cleanup work unless it directly verifies a currently missing exit criterion or removes a named completion gate blocker.",
-    "waveSuccessRule": "A wave is productive only if it changes at least one exit criterion from MISSING to EVIDENCE_READY or VERIFIED, clears a named completion gate, integrates an exact-SHA candidate, emits a receipt, or advances to the next macrocycle.",
+    "waveSuccessRule": "A wave is productive only if it verifies an exit criterion, clears a named completion gate, integrates an exact-SHA candidate, emits a receipt, or advances to the next macrocycle.",
     "blockedProjectRule": "A human or infrastructure gate blocks only the sensitive action; all other enabled projects must continue on their own active macrocycle.",
     "fanOutRule": "Dispatch one closure work item per enabled project in every wave unless that project is already waiting solely on an external human gate.",
     "completionOrder": [
@@ -77,11 +77,11 @@
           "forbiddenWork": "Any further SQLite hardening or generic test expansion not required by a failing closure gate"
         },
         "exitCriteria": [
-          {"id":"PF-MC04-EC01","description":"A canonical operational database schema exists for at least products, stock movements, users and audit events.","status":"EVIDENCE_READY"},
-          {"id":"PF-MC04-EC02","description":"A reversible migration creates the development/staging database without mutating EasyFarm or production data.","status":"EVIDENCE_READY"},
-          {"id":"PF-MC04-EC03","description":"At least one real operator journey writes and reloads persistent state transactionally.","status":"EVIDENCE_READY"},
-          {"id":"PF-MC04-EC04","description":"Every mutation produces an attributable immutable audit event.","status":"EVIDENCE_READY"},
-          {"id":"PF-MC04-EC05","description":"Backup, rollback and recovery are tested in an isolated environment.","status":"EVIDENCE_READY"},
+          {"id":"PF-MC04-EC01","description":"A canonical operational database schema exists for at least products, stock movements, users and audit events.","status":"MISSING","evidenceState":"READY_FOR_EXACT_SHA_VERIFICATION"},
+          {"id":"PF-MC04-EC02","description":"A reversible migration creates the development/staging database without mutating EasyFarm or production data.","status":"MISSING","evidenceState":"READY_FOR_EXACT_SHA_VERIFICATION"},
+          {"id":"PF-MC04-EC03","description":"At least one real operator journey writes and reloads persistent state transactionally.","status":"MISSING","evidenceState":"READY_FOR_ROBOT_EXECUTION"},
+          {"id":"PF-MC04-EC04","description":"Every mutation produces an attributable immutable audit event.","status":"MISSING","evidenceState":"READY_FOR_ROBOT_EXECUTION"},
+          {"id":"PF-MC04-EC05","description":"Backup, rollback and recovery are tested in an isolated environment.","status":"MISSING","evidenceState":"READY_FOR_ROBOT_EXECUTION"},
           {"id":"PF-MC04-EC06","description":"Delta Robot QA, full cumulative Robot simulation and post-merge replay pass on exact SHA before completion.","status":"MISSING"}
         ]
       },
