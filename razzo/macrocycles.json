@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "schema": "razzo.product-macrocycles.v1",
+  "baseline": {
+    "id": "MC-00",
+    "title": "Baseline certificata e riconciliazione incrementale",
+    "productive": false,
+    "rule": "Preserve existing verified work, classify current capabilities, reconcile live GitHub state and map evidence to the productive roadmap without restarting the product."
+  },
+  "projects": {
+    "project-giovanni": {
+      "repository": "giovannifidel-collab/project-giovanni",
+      "productiveMacrocycles": 20,
+      "macrocycles": [
+        {"id":"MC-01","title":"Runtime, ambiente e distribuzione direttamente utilizzabile","outcome":"The product starts reliably and is reachable in a controlled environment."},
+        {"id":"MC-02","title":"Identità, profilo e preferenze persistenti","outcome":"A user can maintain a durable personal training profile."},
+        {"id":"MC-03","title":"Assessment completo e baseline fisica","outcome":"The complete assessment produces a validated persistent baseline."},
+        {"id":"MC-04","title":"Preparatore AI e contratto di generazione","outcome":"The preparation engine produces validated, bounded and explainable plans."},
+        {"id":"MC-05","title":"Piano di allenamento persistente e versionato","outcome":"Generated plans are stored, versioned and recoverable."},
+        {"id":"MC-06","title":"Pianificazione settimanale e readiness","outcome":"The user receives a coherent weekly schedule adjusted by readiness."},
+        {"id":"MC-07","title":"Esecuzione guidata della sessione","outcome":"A user can perform a complete guided workout safely."},
+        {"id":"MC-08","title":"Risultato, storico e progressione","outcome":"Workout results persist and drive visible historical progression."},
+        {"id":"MC-09","title":"Feedback, dolore, recupero e adattamento","outcome":"Real feedback safely modifies subsequent recommendations."},
+        {"id":"MC-10","title":"Wearable e importazione dati fisici","outcome":"Wearable data is ingested, validated and linked to decisions."},
+        {"id":"MC-11","title":"Analisi fotografica e checkpoint visivi","outcome":"Photo analysis is evidence-scored, safe and integrated into progression."},
+        {"id":"MC-12","title":"Programmazione automatica multi-settimana","outcome":"The system maintains a coherent adaptive multi-week program."},
+        {"id":"MC-13","title":"Modalità rapide, casa, viaggio e attrezzatura","outcome":"The primary journey remains complete across real training contexts."},
+        {"id":"MC-14","title":"Sicurezza clinica e guardrail","outcome":"Pain, risk and stop conditions fail closed throughout the product."},
+        {"id":"MC-15","title":"Progress dashboard e decisioni longitudinali","outcome":"The user can understand progress and the next justified action."},
+        {"id":"MC-16","title":"Offline, resilienza e sincronizzazione","outcome":"Core journeys survive connectivity loss and reconcile safely."},
+        {"id":"MC-17","title":"Privacy, autorizzazioni e protezione dati","outcome":"Personal and image data have enforced lifecycle and access controls."},
+        {"id":"MC-18","title":"Backup, export, restore e portabilità","outcome":"The user can export, restore and verify their complete history."},
+        {"id":"MC-19","title":"Collaudo end-to-end e performance","outcome":"Realistic full journeys pass exact-SHA reliability and performance gates."},
+        {"id":"MC-20","title":"Release, osservabilità e stabilizzazione","outcome":"The product is released, observable, recoverable and operationally stable."}
+      ]
+    },
+    "pfarma-cloud": {
+      "repository": "giovannifidel-collab/pfarma-cloud",
+      "productiveMacrocycles": 20,
+      "macrocycles": [
+        {"id":"MC-01","title":"Runtime gestionale e workspace operatore","outcome":"PFarma starts reliably and exposes one coherent operator shell."},
+        {"id":"MC-02","title":"Utenti, ruoli, autorizzazioni e audit accessi","outcome":"Every operational action is authorized and attributable."},
+        {"id":"MC-03","title":"Anagrafiche canoniche e contratti dati","outcome":"Products, customers, suppliers and operators share validated canonical models."},
+        {"id":"MC-04","title":"Database operativo, persistenza e audit foundation","outcome":"Operational state persists transactionally with traceable audit and recovery."},
+        {"id":"MC-05","title":"Catalogo prodotti, MINSAN, EAN e ricerca universale","outcome":"Operators can reliably find and maintain real product records."},
+        {"id":"MC-06","title":"Magazzino, movimenti e disponibilità","outcome":"Stock changes are persistent, consistent and fully traceable."},
+        {"id":"MC-07","title":"Lotti, scadenze, richiami e tracciabilità","outcome":"Lot-level inventory and safety controls work end to end."},
+        {"id":"MC-08","title":"Fornitori, ordini e riordino","outcome":"Operators can create, review and manage supplier orders safely."},
+        {"id":"MC-09","title":"Ricezione merce e riconciliazione","outcome":"Receiving updates orders, lots and stock atomically and idempotently."},
+        {"id":"MC-10","title":"Vendita, cassa, pagamenti e resi","outcome":"The full sale and return journey is correct, persistent and auditable."},
+        {"id":"MC-11","title":"Clienti, prenotazioni e CRM operativo","outcome":"Reservations and customer follow-up operate on real persistent data."},
+        {"id":"MC-12","title":"Documenti, fatturazione e numerazioni","outcome":"Operational documents are generated, stored and validated consistently."},
+        {"id":"MC-13","title":"Contabilità operativa e partita doppia","outcome":"Commercial actions produce balanced and traceable accounting records."},
+        {"id":"MC-14","title":"Laboratorio galenico e materie prime","outcome":"Formulas, preparations, lots, labels and consumption are fully managed."},
+        {"id":"MC-15","title":"Visite, servizi, firme e allegati","outcome":"Service and visit workflows are persistent, searchable and exportable."},
+        {"id":"MC-16","title":"EasyFarm e migrazione progressiva controllata","outcome":"Source data is imported read-only, reconciled and migrated reversibly."},
+        {"id":"MC-17","title":"Offline, sincronizzazione e continuità operativa","outcome":"Critical operations survive outages without corrupting data."},
+        {"id":"MC-18","title":"Backup, restore, disaster recovery e sicurezza","outcome":"The management system can be restored and audited after failure."},
+        {"id":"MC-19","title":"Robot Gestionale cumulativo e collaudo completo","outcome":"The Robot simulates the complete developed management system on exact SHA."},
+        {"id":"MC-20","title":"Rilascio, osservabilità e stabilizzazione in esercizio","outcome":"PFarma is deployable, monitored and stable for real operations."}
+      ]
+    },
+    "family-cloud": {
+      "repository": "giovannifidel-collab/family-cloud",
+      "productiveMacrocycles": 20,
+      "macrocycles": [
+        {"id":"MC-01","title":"Runtime unico e alpha raggiungibile","outcome":"Family Cloud starts with one command and is reachable by intended users."},
+        {"id":"MC-02","title":"Identità famiglia, autenticazione e autorizzazioni","outcome":"Family members have secure scoped identities and access."},
+        {"id":"MC-03","title":"Modello media, metadati e catalogo persistente","outcome":"Media and metadata use durable validated canonical records."},
+        {"id":"MC-04","title":"Upload reale e persistenza durevole","outcome":"Users can upload media and reopen it after restart."},
+        {"id":"MC-05","title":"Storage oggetti e gestione capacità","outcome":"Media bytes are stored, verified and capacity-managed safely."},
+        {"id":"MC-06","title":"Libreria, timeline e navigazione completa","outcome":"The persistent archive is browsable through one coherent journey."},
+        {"id":"MC-07","title":"Album, preferiti, tag e organizzazione","outcome":"Users can durably organize and retrieve family media."},
+        {"id":"MC-08","title":"Ricerca, filtri, duplicati e qualità archivio","outcome":"The archive can be searched and cleaned without data loss."},
+        {"id":"MC-09","title":"Condivisione familiare e permessi granulari","outcome":"Media can be shared within explicit family boundaries."},
+        {"id":"MC-10","title":"Video, miniature e pipeline media","outcome":"Photo and video processing is reliable, bounded and recoverable."},
+        {"id":"MC-11","title":"Importazione e migrazione archivi esistenti","outcome":"Existing family archives can be imported reversibly and verified."},
+        {"id":"MC-12","title":"Family Node e sincronizzazione dispositivi","outcome":"Authorized nodes synchronize durable state without duplication."},
+        {"id":"MC-13","title":"Conflitti, idempotenza e consistenza distribuita","outcome":"Concurrent changes reconcile deterministically and safely."},
+        {"id":"MC-14","title":"Backup verificabile e restore selettivo","outcome":"Families can verify, restore and recover the archive."},
+        {"id":"MC-15","title":"Memorie, ricorrenze e prodotti derivati","outcome":"Derived memory journeys are generated from real persistent media."},
+        {"id":"MC-16","title":"Privacy, cifratura e ciclo di vita dati","outcome":"Sensitive family data has enforceable protection and deletion rules."},
+        {"id":"MC-17","title":"Offline, cache e resilienza client","outcome":"Core browsing and capture survive temporary disconnection."},
+        {"id":"MC-18","title":"Amministrazione famiglia e manutenzione","outcome":"The family can manage members, storage and operational health."},
+        {"id":"MC-19","title":"Collaudo end-to-end multi-dispositivo","outcome":"Complete realistic family journeys pass exact-SHA system tests."},
+        {"id":"MC-20","title":"Release, osservabilità e stabilizzazione","outcome":"Family Cloud is deployed, observable, recoverable and stable."}
+      ]
+    }
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "policy": "RAZZO_PRODUCT_COMPLETION",
+  "status": "mandatory",
+  "objective": "maximize verified reduction in distance from the current repository state to a human-usable, persistent, end-to-end product state",
+  "primaryMetric": "verified_product_utility_delta",
+  "forbiddenPrimaryMetrics": [
+    "pull_request_count",
+    "commit_count",
+    "test_count",
+    "issue_count",
+    "screen_count",
+    "lines_of_code",
+    "nominal_generation_count"
+  ],
+  "capacityAllocation": {
+    "structuralBottlenecksMinimumPercent": 70,
+    "secondaryProductAndUxMaximumPercent": 20,
+    "factoryGovernanceAnalysisMaximumPercent": 10,
+    "rule": "Allocation is measured over a rolling five-generation window. If the minimum structural allocation is missed, the next safe generation must prioritize structural work until compliance is restored."
+  },
+  "mandatoryDecisionSequence": [
+    "identify the product's primary user journey",
+    "determine whether a human can start or open the product",
+    "determine whether the primary journey completes end-to-end",
+    "determine whether results persist across restart or reopen",
+    "determine whether required real integrations operate",
+    "determine whether realistic failure and recovery paths work",
+    "select the highest-impact non-gated deficit",
+    "decompose only enough to execute and verify it safely",
+    "integrate the complete useful state",
+    "reassess the next structural bottleneck"
+  ],
+  "candidateScore": {
+    "verifiedHumanUtility": 30,
+    "endToEndBlockerRemoval": 25,
+    "productionDistanceReduction": 20,
+    "dependenciesUnlocked": 10,
+    "technicalRiskReduction": 8,
+    "realisticVerifiability": 7,
+    "penalties": {
+      "cosmeticOnly": -40,
+      "newReadOnlyScreenWithoutUnderlyingCapability": -35,
+      "demoDataWhenRealIntegrationIsFeasible": -30,
+      "duplicateOrNearDuplicateJourney": -30,
+      "governanceWithoutImmediateProductExecution": -35,
+      "microPrFragmentation": -25,
+      "analysisWithoutSameCycleImplementation": -40,
+      "testOnlyOfExistingKnownBehavior": -20,
+      "statusReceiptWithoutFunctionalDelta": -40
+    }
+  },
+  "structuralWorkExamples": [
+    "startable runtime",
+    "reachable deployment",
+    "primary end-to-end journey",
+    "real persistence",
+    "authentication and authorization",
+    "real storage or database integration",
+    "external system integration",
+    "data migration and recovery",
+    "race-condition or correctness repair",
+    "production-grade error handling",
+    "realistic end-to-end verification"
+  ],
+  "microFeatureAdmission": {
+    "allowedOnlyIf": [
+      "it directly removes a blocker in the current primary journey",
+      "it is a required subcomponent of the selected structural workstream",
+      "it verifies or hardens a structural capability being integrated in the same generation",
+      "all higher-priority structural deficits are truly human-gated or unsafe"
+    ],
+    "otherwise": "reject"
+  },
+  "antiFragmentation": {
+    "rule": "A coherent product objective must remain one parent workstream even when decomposed into child tasks. Do not replace a structural change with an indefinite sequence of isolated screens, summaries, previews, guidance modules or dashboards.",
+    "maximumConsecutiveSecondaryGenerationsPerProject": 1,
+    "requireParentAcceptanceContract": true,
+    "requireFinalEndToEndComposition": true
+  },
+  "definitionOfRealProgress": {
+    "accepted": [
+      "a primary capability becomes usable by a human",
+      "an end-to-end journey becomes complete",
+      "a structural or architectural blocker is removed",
+      "a simulated capability is replaced by a real one",
+      "real persistence or integration is introduced",
+      "a substantive correctness, concurrency or recovery defect is fixed",
+      "the product becomes startable, deployable or directly testable",
+      "a previously failing realistic end-to-end test passes"
+    ],
+    "rejected": [
+      "status or manifest churn",
+      "analysis without implementation",
+      "new issue or roadmap creation",
+      "isolated summary or readiness page",
+      "mock-only or hard-coded behavior",
+      "query-only state standing in for required persistence",
+      "receipt generation without product utility delta",
+      "renaming or textual changes without functional effect"
+    ]
+  },
+  "completionEvidence": {
+    "required": [
+      "exact base and candidate SHA",
+      "real diff inspection",
+      "relevant automated tests",
+      "end-to-end or functional journey evidence when user-facing",
+      "explicit statement of what a human can now do that was previously impossible",
+      "remaining next structural bottleneck"
+    ],
+    "doNotLeadWith": [
+      "number of pull requests",
+      "number of commits",
+      "number of agents",
+      "number of tests"
+    ]
+  },
+  "humanGateRule": {
+    "valid": [
+      "unavailable real secrets or credentials",
+      "paid activation",
+      "destructive production operation",
+      "irreversible production migration",
+      "sensitive legal or cryptographic release",
+      "mutation or deletion of irreplaceable real data",
+      "genuinely ambiguous product decision not inferable from repository evidence"
+    ],
+    "invalid": [
+      "ordinary refactoring",
+      "local implementation",
+      "reversible schema work",
+      "test construction",
+      "branch creation",
+      "bug correction",
+      "reasonable dependency addition",
+      "development environment creation"
+    ],
+    "rule": "Complete all safe pre-gate work and request only the minimum precise human action required."
+  },
+  "projectDirectives": {
+    "project-giovanni": {
+      "primaryJourney": "assessment -> plan -> workout -> result publication -> history -> progression",
+      "structuralPriorities": [
+        "Preparatore correctness and atomic publication",
+        "persistent workout and progress state",
+        "end-to-end production verification",
+        "deployment and direct user testability"
+      ],
+      "deprioritizeUntilStructuralJourneyWorks": [
+        "additional dashboards",
+        "additional summaries",
+        "parallel guidance pages"
+      ]
+    },
+    "pfarma-cloud": {
+      "primaryJourney": "operator access -> real operational data -> action -> persistence -> audit and recovery",
+      "structuralPriorities": [
+        "startable operator product",
+        "real database persistence",
+        "progressive EasyFarm or operational-source integration",
+        "real inventory, reservations, customers, orders, documents, lots and expiries",
+        "backup, traceability and recovery"
+      ],
+      "deprioritizeUntilStructuralJourneyWorks": [
+        "additional read-only cockpits",
+        "additional deterministic demo datasets",
+        "additional preview-only operator pages"
+      ]
+    },
+    "family-cloud": {
+      "primaryJourney": "authenticate -> upload -> persist -> browse timeline and albums -> reopen -> recover and synchronize",
+      "structuralPriorities": [
+        "single-command runtime",
+        "reachable alpha deployment",
+        "authentication",
+        "real upload and persistence",
+        "storage integration",
+        "synchronization and Family Node",
+        "backup and recovery"
+      ],
+      "deprioritizeUntilStructuralJourneyWorks": [
+        "additional browser-local galleries",
+        "additional read-only insights",
+        "additional local-only planning pages"
+      ]
+    }
+  },
+  "cycleContract": {
+    "beforeExecution": [
+      "record current human-usable state",
+      "record primary structural bottleneck",
+      "record next meaningful user state",
+      "record parent workstream and acceptance evidence"
+    ],
+    "afterIntegration": [
+      "state the blocker removed",
+      "state what the human can now do",
+      "verify the parent end-to-end journey",
+      "identify and immediately pursue the next structural bottleneck"
+    ],
+    "stopRule": "Do not stop at analysis, planning, queue creation, a merged child task or a nominal generation boundary. Stop only on execution-budget exhaustion, real backpressure, no safe useful work, or a true human gate."
+  }
+}

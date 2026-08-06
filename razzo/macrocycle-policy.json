@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "policy": "RAZZO_PRODUCT_COMPLETION_MACROCYCLES",
+  "status": "mandatory",
+  "extends": "razzo/product-completion-policy.json",
+  "productiveMacrocyclesPerProject": 20,
+  "baselineMacrocycle": "MC-00",
+  "objective": "concentrate each enabled product repository on one persistent product-completion target until all objective exit criteria are verified",
+  "rules": {
+    "oneActiveProductiveMacrocyclePerProject": true,
+    "futureMacrocycleImplementationForbidden": true,
+    "workItemMustReferenceMacrocycle": true,
+    "workItemMustReferenceExitCriterion": true,
+    "completionRequiresExactSha": true,
+    "completionRequiresIndependentReview": true,
+    "completionRequiresReceipt": true,
+    "failedOrIncompleteMacrocycleRemainsActive": true,
+    "baselineMustPreserveExistingWork": true,
+    "noArtificialWorkForShardUtilization": true
+  },
+  "waveContract": {
+    "targetMinutes": 12,
+    "priority": "complete the active macrocycle or reduce its verified critical path",
+    "resumeBeforeDiscover": true,
+    "reconcileLiveGithubBeforeUsingPersistedState": true,
+    "maximumProductiveParallelism": true,
+    "allowMultipleIndependentWorkstreamsInsideActiveMacrocycle": true,
+    "allowCrossProjectParallelism": true,
+    "allowFutureMacrocyclePreparation": false
+  },
+  "statePrecedence": [
+    "live pull-request state and merged_at",
+    "live integration-lane head and commit ancestry",
+    "exact-SHA Product CI and Robot QA",
+    "completion and cycle receipts",
+    "persisted macrocycle state",
+    "append-only operational comments"
+  ],
+  "staleStateProtection": {
+    "rule": "A completed or merged work item may never be reconstructed as active solely from an older comment, receipt or project-state snapshot.",
+    "requirePullRequestApiReconciliation": true,
+    "requireIntegrationAncestryCheck": true,
+    "requireAtomicStateUpdateAfterMerge": true,
+    "failClosedOnContradiction": true
+  },
+  "queueReadiness": {
+    "minimumRunningOrReady": 3,
+    "minimumSpecifiedNext": 3,
+    "refillInsideActiveMacrocycle": true,
+    "readyZeroMeaning": "discover and specify structural work inside the same active macrocycle; do not change macrocycle"
+  },
+  "robotPolicy": {
+    "allProductPullRequests": "delta verification on affected journeys",
+    "pfarmaMacrocycleCandidate": "full cumulative management-system simulation",
+    "pfarmaAfterMerge": "full replay on integrated SHA",
+    "fakeCanariesCountAsProductProgress": false,
+    "robotFailure": "keep macrocycle active, fix on the canonical branch, review, retest and replay"
+  },
+  "completionStates": [
+    "PLANNED",
+    "ACTIVE",
+    "VERIFYING",
+    "BLOCKED_BY_TRUE_HUMAN_GATE",
+    "COMPLETED"
+  ],
+  "admission": {
+    "accepted": [
+      "directly satisfies an exit criterion of the active macrocycle",
+      "removes a blocker of the active macrocycle",
+      "tests, reviews or secures the active macrocycle",
+      "restores build, CI, persistence or recovery required by the active macrocycle"
+    ],
+    "rejected": [
+      "unrelated future capability",
+      "another preview, dashboard or summary without underlying structural capability",
+      "governance churn without same-wave product execution",
+      "duplicate or near-duplicate journey",
+      "task created only to occupy capacity"
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+name: RAZZO Macrocycle Policy
+
+on:
+  pull_request:
+    paths:
+      - "razzo/product-completion-policy.json"
+      - "razzo/macrocycle-policy.json"
+      - "razzo/macrocycles.json"
+      - "razzo/macrocycle-state.json"
+      - "razzo/state/validate_macrocycles.py"
+      - "razzo/state/test_validate_macrocycles.py"
+      - ".github/workflows/razzo-macrocycle-policy.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "razzo/product-completion-policy.json"
+      - "razzo/macrocycle-policy.json"
+      - "razzo/macrocycles.json"
+      - "razzo/macrocycle-state.json"
+      - "razzo/state/validate_macrocycles.py"
+      - "razzo/state/test_validate_macrocycles.py"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate macrocycle contract
+        run: python razzo/state/validate_macrocycles.py
+      - name: Run macrocycle regression tests
+        run: python -m unittest razzo.state.test_validate_macrocycles
