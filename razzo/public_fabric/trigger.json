@@ -1,22 +1,18 @@
 {
-  "requestedAt": "2026-08-06T17:03:00+02:00",
+  "requestedAt": "2026-08-06T17:48:00+02:00",
   "requestedBy": "RAZZO Factory automation",
   "mode": "dispatch",
-  "controlPlaneSha": "cdfc5bb9b3cef18fc539558944a383b5d4ad95c1",
+  "controlPlaneSha": "ec34af32120361751e07b94d300049c9945dc67b",
   "executionPolicy": "MACROCYCLE_CLOSURE_FIRST",
   "plannerContract": "ACTIVE_MACROCYCLE_CLOSURE_WORK_ITEM_V1",
-  "workItems": [
-    "PG-MC08-CLOSE-01",
-    "PF-MC04-CLOSE-01",
-    "FC-MC04-CLOSE-01"
-  ],
-  "requiredExactCandidates": {
-    "pfarma-cloud": "7e30322973310b29ee8bf3db24464b713b7d81b9"
-  },
+  "workItems": ["PG-MC08-CLOSE-01","PF-MC04-CLOSE-01","FC-MC04-CLOSE-01"],
+  "requiredExactCandidates": {"pfarma-cloud":"7e30322973310b29ee8bf3db24464b713b7d81b9"},
   "requiredExecution": {
     "nonEmptyCommandsPerWorkItem": true,
     "exactShaObservedEqualsInput": true,
-    "receiptPerProject": true
+    "receiptPerProject": true,
+    "pfarmaDeltaRobot": true,
+    "pfarmaCumulativeRegression": true
   },
   "failClosed": {
     "rejectGenericWorkstreams": true,
@@ -25,5 +21,5 @@
     "rejectFalseCanary": true,
     "rejectEmptyCommands": true
   },
-  "reason": "Reconcile cycle razzo-061f1eca2be5, retain verified PFarma and Family evidence, retry Giovanni with isolated CI build environment, and persist truthful exact-SHA receipts."
+  "reason": "Run the reconciled closure wave. PFarma executes delta R01-R03 plus the cumulative tests corpus at exact candidate SHA; Giovanni and Family remain active and may only receive truthful gate evidence."
 }
