@@ -1,0 +1,51 @@
+{
+  "schema": "razzo.aggregate-cycle-receipt.v1",
+  "cycleId": "razzo-d2018d381336",
+  "generationId": "razzo-d2018d381336:g1",
+  "controlPlaneSha": "1ad9352111e1d868f05458866a33ccaae3a1ec79",
+  "workflowRunId": 31114261884,
+  "status": "green",
+  "workstreamsDispatched": 3,
+  "workstreamsCompleted": 3,
+  "workstreamsFailed": 0,
+  "workstreamsVerified": 3,
+  "exactShaGates": 3,
+  "testsExecuted": 6,
+  "projects": [
+    {
+      "projectId": "project-giovanni",
+      "macrocycleId": "MC-08",
+      "exactInputSha": "c83b962268abe4586731bb96ff0777cdaca754fd",
+      "observedSha": "c83b962268abe4586731bb96ff0777cdaca754fd",
+      "receiptWorkItemId": "149465fb4131d78e0a83bd02",
+      "commandsPassed": 2,
+      "status": "PRODUCT_CI_COMMANDS_VERIFIED",
+      "completionClaimed": false
+    },
+    {
+      "projectId": "pfarma-cloud",
+      "macrocycleId": "MC-04",
+      "exactInputSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
+      "observedSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
+      "receiptWorkItemId": "74f344fc3f2cb77684d92f03",
+      "commandsPassed": 2,
+      "status": "PRODUCT_CI_COMMANDS_VERIFIED",
+      "completionClaimed": false,
+      "remainingGates": ["independent-review", "delta-robot-r01-r03", "full-cumulative-robot", "integration", "post-merge-robot-replay", "completion-receipt"]
+    },
+    {
+      "projectId": "family-cloud",
+      "macrocycleId": "MC-04",
+      "exactInputSha": "b99fd32f296cd323ffd8ad59bf0e335d20fcae73",
+      "observedSha": "b99fd32f296cd323ffd8ad59bf0e335d20fcae73",
+      "receiptWorkItemId": "bb477bd7de70f90c6dd50a49",
+      "commandsPassed": 2,
+      "status": "BASELINE_TESTS_VERIFIED",
+      "completionClaimed": false
+    }
+  ],
+  "productProgress": false,
+  "generationPromoted": false,
+  "safeWorkRemaining": true,
+  "truthNote": "The Public Execution Fabric is operational end-to-end for exact-SHA command execution and receipt verification. No macrocycle completion is claimed because product exit criteria, independent review, Robot QA, integration and post-merge replay are not all complete."
+}
