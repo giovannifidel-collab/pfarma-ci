@@ -1,13 +1,23 @@
 {
-  "requestedAt": "2026-08-06T15:34:47+02:00",
+  "requestedAt": "2026-08-06T16:00:51+02:00",
   "requestedBy": "RAZZO Factory automation",
   "mode": "dispatch",
-  "controlPlaneSha": "d501c9cbd9086da39850c8892cac09e9e1ba912a",
+  "controlPlaneSha": "e8211cba348868827880f0aece6d018c050d847f",
   "executionPolicy": "MACROCYCLE_CLOSURE_FIRST",
+  "plannerContract": "ACTIVE_MACROCYCLE_CLOSURE_WORK_ITEM_V1",
   "workItems": [
     "PG-MC08-CLOSE-01",
     "PF-MC04-CLOSE-01",
     "FC-MC04-CLOSE-01"
   ],
-  "reason": "Execute enabled projects in parallel against their single active macrocycle; prioritize closure gates, exact-SHA Product CI, Robot QA, integration, replay and receipts; prohibit unrelated refinement."
+  "requiredExactCandidates": {
+    "pfarma-cloud": "7e30322973310b29ee8bf3db24464b713b7d81b9"
+  },
+  "failClosed": {
+    "rejectGenericWorkstreams": true,
+    "rejectIntegrationShaWhenCandidateExists": true,
+    "rejectNoProductProgress": true,
+    "rejectFalseCanary": true
+  },
+  "reason": "Consume each enabled project's single active macrocycle closureWorkItem; use candidateSha when present; execute only productive closure work and persist exact-SHA evidence."
 }
