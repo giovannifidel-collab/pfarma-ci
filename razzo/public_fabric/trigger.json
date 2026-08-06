@@ -1,5 +1,5 @@
 {
-  "requestedAt": "2026-08-06T18:03:00+02:00",
+  "requestedAt": "2026-08-06T18:05:00+02:00",
   "requestedBy": "RAZZO Factory automation",
   "mode": "dispatch",
   "controlPlaneSha": "799ccb43c3152f7df2e806f8f20ec5f613b6f4aa",
@@ -16,14 +16,26 @@
     "exactShaObservedEqualsInput": true,
     "receiptPerProject": true,
     "pfarmaDeltaRobot": true,
-    "pfarmaCumulativeRegression": true
+    "pfarmaCumulativeRegression": true,
+    "independentPublicReview": true,
+    "reviewerExecutionIdentityMustDifferFromBuilder": true,
+    "reviewerRepositoryMustDifferFromProductRepository": true,
+    "reviewReceiptMustBindExactCandidateSha": true
+  },
+  "reviewTopology": {
+    "mode": "PUBLIC_REPOSITORY_REVIEW_SHARDS",
+    "minimumIndependentReviewersPerCandidate": 1,
+    "builderAndReviewerContextIsolation": true,
+    "humanCollaboratorNotRequired": true
   },
   "failClosed": {
     "rejectGenericWorkstreams": true,
     "rejectIntegrationShaWhenCandidateExists": true,
     "rejectNoProductProgress": true,
     "rejectFalseCanary": true,
-    "rejectEmptyCommands": true
+    "rejectEmptyCommands": true,
+    "rejectSelfReviewIdentity": true,
+    "rejectReviewWithoutExactShaBinding": true
   },
-  "reason": "Verify the two new functional closure candidates and PFarma cumulative Robot corpus on exact SHA before independent review and integration."
+  "reason": "Run exact-SHA Product CI and independent review through isolated public repository reviewer shards. A second human collaborator is not required; independence is established by separate execution identity, repository context and signed receipt."
 }
