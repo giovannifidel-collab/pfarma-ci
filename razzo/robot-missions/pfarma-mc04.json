@@ -1,0 +1,47 @@
+{
+  "schema": "razzo.operator-robot-mission-catalog.v1",
+  "projectId": "pfarma-cloud",
+  "macrocycleId": "MC-04",
+  "catalogVersion": "pfarma-mc04-v1",
+  "missions": [
+    {
+      "mission_id": "PF-MC04-R01",
+      "title": "Persist and reload an attributable stock adjustment",
+      "persona": "authorized-operator",
+      "preconditions": ["isolated database", "authenticated operator", "canonical product fixture"],
+      "actions": ["open product", "submit stock adjustment", "refresh", "start new session", "reopen product"],
+      "expected_results": ["adjustment succeeds once", "stock remains consistent", "audit event identifies operator and transaction"],
+      "database_assertions": ["one committed stock movement", "resulting stock equals prior stock plus delta"],
+      "audit_assertions": ["immutable audit event references actor, action, entity and timestamp"],
+      "persistence_assertions": ["state survives refresh and new session"],
+      "priority": "P0",
+      "status": "PLANNED"
+    },
+    {
+      "mission_id": "PF-MC04-R02",
+      "title": "Reject duplicate replay without duplicating stock or audit effects",
+      "persona": "authorized-operator",
+      "preconditions": ["isolated database", "completed PF-MC04-R01 transaction"],
+      "actions": ["replay identical idempotency key", "refresh product and audit views"],
+      "expected_results": ["no second stock mutation", "deterministic replay response"],
+      "database_assertions": ["movement count unchanged", "stock unchanged"],
+      "audit_assertions": ["no duplicate mutation audit event"],
+      "persistence_assertions": ["consistent state after restart"],
+      "priority": "P0",
+      "status": "PLANNED"
+    },
+    {
+      "mission_id": "PF-MC04-R03",
+      "title": "Backup and restore isolated operational database",
+      "persona": "recovery-operator",
+      "preconditions": ["isolated database containing R01 result"],
+      "actions": ["create backup", "restore into clean isolated target", "open product and audit history"],
+      "expected_results": ["restored stock and audit history match source digest"],
+      "database_assertions": ["schema and row digests match expected snapshot"],
+      "audit_assertions": ["audit sequence remains intact"],
+      "persistence_assertions": ["restored state survives restart"],
+      "priority": "P0",
+      "status": "PLANNED"
+    }
+  ]
+}
