@@ -1,12 +1,16 @@
 {
-  "requestedAt": "2026-08-06T17:48:00+02:00",
+  "requestedAt": "2026-08-06T18:03:00+02:00",
   "requestedBy": "RAZZO Factory automation",
   "mode": "dispatch",
-  "controlPlaneSha": "ec34af32120361751e07b94d300049c9945dc67b",
+  "controlPlaneSha": "799ccb43c3152f7df2e806f8f20ec5f613b6f4aa",
   "executionPolicy": "MACROCYCLE_CLOSURE_FIRST",
   "plannerContract": "ACTIVE_MACROCYCLE_CLOSURE_WORK_ITEM_V1",
   "workItems": ["PG-MC08-CLOSE-01","PF-MC04-CLOSE-01","FC-MC04-CLOSE-01"],
-  "requiredExactCandidates": {"pfarma-cloud":"7e30322973310b29ee8bf3db24464b713b7d81b9"},
+  "requiredExactCandidates": {
+    "project-giovanni": "80480a1031dec81b09aa40fcf494e3f42942f074",
+    "pfarma-cloud": "7e30322973310b29ee8bf3db24464b713b7d81b9",
+    "family-cloud": "a52fa1507067ec03d2c787e5dad9fd6d37a03f83"
+  },
   "requiredExecution": {
     "nonEmptyCommandsPerWorkItem": true,
     "exactShaObservedEqualsInput": true,
@@ -21,5 +25,5 @@
     "rejectFalseCanary": true,
     "rejectEmptyCommands": true
   },
-  "reason": "Run the reconciled closure wave. PFarma executes delta R01-R03 plus the cumulative tests corpus at exact candidate SHA; Giovanni and Family remain active and may only receive truthful gate evidence."
+  "reason": "Verify the two new functional closure candidates and PFarma cumulative Robot corpus on exact SHA before independent review and integration."
 }
