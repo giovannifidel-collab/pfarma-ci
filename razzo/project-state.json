@@ -1,7 +1,7 @@
 {
   "version": 5,
   "sourceOfTruth": "github-current-integration-heads-open-product-prs-and-enabled-registry",
-  "rediscoveryEpoch": "2026-08-04T23:05:00Z",
+  "rediscoveryEpoch": "2026-08-06T11:00:00Z",
   "factoryAllocationPaused": false,
   "resumeReason": "owner explicitly instructed the Factory to calculate, resume and continue without routine authorization",
   "projects": [
@@ -27,7 +27,7 @@
     },
     {
       "id": "family-cloud",
-      "exactSha": "6b9cdfc6e865204a490456688c55e1d61c5ced41",
+      "exactSha": "b99fd32f296cd323ffd8ad59bf0e335d20fcae73",
       "ready": 4,
       "backpressure": false,
       "humanGate": false,
