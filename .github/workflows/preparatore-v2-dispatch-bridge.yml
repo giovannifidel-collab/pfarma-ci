@@ -1,10 +1,12 @@
-name: Preparatore V2 · Dispatch Bridge
+name: Preparatore V2 · Public Codex Worker
 
-run-name: Preparatore V2 bridge · ${{ github.event.client_payload.job_id || github.event.pull_request.number || 'manual' }}
+run-name: Preparatore PLUS pubblico · ${{ github.event.client_payload.job_id || 'cleanup' }}
 
 on:
   repository_dispatch:
     types: [preparatore-v2-request]
+  schedule:
+    - cron: '*/15 * * * *'
   pull_request:
     paths:
       - '.github/workflows/preparatore-v2-dispatch-bridge.yml'
@@ -13,72 +15,26 @@ permissions:
   contents: read
 
 concurrency:
-  group: preparatore-v2-bridge-${{ github.event.client_payload.job_id || github.event.pull_request.number || github.run_id }}
+  group: preparatore-v2-public-codex-auth
   cancel-in-progress: false
 
 jobs:
-  forward:
-    if: github.event_name == 'repository_dispatch'
+  analyze:
+    if: github.event_name == 'repository_dispatch' && github.repository == 'giovannifidel-collab/pfarma-ci' && github.event.client_payload.job_id != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 3
-    environment: pfarma-ci-trusted
+    timeout-minutes: 20
+    environment: photo-ai-private
+
     steps:
       - name: Validate requested job
-        id: validate
         env:
           JOB_ID: ${{ github.event.client_payload.job_id }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "$JOB_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
-            echo 'Invalid or missing Preparatore job id.' >&2
-            exit 1
-          fi
-          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          [[ "$JOB_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
 
-      - name: Resolve private-repository token
-        shell: bash
-        env:
-          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
-          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-        run: |
-          set -euo pipefail
-          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
-          if [ -z "$token" ]; then
-            echo 'No token capable of dispatching the private Project Giovanni workflow is configured.' >&2
-            exit 1
-          fi
-          echo "PRIVATE_REPO_TOKEN=$token" >> "$GITHUB_ENV"
-
-      - name: Forward dispatch to private Preparatore workflow
-        env:
-          JOB_ID: ${{ steps.validate.outputs.job_id }}
-          GH_TOKEN: ${{ env.PRIVATE_REPO_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          code="$(curl --silent --show-error --output /tmp/dispatch-response.txt --write-out '%{http_code}' \
-            --request POST \
-            --header "Authorization: Bearer $GH_TOKEN" \
-            --header 'Accept: application/vnd.github+json' \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            --header 'Content-Type: application/json' \
-            'https://api.github.com/repos/giovannifidel-collab/project-giovanni/dispatches' \
-            --data "{\"event_type\":\"preparatore-v2-request\",\"client_payload\":{\"job_id\":\"$JOB_ID\"}}")"
-          if [ "$code" != '204' ]; then
-            cat /tmp/dispatch-response.txt >&2 || true
-            echo "Private dispatch failed with HTTP $code." >&2
-            exit 1
-          fi
-          echo "Private Preparatore dispatch accepted for $JOB_ID."
-
-  smoke-cross-repository:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    environment: pfarma-ci-trusted
-    steps:
-      - name: Resolve private-repository token
+      - name: Resolve private source token
         shell: bash
         env:
           GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
@@ -87,26 +43,213 @@ jobs:
           set -euo pipefail
           token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
           test -n "$token"
-          echo "PRIVATE_REPO_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
 
-      - name: Prove private repository dispatch acceptance
-        env:
-          GH_TOKEN: ${{ env.PRIVATE_REPO_TOKEN }}
+      - name: Checkout current trusted worker source into public runner
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: main
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: worker
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned Codex CLI before loading credentials
+        run: npm install --global @openai/codex@0.145.0
+
+      - name: Create isolated directories
+        id: dirs
         shell: bash
         run: |
           set -euo pipefail
-          smoke_id="smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          code="$(curl --silent --show-error --output /tmp/smoke-response.txt --write-out '%{http_code}' \
-            --request POST \
-            --header "Authorization: Bearer $GH_TOKEN" \
-            --header 'Accept: application/vnd.github+json' \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            --header 'Content-Type: application/json' \
-            'https://api.github.com/repos/giovannifidel-collab/project-giovanni/dispatches' \
-            --data "{\"event_type\":\"preparatore-v2-smoke\",\"client_payload\":{\"smoke_id\":\"$smoke_id\"}}")"
-          if [ "$code" != '204' ]; then
-            cat /tmp/smoke-response.txt >&2 || true
-            echo "Cross-repository dispatch failed with HTTP $code." >&2
-            exit 1
-          fi
-          echo "Cross-repository dispatch accepted: $smoke_id"
+          JOB_DIR="$(mktemp -d)"
+          CODEX_DIR="$(mktemp -d)"
+          echo "job_dir=$JOB_DIR" >> "$GITHUB_OUTPUT"
+          echo "codex_dir=$CODEX_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve authorized job owner
+        id: owner
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PREPARATORE_JOB_ID: ${{ github.event.client_payload.job_id }}
+        run: node scripts/resolve-preparatore-v2-user.mjs "$PREPARATORE_JOB_ID"
+
+      - name: Claim job and download private inputs
+        id: prepare
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PREPARATORE_USER_ID: ${{ steps.owner.outputs.user_id }}
+          PREPARATORE_JOB_ID: ${{ github.event.client_payload.job_id }}
+          PREPARATORE_JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        run: node scripts/preparatore-v2-job-compatible.mjs prepare "$PREPARATORE_JOB_ID" "$PREPARATORE_JOB_DIR"
+
+      - name: Restore encrypted ChatGPT-managed Codex authentication
+        id: restore
+        if: steps.prepare.outputs.claimed == 'true'
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
+          CODEX_AUTH_SEED_B64: ${{ secrets.CODEX_AUTH_SEED_B64 }}
+          CODEX_HOME: ${{ steps.dirs.outputs.codex_dir }}
+        run: node scripts/codex-auth-state.mjs restore
+
+      - name: Verify Codex and image inputs
+        if: steps.prepare.outputs.claimed == 'true'
+        env:
+          CODEX_HOME: ${{ steps.dirs.outputs.codex_dir }}
+          JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          codex --version
+          test -s "$CODEX_HOME/auth.json"
+          test -s "$JOB_DIR/prompt.txt"
+          for image in front side back; do test -s "$JOB_DIR/$image.jpg"; done
+
+      - name: Analyze photos and generate candidate plan with feedback
+        id: codex_cli
+        if: steps.prepare.outputs.claimed == 'true'
+        continue-on-error: true
+        timeout-minutes: 10
+        working-directory: worker
+        env:
+          CODEX_HOME: ${{ steps.dirs.outputs.codex_dir }}
+          JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        shell: bash
+        run: |
+          set +e
+          wearable_args=()
+          for image in "$JOB_DIR"/wearable-*.jpg; do [ -e "$image" ] || continue; wearable_args+=( -i "$image" ); done
+          timeout --signal=TERM --kill-after=30s 9m codex exec \
+            --skip-git-repo-check --ephemeral --sandbox read-only --json \
+            -i "$JOB_DIR/front.jpg" -i "$JOB_DIR/side.jpg" -i "$JOB_DIR/back.jpg" \
+            "${wearable_args[@]}" -o "$JOB_DIR/result.raw.txt" - \
+            < "$JOB_DIR/prompt.txt" > "$JOB_DIR/codex.stdout" 2> "$JOB_DIR/codex.stderr"
+          rc=$?
+          printf '%s\n' "$rc" > "$JOB_DIR/codex.exit-code"
+          if [ ! -s "$JOB_DIR/result.raw.txt" ] && [ ! -s "$JOB_DIR/codex.stdout" ]; then exit "$([ "$rc" -eq 0 ] && echo 1 || echo "$rc")"; fi
+          exit 0
+
+      - name: Parse and normalize Codex final output
+        id: codex
+        if: steps.prepare.outputs.claimed == 'true' && steps.codex_cli.outcome == 'success'
+        continue-on-error: true
+        working-directory: worker
+        env:
+          JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > "$JOB_DIR/parser.stderr"
+          rm -f "$JOB_DIR/result.json"
+          parse_candidate() {
+            local source="$1" label="$2"
+            [ -s "$source" ] || return 1
+            rm -f "$JOB_DIR/result.json"
+            if node scripts/prepare-codex-result.mjs "$source" "$JOB_DIR/result.json" 2> >(tee -a "$JOB_DIR/parser.stderr" >&2); then
+              printf '%s\n' "$label" > "$JOB_DIR/result.source"; return 0
+            fi
+            return 1
+          }
+          if parse_candidate "$JOB_DIR/result.raw.txt" output-last-message; then :
+          elif parse_candidate "$JOB_DIR/codex.stdout" jsonl-stdout; then :
+          else cat "$JOB_DIR/codex.stdout" "$JOB_DIR/codex.stderr" > "$JOB_DIR/codex.transcript.txt"; parse_candidate "$JOB_DIR/codex.transcript.txt" combined-transcript; fi
+          test -s "$JOB_DIR/result.json"
+
+      - name: Persist refreshed ChatGPT authentication
+        if: always() && steps.prepare.outputs.claimed == 'true' && steps.restore.outcome == 'success'
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
+          CODEX_HOME: ${{ steps.dirs.outputs.codex_dir }}
+        run: node scripts/codex-auth-state.mjs persist
+
+      - name: Validate and publish candidate result
+        id: complete
+        if: steps.prepare.outputs.claimed == 'true' && steps.codex.outcome == 'success'
+        continue-on-error: true
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PREPARATORE_USER_ID: ${{ steps.owner.outputs.user_id }}
+          PREPARATORE_JOB_ID: ${{ github.event.client_payload.job_id }}
+          PREPARATORE_JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+        run: node scripts/preparatore-v2-job-compatible.mjs complete "$PREPARATORE_JOB_ID" "$PREPARATORE_JOB_DIR"
+
+      - name: Fail safely and delete temporary photos
+        if: always() && steps.prepare.outputs.claimed == 'true' && (steps.codex_cli.outcome != 'success' || steps.codex.outcome != 'success' || steps.complete.outcome != 'success')
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PREPARATORE_USER_ID: ${{ steps.owner.outputs.user_id }}
+          PREPARATORE_JOB_ID: ${{ github.event.client_payload.job_id }}
+          PREPARATORE_JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+          PREPARATORE_CODEX_CLI_OUTCOME: ${{ steps.codex_cli.outcome }}
+          PREPARATORE_PARSE_OUTCOME: ${{ steps.codex.outcome }}
+          PREPARATORE_CODEX_OUTCOME: ${{ steps.codex.outcome }}
+          PREPARATORE_COMPLETE_OUTCOME: ${{ steps.complete.outcome }}
+        run: node scripts/preparatore-v2-fail-diagnostic.mjs
+
+      - name: Duplicate dispatch acknowledged
+        if: steps.prepare.outputs.claimed == 'false'
+        run: echo 'Duplicate dispatch detected; original runner already owns this job.'
+
+      - name: Remove runner-local sensitive files
+        if: always()
+        shell: bash
+        env:
+          JOB_DIR: ${{ steps.dirs.outputs.job_dir }}
+          CODEX_DIR: ${{ steps.dirs.outputs.codex_dir }}
+        run: |
+          set -euo pipefail
+          test -n "$JOB_DIR" && test "$JOB_DIR" != '/' && rm -rf -- "$JOB_DIR"
+          test -n "$CODEX_DIR" && test "$CODEX_DIR" != '/' && rm -rf -- "$CODEX_DIR"
+
+      - name: Mark failed analysis
+        if: always() && (steps.owner.outcome != 'success' || steps.prepare.outcome != 'success' || (steps.prepare.outputs.claimed == 'true' && (steps.codex_cli.outcome != 'success' || steps.codex.outcome != 'success' || steps.complete.outcome != 'success')))
+        run: exit 1
+
+  cleanup-expired:
+    if: github.event_name == 'schedule' && github.repository == 'giovannifidel-collab/pfarma-ci'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: photo-ai-private
+    steps:
+      - name: Resolve private source token
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"; echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: main
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: worker
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Delete expired private photos and expire jobs
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/cleanup-preparatore-v2-jobs.mjs
