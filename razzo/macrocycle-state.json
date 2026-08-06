@@ -1,8 +1,8 @@
 {
-  "version": 2,
+  "version": 3,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-06T13:16:00Z",
+  "updatedAt": "2026-08-06T14:20:00Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST",
@@ -42,6 +42,10 @@
           "priority": 1,
           "objective": "Implement and verify one authenticated durable result write/reopen path tied to exact plan and session version.",
           "mustAdvance": ["PG-MC08-EC01", "PG-MC08-EC02"],
+          "commands": [
+            "npm run test:factory --if-present",
+            "npm run build"
+          ],
           "forbiddenWork": "UI polish, refactors or unrelated workout features"
         },
         "exitCriteria": [
@@ -74,6 +78,10 @@
           "objective": "Stop product refinements and execute the existing exact-SHA candidate through Product CI, Robot R01-R03, independent review, integration and post-merge replay.",
           "candidateSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
           "mustAdvance": ["PF-MC04-EC01", "PF-MC04-EC02", "PF-MC04-EC03", "PF-MC04-EC04", "PF-MC04-EC05", "PF-MC04-EC06"],
+          "commands": [
+            "python -m unittest tests.test_operational_store",
+            "python -m unittest factory.test_razzo_executor"
+          ],
           "forbiddenWork": "Any further SQLite hardening or generic test expansion not required by a failing closure gate"
         },
         "exitCriteria": [
@@ -107,6 +115,10 @@
           "priority": 1,
           "objective": "Implement and verify one bounded authenticated upload that persists metadata and object reference across restart and a new session.",
           "mustAdvance": ["FC-MC04-EC01", "FC-MC04-EC02"],
+          "commands": [
+            "npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm test",
+            "npm run typecheck"
+          ],
           "forbiddenWork": "Gallery polish, local-only flows or unrelated media features"
         },
         "exitCriteria": [
