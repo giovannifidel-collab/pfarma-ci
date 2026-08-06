@@ -1,0 +1,46 @@
+{
+  "schema": "razzo.closure-wave-receipt.v1",
+  "recordedAt": "2026-08-06T13:49:54Z",
+  "controlPlaneSha": "39b103e96071f556082c23984ae8efbd206b59c9",
+  "publicFabricRunId": 31106663221,
+  "cycleId": "razzo-97d202b8af66",
+  "executionPolicy": "MACROCYCLE_CLOSURE_FIRST",
+  "status": "NON_PRODUCTIVE_BLOCKED",
+  "aggregateEvidence": {
+    "workstreamsDispatched": 12,
+    "workstreamsCompleted": 12,
+    "workstreamsVerified": 12,
+    "workstreamsIntegrated": 0,
+    "productProgress": false,
+    "generationPromoted": false,
+    "safeWorkRemaining": true
+  },
+  "reconciliation": {
+    "project-giovanni": {
+      "activeMacrocycle": "MC-08",
+      "testedSha": "c83b962268abe4586731bb96ff0777cdaca754fd",
+      "closureWorkItemExecuted": false,
+      "missing": ["PG-MC08-EC01", "PG-MC08-EC02", "PG-MC08-EC03", "PG-MC08-EC04"]
+    },
+    "pfarma-cloud": {
+      "activeMacrocycle": "MC-04",
+      "requiredCandidateSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
+      "testedSha": "9658af9efd37b631811462158b36000e92369d5c",
+      "exactCandidateExecuted": false,
+      "closureWorkItemExecuted": false,
+      "missing": ["PRODUCT_CI_EXACT_CANDIDATE", "INDEPENDENT_REVIEW", "ROBOT_R01_R03", "CUMULATIVE_ROBOT_SIMULATION", "INTEGRATION", "POST_MERGE_REPLAY", "COMPLETION_RECEIPT"]
+    },
+    "family-cloud": {
+      "activeMacrocycle": "MC-04",
+      "testedSha": "b99fd32f296cd323ffd8ad59bf0e335d20fcae73",
+      "closureWorkItemExecuted": false,
+      "missing": ["FC-MC04-EC01", "FC-MC04-EC02", "FC-MC04-EC03", "FC-MC04-EC04", "FC-MC04-EC05"]
+    }
+  },
+  "rootCause": "The Public Execution Fabric generated its legacy fixed 12-shard operational-proof queue from integration-lane refs and did not consume trigger workItems or the PFarma macrocycle candidate SHA.",
+  "requiredReplan": {
+    "priority": 1,
+    "action": "Make dispatch consume canonical macrocycle closure work items and prefer a validated closureWorkItem.candidateSha over the integration-lane SHA; fail closed when productProgress is false.",
+    "forbidden": "Do not credit this cycle as macrocycle progress or completion evidence."
+  }
+}
