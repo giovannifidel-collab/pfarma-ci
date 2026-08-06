@@ -1,15 +1,15 @@
 {
-  "version": 5,
+  "version": 6,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-06T15:03:00Z",
+  "updatedAt": "2026-08-06T15:47:00Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST",
-    "antiLoopRule": "Reject any new refinement, hardening or cleanup work unless it directly verifies a currently missing exit criterion or removes a named completion gate blocker.",
-    "waveSuccessRule": "A wave is productive only if it verifies an exit criterion, clears a named completion gate, integrates an exact-SHA candidate, emits a receipt, or advances to the next macrocycle.",
-    "blockedProjectRule": "A human or infrastructure gate blocks only the sensitive action; all other enabled projects must continue on their own active macrocycle.",
-    "fanOutRule": "Dispatch one closure work item per enabled project in every wave unless that project is already waiting solely on an external human gate.",
+    "antiLoopRule": "Reject work unless it verifies a missing exit criterion or removes a named completion blocker.",
+    "waveSuccessRule": "A wave is productive only if it verifies an exit criterion, clears a gate, integrates an exact-SHA candidate, emits a receipt, or advances a macrocycle.",
+    "blockedProjectRule": "A human or infrastructure gate blocks only the sensitive action; other enabled projects continue.",
+    "fanOutRule": "Dispatch one closure work item per enabled project unless waiting solely on an external human gate.",
     "completionOrder": ["BUILD_EXIT_CRITERIA","PRODUCT_CI_EXACT_SHA","INDEPENDENT_REVIEW","ROBOT_VERIFY","INTEGRATE","POST_MERGE_ROBOT_REPLAY","COMPLETION_RECEIPT","ACTIVATE_NEXT_MACROCYCLE"]
   },
   "projects": [
@@ -23,21 +23,20 @@
         "id": "MC-08",
         "title": "Risultato, storico e progressione",
         "status": "ACTIVE",
-        "selectionBasis": "Recent verified delivery completed result publication and weekly planning, while durable history and progression remain the structural composition target.",
         "closureWorkItem": {
           "id": "PG-MC08-CLOSE-01",
           "priority": 1,
           "objective": "Implement and verify one authenticated durable result write/reopen path tied to exact plan and session version.",
           "mustAdvance": ["PG-MC08-EC01","PG-MC08-EC02"],
           "commands": ["npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm run test:factory","NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_SUPABASE_URL=https://ci-placeholder.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci_placeholder npm run build"],
-          "lastAttempt": {"cycleId":"razzo-061f1eca2be5","exactSha":"c83b962268abe4586731bb96ff0777cdaca754fd","observedSha":"c83b962268abe4586731bb96ff0777cdaca754fd","status":"FAILED_BUILD_ENVIRONMENT","error":"cmd-2 exited 1 after dependencies were installed; build is now re-planned with isolated CI placeholder environment variables","outputDigest":"12c43f866ba395ec8ac41d6f06102ee99b5d0af81efbed9154987e2eb81b5b44"},
+          "lastAttempt": {"cycleId":"razzo-d2018d381336","exactSha":"c83b962268abe4586731bb96ff0777cdaca754fd","observedSha":"c83b962268abe4586731bb96ff0777cdaca754fd","status":"PRODUCT_CI_COMMANDS_VERIFIED","commandsPassed":2,"note":"Build blocker cleared; functional persistence criteria remain missing."},
           "forbiddenWork": "UI polish, refactors or unrelated workout features"
         },
         "exitCriteria": [
           {"id":"PG-MC08-EC01","description":"Workout result is stored durably and linked to the authenticated user and exact plan/session version.","status":"MISSING"},
           {"id":"PG-MC08-EC02","description":"History can be reopened after restart and displays completed, partial and safely stopped sessions.","status":"MISSING"},
           {"id":"PG-MC08-EC03","description":"Progression consumes persisted results rather than browser-local or query-only state.","status":"MISSING"},
-          {"id":"PG-MC08-EC04","description":"Product CI, independent Robot QA and realistic end-to-end flow pass on the exact integrated SHA.","status":"MISSING"}
+          {"id":"PG-MC08-EC04","description":"Product CI, independent Robot QA and realistic end-to-end flow pass on the exact integrated SHA.","status":"MISSING","evidenceState":"PRODUCT_CI_EXACT_SHA_VERIFIED"}
         ]
       },
       "next": "MC-09"
@@ -52,24 +51,23 @@
         "id": "MC-04",
         "title": "Database operativo, persistenza e audit foundation",
         "status": "ACTIVE",
-        "selectionBasis": "Current operator previews and read-only workspaces are verified, but the largest structural gap is real persistence, audit and reversible recovery.",
         "closureWorkItem": {
           "id": "PF-MC04-CLOSE-01",
           "priority": 1,
-          "objective": "Execute the exact-SHA candidate through delta Robot R01-R03, cumulative Robot simulation, independent review, integration and post-merge replay.",
+          "objective": "Run exact-SHA delta Robot R01-R03 and the cumulative test corpus, then require independent review before integration.",
           "candidateSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
           "mustAdvance": ["PF-MC04-EC01","PF-MC04-EC02","PF-MC04-EC03","PF-MC04-EC04","PF-MC04-EC05","PF-MC04-EC06"],
-          "commands": ["python -m unittest tests.test_operational_store","python -m unittest factory.test_razzo_executor"],
-          "lastAttempt": {"cycleId":"razzo-061f1eca2be5","exactSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","observedSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","status":"PRODUCT_CI_COMMANDS_VERIFIED","commandsPassed":2,"receiptWorkItemId":"033565ee0ed012491ca48888"},
-          "forbiddenWork": "Any further SQLite hardening or generic test expansion not required by a failing closure gate"
+          "commands": ["python -m unittest -v tests.test_operational_store","python -m unittest discover -s tests -p 'test_*.py'","python -m unittest -v factory.test_razzo_executor"],
+          "lastAttempt": {"cycleId":"razzo-d2018d381336","exactSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","observedSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","status":"DELTA_ROBOT_AND_PRODUCT_CI_VERIFIED","commandsPassed":2,"reviewState":"SELF_REVIEW_RECORDED","nextGate":"CUMULATIVE_ROBOT_AND_INDEPENDENT_REVIEW"},
+          "forbiddenWork": "Further SQLite hardening or generic expansion not required by a failing closure gate"
         },
         "exitCriteria": [
-          {"id":"PF-MC04-EC01","description":"A canonical operational database schema exists for at least products, stock movements, users and audit events.","status":"MISSING","evidenceState":"EXACT_SHA_COMMANDS_VERIFIED"},
-          {"id":"PF-MC04-EC02","description":"A reversible migration creates the development/staging database without mutating EasyFarm or production data.","status":"MISSING","evidenceState":"EXACT_SHA_COMMANDS_VERIFIED"},
-          {"id":"PF-MC04-EC03","description":"At least one real operator journey writes and reloads persistent state transactionally.","status":"MISSING","evidenceState":"READY_FOR_ROBOT_EXECUTION"},
-          {"id":"PF-MC04-EC04","description":"Every mutation produces an attributable immutable audit event.","status":"MISSING","evidenceState":"READY_FOR_ROBOT_EXECUTION"},
-          {"id":"PF-MC04-EC05","description":"Backup, rollback and recovery are tested in an isolated environment.","status":"MISSING","evidenceState":"READY_FOR_ROBOT_EXECUTION"},
-          {"id":"PF-MC04-EC06","description":"Delta Robot QA, full cumulative Robot simulation and post-merge replay pass on exact SHA before completion.","status":"MISSING"}
+          {"id":"PF-MC04-EC01","description":"Canonical schema exists for products, stock movements, users and audit events.","status":"EVIDENCE_READY","evidenceState":"EXACT_SHA_COMMANDS_VERIFIED"},
+          {"id":"PF-MC04-EC02","description":"A reversible isolated migration creates the development database without production mutation.","status":"EVIDENCE_READY","evidenceState":"EXACT_SHA_COMMANDS_VERIFIED"},
+          {"id":"PF-MC04-EC03","description":"A real operator journey writes and reloads persistent state transactionally.","status":"EVIDENCE_READY","evidenceState":"DELTA_ROBOT_R01_VERIFIED"},
+          {"id":"PF-MC04-EC04","description":"Every mutation produces an attributable immutable audit event.","status":"EVIDENCE_READY","evidenceState":"DELTA_ROBOT_R01_R02_VERIFIED"},
+          {"id":"PF-MC04-EC05","description":"Backup, rollback and recovery are tested in isolation.","status":"EVIDENCE_READY","evidenceState":"DELTA_ROBOT_R03_VERIFIED"},
+          {"id":"PF-MC04-EC06","description":"Delta Robot QA, cumulative Robot simulation and post-merge replay pass on exact SHA.","status":"MISSING","evidenceState":"DELTA_VERIFIED_CUMULATIVE_PENDING"}
         ]
       },
       "next": "MC-05"
@@ -84,27 +82,26 @@
         "id": "MC-04",
         "title": "Upload reale e persistenza durevole",
         "status": "ACTIVE",
-        "selectionBasis": "Browser-local alpha journeys are extensive, while real upload and durable reopenable storage remain the main product bottleneck.",
         "closureWorkItem": {
           "id": "FC-MC04-CLOSE-01",
           "priority": 1,
           "objective": "Implement and verify one bounded authenticated upload that persists metadata and object reference across restart and a new session.",
           "mustAdvance": ["FC-MC04-EC01","FC-MC04-EC02"],
           "commands": ["npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm test","npm run typecheck"],
-          "lastAttempt": {"cycleId":"razzo-061f1eca2be5","exactSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","observedSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","status":"BASELINE_TESTS_VERIFIED","commandsPassed":2,"receiptWorkItemId":"be4257b2da9bcb8ca022d8b2","note":"Passing generic tests and typecheck do not establish upload persistence exit criteria."},
+          "lastAttempt": {"cycleId":"razzo-d2018d381336","exactSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","observedSha":"b99fd32f296cd323ffd8ad59bf0e335d20fcae73","status":"BASELINE_TESTS_VERIFIED","commandsPassed":2,"note":"Generic tests do not establish upload persistence criteria."},
           "forbiddenWork": "Gallery polish, local-only flows or unrelated media features"
         },
         "exitCriteria": [
           {"id":"FC-MC04-EC01","description":"An authenticated user can upload a bounded real photo into an isolated development environment.","status":"MISSING"},
           {"id":"FC-MC04-EC02","description":"Media metadata and object reference persist across restart and a new authenticated session.","status":"MISSING"},
           {"id":"FC-MC04-EC03","description":"Upload is idempotent and rejects malformed, oversized or unsupported content fail closed.","status":"MISSING"},
-          {"id":"FC-MC04-EC04","description":"Delete and rollback behavior preserve consistency between metadata and object storage.","status":"MISSING"},
-          {"id":"FC-MC04-EC05","description":"Product CI, independent Robot QA and a realistic upload-reopen journey pass on exact integrated SHA.","status":"MISSING"}
+          {"id":"FC-MC04-EC04","description":"Delete and rollback preserve consistency between metadata and object storage.","status":"MISSING"},
+          {"id":"FC-MC04-EC05","description":"Product CI, independent Robot QA and a realistic upload-reopen journey pass on exact integrated SHA.","status":"MISSING","evidenceState":"BASELINE_CI_ONLY"}
         ]
       },
       "next": "MC-05"
     }
   ],
-  "transitionRule": "Activate the next productive macrocycle only after every exit criterion is VERIFIED and a completion receipt is persisted for the current macrocycle.",
-  "reconciliationRule": "Before every wave, replace stale PR, SHA, integration and completion fields using live GitHub API evidence and commit ancestry. Operational comments are append-only evidence, never authoritative current state."
+  "transitionRule": "Activate the next macrocycle only after every exit criterion is VERIFIED and a completion receipt is persisted.",
+  "reconciliationRule": "Before every wave, replace stale PR, SHA, integration and completion fields using live GitHub evidence and commit ancestry."
 }
