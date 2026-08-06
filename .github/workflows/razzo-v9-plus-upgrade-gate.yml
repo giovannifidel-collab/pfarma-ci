@@ -1,0 +1,39 @@
+name: RAZZO V9 Plus PCMM Robot Upgrade Gate
+run-name: "RAZZO V9+ PCMM Robot gate ${{ github.sha }}"
+
+on:
+  push:
+    branches:
+      - upgrade/v9-plus-pcmm-robot
+    paths:
+      - 'razzo/**'
+      - '.github/workflows/razzo-v9-plus-upgrade-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: razzo-v9-plus-pcmm-robot-upgrade
+  cancel-in-progress: true
+
+jobs:
+  validate-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact control-plane SHA
+        run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+      - name: Validate macrocycle contract
+        run: python razzo/state/validate_macrocycles.py
+      - name: Run macrocycle validator tests
+        run: python -m unittest razzo.state.test_validate_macrocycles -v
+      - name: Validate Robot QA policy and active mission catalog
+        run: python razzo/state/validate_robot_qa.py
+      - name: Compile validators
+        run: python -m py_compile razzo/state/validate_macrocycles.py razzo/state/validate_robot_qa.py
