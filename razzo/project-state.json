@@ -1,7 +1,7 @@
 {
   "version": 5,
   "sourceOfTruth": "github-current-integration-heads-open-product-prs-and-enabled-registry",
-  "rediscoveryEpoch": "2026-08-06T12:22:41Z",
+  "rediscoveryEpoch": "2026-08-06T12:40:30Z",
   "factoryAllocationPaused": false,
   "resumeReason": "owner explicitly instructed the Factory to calculate, resume and continue without routine authorization",
   "projects": [
@@ -17,12 +17,12 @@
     },
     {
       "id": "pfarma-cloud",
-      "exactSha": "e5d5118dfbc0471f805f560efbd7beba8c66b58e",
+      "exactSha": "0abb9d2d693e76c79f4faf7121c56519680078e0",
       "ready": 4,
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "active:MC-04 operational persistence foundation on product PR #2072; public exact-SHA verification required",
+      "queueHint": "active:MC-04 operational persistence foundation on product PR #2072; audit immutability regression added; public exact-SHA verification required",
       "collisionDomain": "product/pfarma-mc04-operational-store"
     },
     {
