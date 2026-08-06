@@ -31,14 +31,12 @@ jobs:
           pf="$(tr -d '\r\n' < source-ref.txt)"
           fc="$(tr -d '\r\n' < family-cloud-ref.txt)"
           for sha in "$pg" "$pf" "$fc"; do [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; done
-          matrix=$(jq -cn \
-            --arg pg "$pg" --arg pf "$pf" --arg fc "$fc" \
-            '{include:[
-              {shard_id:"razzo-shard-0001",work_item_id:"PG-VERIFY-FACTORY",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,collision_domain:"project-giovanni/factory",command:"npm run test:factory --if-present"},
-              {shard_id:"razzo-shard-0002",work_item_id:"PG-VERIFY-BUILD",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,collision_domain:"project-giovanni/build",command:"npm run build"},
-              {shard_id:"razzo-shard-0003",work_item_id:"PF-VERIFY-HEALTH",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,collision_domain:"pfarma-cloud/health",command:"pfarma-health-smoke"},
-              {shard_id:"razzo-shard-0004",work_item_id:"FC-VERIFY-SUITE",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,collision_domain:"family-cloud/suite",command:"npm test"}
-            ]}')
+          matrix=$(jq -cn --arg pg "$pg" --arg pf "$pf" --arg fc "$fc" '{include:[
+            {shard_id:"razzo-shard-0001",work_item_id:"PG-VERIFY-FACTORY",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,collision_domain:"project-giovanni/factory",command:"npm run test:factory --if-present"},
+            {shard_id:"razzo-shard-0002",work_item_id:"PG-VERIFY-BUILD",project_id:"project-giovanni",repository:"giovannifidel-collab/project-giovanni",exact_sha:$pg,collision_domain:"project-giovanni/build",command:"npm run build"},
+            {shard_id:"razzo-shard-0003",work_item_id:"PF-VERIFY-HEALTH",project_id:"pfarma-cloud",repository:"giovannifidel-collab/pfarma-cloud",exact_sha:$pf,collision_domain:"pfarma-cloud/health",command:"pfarma-health-smoke"},
+            {shard_id:"razzo-shard-0004",work_item_id:"FC-VERIFY-SUITE",project_id:"family-cloud",repository:"giovannifidel-collab/family-cloud",exact_sha:$fc,collision_domain:"family-cloud/suite",command:"npm test"}
+          ]}')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   execute:
@@ -49,6 +47,7 @@ jobs:
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: pfarma-ci-trusted
     concurrency:
       group: razzo-${{ matrix.collision_domain }}-${{ matrix.exact_sha }}
       cancel-in-progress: false
@@ -80,6 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ matrix.exact_sha }}"
+          test ! -d .github/workflows
           git remote set-url origin REDACTED
 
       - name: Install locked dependencies when required
@@ -97,24 +97,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "started=$started" >> "$GITHUB_OUTPUT"
+          echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           case "${{ matrix.command }}" in
             "npm run test:factory --if-present") npm run test:factory --if-present ;;
-            "npm run build") npm run build ;;
+            "npm run build") NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_SUPABASE_URL=https://ci-placeholder.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci_placeholder npm run build ;;
             "npm test") npm test ;;
             "pfarma-health-smoke")
-              python -m compileall -q .
-              HOST=127.0.0.1 PORT=8000 python tools/preview_inventory_dashboard.py >"${RUNNER_TEMP}/pfarma-health.log" 2>&1 &
-              server_pid=$!
-              trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-              healthy=0
-              for attempt in $(seq 1 30); do
-                if curl --fail --silent --show-error http://127.0.0.1:8000/health >"${RUNNER_TEMP}/pfarma-health.json"; then healthy=1; break; fi
-                sleep 1
-              done
-              test "$healthy" -eq 1
-              python -c "import json, os; from pathlib import Path; payload=json.loads(Path(os.environ['RUNNER_TEMP']).joinpath('pfarma-health.json').read_text()); assert payload; print('PFARMA_READ_ONLY_HEALTH_VERIFIED')"
+              python -m unittest tests.test_operational_persistence
               ;;
             *) exit 64 ;;
           esac
@@ -127,20 +116,7 @@ jobs:
           set -euo pipefail
           mkdir -p receipts
           digest="$(printf '%s' '${{ matrix.shard_id }}|${{ matrix.work_item_id }}|${{ matrix.project_id }}|${{ matrix.repository }}|${{ matrix.exact_sha }}|${{ matrix.command }}|${{ github.run_id }}' | sha256sum | cut -d' ' -f1)"
-          jq -n \
-            --arg state PRODUCT_EXACT_SHA_VERIFIED \
-            --arg shardId '${{ matrix.shard_id }}' \
-            --arg workItemId '${{ matrix.work_item_id }}' \
-            --arg projectId '${{ matrix.project_id }}' \
-            --arg repository '${{ matrix.repository }}' \
-            --arg exactInputSha '${{ matrix.exact_sha }}' \
-            --arg command '${{ matrix.command }}' \
-            --arg runId '${{ github.run_id }}' \
-            --arg started '${{ steps.verify.outputs.started }}' \
-            --arg ended '${{ steps.verify.outputs.ended }}' \
-            --arg digest "$digest" \
-            '{schema:"razzo.product-exact-sha-receipt.v1",state:$state,shardId:$shardId,workItemId:$workItemId,projectId:$projectId,repository:$repository,exactInputSha:$exactInputSha,command:$command,runId:$runId,startedAt:$started,endedAt:$ended,conclusion:"success",digest:$digest,productProgress:false}' \
-            > "receipts/${{ matrix.work_item_id }}.json"
+          jq -n --arg state PRODUCT_EXACT_SHA_VERIFIED --arg shardId '${{ matrix.shard_id }}' --arg workItemId '${{ matrix.work_item_id }}' --arg projectId '${{ matrix.project_id }}' --arg repository '${{ matrix.repository }}' --arg exactInputSha '${{ matrix.exact_sha }}' --arg command '${{ matrix.command }}' --arg runId '${{ github.run_id }}' --arg started '${{ steps.verify.outputs.started }}' --arg ended '${{ steps.verify.outputs.ended }}' --arg digest "$digest" '{schema:"razzo.product-exact-sha-receipt.v1",state:$state,shardId:$shardId,workItemId:$workItemId,projectId:$projectId,repository:$repository,exactInputSha:$exactInputSha,command:$command,runId:$runId,startedAt:$started,endedAt:$ended,conclusion:"success",digest:$digest,productProgress:false}' > "receipts/${{ matrix.work_item_id }}.json"
 
       - name: Upload sanitized receipt only
         if: success()
@@ -153,7 +129,7 @@ jobs:
       - name: Purge private checkout and temporary output
         if: always()
         shell: bash
-        run: rm -rf product "${RUNNER_TEMP}/pfarma-health.log" "${RUNNER_TEMP}/pfarma-health.json"
+        run: rm -rf product receipts
 
   aggregate:
     if: always()
@@ -164,11 +140,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p receipts
-          jq -n \
-            --arg runId '${{ github.run_id }}' \
-            --arg executeResult '${{ needs.execute.result }}' \
-            '{schema:"razzo.aggregate-wave-receipt.v1",runId:$runId,dispatched:4,projects:3,parallelTarget:4,executeResult:$executeResult,operational:($executeResult=="success")}' \
-            > receipts/aggregate.json
+          jq -n --arg runId '${{ github.run_id }}' --arg executeResult '${{ needs.execute.result }}' '{schema:"razzo.aggregate-wave-receipt.v1",runId:$runId,dispatched:4,projects:3,parallelTarget:4,executeResult:$executeResult,operational:($executeResult=="success")}' > receipts/aggregate.json
       - uses: actions/upload-artifact@v4
         with:
           name: razzo-aggregate-wave-${{ github.run_id }}
