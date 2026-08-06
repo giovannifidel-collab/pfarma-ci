@@ -16,6 +16,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "razzo/public_fabric/config.json"
 PROJECTS = ROOT / "razzo/projects.json"
+MACROCYCLES = ROOT / "razzo/macrocycle-state.json"
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -57,12 +58,51 @@ class Lease:
 class FabricPlanner:
     def __init__(self, config: dict[str, Any]):
         self.config = config
+        self.macrocycle_state = load(MACROCYCLES)
+        self.closure_first = (
+            self.macrocycle_state.get("executionPolicy", {}).get("mode")
+            == "MACROCYCLE_CLOSURE_FIRST"
+        )
 
     def enabled_projects(self) -> list[dict[str, Any]]:
-        return [p for p in load(PROJECTS).get("projects", []) if p.get("enabled", True)]
+        enabled = [p for p in load(PROJECTS).get("projects", []) if p.get("enabled", True)]
+        active_by_id = {
+            p["id"]: p.get("active", {})
+            for p in self.macrocycle_state.get("projects", [])
+            if p.get("active", {}).get("status") == "ACTIVE"
+        }
+        result: list[dict[str, Any]] = []
+        for project in enabled:
+            active = active_by_id.get(project["id"])
+            if self.closure_first and not active:
+                raise RuntimeError(f"enabled project {project['id']} has no single ACTIVE macrocycle")
+            merged = dict(project)
+            if active:
+                merged["activeMacrocycle"] = active
+            result.append(merged)
+        return result
 
-    @staticmethod
-    def workstreams(project: dict[str, Any]) -> list[dict[str, Any]]:
+    def workstreams(self, project: dict[str, Any]) -> list[dict[str, Any]]:
+        active = project.get("activeMacrocycle", {})
+        closure = active.get("closureWorkItem")
+        if self.closure_first:
+            if not closure:
+                raise RuntimeError(
+                    f"project {project['id']} has no closureWorkItem for active macrocycle"
+                )
+            return [
+                {
+                    "id": str(closure["id"]),
+                    "title": str(closure["objective"]),
+                    "kind": "macrocycle-closure",
+                    "priority": f"P{max(0, int(closure.get('priority', 1)) - 1)}",
+                    "verification": "exit-criteria+exact-sha+receipt",
+                    "collisionDomain": f"{project['id']}:{active['id']}:closure",
+                    "commands": closure.get("commands", []),
+                    "maxAttempts": 1,
+                }
+            ]
+
         configured = project.get("publicFabricWorkstreams")
         if configured:
             return configured
@@ -115,23 +155,24 @@ class FabricPlanner:
         if not projects:
             raise RuntimeError("no enabled projects")
         shards = self.config["shards"][: self.config["targetFanout"]["max"]]
-        target = min(len(shards), self.config["targetFanout"]["max"])
-        if target < self.config["targetFanout"]["min"]:
+        configured_target = min(len(shards), self.config["targetFanout"]["max"])
+        if configured_target < self.config["targetFanout"]["min"]:
             raise RuntimeError("insufficient configured public shards")
 
         candidates: list[tuple[dict[str, Any], dict[str, Any]]] = []
-        per_project = max(1, self.config["buildersPerRepository"]["min"])
+        per_project = 1 if self.closure_first else max(1, self.config["buildersPerRepository"]["min"])
         for project in projects:
             streams = self.workstreams(project)
             if len(streams) < per_project:
                 raise RuntimeError(f"project {project['id']} exposes only {len(streams)} public workstreams")
-            for stream in streams[: self.config["buildersPerRepository"]["max"]]:
+            limit = 1 if self.closure_first else self.config["buildersPerRepository"]["max"]
+            for stream in streams[:limit]:
                 candidates.append((project, stream))
 
-        if len(candidates) < target:
-            target = len(candidates)
-        if target < self.config["targetFanout"]["min"]:
-            raise RuntimeError("insufficient independent workstreams for configured minimum fan-out")
+        target = min(configured_target, len(candidates))
+        minimum = len(projects) if self.closure_first else self.config["targetFanout"]["min"]
+        if target < minimum:
+            raise RuntimeError("insufficient independent workstreams for productive fan-out")
 
         leased = time.time()
         ttl = float(self.config.get("leaseTtlSeconds", 1800))
@@ -139,7 +180,11 @@ class FabricPlanner:
         leases: list[Lease] = []
         for index, (project, stream) in enumerate(candidates[:target]):
             stream_id = str(stream["id"])
-            exact_sha = exact_refs[project["id"]]
+            active = project.get("activeMacrocycle", {})
+            closure = active.get("closureWorkItem", {})
+            exact_sha = str(closure.get("candidateSha") or exact_refs[project["id"]])
+            if len(exact_sha) != 40:
+                raise RuntimeError(f"project {project['id']} has invalid exact SHA")
             item_id = stable(cycle_id, generation_id, project["id"], stream_id)
             command = stream.get("command")
             commands = (str(command),) if command else tuple(str(x) for x in stream.get("commands", []))
@@ -162,7 +207,7 @@ class FabricPlanner:
                     collisionDomain=str(stream.get("collisionDomain", f"{project['id']}:public-fabric:{stream_id}")),
                     verification=str(stream.get("verification", "exit-zero+exact-sha")),
                     humanGate=stream.get("humanGate"),
-                    idempotencyKey=stable(project["id"], stream_id, exact_sha),
+                    idempotencyKey=stable(project["id"], active.get("id", "none"), stream_id, exact_sha),
                     status="leased",
                     leasedEpoch=leased,
                     leaseExpiresEpoch=leased + ttl,
