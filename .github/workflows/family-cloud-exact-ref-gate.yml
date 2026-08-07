@@ -2,7 +2,9 @@ name: Family Cloud Exact Ref Gate
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'verify/**'
     paths:
       - 'family-cloud-ref.txt'
       - '.github/workflows/family-cloud-exact-ref-gate.yml'
