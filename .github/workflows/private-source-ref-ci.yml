@@ -31,6 +31,7 @@ jobs:
     environment: pfarma-ci-trusted
     env:
       PYTHONUTF8: '1'
+      PYTHONPATH: '.'
       DISPATCH_SHA: ${{ github.event.client_payload.sha || '' }}
     steps:
       - name: Check out public control repository
