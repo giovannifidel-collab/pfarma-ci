@@ -70,7 +70,7 @@ jobs:
       - name: Typecheck
         working-directory: private-source
         run: npm run typecheck
-      - name: Tests with diagnostic annotation
+      - name: Tests with focused failure annotation
         working-directory: private-source
         shell: bash
         run: |
@@ -78,8 +78,11 @@ jobs:
           npm test > ../family-cloud-tests.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            summary="$(tail -n 120 ../family-cloud-tests.log | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
-            echo "::error title=Family Cloud test failure::$summary"
+            failure="$(grep -n -B 8 -A 35 '^not ok ' ../family-cloud-tests.log | head -n 180)"
+            if [ -z "$failure" ]; then failure="$(grep -n -B 5 -A 20 -E 'failureType:|ERR_|AssertionError|Error:' ../family-cloud-tests.log | head -n 180)"; fi
+            if [ -z "$failure" ]; then failure="$(head -n 180 ../family-cloud-tests.log)"; fi
+            summary="$(printf '%s' "$failure" | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            echo "::error title=Family Cloud failing tests::$summary"
             exit "$status"
           fi
       - name: Factory planner smoke
