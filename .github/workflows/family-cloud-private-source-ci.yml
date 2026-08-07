@@ -1,5 +1,5 @@
 name: Family Cloud Private Source Hosted CI
-# validation-wave: dynamic-squads
+# verification-only diagnostics for exact-sha candidate
 
 on:
   push:
@@ -31,7 +31,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-
       - name: Validate requested Family Cloud SHA
         id: source
         shell: bash
@@ -41,13 +40,11 @@ jobs:
           sha="$(tr -d '\r\n' < family-cloud-ref.txt)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'family-cloud-ref.txt is not a canonical commit SHA.' >&2; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
       - name: Fail closed unless private-source token is configured
         shell: bash
         env:
           SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: test -n "$SOURCE_TOKEN"
-
       - name: Check out exact private Family Cloud commit
         uses: actions/checkout@v4
         with:
@@ -57,48 +54,37 @@ jobs:
           path: private-source
           fetch-depth: 1
           persist-credentials: false
-
       - name: Verify exact private commit
         shell: bash
         run: |
           set -euo pipefail
           actual="$(git -C private-source rev-parse HEAD)"
           test "$actual" = '${{ steps.source.outputs.sha }}'
-
       - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install dependencies
         working-directory: private-source
         run: npm install --no-audit --no-fund
-
       - name: Typecheck
+        working-directory: private-source
+        run: npm run typecheck
+      - name: Tests with diagnostic annotation
         working-directory: private-source
         shell: bash
         run: |
-          set -o pipefail
-          npm run typecheck 2>&1 | tee ../family-cloud-typecheck.log
-
-      - name: Upload typecheck diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: family-cloud-typecheck-${{ steps.source.outputs.sha }}
-          path: family-cloud-typecheck.log
-          if-no-files-found: ignore
-          retention-days: 1
-
-      - name: Tests
-        working-directory: private-source
-        run: npm test
-
+          set +e
+          npm test > ../family-cloud-tests.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            summary="$(tail -n 120 ../family-cloud-tests.log | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+            echo "::error title=Family Cloud test failure::$summary"
+            exit "$status"
+          fi
       - name: Factory planner smoke
         working-directory: private-source
         run: npm run factory:plan
-
       - name: Remove private source checkout
         if: always()
-        shell: bash
         run: rm -rf private-source
