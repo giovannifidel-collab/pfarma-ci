@@ -1,11 +1,11 @@
 {
-  "version": 2,
+  "version": 3,
   "policy": "RAZZO_PRODUCT_COMPLETION_MACROCYCLES",
   "status": "mandatory",
   "extends": "razzo/product-completion-policy.json",
   "productiveMacrocyclesPerProject": 20,
   "baselineMacrocycle": "MC-00",
-  "objective": "concentrate each enabled product repository on one persistent product-completion target until all objective exit criteria are verified",
+  "objective": "concentrate every trigger on certified closure of the active macrocycle for every enabled project; if closure is not yet possible, reduce only its verified critical path until it becomes closable",
   "rules": {
     "oneActiveProductiveMacrocyclePerProject": true,
     "futureMacrocycleImplementationForbidden": true,
@@ -18,23 +18,64 @@
     "baselineMustPreserveExistingWork": true,
     "noArtificialWorkForShardUtilization": true,
     "closeWhenClosureCriteriaSatisfied": true,
-    "activateNextMacrocycleImmediatelyAfterClosure": true
+    "activateNextMacrocycleImmediatelyAfterClosure": true,
+    "everyTriggerMustAttemptCertifiedClosure": true,
+    "noLateralWorkWhileBypassableClosureGateExists": true
+  },
+  "perTriggerClosureFirst": {
+    "enabled": true,
+    "appliesTo": "every scheduled or manual AVANZA TUTTO trigger",
+    "scope": "all and only enabled projects",
+    "goalPerProject": "close the current active macrocycle in the same trigger whenever all remaining gates are safely satisfiable",
+    "mandatoryOrder": [
+      "RECONCILE_LIVE_GITHUB",
+      "IDENTIFY_ACTIVE_MACROCYCLE",
+      "EVALUATE_MISSING_EXIT_CRITERIA",
+      "SATISFY_MINIMUM_MISSING_GATES",
+      "PRODUCT_CI_EXACT_SHA",
+      "INDEPENDENT_REVIEW",
+      "ROBOT_VERIFY",
+      "INTEGRATE_IF_NEEDED",
+      "POST_MERGE_ROBOT_REPLAY",
+      "COMPLETION_RECEIPT",
+      "MARK_COMPLETED",
+      "ACTIVATE_NEXT_MACROCYCLE"
+    ],
+    "closureRule": "If all remaining completion gates can be safely obtained during the current trigger, the orchestrator MUST continue through certification and closure and MUST NOT defer completion to a later trigger.",
+    "criticalPathRule": "If the macrocycle cannot yet close, execute only the minimum work that removes the earliest named missing completion gate or directly satisfies a missing exit criterion.",
+    "forbidden": [
+      "unrelated feature work",
+      "future macrocycle implementation",
+      "generic refactoring",
+      "cosmetic polish",
+      "hardening without a named completion gate",
+      "duplicate reconciliation without new live evidence",
+      "re-running green checks without a new evidence requirement",
+      "opening pull requests that do not directly remove a missing closure criterion",
+      "administrative control-plane churn without same-trigger closure or unblock value"
+    ],
+    "successMetric": "certified macrocycles closed per trigger; secondary metric is named closure gates eliminated",
+    "failureToCloseAccounting": "A trigger that closes no macrocycle must persist the exact still-missing gate for every unclosed enabled project and the concrete reason it could not be satisfied in that trigger."
   },
   "waveContract": {
     "targetMinutes": 12,
-    "priority": "complete the active macrocycle or reduce its verified critical path",
+    "priority": "certified closure first; otherwise reduce only the active macrocycle's verified critical path",
     "resumeBeforeDiscover": true,
     "reconcileLiveGithubBeforeUsingPersistedState": true,
     "maximumProductiveParallelism": true,
     "allowMultipleIndependentWorkstreamsInsideActiveMacrocycle": true,
     "allowCrossProjectParallelism": true,
-    "allowFutureMacrocyclePreparation": false
+    "allowFutureMacrocyclePreparation": false,
+    "doNotStopAtPullRequest": true,
+    "doNotStopAtMerge": true,
+    "doNotStopAtGreenPartialTest": true,
+    "doNotStopBeforeReceiptWhenClosureIsReachable": true
   },
   "hourlyClosureSweep": {
     "enabled": true,
     "position": "final scheduled wave of each hour",
     "mode": "CLOSURE_ONLY",
-    "purpose": "convert every closable active macrocycle into a certified completion instead of spending the final wave on incidental refinement",
+    "purpose": "final mandatory certification sweep; it is an additional closure guarantee, not the first time closure is attempted",
     "forEveryEnabledProject": [
       "reconcile live GitHub state and exact integrated SHA",
       "evaluate every exit criterion and completion gate",
