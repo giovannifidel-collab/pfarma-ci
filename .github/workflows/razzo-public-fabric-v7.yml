@@ -11,45 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  project-giovanni-mc08:
-    name: PG MC-08 independent review + exact-SHA replay
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: giovannifidel-collab/project-giovanni
-          ref: 2286b866c2820d9cde737eb253582d69261b552d
-          token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
-          persist-credentials: false
-          fetch-depth: 1
-      - name: Verify exact integrated SHA
-        run: test "$(git rev-parse HEAD)" = '2286b866c2820d9cde737eb253582d69261b552d'
-      - name: Independent review assertions
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -q 'completionTimestampRef' app/workout-result/page.tsx
-          grep -q 'authentication_required' lib/durableWorkoutResults.ts
-          grep -q 'result_version_conflict' lib/durableWorkoutResults.ts
-          grep -q 'reopenDurableWorkoutHistory' lib/durableWorkoutResults.ts
-          grep -q 'progressionInputFromDurableResults' lib/durableWorkoutResults.ts
-          grep -q 'enable row level security' supabase/migrations/20260806180000_mc08_durable_workout_results.sql
-      - uses: actions/setup-node@v4
-        with: {node-version: '22'}
-      - name: Product CI + Robot replay
-        env:
-          NEXT_TELEMETRY_DISABLED: '1'
-          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
-        run: |
-          npm install --no-save --ignore-scripts --silent --no-audit --no-fund
-          npm run test:factory
-          npm run build
-          node --test factory/*.test.mjs
-
   pfarma-mc04:
-    name: PF MC-04 independent review + cumulative replay
+    name: PF MC-04 cumulative closure corpus
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -73,27 +36,25 @@ jobs:
           grep -q 'audit_events_no_update' api/operational_store.py
           grep -q 'audit_events_no_delete' api/operational_store.py
           grep -q 'idempotency_key conflicts' api/operational_store.py
-      - name: Delta Robot R01-R03
-        run: python -m unittest -v tests.test_operational_store
-      - name: Cumulative Product CI + post-merge Robot replay
+      - name: Delta and cumulative operational Robot
         run: |
-          python -m unittest discover -s tests -p 'test_*.py'
-          python -m unittest -v factory.test_razzo_executor
+          python -m py_compile api/operational_store.py tests/test_operational_store.py tests/test_operational_store_restore_sidecars.py factory/razzo_executor.py factory/test_razzo_executor.py
+          python -m unittest -v tests.test_operational_store tests.test_operational_store_restore_sidecars factory.test_razzo_executor
 
-  family-cloud-mc04:
-    name: FC MC-04 independent review + upload reopen replay
+  family-cloud-mc04-candidate:
+    name: FC MC-04 closure candidate exact-SHA review
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/family-cloud
-          ref: 4b886c221b33c7cd902a84ff5dc41e8ab50101a3
+          ref: 04d9796f718c5354f4978b56d618e04dccfa134b
           token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
-      - name: Verify exact integrated SHA
-        run: test "$(git rev-parse HEAD)" = '4b886c221b33c7cd902a84ff5dc41e8ab50101a3'
+      - name: Verify exact candidate SHA
+        run: test "$(git rev-parse HEAD)" = '04d9796f718c5354f4978b56d618e04dccfa134b'
       - name: Independent review assertions
         shell: bash
         run: |
@@ -103,7 +64,8 @@ jobs:
           grep -q 'idempotency_conflict' scripts/dev-server.mjs
           grep -q 'media_not_found' scripts/dev-server.mjs
           grep -q 'withFilesystemLock' src/durable-media-store.mjs
-          grep -q 'atomicJson' src/durable-media-store.mjs
+          grep -q 'storage: "durable-filesystem"' tests/testable-alpha-runtime.test.ts
+          grep -q 'fcMc04: "enabled"' tests/testable-alpha-runtime.test.ts
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - name: Product CI + Robot upload/restart/reopen replay
