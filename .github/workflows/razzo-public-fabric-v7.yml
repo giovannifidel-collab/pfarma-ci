@@ -19,12 +19,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/family-cloud
-          ref: 152a49b86b490a0480da4b90ff10e3f891f4be81
+          ref: a0d67b2e8c2eed2e2d3dc4f3b7c716a092965c78
           token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Verify exact candidate SHA
-        run: test "$(git rev-parse HEAD)" = '152a49b86b490a0480da4b90ff10e3f891f4be81'
+        run: test "$(git rev-parse HEAD)" = 'a0d67b2e8c2eed2e2d3dc4f3b7c716a092965c78'
       - name: Independent review assertions
         shell: bash
         run: |
@@ -34,6 +34,8 @@ jobs:
           grep -q 'idempotency_conflict' src/durable-media-store.mjs
           grep -q 'media_not_found' src/durable-media-store.mjs
           grep -q 'withFilesystemLock' src/durable-media-store.mjs
+          grep -q "storage: 'durable-filesystem'" scripts/dev-server.mjs
+          grep -q "fcMc04: 'enabled'" scripts/dev-server.mjs
           grep -q 'storage: "durable-filesystem"' tests/testable-alpha-runtime.test.ts
           grep -q 'fcMc04: "enabled"' tests/testable-alpha-runtime.test.ts
           test -f src/durable-media-store.d.mts
