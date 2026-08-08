@@ -1,0 +1,21 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "project-giovanni",
+  "macrocycle": "MC-08",
+  "status": "COMPLETED",
+  "integratedSha": "2286b866c2820d9cde737eb253582d69261b552d",
+  "pullRequest": 1025,
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "workflowRunId": 31253447164,
+    "jobId": 93093220163,
+    "independentContext": "RAZZO Closure Certification Fabric",
+    "exactShaVerified": true,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "postMergeReplay": "PASS"
+  },
+  "exitCriteria": ["PG-MC08-EC01", "PG-MC08-EC02", "PG-MC08-EC03", "PG-MC08-EC04"],
+  "nextMacrocycle": "MC-09"
+}
