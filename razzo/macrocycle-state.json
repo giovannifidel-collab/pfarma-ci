@@ -1,8 +1,8 @@
 {
-  "version": 7,
+  "version": 8,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-06T18:02:00Z",
+  "updatedAt": "2026-08-08T10:56:52Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST",
@@ -18,93 +18,72 @@
       "repository": "giovannifidel-collab/project-giovanni",
       "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
       "productiveMacrocycles": 20,
-      "completed": [],
+      "completed": [
+        {
+          "id": "MC-08",
+          "title": "Risultato, storico e progressione",
+          "status": "COMPLETED",
+          "integratedSha": "2286b866c2820d9cde737eb253582d69261b552d",
+          "receipt": "receipts/project-giovanni-mc08-completion.json"
+        }
+      ],
       "active": {
-        "id": "MC-08",
-        "title": "Risultato, storico e progressione",
+        "id": "MC-09",
+        "title": "Feedback, dolore, recupero e adattamento",
+        "outcome": "Real feedback safely modifies subsequent recommendations.",
         "status": "ACTIVE",
-        "closureWorkItem": {
-          "id": "PG-MC08-CLOSE-01",
-          "priority": 1,
-          "objective": "Verify and integrate authenticated durable result write/reopen tied to exact plan and session version.",
-          "candidateSha": "80480a1031dec81b09aa40fcf494e3f42942f074",
-          "pullRequest": 1025,
-          "mustAdvance": ["PG-MC08-EC01","PG-MC08-EC02","PG-MC08-EC03","PG-MC08-EC04"],
-          "commands": ["npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm run test:factory","NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_SUPABASE_URL=https://ci-placeholder.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci_placeholder npm run build"],
-          "lastAttempt": {"status":"CANDIDATE_QUEUED","exactSha":"80480a1031dec81b09aa40fcf494e3f42942f074","pullRequest":1025},
-          "forbiddenWork": "UI polish, refactors or unrelated workout features"
-        },
-        "exitCriteria": [
-          {"id":"PG-MC08-EC01","description":"Workout result is stored durably and linked to the authenticated user and exact plan/session version.","status":"CANDIDATE_READY"},
-          {"id":"PG-MC08-EC02","description":"History can be reopened after restart and displays completed, partial and safely stopped sessions.","status":"CANDIDATE_READY"},
-          {"id":"PG-MC08-EC03","description":"Progression consumes persisted results rather than browser-local or query-only state.","status":"CANDIDATE_READY"},
-          {"id":"PG-MC08-EC04","description":"Product CI, independent Robot QA and realistic end-to-end flow pass on the exact integrated SHA.","status":"MISSING"}
-        ]
+        "activatedFrom": "MC-08",
+        "activationReceipt": "receipts/project-giovanni-mc08-completion.json"
       },
-      "next": "MC-09"
+      "next": "MC-10"
     },
     {
       "id": "pfarma-cloud",
       "repository": "giovannifidel-collab/pfarma-cloud",
       "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
       "productiveMacrocycles": 20,
-      "completed": [],
+      "completed": [
+        {
+          "id": "MC-04",
+          "title": "Database operativo, persistenza e audit foundation",
+          "status": "COMPLETED",
+          "integratedSha": "60777d2723cdd5acbe8f384bfcfbda64fcd7bdb7",
+          "receipt": "receipts/pfarma-cloud-mc04-completion.json"
+        }
+      ],
       "active": {
-        "id": "MC-04",
-        "title": "Database operativo, persistenza e audit foundation",
+        "id": "MC-05",
+        "title": "Catalogo prodotti, MINSAN, EAN e ricerca universale",
+        "outcome": "Operators can reliably find and maintain real product records.",
         "status": "ACTIVE",
-        "closureWorkItem": {
-          "id": "PF-MC04-CLOSE-01",
-          "priority": 1,
-          "objective": "Run exact-SHA delta Robot R01-R03 and cumulative corpus, then require independent review before integration.",
-          "candidateSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
-          "pullRequest": 2072,
-          "mustAdvance": ["PF-MC04-EC01","PF-MC04-EC02","PF-MC04-EC03","PF-MC04-EC04","PF-MC04-EC05","PF-MC04-EC06"],
-          "commands": ["python -m unittest -v tests.test_operational_store","python -m unittest discover -s tests -p 'test_*.py'","python -m unittest -v factory.test_razzo_executor"],
-          "lastAttempt": {"status":"CUMULATIVE_ROBOT_QUEUED","exactSha":"7e30322973310b29ee8bf3db24464b713b7d81b9","reviewState":"SELF_REVIEW_RECORDED"},
-          "forbiddenWork": "Further SQLite hardening or generic expansion not required by a failing closure gate"
-        },
-        "exitCriteria": [
-          {"id":"PF-MC04-EC01","description":"Canonical schema exists for products, stock movements, users and audit events.","status":"EVIDENCE_READY"},
-          {"id":"PF-MC04-EC02","description":"A reversible isolated migration creates the development database without production mutation.","status":"EVIDENCE_READY"},
-          {"id":"PF-MC04-EC03","description":"A real operator journey writes and reloads persistent state transactionally.","status":"EVIDENCE_READY"},
-          {"id":"PF-MC04-EC04","description":"Every mutation produces an attributable immutable audit event.","status":"EVIDENCE_READY"},
-          {"id":"PF-MC04-EC05","description":"Backup, rollback and recovery are tested in isolation.","status":"EVIDENCE_READY"},
-          {"id":"PF-MC04-EC06","description":"Delta Robot QA, cumulative Robot simulation and post-merge replay pass on exact SHA.","status":"MISSING"}
-        ]
+        "activatedFrom": "MC-04",
+        "activationReceipt": "receipts/pfarma-cloud-mc04-completion.json"
       },
-      "next": "MC-05"
+      "next": "MC-06"
     },
     {
       "id": "family-cloud",
       "repository": "giovannifidel-collab/family-cloud",
       "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
       "productiveMacrocycles": 20,
-      "completed": [],
+      "completed": [
+        {
+          "id": "MC-04",
+          "title": "Upload reale e persistenza durevole",
+          "status": "COMPLETED",
+          "integratedSha": "f4f97661fb25485f6c33895b75a5cd5e9b066645",
+          "receipt": "receipts/family-cloud-mc04-completion.json"
+        }
+      ],
       "active": {
-        "id": "MC-04",
-        "title": "Upload reale e persistenza durevole",
+        "id": "MC-05",
+        "title": "Storage oggetti e gestione capacità",
+        "outcome": "Media bytes are stored, verified and capacity-managed safely.",
         "status": "ACTIVE",
-        "closureWorkItem": {
-          "id": "FC-MC04-CLOSE-01",
-          "priority": 1,
-          "objective": "Verify and integrate bounded authenticated upload with durable metadata/object persistence, idempotency and rollback.",
-          "candidateSha": "a52fa1507067ec03d2c787e5dad9fd6d37a03f83",
-          "pullRequest": 686,
-          "mustAdvance": ["FC-MC04-EC01","FC-MC04-EC02","FC-MC04-EC03","FC-MC04-EC04","FC-MC04-EC05"],
-          "commands": ["npm install --no-save --ignore-scripts --silent --no-audit --no-fund && npm test","npm run typecheck"],
-          "lastAttempt": {"status":"CANDIDATE_QUEUED","exactSha":"a52fa1507067ec03d2c787e5dad9fd6d37a03f83","pullRequest":686},
-          "forbiddenWork": "Gallery polish, local-only flows or unrelated media features"
-        },
-        "exitCriteria": [
-          {"id":"FC-MC04-EC01","description":"An authenticated user can upload a bounded real photo into an isolated development environment.","status":"CANDIDATE_READY"},
-          {"id":"FC-MC04-EC02","description":"Media metadata and object reference persist across restart and a new authenticated session.","status":"CANDIDATE_READY"},
-          {"id":"FC-MC04-EC03","description":"Upload is idempotent and rejects malformed, oversized or unsupported content fail closed.","status":"CANDIDATE_READY"},
-          {"id":"FC-MC04-EC04","description":"Delete and rollback preserve consistency between metadata and object storage.","status":"CANDIDATE_READY"},
-          {"id":"FC-MC04-EC05","description":"Product CI, independent Robot QA and a realistic upload-reopen journey pass on exact integrated SHA.","status":"MISSING"}
-        ]
+        "activatedFrom": "MC-04",
+        "activationReceipt": "receipts/family-cloud-mc04-completion.json"
       },
-      "next": "MC-05"
+      "next": "MC-06"
     }
   ],
   "transitionRule": "Activate the next macrocycle only after every exit criterion is VERIFIED and a completion receipt is persisted.",
