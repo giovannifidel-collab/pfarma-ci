@@ -1,75 +1,116 @@
 {
-  "version": 3,
+  "version": 4,
   "policy": "RAZZO_PRODUCT_COMPLETION_MACROCYCLES",
   "status": "mandatory",
   "extends": "razzo/product-completion-policy.json",
   "productiveMacrocyclesPerProject": 20,
   "baselineMacrocycle": "MC-00",
-  "objective": "concentrate every trigger on certified closure of the active macrocycle for every enabled project; if closure is not yet possible, reduce only its verified critical path until it becomes closable",
+  "objective": "concentrate every trigger on certified closure of the active macrocycle for every enabled project; human gates are quarantined and accumulated instead of stopping autonomous product progress",
   "rules": {
-    "oneActiveProductiveMacrocyclePerProject": true,
-    "futureMacrocycleImplementationForbidden": true,
+    "oneExecutionCursorPerProject": true,
     "workItemMustReferenceMacrocycle": true,
     "workItemMustReferenceExitCriterion": true,
     "completionRequiresExactSha": true,
     "completionRequiresIndependentReview": true,
     "completionRequiresReceipt": true,
-    "failedOrIncompleteMacrocycleRemainsActive": true,
+    "failedOrIncompleteMacrocycleRemainsOpen": true,
     "baselineMustPreserveExistingWork": true,
     "noArtificialWorkForShardUtilization": true,
     "closeWhenClosureCriteriaSatisfied": true,
     "activateNextMacrocycleImmediatelyAfterClosure": true,
     "everyTriggerMustAttemptCertifiedClosure": true,
-    "noLateralWorkWhileBypassableClosureGateExists": true
+    "noLateralWorkWhileBypassableClosureGateExists": true,
+    "trueHumanGateMustNeverStopScheduler": true,
+    "accumulateHumanGates": true,
+    "advanceExecutionCursorPastHumanGate": true,
+    "neverFabricateHumanGateResolution": true
+  },
+  "humanGateContinuity": {
+    "enabled": true,
+    "principle": "A true human gate blocks only the exact sensitive action and work that strictly depends on its unresolved result. It MUST NOT stop the project scheduler, other enabled projects, or independent later work.",
+    "onHumanGate": [
+      "persist the exact project, macrocycle, exit criterion, requested human action, dependency scope and evidence already completed",
+      "emit or update a human-gate notification",
+      "move the unresolved gate into the project's pendingHumanGates backlog",
+      "keep the gated macrocycle OPEN with status DEFERRED_HUMAN_GATE; never mark it COMPLETED",
+      "advance the project's execution cursor to the next declared macrocycle",
+      "continue immediately on every criterion that does not strictly depend on the unresolved gate",
+      "if a later criterion is directly dependent on the gate, defer only that criterion and continue other independent criteria or later macrocycles",
+      "revisit pending human gates opportunistically on every trigger and resolve them when the required human action becomes available"
+    ],
+    "allowedHumanGates": [
+      "real secret or credential provision",
+      "paid activation or external purchase",
+      "destructive or irreversible operation",
+      "access to irreplaceable private data",
+      "legally or operationally consequential human approval",
+      "genuinely ambiguous product decision that cannot be safely inferred"
+    ],
+    "notHumanGates": [
+      "ordinary code review",
+      "test failure",
+      "runner inconvenience when another valid execution fabric exists",
+      "routine merge or pull request action",
+      "documentation",
+      "cosmetic choice",
+      "work that the autonomous system can safely perform itself"
+    ],
+    "backlogInvariant": "pendingHumanGates is an append/update queue, not a scheduler stop condition. One or many unresolved gates may coexist while autonomous work continues.",
+    "completionInvariant": "A deferred macrocycle becomes COMPLETED only after its human gate is actually satisfied and all remaining completion evidence passes. Advancing the execution cursor is not equivalent to certified completion.",
+    "dependencyRule": "Never execute an unsafe operation whose correctness depends on an unresolved human decision; quarantine that dependent slice and continue all independent safe work.",
+    "finalizationRule": "When autonomous roadmap work reaches its end, drain all resolvable non-human gates first; the remaining pendingHumanGates become the compact final human action list. After each human action, immediately replay exact-SHA verification and close every newly satisfiable deferred macrocycle."
   },
   "perTriggerClosureFirst": {
     "enabled": true,
     "appliesTo": "every scheduled or manual AVANZA TUTTO trigger",
     "scope": "all and only enabled projects",
-    "goalPerProject": "close the current active macrocycle in the same trigger whenever all remaining gates are safely satisfiable",
+    "goalPerProject": "close the current execution-cursor macrocycle in the same trigger whenever all remaining non-human gates are safely satisfiable",
     "mandatoryOrder": [
       "RECONCILE_LIVE_GITHUB",
-      "IDENTIFY_ACTIVE_MACROCYCLE",
+      "REVISIT_PENDING_HUMAN_GATES",
+      "IDENTIFY_EXECUTION_CURSOR_MACROCYCLE",
       "EVALUATE_MISSING_EXIT_CRITERIA",
-      "SATISFY_MINIMUM_MISSING_GATES",
+      "SATISFY_MINIMUM_NON_HUMAN_GATES",
       "PRODUCT_CI_EXACT_SHA",
       "INDEPENDENT_REVIEW",
       "ROBOT_VERIFY",
       "INTEGRATE_IF_NEEDED",
       "POST_MERGE_ROBOT_REPLAY",
-      "COMPLETION_RECEIPT",
-      "MARK_COMPLETED",
-      "ACTIVATE_NEXT_MACROCYCLE"
+      "COMPLETION_RECEIPT_OR_HUMAN_GATE_DEFER",
+      "MARK_COMPLETED_IF_CERTIFIED",
+      "ADVANCE_EXECUTION_CURSOR"
     ],
     "closureRule": "If all remaining completion gates can be safely obtained during the current trigger, the orchestrator MUST continue through certification and closure and MUST NOT defer completion to a later trigger.",
-    "criticalPathRule": "If the macrocycle cannot yet close, execute only the minimum work that removes the earliest named missing completion gate or directly satisfies a missing exit criterion.",
+    "humanGateRule": "If the only remaining blocker is a true human gate, persist and notify it, defer that macrocycle without certifying it, advance the execution cursor and continue autonomous work in the same trigger.",
+    "criticalPathRule": "If the macrocycle cannot yet close for a non-human reason, execute only the minimum work that removes the earliest named missing completion gate or directly satisfies a missing exit criterion.",
     "forbidden": [
       "unrelated feature work",
-      "future macrocycle implementation",
       "generic refactoring",
       "cosmetic polish",
       "hardening without a named completion gate",
       "duplicate reconciliation without new live evidence",
       "re-running green checks without a new evidence requirement",
       "opening pull requests that do not directly remove a missing closure criterion",
-      "administrative control-plane churn without same-trigger closure or unblock value"
+      "administrative control-plane churn without same-trigger closure or unblock value",
+      "stopping a project merely because a human gate exists"
     ],
-    "successMetric": "certified macrocycles closed per trigger; secondary metric is named closure gates eliminated",
-    "failureToCloseAccounting": "A trigger that closes no macrocycle must persist the exact still-missing gate for every unclosed enabled project and the concrete reason it could not be satisfied in that trigger."
+    "successMetric": "certified macrocycles closed plus autonomous roadmap distance advanced per trigger; pending human gates are tracked separately and never counted as completed",
+    "failureToCloseAccounting": "A trigger that closes no macrocycle must persist the exact still-missing non-human gate for every unclosed execution cursor; true human gates are moved to pendingHumanGates and must not consume the remaining trigger budget."
   },
   "waveContract": {
     "targetMinutes": 12,
-    "priority": "certified closure first; otherwise reduce only the active macrocycle's verified critical path",
+    "priority": "certified closure first; quarantine human gates; otherwise reduce only the verified critical path",
     "resumeBeforeDiscover": true,
     "reconcileLiveGithubBeforeUsingPersistedState": true,
     "maximumProductiveParallelism": true,
-    "allowMultipleIndependentWorkstreamsInsideActiveMacrocycle": true,
+    "allowMultipleIndependentWorkstreamsInsideMacrocycle": true,
     "allowCrossProjectParallelism": true,
-    "allowFutureMacrocyclePreparation": false,
+    "allowSafeProgressBeyondDeferredHumanGate": true,
     "doNotStopAtPullRequest": true,
     "doNotStopAtMerge": true,
     "doNotStopAtGreenPartialTest": true,
-    "doNotStopBeforeReceiptWhenClosureIsReachable": true
+    "doNotStopBeforeReceiptWhenClosureIsReachable": true,
+    "doNotStopAtHumanGate": true
   },
   "hourlyClosureSweep": {
     "enabled": true,
@@ -77,36 +118,35 @@
     "mode": "CLOSURE_ONLY",
     "purpose": "final mandatory certification sweep; it is an additional closure guarantee, not the first time closure is attempted",
     "forEveryEnabledProject": [
-      "reconcile live GitHub state and exact integrated SHA",
+      "reconcile live GitHub state, pending human gates and exact integrated SHA",
       "evaluate every exit criterion and completion gate",
-      "if a missing criterion is safely satisfiable in the sweep, execute only the minimum work required to satisfy it",
+      "close every macrocycle whose remaining gates are autonomously satisfiable",
+      "quarantine true human gates without stopping execution",
       "verify independent review, Product CI exact-SHA evidence, Robot QA, integration state and required post-merge replay",
-      "persist the completion receipt",
-      "mark the current macrocycle COMPLETED",
-      "activate the next declared macrocycle immediately after successful closure"
+      "persist completion receipts for genuinely certified macrocycles",
+      "advance the execution cursor after completion or true-human-gate deferral"
     ],
-    "closureInvariant": "If the active macrocycle is closable from available or safely obtainable evidence, it MUST NOT remain ACTIVE at the end of the closure sweep.",
-    "nextMacrocycleRule": "Closing a macrocycle MUST activate the next declared macrocycle in the same sweep. Activation is required; substantive implementation of the newly activated macrocycle waits for the next normal productive wave unless needed to preserve repository coherence.",
+    "closureInvariant": "If an open macrocycle is closable from available or safely obtainable evidence, it MUST NOT remain open at the end of the closure sweep.",
+    "humanGateInvariant": "A true human gate may keep its macrocycle open but MUST NOT keep the project's execution cursor parked on that macrocycle.",
     "forbiddenDuringSweep": [
       "unrelated feature work",
       "generic refactoring",
       "polish or hardening not required by a named completion gate",
       "repeating already-green checks without new evidence need",
-      "control-plane churn that does not close or unblock the active macrocycle"
+      "control-plane churn that does not close, defer a true human gate, or unblock autonomous progress"
     ],
-    "blockedRule": "If closure is prevented only by a true non-bypassable human or infrastructure gate, persist the exact missing criterion and blocker; continue closure attempts on the other enabled projects.",
-    "successMetric": "certified macrocycles closed and next macrocycles activated, not commits, pull requests, waves, test count or administrative activity"
+    "successMetric": "certified macrocycles closed, human gates compactly accumulated, and execution cursors advanced"
   },
   "statePrecedence": [
     "live pull-request state and merged_at",
     "live integration-lane head and commit ancestry",
     "exact-SHA Product CI and Robot QA",
-    "completion and cycle receipts",
+    "completion and human-gate receipts",
     "persisted macrocycle state",
     "append-only operational comments"
   ],
   "staleStateProtection": {
-    "rule": "A completed or merged work item may never be reconstructed as active solely from an older comment, receipt or project-state snapshot.",
+    "rule": "A completed, deferred or merged work item may never be reconstructed as the execution cursor solely from an older comment, receipt or project-state snapshot.",
     "requirePullRequestApiReconciliation": true,
     "requireIntegrationAncestryCheck": true,
     "requireAtomicStateUpdateAfterMerge": true,
@@ -115,36 +155,38 @@
   "queueReadiness": {
     "minimumRunningOrReady": 3,
     "minimumSpecifiedNext": 3,
-    "refillInsideActiveMacrocycle": true,
-    "readyZeroMeaning": "discover and specify structural work inside the same active macrocycle; do not change macrocycle"
+    "refillInsideCurrentSafeWork": true,
+    "readyZeroMeaning": "discover and specify structural work on the current execution cursor or the next safe independent macrocycle; never idle because of a pending human gate"
   },
   "robotPolicy": {
     "allProductPullRequests": "delta verification on affected journeys",
     "pfarmaMacrocycleCandidate": "full cumulative management-system simulation",
     "pfarmaAfterMerge": "full replay on integrated SHA",
     "fakeCanariesCountAsProductProgress": false,
-    "robotFailure": "keep macrocycle active, fix on the canonical branch, review, retest and replay"
+    "robotFailure": "keep the affected macrocycle open, fix on the canonical branch, review, retest and replay; do not misclassify a technical failure as a human gate"
   },
   "completionStates": [
     "PLANNED",
     "ACTIVE",
     "VERIFYING",
-    "BLOCKED_BY_TRUE_HUMAN_GATE",
+    "DEFERRED_HUMAN_GATE",
     "COMPLETED"
   ],
   "admission": {
     "accepted": [
-      "directly satisfies an exit criterion of the active macrocycle",
-      "removes a blocker of the active macrocycle",
-      "tests, reviews or secures the active macrocycle",
-      "restores build, CI, persistence or recovery required by the active macrocycle"
+      "directly satisfies an exit criterion of an open macrocycle",
+      "removes a blocker of an open macrocycle",
+      "tests, reviews or secures an open macrocycle",
+      "restores build, CI, persistence or recovery required by an open macrocycle",
+      "advances a later macrocycle only where the work is demonstrably independent of every unresolved human gate"
     ],
     "rejected": [
-      "unrelated future capability",
+      "unrelated capability outside the declared roadmap",
       "another preview, dashboard or summary without underlying structural capability",
       "governance churn without same-wave product execution",
       "duplicate or near-duplicate journey",
-      "task created only to occupy capacity"
+      "task created only to occupy capacity",
+      "unsafe work whose correctness depends on an unresolved human decision"
     ]
   }
 }
