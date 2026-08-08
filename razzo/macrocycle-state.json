@@ -1,16 +1,17 @@
 {
-  "version": 9,
+  "version": 10,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-08T21:52:30Z",
+  "updatedAt": "2026-08-08T21:56:00Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
-    "mode": "MACROCYCLE_CLOSURE_FIRST",
-    "antiLoopRule": "Reject work unless it verifies a missing exit criterion or removes a named completion blocker.",
-    "waveSuccessRule": "A wave is productive only if it verifies an exit criterion, clears a gate, integrates an exact-SHA candidate, emits a receipt, or advances a macrocycle.",
-    "blockedProjectRule": "A human or infrastructure gate blocks only the sensitive action; other enabled projects continue.",
-    "fanOutRule": "Dispatch one closure work item per enabled project unless waiting solely on an external human gate.",
-    "completionOrder": ["BUILD_EXIT_CRITERIA","PRODUCT_CI_EXACT_SHA","INDEPENDENT_REVIEW","ROBOT_VERIFY","INTEGRATE","POST_MERGE_ROBOT_REPLAY","COMPLETION_RECEIPT","ACTIVATE_NEXT_MACROCYCLE"]
+    "mode": "MACROCYCLE_CLOSURE_FIRST_NONBLOCKING_HUMAN_GATES",
+    "antiLoopRule": "Reject work unless it verifies a missing exit criterion, removes a named completion blocker, or safely advances beyond a deferred true human gate.",
+    "waveSuccessRule": "A wave is productive only if it verifies an exit criterion, clears a gate, integrates an exact-SHA candidate, emits a receipt, closes a macrocycle, or advances the execution cursor past a true human gate.",
+    "blockedProjectRule": "A true human gate blocks only its exact sensitive action and strictly dependent work; it is persisted to pendingHumanGates and never stops the project scheduler or other enabled projects.",
+    "fanOutRule": "Dispatch closure work independently for every enabled project and continue safe work even when one or more human gates are pending.",
+    "completionOrder": ["BUILD_EXIT_CRITERIA","PRODUCT_CI_EXACT_SHA","INDEPENDENT_REVIEW","ROBOT_VERIFY","INTEGRATE","POST_MERGE_ROBOT_REPLAY","COMPLETION_RECEIPT","ACTIVATE_NEXT_MACROCYCLE"],
+    "humanGateOrder": ["PERSIST_HUMAN_GATE","NOTIFY_HUMAN","DEFER_GATED_MACROCYCLE","ADVANCE_EXECUTION_CURSOR","CONTINUE_INDEPENDENT_WORK","REVISIT_GATE_ON_EACH_TRIGGER"]
   },
   "projects": [
     {
@@ -18,6 +19,7 @@
       "repository": "giovannifidel-collab/project-giovanni",
       "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
       "productiveMacrocycles": 20,
+      "pendingHumanGates": [],
       "completed": [
         {
           "id": "MC-08",
@@ -48,6 +50,7 @@
       "repository": "giovannifidel-collab/pfarma-cloud",
       "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
       "productiveMacrocycles": 20,
+      "pendingHumanGates": [],
       "completed": [
         {
           "id": "MC-04",
@@ -79,6 +82,7 @@
       "repository": "giovannifidel-collab/family-cloud",
       "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
       "productiveMacrocycles": 20,
+      "pendingHumanGates": [],
       "completed": [
         {
           "id": "MC-04",
@@ -106,6 +110,6 @@
       "next": "MC-06"
     }
   ],
-  "transitionRule": "Activate the next macrocycle only after every exit criterion is VERIFIED and a completion receipt is persisted.",
-  "reconciliationRule": "Before every wave, replace stale PR, SHA, integration and completion fields using live GitHub evidence and commit ancestry."
+  "transitionRule": "Certified completion activates the next macrocycle immediately. A true human gate keeps its macrocycle OPEN as DEFERRED_HUMAN_GATE in pendingHumanGates but also advances the execution cursor so autonomous independent work never stops.",
+  "reconciliationRule": "Before every wave, replace stale PR, SHA, integration, completion and human-gate fields using live GitHub evidence and commit ancestry; revisit pending human gates on every trigger."
 }
