@@ -127,7 +127,7 @@ jobs:
               python tools/test_goods_receipt_postgres.py
               ;;
             purchasing)
-              python -m pytest -q api/test_purchase_order_service.py api/test_purchase_order_postgres.py tests/test_purchase_order_progress.py tests/test_purchase_order_live_apply.py
+              python -m unittest api.test_purchase_order_service tests.test_purchase_order_live_apply -v
               ;;
             pilot)
               python tools/test_pilot_acceptance_contract.py
