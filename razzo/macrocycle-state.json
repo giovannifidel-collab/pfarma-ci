@@ -1,8 +1,8 @@
 {
-  "version": 8,
+  "version": 9,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-08T10:56:52Z",
+  "updatedAt": "2026-08-08T21:52:30Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST",
@@ -33,7 +33,13 @@
         "outcome": "Real feedback safely modifies subsequent recommendations.",
         "status": "ACTIVE",
         "activatedFrom": "MC-08",
-        "activationReceipt": "receipts/project-giovanni-mc08-completion.json"
+        "activationReceipt": "receipts/project-giovanni-mc08-completion.json",
+        "exitCriteria": [
+          {"id":"PG-MC09-EC01","description":"Authenticated session feedback including effort, pain, recovery and completion state is durably persisted and linked to the exact workout result/session version.","status":"MISSING"},
+          {"id":"PG-MC09-EC02","description":"Pain and stop-condition feedback fails closed and prevents unsafe automatic progression while preserving an attributable decision trail.","status":"MISSING"},
+          {"id":"PG-MC09-EC03","description":"Subsequent recommendation or plan adaptation consumes persisted feedback and produces a bounded, explainable change rather than browser-local or query-only behavior.","status":"MISSING"},
+          {"id":"PG-MC09-EC04","description":"Product CI, independent review, realistic Robot feedback-to-adaptation journey, exact-SHA verification, integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+        ]
       },
       "next": "MC-10"
     },
@@ -57,7 +63,14 @@
         "outcome": "Operators can reliably find and maintain real product records.",
         "status": "ACTIVE",
         "activatedFrom": "MC-04",
-        "activationReceipt": "receipts/pfarma-cloud-mc04-completion.json"
+        "activationReceipt": "receipts/pfarma-cloud-mc04-completion.json",
+        "exitCriteria": [
+          {"id":"PF-MC05-EC01","description":"Canonical persistent product records support validated MINSAN, EAN/barcode and operator-maintained identifying fields with explicit uniqueness/conflict behavior.","status":"MISSING"},
+          {"id":"PF-MC05-EC02","description":"A real operator can create or maintain a product and reopen the same durable record after restart with every mutation attributable in audit.","status":"MISSING"},
+          {"id":"PF-MC05-EC03","description":"Universal product lookup reliably resolves supported identifiers and text queries, handles ambiguous or missing matches safely, and does not silently create duplicate canonical products.","status":"MISSING"},
+          {"id":"PF-MC05-EC04","description":"Import or reconciliation paths for product identifiers are idempotent, validate malformed/conflicting identifiers and preserve canonical data transactionally.","status":"MISSING"},
+          {"id":"PF-MC05-EC05","description":"Product CI, independent review, PFarma delta Robot plus required cumulative simulation, exact-SHA integration and post-merge cumulative replay all pass and a completion receipt is persisted.","status":"MISSING"}
+        ]
       },
       "next": "MC-06"
     },
@@ -81,7 +94,14 @@
         "outcome": "Media bytes are stored, verified and capacity-managed safely.",
         "status": "ACTIVE",
         "activatedFrom": "MC-04",
-        "activationReceipt": "receipts/family-cloud-mc04-completion.json"
+        "activationReceipt": "receipts/family-cloud-mc04-completion.json",
+        "exitCriteria": [
+          {"id":"FC-MC05-EC01","description":"Uploaded media bytes are stored through a durable object-storage abstraction with stable object references and verified metadata-to-object consistency across restart.","status":"MISSING"},
+          {"id":"FC-MC05-EC02","description":"Stored object integrity is verifiable and corrupted, missing or mismatched objects fail closed without returning invalid media as healthy.","status":"MISSING"},
+          {"id":"FC-MC05-EC03","description":"Per-user or household capacity accounting is durable, bounded and updated atomically for upload and delete operations without quota bypass on retries or concurrency.","status":"MISSING"},
+          {"id":"FC-MC05-EC04","description":"Capacity exhaustion, partial object-write failure and delete/rollback paths preserve metadata/object consistency and do not leak inaccessible orphan objects as successful operations.","status":"MISSING"},
+          {"id":"FC-MC05-EC05","description":"Product CI, independent review, realistic Robot object-storage/capacity journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+        ]
       },
       "next": "MC-06"
     }
