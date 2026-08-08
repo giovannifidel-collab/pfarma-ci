@@ -19,12 +19,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/family-cloud
-          ref: fe5a96c7cac62bad81501f4902259c7ac8ac968f
+          ref: 152a49b86b490a0480da4b90ff10e3f891f4be81
           token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
       - name: Verify exact candidate SHA
-        run: test "$(git rev-parse HEAD)" = 'fe5a96c7cac62bad81501f4902259c7ac8ac968f'
+        run: test "$(git rev-parse HEAD)" = '152a49b86b490a0480da4b90ff10e3f891f4be81'
       - name: Independent review assertions
         shell: bash
         run: |
