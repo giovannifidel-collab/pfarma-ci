@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [smoke, health, quality, migration, backend, goods-receipt, pilot]
+        shard: [smoke, health, quality, migration, backend, goods-receipt, purchasing, pilot]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: pfarma-ci-trusted
@@ -125,6 +125,9 @@ jobs:
               python tools/test_goods_receipt_service.py
               python tools/test_goods_receipt_wsgi.py
               python tools/test_goods_receipt_postgres.py
+              ;;
+            purchasing)
+              python -m pytest -q api/test_purchase_order_service.py api/test_purchase_order_postgres.py tests/test_purchase_order_progress.py tests/test_purchase_order_live_apply.py
               ;;
             pilot)
               python tools/test_pilot_acceptance_contract.py
