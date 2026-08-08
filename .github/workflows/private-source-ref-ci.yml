@@ -125,8 +125,8 @@ jobs:
               python tools/test_goods_receipt_service.py
               python tools/test_goods_receipt_wsgi.py
               python tools/test_goods_receipt_postgres.py
-              PYTHONPATH=. python tests/test_goods_receipt_recovery.py
-              PYTHONPATH=. python tests/test_goods_receipt_recovery_ledger_coordinates.py
+              python -m pip install --quiet pytest
+              PYTHONPATH=. python -m pytest -q tests/test_goods_receipt_recovery.py tests/test_goods_receipt_recovery_ledger_coordinates.py
               ;;
             pilot)
               python tools/test_pilot_acceptance_contract.py
