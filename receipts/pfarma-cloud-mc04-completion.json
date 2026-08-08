@@ -1,0 +1,21 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "pfarma-cloud",
+  "macrocycle": "MC-04",
+  "status": "COMPLETED",
+  "integratedSha": "60777d2723cdd5acbe8f384bfcfbda64fcd7bdb7",
+  "pullRequest": 2072,
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "workflowRunId": 31253559058,
+    "jobId": 93093486038,
+    "independentContext": "RAZZO Closure Certification Fabric",
+    "exactShaVerified": true,
+    "independentReview": "PASS",
+    "deltaRobot": "PASS",
+    "cumulativeRobot": "PASS",
+    "postMergeReplay": "PASS"
+  },
+  "exitCriteria": ["PF-MC04-EC01", "PF-MC04-EC02", "PF-MC04-EC03", "PF-MC04-EC04", "PF-MC04-EC05", "PF-MC04-EC06"],
+  "nextMacrocycle": "MC-05"
+}
