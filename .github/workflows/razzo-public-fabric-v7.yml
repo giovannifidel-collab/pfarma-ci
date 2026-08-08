@@ -30,9 +30,9 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'DurableMediaStore' scripts/dev-server.mjs
-          grep -q 'authentication_required' scripts/dev-server.mjs
-          grep -q 'idempotency_conflict' scripts/dev-server.mjs
-          grep -q 'media_not_found' scripts/dev-server.mjs
+          grep -q "throw new Error('unauthorized')" scripts/dev-server.mjs
+          grep -q 'idempotency_conflict' src/durable-media-store.mjs
+          grep -q 'media_not_found' src/durable-media-store.mjs
           grep -q 'withFilesystemLock' src/durable-media-store.mjs
           grep -q 'storage: "durable-filesystem"' tests/testable-alpha-runtime.test.ts
           grep -q 'fcMc04: "enabled"' tests/testable-alpha-runtime.test.ts
