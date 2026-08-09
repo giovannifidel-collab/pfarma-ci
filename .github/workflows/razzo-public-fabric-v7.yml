@@ -11,20 +11,20 @@ permissions:
   contents: read
 
 jobs:
-  family-cloud-mc05-candidate:
-    name: FC MC-05 candidate exact-SHA certification
+  family-cloud-mc05-postmerge:
+    name: FC MC-05 post-merge exact-SHA replay
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/family-cloud
-          ref: 33eb6a6c1b5ed961f82d5475ca825060fd4da436
+          ref: da331b1160209892d5275d05e95546d73e417b05
           token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
-      - name: Verify exact candidate SHA
-        run: test "$(git rev-parse HEAD)" = '33eb6a6c1b5ed961f82d5475ca825060fd4da436'
+      - name: Verify exact integrated SHA
+        run: test "$(git rev-parse HEAD)" = 'da331b1160209892d5275d05e95546d73e417b05'
       - name: Independent MC-05 assertions
         shell: bash
         run: |
