@@ -11,35 +11,34 @@ permissions:
   contents: read
 
 jobs:
-  family-cloud-mc04-postmerge:
-    name: FC MC-04 post-merge exact-SHA replay
+  family-cloud-mc05-candidate:
+    name: FC MC-05 candidate exact-SHA certification
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/family-cloud
-          ref: f4f97661fb25485f6c33895b75a5cd5e9b066645
+          ref: 5f73a5dc1d0b6ec794c3271570c906b216fd9d67
           token: ${{ secrets.RAZZO_FABRIC_TOKEN }}
           persist-credentials: false
           fetch-depth: 1
-      - name: Verify exact integrated SHA
-        run: test "$(git rev-parse HEAD)" = 'f4f97661fb25485f6c33895b75a5cd5e9b066645'
-      - name: Independent post-merge assertions
+      - name: Verify exact candidate SHA
+        run: test "$(git rev-parse HEAD)" = '5f73a5dc1d0b6ec794c3271570c906b216fd9d67'
+      - name: Independent MC-05 assertions
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'DurableMediaStore' scripts/dev-server.mjs
-          grep -q "throw new Error('unauthorized')" scripts/dev-server.mjs
-          grep -q 'idempotency_conflict' src/durable-media-store.mjs
-          grep -q 'media_not_found' src/durable-media-store.mjs
-          grep -q 'withFilesystemLock' src/durable-media-store.mjs
-          grep -q "storage: 'durable-filesystem'" scripts/dev-server.mjs
-          grep -q "fcMc04: 'enabled'" scripts/dev-server.mjs
-          test -f src/durable-media-store.d.mts
+          grep -q 'verifiedObjectBytes' src/durable-media-store.mjs
+          grep -q 'media_object_corrupt' src/durable-media-store.mjs
+          grep -q 'CapacityManagedMediaStore' src/capacity-managed-media-store.mjs
+          grep -q 'media_capacity_exceeded' src/capacity-managed-media-store.mjs
+          grep -q 'withCapacityLock' src/capacity-managed-media-store.mjs
+          grep -q 'storedBytesFor' src/capacity-managed-media-store.mjs
+          test -f tests/durable-media-capacity.test.ts
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Product CI + Robot post-merge replay
+      - name: Product CI + Robot capacity journey
         run: |
           npm install --no-save --ignore-scripts --no-audit --no-fund
           npm test
