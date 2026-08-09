@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "protocol": "RAZZO",
   "dynamicPortfolio": true,
   "totalNormalSlots": 64,
@@ -85,15 +85,15 @@
       "protectMain": true,
       "sourceRefFile": "source-ref.txt",
       "portfolioRefFile": "razzo/pfarma-ref.txt",
-      "factoryTest": "python -m unittest factory.test_razzo_executor && for f in tests/test_stock_threshold_preview.py tests/test_interwarehouse_transfer_preview.py; do [ ! -f \"$f\" ] || python \"$f\"; done",
-      "factoryPlan": "python -m factory.plan",
+      "factoryTest": "PYTHONDONTWRITEBYTECODE=1 python -m unittest factory.test_razzo_executor && for f in tests/test_stock_threshold_preview.py tests/test_interwarehouse_transfer_preview.py; do [ ! -f \"$f\" ] || PYTHONDONTWRITEBYTECODE=1 python \"$f\" || exit 1; done",
+      "factoryPlan": "PYTHONDONTWRITEBYTECODE=1 python -m factory.plan",
       "publicFabricWorkstreams": [
         {
           "id": "factory-tests",
           "title": "PFarma Factory and focused regression suite",
           "kind": "verification",
           "priority": "P0",
-          "command": "python -m unittest factory.test_razzo_executor && for f in tests/test_stock_threshold_preview.py tests/test_interwarehouse_transfer_preview.py; do [ ! -f \"$f\" ] || python \"$f\"; done",
+          "command": "PYTHONDONTWRITEBYTECODE=1 python -m unittest factory.test_razzo_executor && for f in tests/test_stock_threshold_preview.py tests/test_interwarehouse_transfer_preview.py; do [ ! -f \"$f\" ] || PYTHONDONTWRITEBYTECODE=1 python \"$f\" || exit 1; done",
           "verification": "exit-zero+exact-sha"
         },
         {
@@ -101,7 +101,7 @@
           "title": "PFarma Factory planner execution",
           "kind": "planning",
           "priority": "P1",
-          "command": "python -m factory.plan",
+          "command": "PYTHONDONTWRITEBYTECODE=1 python -m factory.plan",
           "verification": "exit-zero+exact-sha"
         },
         {
@@ -170,7 +170,7 @@
     }
   ],
   "onboarding": {
-    "rule": "Add or enable a project here; do not edit the AVANZA TUTTO operator command or scheduled task prompts.",
+    "rule": "Add or enable a project here; do not edit the CHIUDI MACROCICLO operator command or scheduled task prompts.",
     "minimumFields": [
       "id",
       "repository",
