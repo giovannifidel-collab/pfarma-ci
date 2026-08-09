@@ -24,7 +24,8 @@ jobs:
       - name: Dispatch real product execution
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh workflow run razzo-v7-ten-shard-trial.yml --ref main -f mode=execute-trial
+          gh workflow run razzo-v7-ten-shard-trial.yml -R "$GH_REPO" --ref main -f mode=execute-trial
           echo 'CHIUDI_MACROCICLO_EXECUTION_DISPATCHED'
