@@ -1,9 +1,9 @@
 {
-  "version": 5,
+  "version": 6,
   "sourceOfTruth": "github-current-integration-heads-open-product-prs-and-enabled-registry",
-  "rediscoveryEpoch": "2026-08-06T12:50:00Z",
+  "rediscoveryEpoch": "2026-08-09T09:45:00Z",
   "factoryAllocationPaused": false,
-  "resumeReason": "owner explicitly instructed the Factory to calculate, resume and continue without routine authorization",
+  "resumeReason": "owner instructed the Factory to continue closure-first on active macrocycles",
   "projects": [
     {
       "id": "project-giovanni",
@@ -12,28 +12,28 @@
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "active:P0 usable release #152; premium UI #147; offline/PWA #142; public-fabric verification wave enabled",
-      "collisionDomain": "product/daily-training-journey"
+      "queueHint": "issue=#152; active=MC-09; focus=missing-exit-criteria",
+      "collisionDomain": "product/project-giovanni-mc09-feedback-adaptation"
     },
     {
       "id": "pfarma-cloud",
       "exactSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
-      "ready": 4,
+      "ready": 5,
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "active:MC-04 operational persistence foundation on product PR #2072; fail-closed schema compatibility and restore boundary regressions added; public exact-SHA verification required",
-      "collisionDomain": "product/pfarma-mc04-operational-store"
+      "queueHint": "issue=#2072; active=MC-05; focus=missing-exit-criteria",
+      "collisionDomain": "product/pfarma-mc05-product-catalog-search"
     },
     {
       "id": "family-cloud",
       "exactSha": "b99fd32f296cd323ffd8ad59bf0e335d20fcae73",
-      "ready": 4,
+      "ready": 5,
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "active:local family journey; public-fabric verification and discovery wave enabled",
-      "collisionDomain": "product/local-family-journey"
+      "queueHint": "issue=#706; active=MC-05; focus=missing-exit-criteria",
+      "collisionDomain": "product/family-cloud-mc05-object-storage-capacity"
     }
   ]
 }
