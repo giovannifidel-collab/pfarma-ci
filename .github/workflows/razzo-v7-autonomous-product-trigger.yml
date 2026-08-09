@@ -1,4 +1,4 @@
-name: RAZZO V7 Autonomous Product Trigger
+name: RAZZO V7 CHIUDI MACROCICLO Trigger
 
 on:
   schedule:
@@ -14,14 +14,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: razzo-v7-autonomous-product-trigger
+  group: razzo-v7-chiudi-macrociclo-trigger
   cancel-in-progress: false
 
 jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch product worker fabric
+      - name: Dispatch real product execution
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run razzo-v7-product-worker-fabric.yml --ref main
+        run: |
+          set -euo pipefail
+          gh workflow run razzo-v7-ten-shard-trial.yml --ref main -f mode=execute-trial
+          echo 'CHIUDI_MACROCICLO_EXECUTION_DISPATCHED'
