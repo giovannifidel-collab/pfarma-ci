@@ -2,192 +2,119 @@
 
 ## Canonical command
 
-`AVANZA TUTTO`
+`CHIUDI MACROCICLO`
+
+Backward-compatible alias: `AVANZA TUTTO`.
+
+Both commands resolve to the same closure-first execution contract. `AVANZA TUTTO` MUST NOT restore the old generic-progress semantics.
+
+## Primary invariant
+
+For every enabled project, the purpose of each invocation is to convert the current active macrocycle into a certified `COMPLETED` macrocycle in the same invocation whenever safely possible.
+
+The execution target is not "make progress". The execution target is:
+
+`ACTIVE MACROCYCLE -> SATISFY EXIT CRITERIA -> EXACT-SHA CI -> INDEPENDENT REVIEW -> ROBOT VERIFY -> INTEGRATE -> POST-MERGE REPLAY -> COMPLETION RECEIPT -> COMPLETED -> ACTIVATE NEXT`
+
+If closure is not yet possible, execute only work that directly satisfies a missing exit criterion or removes a named completion blocker. Do not spend execution budget on unrelated discovery, polish, generic hardening, speculative future work, duplicate checks or administrative churn.
 
 ## Resolution rule
 
-The command has no static project list. On every execution:
+On every execution:
 
-1. read `razzo/protocol.json` from the canonical control plane;
+1. read `razzo/protocol.json`;
 2. read the registry named by `portfolioRegistry`;
 3. select every project with `enabled: true`;
-4. read each project's current canonical ref, integration lane, task graph, policy/executor hints and repository-local constraints;
-5. treat GitHub as the source of truth and reconcile only what is necessary to execute product work safely.
+4. read `razzo/macrocycle-state.json` and identify the active macrocycle for every enabled project;
+5. reconcile live GitHub state before trusting persisted PR/SHA/gate fields;
+6. evaluate every active macrocycle exit criterion;
+7. fan out safe closure work independently across all enabled projects;
+8. continue through certification and receipt whenever closure becomes reachable;
+9. activate the next declared macrocycle immediately after certified closure.
 
-Never require the operator prompt to be edited when projects are added, removed, renamed, reprioritized or moved to a different integration lane. Those changes belong in the registry or repository-local manifest.
+Never require the operator prompt to be edited when projects are added, removed, renamed or reprioritized.
 
-## Product-first invariant
+## Product-programmer invariant
 
-RAZZO exists to advance products, not to manufacture control-plane activity.
+Planning is not product progress. A planner artifact, queue entry, discovery candidate or generated work contract is only an intermediate object.
 
-Control-plane work — refs, snapshots, checkpoints, CI routing, task-graph edits and orchestration — is subordinate to real product progress and should remain a minority of useful cycle work unless infrastructure repair is actually blocking product execution.
+When an active macrocycle contains a safely implementable missing criterion, RAZZO MUST dispatch a product-writing executor capable of changing the authoritative product repository, testing the change, publishing an exact candidate SHA and opening or updating the integration PR. A `plan-only` execution MUST NOT satisfy a productive trigger when safely executable closure work exists.
 
-Do not use noop commits, nominal generation increments, synthetic benchmark churn or administrative PRs as a substitute for progress.
+A productive trigger may end without product code only when all currently missing criteria are either already awaiting external CI/review/replay evidence, blocked by a true scoped human gate, or genuinely require an unavailable infrastructure capability. Persist the exact reason.
 
-## Outcome-driven autonomy invariant
+## Closure-first cycle
 
-The operator defines goals, priorities, acceptance boundaries and true human-gate decisions. The operator is **not** the routine project manager.
+For every enabled project, independently and in parallel:
 
-RAZZO must autonomously infer and pursue the next useful product state. After every verified integration it must ask, in this order:
+### 1. RECONCILE
 
-1. What is the largest remaining obstacle between the current product and useful human use?
-2. Which user journey is still impossible, awkward, disconnected, unobservable or untestable?
-3. Which newly integrated capability now enables a higher-value vertical slice?
-4. Is the product feature-rich but still not directly runnable/testable by a human? If yes, testability and usable runtime become priority work.
-5. What safe work can begin now without asking the operator to enumerate the obvious next task?
+Read the live integration-lane head, open PRs, exact-SHA checks, receipts, pending human gates and active macrocycle state. Reuse valid evidence. Do not repeat already-green checks without an evidence reason.
 
-Do not stop merely because the declared queue is empty, a PR merged cleanly, or the last requested feature is complete. A coherent repository is a checkpoint, not necessarily a useful product state.
+### 2. FIND THE EARLIEST MISSING CLOSURE GATE
 
-When enough foundations exist for meaningful human use, prefer making the product runnable, observable and testable by the user over accumulating lower-value isolated features.
+Inspect the active macrocycle exit criteria in order. Select work only if it:
 
-The default loop is therefore outcome-driven rather than task-driven:
+- directly satisfies a `MISSING` exit criterion;
+- removes a named blocker preventing that criterion;
+- produces required exact-SHA CI/review/Robot evidence;
+- integrates a verified candidate;
+- performs required post-merge replay;
+- emits the completion receipt.
 
-`GOAL -> CURRENT PRODUCT STATE -> NEXT USEFUL STATE -> BOTTLENECK -> SAFE WORKSTREAMS -> EXECUTE -> VERIFY -> INTEGRATE -> REASSESS GOAL`
+### 3. BUILD REAL PRODUCT WORK
 
-Only a true human gate may transfer the next decision back to the operator.
+If code is missing, inspect the authoritative product repository and implement the smallest coherent vertical slice that satisfies the criterion. Use safe parallel workstreams only when the dependency graph justifies them.
 
-## Cycle
+Do not substitute previews, dashboards, canaries, docs, refactors or control-plane edits for the actual capability named by the criterion.
 
-For every enabled project:
+### 4. VERIFY AND INTEGRATE
 
-### 1. FAST RECONCILE
+Run relevant product tests, exact-SHA CI, independent review and Robot verification. Integrate only into the authorized integration lane and only from verified exact SHA.
 
-Reconcile the minimum required state: current exact ref, integration lane HEAD, open PRs, exact CI, task graph, collision domains, backpressure and human gates.
+### 5. CLOSE
 
-Do not spend the cycle repeatedly reconciling already-coherent state.
+When all criteria and gates are verified:
 
-### 2. PRODUCT DISCOVERY
+- perform required post-merge replay;
+- persist completion receipt;
+- mark macrocycle `COMPLETED`;
+- activate the next declared macrocycle immediately.
 
-Inspect the real repository and identify useful, safe work beyond the declared ready queue, including:
+Do not stop at PR open, PR merged, partial green CI, candidate receipt or queued replay.
 
-- missing or incomplete capabilities;
-- broken user journeys and regressions;
-- TODO/FIXME/placeholder/mock paths that can safely become real;
-- disconnected components;
-- UX and accessibility gaps;
-- missing validation or error handling;
-- security and privacy hardening;
-- resilience, offline, recovery and failure handling;
-- performance and observability;
-- useful tests and realistic robot/browser journeys;
-- integration work that becomes possible after previous waves.
+## Human gates are non-blocking to autonomous work
 
-Repository-local vision, architecture, policies and task graphs override generic assumptions.
+A true human gate blocks only the exact sensitive action and strictly dependent work.
 
-### 3. READY ZERO IS NOT STOP
+When one appears:
 
-`ready == 0` MUST trigger product discovery and self-replan before saturation can be declared.
+1. persist it to `pendingHumanGates` with project, macrocycle, criterion, exact required human action and evidence needed after resolution;
+2. notify the operator;
+3. leave the gated macrocycle open/deferred rather than falsely certifying it;
+4. advance the autonomous execution cursor to safe independent work, including later macrocycles when dependencies permit;
+5. continue all other enabled projects;
+6. revisit pending gates on every trigger.
 
-A human gate freezes only the gated action. Continue safe work around it.
+Human gates may accumulate. They are a backlog of small operator actions, not a global stop condition.
 
-A project may be considered genuinely saturated only when all are true:
+## Scheduler semantics
 
-- no runnable work exists;
-- no safe PR is integrable;
-- product discovery finds no further meaningful safe work;
-- all remaining meaningful advancement truly requires a human gate.
+Every scheduled or manual trigger is a `CHIUDI MACROCICLO` invocation. The scheduler is a watchdog and re-entry mechanism; it must dispatch real product execution when safely executable closure work exists.
 
-### 4. PLAN REAL WORK
-
-Turn discovered work into atomic, independently verifiable workstreams.
-
-Prefer real parallel work over one giant PR. Generate as many workstreams as the actual dependency graph justifies; never inflate task counts for appearance.
-
-Each workstream needs a concrete expected result, collision domain, target lane and verification method.
-
-### 5. FAN-OUT
-
-Use the portfolio controller and repository-local concurrency policy to maximize safe parallelism.
-
-Prioritize:
-
-1. regressions, security and broken flows;
-2. user-facing vertical slices and incomplete capabilities;
-3. integration between existing capabilities;
-4. UX, quality, resilience and performance;
-5. infrastructure changes that directly increase future verified product throughput.
-
-Do not allow administrative work to consume most execution slots.
-
-When acceleration is enabled in `razzo/protocol.json`, use dynamic DAG-driven fan-out rather than one-workstream-per-project behavior. The target is useful independent work, never artificial task inflation. Respect the configured soft maximum and reduce fan-out automatically when collision rate, CI pressure or failure rate rises.
-
-### 6. VERIFY
-
-A result is complete only after real evidence exists on GitHub:
-
-- inspect the diff;
-- run relevant tests and exact-SHA CI;
-- use functional robots/browser journeys/fault tests where available;
-- fail closed on ambiguity;
-- never invent a successful outcome.
-
-### 7. INTEGRATE
-
-Integrate only into the project's registry/repository-authorized integration lane.
-
-Never assume `main` is writable. Respect repository-local promotion policy and human gates.
-
-Use collision checks and integration backpressure.
-
-### 8. RECURSE
-
-After meaningful integration, rerun product discovery and ask:
-
-> What useful safe work became possible because of this wave?
-
-Then also ask:
-
-> What is the next user-meaningful state, and what currently prevents a human from reaching it?
-
-Continue:
-
-`DISCOVER -> PLAN -> FAN-OUT -> BUILD -> VERIFY -> INTEGRATE -> DISCOVER`
-
-for the available execution budget.
-
-When acceleration is enabled, a generation boundary is not an end-of-cycle condition. Consume the next safe generation in the **same invocation** while budget remains, up to the protocol's `maxIntraCycleGenerations`. The scheduled trigger is a watchdog/recovery entry point, not the primary reason progress continues.
-
-### 9. PIPELINE OVERLAP
-
-When exact immutable refs and collision domains make it safe, overlap stages instead of serially idling:
-
-- begin next-generation discovery while the prior generation is verifying;
-- build independent next-generation work while prior verification is running;
-- never integrate against a stale mutable base;
-- serialize only the collision/integration points that require serialization;
-- preserve leases, idempotency, exact-SHA gates and backpressure.
-
-The desired execution shape is a bounded pipeline, not `build -> wait -> verify -> wait -> discover`.
-
-### 10. HOMO NOVUS FEEDBACK CONTROL
-
-For every completed generation, record enough telemetry to compare strategy quality: discovery/build/verify/integration time, queue wait, verified throughput, candidate failures, retries, collisions, backpressure, useful workstreams, product integrations and generation-to-generation latency.
-
-HOMO NOVUS may alter decomposition depth, fan-out, worker allocation and overlap strategy only when the new strategy is measurable and reversible. Promote a strategy only when comparable generations show improvement without violating correctness or safety. Roll back a strategy that regresses verified product throughput, failure rate, collision safety or resumability.
-
-## Human gates
-
-Use the protocol and repository-local policy. At minimum, require a real human decision for:
-
-- real secrets or credentials;
-- paid activation;
-- destructive production operations;
-- irreversible migrations;
-- sensitive cryptographic release;
-- mutation/deletion of irreplaceable real data.
-
-Do not broaden a gate to unrelated safe work.
+The success metric is **certified macrocycles closed per trigger**, secondarily named exit criteria/gates eliminated. Commits, PR count, tests, artifacts, plans and waves are not success metrics by themselves.
 
 ## Dynamic portfolio rule
 
-Project-specific instructions must live in `razzo/projects.json` and/or repository-local RAZZO manifests/policies.
+Project-specific instructions remain in `razzo/projects.json`, `razzo/macrocycle-state.json` and repository-local RAZZO manifests/policies.
 
-The operator command remains exactly `AVANZA TUTTO` regardless of the number of projects.
+The canonical operator command remains `CHIUDI MACROCICLO` regardless of project count. `AVANZA TUTTO` remains only a compatibility alias.
 
-When a new enabled registry entry appears, begin managing it automatically on the next cycle. When disabled, stop allocating new work to it while preserving existing evidence/history.
+## End-of-invocation invariant
 
-## End-of-cycle invariant
+For every enabled project, an invocation must end in one of these truthful states:
 
-Leave GitHub coherent, exact-ref verifiable and immediately resumable by the next scheduled or interactive `AVANZA TUTTO` execution.
+- the active macrocycle was certified `COMPLETED` and the next was activated;
+- one or more named exit criteria were materially satisfied and the remaining earliest missing gate is persisted;
+- a true scoped human/infrastructure gate was persisted and safe independent execution continued elsewhere.
 
-A cycle must not end merely because the last planned task finished. It ends only after self-replan has evaluated the next useful product state and either created/consumed safe follow-on work or established that a true human gate is the only meaningful blocker. With acceleration enabled, also require the intra-cycle recursion budget to be exhausted or a protocol stop condition to be reached before ending the invocation.
+It must never end merely because a plan was generated, a PR was opened, a test was queued, or a generic wave completed.
