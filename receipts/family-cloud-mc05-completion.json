@@ -1,0 +1,23 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "family-cloud",
+  "macrocycle": "MC-05",
+  "status": "COMPLETED",
+  "integratedSha": "da331b1160209892d5275d05e95546d73e417b05",
+  "pullRequest": 760,
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "candidateWorkflowRunId": 31336528603,
+    "postMergeWorkflowRunId": 31336595648,
+    "candidateJobId": 93303191835,
+    "jobId": 93303366200,
+    "independentContext": "RAZZO Closure Certification Fabric",
+    "exactShaVerified": true,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "postMergeReplay": "PASS"
+  },
+  "exitCriteria": ["FC-MC05-EC01", "FC-MC05-EC02", "FC-MC05-EC03", "FC-MC05-EC04", "FC-MC05-EC05"],
+  "nextMacrocycle": "MC-06"
+}
