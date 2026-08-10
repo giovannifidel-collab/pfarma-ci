@@ -1,0 +1,14 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"project-giovanni",
+  "macrocycle":"MC-20",
+  "title":"Release, osservabilità e stabilizzazione",
+  "status":"COMPLETED",
+  "candidateSha":"76aa5d2a04b18867f9b349dd52f659f39be66216",
+  "integratedSha":"fa208f40071302656c96912478ea5345d1dd91fb",
+  "productPr":1084,
+  "independentReview":{"reviewId":"PRR_kwDOTaLO-c8AAAABJBJyNQ","result":"PASS"},
+  "candidateExactShaVerification":{"runId":31422381427,"job":"project-giovanni","conclusion":"success"},
+  "postMergeReplay":{"runId":31423807715,"job":"project-giovanni-mc16","conclusion":"success","note":"legacy workflow job name; exact checkout was integrated MC-20 SHA"},
+  "certification":"CERTIFIED_EXACT_SHA_POST_MERGE"
+}
