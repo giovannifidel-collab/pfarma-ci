@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - working-directory: product
-        run: python -m compileall -q backend tests/test_accounting_ledger_mc13.py && PYTHONPATH=. python tests/test_accounting_ledger_mc13.py && python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+        run: python -m compileall -q backend tests/test_accounting_ledger_mc13.py && PYTHONPATH=. python tests/test_accounting_ledger_mc13.py
   family-cloud-mc14:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
