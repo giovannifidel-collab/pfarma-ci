@@ -151,3 +151,5 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PRODUCTION_BASE_URL: https://project-giovanni.vercel.app
         run: node scripts/preparatore-production-e2e-smoke-runner.mjs
+
+# Triggered after Safari-equivalent production polling fix on 2026-08-10.
