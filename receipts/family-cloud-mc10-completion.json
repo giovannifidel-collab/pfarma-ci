@@ -1,0 +1,12 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"family-cloud",
+  "macrocycle":"MC-10",
+  "status":"COMPLETED",
+  "candidateSha":"862ce00e0ed861b5c2fd207a5bbca32bf332d6a6",
+  "integratedSha":"9eee88bdd4a5f3e73bf4739a636f7ae76c85e104",
+  "pullRequest":798,
+  "certification":{"fabricRepository":"giovannifidel-collab/pfarma-ci","candidateWorkflowRunId":31404439942,"candidateJobId":93507193644,"criterionVerifierRunId":31404440978,"postMergeWorkflowRunId":31404592999,"postMergeJobId":93507689029,"postMergeCriterionVerifierRunId":31404592887,"independentReview":"PASS","productCi":"PASS","robotReplay":"PASS","exactShaVerified":true,"postMergeReplay":"PASS","reviewEvidence":{"method":"criterion-by-criterion review plus hosted exact-SHA CI and focused processing verifier","files":["packages/media/src/processing-pipeline.ts","tests/media-processing-mc10.test.ts"],"finding":"Canonical derivative jobs preserve original identity, bound resources and attempts, verify hashes, serialize durable state mutations, fail closed on concurrent processing/corruption and expose only authorized verified derivatives with recoverable explicit states."}},
+  "exitCriteria":["FC-MC10-EC01","FC-MC10-EC02","FC-MC10-EC03","FC-MC10-EC04","FC-MC10-EC05"],
+  "nextMacrocycle":"MC-11"
+}
