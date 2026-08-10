@@ -1,0 +1,18 @@
+{
+  "schema":"razzo.completion-receipt.v1",
+  "project":"project-giovanni",
+  "macrocycle":"MC-17",
+  "title":"Privacy, autorizzazioni e protezione dati",
+  "status":"CLOSED",
+  "productPr":1079,
+  "candidateSha":"1fc3dd1a46765d13b95e2069d53e679b4c09c56a",
+  "integratedSha":"dee5778e797a03676616e23fdcbb213accd473e4",
+  "candidateVerifierRun":31411808573,
+  "candidateExactRefGateRun":31411807273,
+  "independentReview":{"type":"RAZZO_SEPARATE_REVIEW_PASS","reviewId":4899179605,"result":"NO_COMPLETION_BLOCKER"},
+  "postMergeVerifierRun":31412306699,
+  "postMergeVerifierResult":"SUCCESS",
+  "criteria":["PG-MC17-EC01","PG-MC17-EC02","PG-MC17-EC03","PG-MC17-EC04"],
+  "closedAt":"2026-08-10T17:06:28Z",
+  "nextActive":"MC-18"
+}
