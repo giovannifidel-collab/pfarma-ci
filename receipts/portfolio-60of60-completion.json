@@ -1,16 +1,34 @@
 {
-  "schema": "razzo.portfolio-completion.v1",
+  "schema": "razzo.portfolio-completion.v2",
   "status": "COMPLETED",
+  "roadmapStatus": "COMPLETED_60_OF_60",
   "productiveMacrocycles": 60,
   "completedProductiveMacrocycles": 60,
   "terminal": true,
+  "evidenceScope": "POST_CONTROLLER_MACROCYCLES_HAVE_PERSISTED_RECEIPTS; PRE_CONTROLLER_MACROCYCLES_ARE_RECORDED_AS_HISTORICAL_COMPLETION; CURRENT_CANONICAL_HEADS_HAVE_EXACT_SHA_POST_CLOSURE_REPLAY",
   "projects": {
-    "project-giovanni": {"completedThrough": "MC-20", "integratedSha": "ddef8ef787b27743205450cd9ebe5dbb2ada5da7"},
-    "pfarma-cloud": {"completedThrough": "MC-20", "integratedSha": "79e76acc5254d9e6ffb65b0d5247736d8bb4cf59"},
-    "family-cloud": {"completedThrough": "MC-20", "integratedSha": "10f70823aa6304eb4ea08d58982117b0455801ee"}
+    "project-giovanni": {"completedThrough": "MC-20", "currentCertifiedHead": "ddef8ef787b27743205450cd9ebe5dbb2ada5da7"},
+    "pfarma-cloud": {"completedThrough": "MC-20", "currentCertifiedHead": "7e9334669573d838d0235478083f8befb96255ac"},
+    "family-cloud": {"completedThrough": "MC-20", "currentCertifiedHead": "10f70823aa6304eb4ea08d58982117b0455801ee"}
   },
-  "finalExactShaReplay": {"runId": 31433765553, "conclusion": "success", "jobs": ["project-giovanni", "pfarma", "family-cloud"]},
-  "exactRefGate": {"runId": 31433765321, "conclusion": "success"},
-  "currentMacrocycleVerifier": {"runId": 31433765454, "conclusion": "success"},
-  "certification": "PORTFOLIO_60_OF_60_CERTIFIED"
+  "currentAuditReplay": {"runId": 31441542610, "conclusion": "success", "jobs": ["project-giovanni", "pfarma", "family-cloud"]},
+  "initialCertification": {
+    "projects": {
+      "project-giovanni": "ddef8ef787b27743205450cd9ebe5dbb2ada5da7",
+      "pfarma-cloud": "79e76acc5254d9e6ffb65b0d5247736d8bb4cf59",
+      "family-cloud": "10f70823aa6304eb4ea08d58982117b0455801ee"
+    },
+    "finalExactShaReplayRunId": 31433765553,
+    "exactRefGateRunId": 31433765321,
+    "currentMacrocycleVerifierRunId": 31433765454
+  },
+  "postClosureMaintenance": {
+    "pfarma-cloud": [
+      {"pr": 2201, "mergeSha": "108bc289ad7e07a96e63e86addd7556d55fffa82", "reason": "reject stale offline visit mutations"},
+      {"pr": 2202, "mergeSha": "7e9334669573d838d0235478083f8befb96255ac", "reason": "reject lossy fractional revision preconditions"}
+    ]
+  },
+  "reviewSemantics": {"macrocycleClosureIndependentReviewEvidencePreserved": true, "postClosureTechnicalAuditReview": true, "postClosureIndependentReviewerApproval": false},
+  "certification": "ROADMAP_COMPLETE_CURRENT_HEADS_AUDITED",
+  "note": "Pre-controller historical macrocycles are not represented as having individual exact-SHA receipts."
 }
