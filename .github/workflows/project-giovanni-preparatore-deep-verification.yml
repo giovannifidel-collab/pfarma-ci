@@ -1,0 +1,153 @@
+name: Project Giovanni Preparatore · Deep Production Verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/project-giovanni-preparatore-deep-verification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-giovanni-preparatore-deep-verification
+  cancel-in-progress: false
+
+jobs:
+  deep-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: photo-ai-private
+    steps:
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Checkout latest Project Giovanni production source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: main
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: worker
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install E2E fixture dependency
+        working-directory: worker
+        run: npm install --no-save --no-audit --no-fund jpeg-js@0.4.4
+
+      - name: Stress deterministic PLUS normalizer
+        working-directory: worker
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { repairCandidate } from './scripts/repair-preparatore-candidate.mjs';
+
+          const catalog = new Map([
+            ['incline_pushup',{id:'incline_pushup',focus:'Spinta',mode:'reps',requires:[]}],
+            ['pike_pushup',{id:'pike_pushup',focus:'Spinta',mode:'reps',requires:[]}],
+            ['reverse_snow_angel',{id:'reverse_snow_angel',focus:'Tirata',mode:'reps',requires:[]}],
+            ['bodyweight_isometric_row',{id:'bodyweight_isometric_row',focus:'Tirata',mode:'time',requires:[]}],
+            ['bodyweight_squat',{id:'bodyweight_squat',focus:'Gambe',mode:'reps',requires:[]}],
+            ['glute_bridge',{id:'glute_bridge',focus:'Gambe',mode:'reps',requires:[]}],
+            ['dead_bug',{id:'dead_bug',focus:'Core',mode:'reps',requires:[]}],
+            ['hollow_hold',{id:'hollow_hold',focus:'Core',mode:'time',requires:[]}],
+            ['fast_march',{id:'fast_march',focus:'Cardio',mode:'time',requires:[]}],
+            ['thoracic_mobility',{id:'thoracic_mobility',focus:'Mobilità',mode:'time',requires:[]}],
+            ['dumbbell_lateral_raise',{id:'dumbbell_lateral_raise',focus:'Spinta',mode:'reps',requires:['manubri']}],
+            ['band_row',{id:'band_row',focus:'Tirata',mode:'reps',requires:['elastici']}],
+            ['bike_intervals',{id:'bike_intervals',focus:'Cardio',mode:'time',requires:['cyclette']}],
+            ['lat_machine_neutral',{id:'lat_machine_neutral',focus:'Tirata',mode:'reps',requires:['lat_machine']}],
+          ]);
+
+          const context = {profile:{daysPerWeek:4,minutesPerSession:30,equipment:['manubri','elastici','cyclette','tappetino','sedia']}};
+          const huge = 'X'.repeat(4000);
+          const raw = {
+            analysis:{
+              analysisConfidence:'nonsense',
+              imageQuality:{front:'bad',side:null,back:'usable'},
+              summary:huge,
+              priorities:Array.from({length:20},(_,i)=>`Priorità ${i}`),
+              limitations:Array.from({length:20},(_,i)=>`Limite ${i}`),
+              visualFindings:Array.from({length:30},(_,i)=>`Finding ${i}`),
+            },
+            plan:{
+              summary:'', rationale:'not-array', safetyNote:'',
+              days:[
+                {day:99,title:'',durationMinutes:90,warmupMinutes:0,emphasis:'Spinta',exercises:[
+                  {exerciseId:'lat_machine_neutral',sets:99,repsMin:-2,repsMax:100,seconds:77,reserveReps:99,restSeconds:999},
+                  {exerciseId:'unknown_exercise',sets:null,repsMin:null,repsMax:null,seconds:null,reserveReps:null,restSeconds:null},
+                ]},
+                {day:0,title:'Secondo',durationMinutes:10,warmupMinutes:30,emphasis:'Core',exercises:[]},
+              ]
+            }
+          };
+          const { candidate } = repairCandidate(raw, context, catalog);
+          const fail = (m)=>{ throw new Error(m); };
+          const a = candidate.analysis;
+          if (!['low','medium','high'].includes(a.analysisConfidence)) fail('confidence not normalized');
+          for (const v of ['front','side','back']) if (!['usable','limited'].includes(a.imageQuality[v])) fail(`imageQuality ${v} not normalized`);
+          if (!(typeof a.summary==='string' && a.summary.length>0 && a.summary.length<=1200)) fail('summary not normalized');
+          if (!Array.isArray(a.priorities) || a.priorities.length>8) fail('priorities not normalized');
+          if (!Array.isArray(a.limitations) || a.limitations.length>8) fail('limitations not normalized');
+          if (!Array.isArray(a.visualFindings) || a.visualFindings.length>12) fail('visualFindings not normalized');
+          if (candidate.plan.days.length!==4) fail('day count not normalized');
+          const equipment=new Set(context.profile.equipment);
+          for (let i=0;i<candidate.plan.days.length;i++) {
+            const d=candidate.plan.days[i];
+            if (d.day!==i+1) fail(`day index ${i} invalid`);
+            if (d.durationMinutes!==30) fail(`duration ${i} invalid`);
+            if (!(d.warmupMinutes>=3 && d.warmupMinutes<=10)) fail(`warmup ${i} invalid`);
+            if (!(d.exercises.length>=3 && d.exercises.length<=6)) fail(`exercise count ${i} invalid`);
+            for (const e of d.exercises) {
+              const def=catalog.get(e.exerciseId); if(!def) fail(`unknown exercise ${e.exerciseId}`);
+              if (def.requires.some(r=>!equipment.has(r))) fail(`unavailable equipment ${e.exerciseId}`);
+              if (!(Number.isInteger(e.sets)&&e.sets>=1&&e.sets<=5)) fail(`sets invalid ${e.exerciseId}`);
+              if (!(Number.isInteger(e.restSeconds)&&e.restSeconds>=15&&e.restSeconds<=180)) fail(`rest invalid ${e.exerciseId}`);
+              if(def.mode==='time') {
+                if (!(Number.isInteger(e.seconds)&&e.seconds>=10&&e.seconds<=180&&e.repsMin===null&&e.repsMax===null)) fail(`time dose invalid ${e.exerciseId}`);
+              } else {
+                if (!(Number.isInteger(e.repsMin)&&e.repsMin>=1&&Number.isInteger(e.repsMax)&&e.repsMax>=e.repsMin&&e.repsMax<=40&&e.seconds===null)) fail(`rep dose invalid ${e.exerciseId}`);
+              }
+            }
+          }
+          console.log('DETERMINISTIC_STRESS_MATRIX=PASS');
+          NODE
+
+      - name: Production E2E run 1
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PRODUCTION_BASE_URL: https://project-giovanni.vercel.app
+        run: node scripts/preparatore-production-e2e-smoke-runner.mjs
+
+      - name: Production E2E run 2
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PRODUCTION_BASE_URL: https://project-giovanni.vercel.app
+        run: node scripts/preparatore-production-e2e-smoke-runner.mjs
+
+      - name: Production E2E run 3
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PRODUCTION_BASE_URL: https://project-giovanni.vercel.app
+        run: node scripts/preparatore-production-e2e-smoke-runner.mjs
