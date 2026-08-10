@@ -1,0 +1,27 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"project-giovanni",
+  "macrocycle":"MC-16",
+  "status":"COMPLETED",
+  "candidateSha":"28053b5f12ae36d4b4d1605dfb3dc8f7bb78dee6",
+  "integratedSha":"f968cd84d497e890feca8aef2dc3c24d4284873b",
+  "pullRequest":1078,
+  "certification":{
+    "fabricRepository":"giovannifidel-collab/pfarma-ci",
+    "criterionVerifierRunId":31410004285,
+    "postMergeWorkflowRunId":31410316595,
+    "postMergeCriterionVerifierRunId":31410316532,
+    "independentReview":"PASS",
+    "productCi":"PASS",
+    "robotReplay":"PASS",
+    "exactShaVerified":true,
+    "postMergeReplay":"PASS",
+    "reviewEvidence":{
+      "method":"criterion-by-criterion review plus focused exact-SHA verifier",
+      "files":["lib/offlineSync.ts","factory/mc16-offline-sync.test.mjs"],
+      "finding":"Durable offline mutations retain subject, source-version and causal identity; reconnect replay is deterministic/idempotent, stale or conflicting mutations fail closed, and safety-critical recovery remains blocked until required evidence is available."
+    }
+  },
+  "exitCriteria":["PG-MC16-EC01","PG-MC16-EC02","PG-MC16-EC03","PG-MC16-EC04"],
+  "nextMacrocycle":"MC-17"
+}
