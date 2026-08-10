@@ -1,0 +1,16 @@
+{
+  "schema": "razzo.macrocycle-finalization.v1",
+  "project": "family-cloud",
+  "macrocycles": ["MC-16", "MC-17", "MC-18", "MC-19", "MC-20"],
+  "status": "COMPLETED",
+  "integratedSha": "10f70823aa6304eb4ea08d58982117b0455801ee",
+  "integrationLane": "agent/bootstrap-family-cloud",
+  "productPrs": [817, 822, 826],
+  "finalCandidateSha": "06c374f467da4c149f05403a8f066b3669c9c810",
+  "finalCandidateVerification": {"runId": 31433498047, "job": "finalization", "conclusion": "success"},
+  "postMergePortfolioReplay": {"runId": 31433765553, "job": "family-cloud", "conclusion": "success"},
+  "hostedPostMerge": {"runId": 31433765336, "conclusion": "success"},
+  "exactRefGate": {"runId": 31433765321, "conclusion": "success"},
+  "currentMacrocycleVerifier": {"runId": 31433765454, "conclusion": "success"},
+  "certification": "CERTIFIED_EXACT_SHA_POST_MERGE_FINAL"
+}

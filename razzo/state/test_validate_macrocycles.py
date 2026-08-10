@@ -23,7 +23,26 @@ class MacrocycleValidatorTests(unittest.TestCase):
 
     def test_completed_is_not_an_allowed_active_state(self) -> None:
         self.assertIn("COMPLETED", MODULE.ALLOWED_STATES)
-        self.assertNotEqual("COMPLETED", "ACTIVE")
+        self.assertNotIn("COMPLETED", MODULE.ACTIVE_STATES)
+
+    def test_terminal_portfolio_has_no_execution_cursor(self) -> None:
+        state = MODULE.load_json(MODULE.STATE)
+        self.assertTrue(state["terminal"])
+        self.assertEqual(state["completedProductiveMacrocycles"], 60)
+        for project in state["projects"]:
+            self.assertTrue(project["terminal"])
+            self.assertEqual(project["productiveMacrocyclesCompleted"], 20)
+            self.assertEqual(project["completedThrough"], "MC-20")
+            self.assertIsNone(project["active"])
+            self.assertIsNone(project["next"])
+            self.assertEqual(project["pendingHumanGates"], [])
+            self.assertIn("MC-20", {item["id"] for item in project["completed"]})
+
+    def test_terminal_state_requires_persisted_receipt(self) -> None:
+        state = MODULE.load_json(MODULE.STATE)
+        self.assertEqual(state["terminalReceipt"], "receipts/portfolio-60of60-completion.json")
+        for project in state["projects"]:
+            self.assertTrue(project["terminalReceipt"].startswith("receipts/"))
 
 
 if __name__ == "__main__":
