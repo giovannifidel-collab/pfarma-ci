@@ -1,0 +1,15 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "pfarma-cloud",
+  "macrocycle": "MC-13",
+  "title": "Contabilità operativa e partita doppia",
+  "status": "COMPLETED",
+  "candidateSha": "d5d5eaf57377bffd4a9c33c1feca56fa8a3d03aa",
+  "integratedSha": "0a1ffa5fca2fc924f3cf8fb181a4830e674940ca",
+  "productPr": 2194,
+  "independentReview": {"reviewId": 4899330982, "result": "PASS"},
+  "candidateExactShaVerification": {"runId": 31414148609, "job": "pfarma-mc13", "conclusion": "success"},
+  "postMergeReplay": {"runId": 31414483893, "job": "pfarma-mc13", "conclusion": "success"},
+  "exitCriteria": ["PF-MC13-EC01", "PF-MC13-EC02", "PF-MC13-EC03", "PF-MC13-EC04", "PF-MC13-EC05"],
+  "certification": "CERTIFIED_EXACT_SHA_POST_MERGE"
+}
