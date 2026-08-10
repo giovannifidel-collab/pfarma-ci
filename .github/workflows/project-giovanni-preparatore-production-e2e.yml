@@ -1,5 +1,6 @@
 name: Project Giovanni Preparatore · Public Production E2E
 
+# Re-run marker: analysis normalization fix 2026-08-10
 on:
   push:
     branches: [main]
