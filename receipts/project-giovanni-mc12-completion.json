@@ -1,0 +1,28 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "project-giovanni",
+  "macrocycle": "MC-12",
+  "status": "COMPLETED",
+  "candidateSha": "10dab113b3e4ae981514368f068fd59f1303e221",
+  "integratedSha": "ffe5f1d57fefc380d9e2d39e9e874e8f9ba014de",
+  "pullRequest": 1072,
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "candidateWorkflowRunId": 31397876807,
+    "candidateJobId": 93485184012,
+    "postMergeWorkflowRunId": 31398897584,
+    "postMergeJobId": 93488621839,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "exactShaVerified": true,
+    "postMergeReplay": "PASS",
+    "reviewEvidence": {
+      "method": "separate criterion review of merged product diff plus exact-SHA candidate and integration replay",
+      "files": ["lib/multiWeekProgram.ts", "app/api/multi-week-program/route.ts", "factory/mc12-multiweek-program.test.mjs"],
+      "finding": "Versioned four-week programming preserves source evidence and history, bounds adaptation and recovery, fails closed on conflicting or invalid evidence, persists immutable versions, and verifies reopen/retry behavior."
+    }
+  },
+  "exitCriteria": ["PG-MC12-EC01", "PG-MC12-EC02", "PG-MC12-EC03", "PG-MC12-EC04"],
+  "nextMacrocycle": "MC-13"
+}
