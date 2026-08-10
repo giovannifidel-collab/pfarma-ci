@@ -1,0 +1,28 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"family-cloud",
+  "macrocycle":"MC-11",
+  "status":"COMPLETED",
+  "candidateSha":"6f1f818b8e1e80a36c63cf98fe81ae13cb11efda",
+  "integratedSha":"7f92a98c4cc980c4fec22a9647fe2190ac45bb48",
+  "pullRequest":800,
+  "certification":{
+    "fabricRepository":"giovannifidel-collab/pfarma-ci",
+    "candidateWorkflowRunId":31407085065,
+    "postMergeWorkflowRunId":31407892380,
+    "postMergeCriterionVerifierRunId":31407892258,
+    "postMergeCriterionVerifierJobId":93518568119,
+    "independentReview":"PASS",
+    "productCi":"PASS",
+    "robotReplay":"PASS",
+    "exactShaVerified":true,
+    "postMergeReplay":"PASS",
+    "reviewEvidence":{
+      "method":"criterion-by-criterion review, concurrency-gap correction, hosted exact-source CI and focused post-merge replay",
+      "files":["packages/media/src/archive-import.ts","tests/archive-import-mc11.test.ts"],
+      "finding":"Import manifests preserve source evidence and provenance; validation/conflict handling fail closed; retries and concurrent imports are checkpointed and idempotent; rollback preserves pre-import state; authorized imported media enters canonical browse/search/organization/sharing without inaccessible metadata leakage."
+    }
+  },
+  "exitCriteria":["FC-MC11-EC01","FC-MC11-EC02","FC-MC11-EC03","FC-MC11-EC04","FC-MC11-EC05"],
+  "nextMacrocycle":"MC-12"
+}
