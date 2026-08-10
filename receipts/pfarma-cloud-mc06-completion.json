@@ -2,25 +2,27 @@
   "schema": "razzo.macrocycle-completion.v1",
   "project": "pfarma-cloud",
   "macrocycle": "MC-06",
-  "status": "INVALIDATED",
-  "integratedSha": "2a24f7798157b5a48a51201018e0927126af1907",
+  "status": "COMPLETED",
+  "candidateSha": "ec64f2ea02360bc34291c3fc536090a40e6e1727",
+  "integratedSha": "131db79ac84f93269c500e2656d9921a77c4ef76",
   "pullRequest": null,
   "certification": {
     "fabricRepository": "giovannifidel-collab/pfarma-ci",
-    "candidateWorkflowRunId": 31377631758,
-    "candidateJobId": 93420379496,
-    "postMergeWorkflowRunId": 31377825550,
-    "postMergeJobId": 93420994445,
-    "independentReview": "INVALIDATED",
-    "productCi": "PASS_BUT_NOT_SUFFICIENT_FOR_MC06",
-    "robotReplay": "PASS_BUT_NOT_MC06_SPECIFIC",
+    "candidateWorkflowRunId": 31380241060,
+    "candidateJobId": 93428647328,
+    "postMergeWorkflowRunId": 31393807457,
+    "postMergeJobId": 93471665798,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
     "exactShaVerified": true,
-    "postMergeReplay": "PASS_BUT_NOT_SUFFICIENT_FOR_MC06"
+    "postMergeReplay": "PASS",
+    "reviewEvidence": {
+      "method": "separate criterion review on exact current integration head",
+      "files": ["database/schema/0013_inventory_movements_v1.sql", "tests/test_inventory_mc06_contract.py", "tests/test_inventory_readonly_regression.py"],
+      "finding": "Authoritative append-only movements carry product/location/delta/reason/operator/replay identity; derived stock comes from the ledger; negative transitions fail closed; two-location transfers are atomic and ordered; duplicate/concurrent requests are deterministic and idempotent."
+    }
   },
   "exitCriteria": ["PF-MC06-EC01", "PF-MC06-EC02", "PF-MC06-EC03", "PF-MC06-EC04", "PF-MC06-EC05"],
-  "nextMacrocycle": "MC-07",
-  "invalidation": {
-    "reason": "The integrated SHA was reused from MC-05 and its product diff does not establish the authoritative persistent stock-movement ledger, durable derived availability, cross-location movement reconciliation, or idempotent transactional conflict handling required by MC-06.",
-    "action": "REOPEN_MC06_AND_REQUIRE_PRODUCT_DIFF_PLUS_CRITERION_SPECIFIC_EVIDENCE"
-  }
+  "nextMacrocycle": "MC-07"
 }
