@@ -1,0 +1,28 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "project-giovanni",
+  "macrocycle": "MC-11",
+  "status": "COMPLETED",
+  "candidateSha": "5232e860e845172ec104c4b32b4ec28a6822f91c",
+  "integratedSha": "cf9e62b0ea4eaeac0a7e00fdd48e253b716764e3",
+  "pullRequest": null,
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "candidateWorkflowRunId": 31380241060,
+    "candidateJobId": 93428647339,
+    "postMergeWorkflowRunId": 31393807457,
+    "postMergeJobId": 93471665834,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "exactShaVerified": true,
+    "postMergeReplay": "PASS",
+    "reviewEvidence": {
+      "method": "separate criterion review on exact current integration head",
+      "files": ["lib/photoCheckpointEvidence.ts", "app/api/photo-checkpoints/route.ts", "factory/mc11-photo-checkpoint.test.mjs"],
+      "finding": "Authenticated durable checkpoints preserve image identity, capture time and analysis version; malformed/low-confidence outputs fail closed; progression consumes only fresh accepted evidence through bounded explainable signals with automaticPlanChange=false."
+    }
+  },
+  "exitCriteria": ["PG-MC11-EC01", "PG-MC11-EC02", "PG-MC11-EC03", "PG-MC11-EC04"],
+  "nextMacrocycle": "MC-12"
+}
