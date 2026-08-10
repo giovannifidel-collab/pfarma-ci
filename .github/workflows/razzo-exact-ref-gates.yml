@@ -1,6 +1,6 @@
 name: RAZZO Exact Ref Gates
 # Permanent Operator Robot staging regressions live here; temporary diagnostics have been removed.
-# Verifier-only post-integration replay for real MC-11/MC-06 closure; do not merge this branch.
+# Verifier-only current-head replay for real MC-11/MC-06 closure; do not merge this branch.
 
 on:
   pull_request:
