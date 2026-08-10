@@ -1,0 +1,23 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "project-giovanni",
+  "macrocycle": "MC-10",
+  "status": "COMPLETED",
+  "candidateSha": "a7b348858e7c84e8b817af74138b200f5f0806a2",
+  "integratedSha": "8e4fce3f4326929307528dd3737225ef2cd9223b",
+  "pullRequest": 1069,
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "candidateWorkflowRunId": 31377631758,
+    "candidateJobId": 93420379558,
+    "postMergeWorkflowRunId": 31377825550,
+    "postMergeJobId": 93420994567,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "exactShaVerified": true,
+    "postMergeReplay": "PASS"
+  },
+  "exitCriteria": ["PG-MC10-EC01", "PG-MC10-EC02", "PG-MC10-EC03", "PG-MC10-EC04"],
+  "nextMacrocycle": "MC-11"
+}
