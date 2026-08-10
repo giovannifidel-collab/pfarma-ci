@@ -1,0 +1,28 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "pfarma-cloud",
+  "macrocycle": "MC-07",
+  "status": "COMPLETED",
+  "candidateSha": "d1d2fac7ee13db229c2a245ed645529e9e9aba0f",
+  "integratedSha": "193727ca6b5854f64a4f55fc0c77f198071769eb",
+  "pullRequest": 2167,
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "candidateWorkflowRunId": 31397876807,
+    "candidateJobId": 93485184066,
+    "postMergeWorkflowRunId": 31398897584,
+    "postMergeJobId": 93488621952,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "exactShaVerified": true,
+    "postMergeReplay": "PASS",
+    "reviewEvidence": {
+      "method": "separate criterion review of merged lot-traceability diff plus exact-SHA candidate and integration replay",
+      "files": ["database/schema/0014_lot_traceability_v1.sql", "tests/test_lot_expiry_regression.py"],
+      "finding": "Canonical lot records bind authoritative inventory movements and operator attribution; expiry, quarantine, recall, replay conflicts, negative quantities and unsafe allocations fail closed while append-only traceability is preserved."
+    }
+  },
+  "exitCriteria": ["PF-MC07-EC01", "PF-MC07-EC02", "PF-MC07-EC03", "PF-MC07-EC04", "PF-MC07-EC05"],
+  "nextMacrocycle": "MC-08"
+}
