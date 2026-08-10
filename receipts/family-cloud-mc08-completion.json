@@ -1,0 +1,28 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "family-cloud",
+  "macrocycle": "MC-08",
+  "status": "COMPLETED",
+  "candidateSha": "7b78eedc823550b1ca7e226041a4d49bb003132d",
+  "integratedSha": "ebd6e921e89f3287dfeb8a478e8139abdfd43524",
+  "pullRequest": 795,
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "candidateWorkflowRunId": 31397880859,
+    "candidateJobId": 93485197176,
+    "postMergeWorkflowRunId": 31398901171,
+    "postMergeJobId": 93488633822,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "exactShaVerified": true,
+    "postMergeReplay": "PASS",
+    "reviewEvidence": {
+      "method": "separate criterion review of merged archive-search diff plus exact-SHA candidate and integration replay",
+      "files": ["packages/search/src/index.ts", "tests/search-mc08.test.ts"],
+      "finding": "Family-scoped durable search survives reopen, composable filters operate on canonical metadata, exact/probable duplicate evidence never auto-merges, and quality decisions are reversible, idempotent and authorization-enforced."
+    }
+  },
+  "exitCriteria": ["FC-MC08-EC01", "FC-MC08-EC02", "FC-MC08-EC03", "FC-MC08-EC04", "FC-MC08-EC05"],
+  "nextMacrocycle": "MC-09"
+}
