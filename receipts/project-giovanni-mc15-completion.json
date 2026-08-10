@@ -1,0 +1,29 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"project-giovanni",
+  "macrocycle":"MC-15",
+  "status":"COMPLETED",
+  "candidateSha":"3097f16743c53852bba6d1214494dfcdc5d00d51",
+  "integratedSha":"ff8cdba1ba844bd6e6374164ebe61c62c1f1e0b9",
+  "pullRequest":1076,
+  "certification":{
+    "fabricRepository":"giovannifidel-collab/pfarma-ci",
+    "candidateWorkflowRunId":31407085079,
+    "postMergeWorkflowRunId":31407898567,
+    "postMergeJobId":93518764928,
+    "postMergeCriterionVerifierRunId":31407892258,
+    "postMergeCriterionVerifierJobId":93518568013,
+    "independentReview":"PASS",
+    "productCi":"PASS",
+    "robotReplay":"PASS",
+    "exactShaVerified":true,
+    "postMergeReplay":"PASS",
+    "reviewEvidence":{
+      "method":"criterion-by-criterion review plus exact-SHA cumulative and focused post-merge replay",
+      "files":["lib/longitudinalProgress.ts","factory/mc15-longitudinal-progress.test.mjs"],
+      "finding":"Canonical longitudinal evidence retains source/version identity, exposes bounded provenance-aware trends, and produces deterministic safety-gated next actions that fail closed on stale, conflicting or insufficient evidence."
+    }
+  },
+  "exitCriteria":["PG-MC15-EC01","PG-MC15-EC02","PG-MC15-EC03","PG-MC15-EC04"],
+  "nextMacrocycle":"MC-16"
+}
