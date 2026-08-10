@@ -1,0 +1,54 @@
+name: Verify Family Finalization Breaker
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  finalization:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Resolve exact Family SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < family-cloud-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        run: test "$(git -C product rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: product
+        run: npm install --no-audit --no-fund
+      - name: Typecheck final Family product
+        working-directory: product
+        run: npm run typecheck
+      - name: Full Family test suite including MC17-MC20
+        working-directory: product
+        run: npm test -- --runInBand
+      - name: Factory planner smoke
+        working-directory: product
+        run: npm run factory:plan --if-present
+      - if: always()
+        run: rm -rf product
