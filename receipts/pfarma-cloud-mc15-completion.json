@@ -1,0 +1,15 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"pfarma-cloud",
+  "macrocycle":"MC-15",
+  "title":"Visite, servizi, firme e allegati",
+  "status":"COMPLETED",
+  "baseCandidateSha":"73474315afdff915acaf1d35b548251b19a7578b",
+  "breakerCandidateSha":"ef40e4af77a9d1c105d4c77d56e1d05318cba25d",
+  "integratedSha":"a67ed0f7dfc7fe91f700c1c7d0f0f60a12105e8f",
+  "productPrs":[2198,2199],
+  "independentReview":{"reviewId":4900210444,"result":"PASS"},
+  "candidateExactShaVerification":[{"runId":31422679394,"job":"pfarma","conclusion":"success"},{"runId":31423603099,"job":"pfarma","conclusion":"success"}],
+  "postMergeReplay":{"runId":31423807715,"job":"pfarma-mc11","conclusion":"success","note":"legacy workflow job name; exact checkout was integrated MC-15 SHA including breaker"},
+  "certification":"CERTIFIED_EXACT_SHA_POST_MERGE"
+}
