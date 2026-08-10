@@ -1,8 +1,8 @@
 {
-  "version": 10,
+  "version": 11,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-08T21:56:00Z",
+  "updatedAt": "2026-08-10T08:49:00Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST_NONBLOCKING_HUMAN_GATES",
@@ -90,24 +90,31 @@
           "status": "COMPLETED",
           "integratedSha": "f4f97661fb25485f6c33895b75a5cd5e9b066645",
           "receipt": "receipts/family-cloud-mc04-completion.json"
+        },
+        {
+          "id": "MC-05",
+          "title": "Storage oggetti e gestione capacità",
+          "status": "COMPLETED",
+          "integratedSha": "da331b1160209892d5275d05e95546d73e417b05",
+          "receipt": "receipts/family-cloud-mc05-completion.json"
         }
       ],
       "active": {
-        "id": "MC-05",
-        "title": "Storage oggetti e gestione capacità",
-        "outcome": "Media bytes are stored, verified and capacity-managed safely.",
+        "id": "MC-06",
+        "title": "Libreria, timeline e navigazione completa",
+        "outcome": "The persistent archive is browsable through one coherent journey.",
         "status": "ACTIVE",
-        "activatedFrom": "MC-04",
-        "activationReceipt": "receipts/family-cloud-mc04-completion.json",
+        "activatedFrom": "MC-05",
+        "activationReceipt": "receipts/family-cloud-mc05-completion.json",
         "exitCriteria": [
-          {"id":"FC-MC05-EC01","description":"Uploaded media bytes are stored through a durable object-storage abstraction with stable object references and verified metadata-to-object consistency across restart.","status":"MISSING"},
-          {"id":"FC-MC05-EC02","description":"Stored object integrity is verifiable and corrupted, missing or mismatched objects fail closed without returning invalid media as healthy.","status":"MISSING"},
-          {"id":"FC-MC05-EC03","description":"Per-user or household capacity accounting is durable, bounded and updated atomically for upload and delete operations without quota bypass on retries or concurrency.","status":"MISSING"},
-          {"id":"FC-MC05-EC04","description":"Capacity exhaustion, partial object-write failure and delete/rollback paths preserve metadata/object consistency and do not leak inaccessible orphan objects as successful operations.","status":"MISSING"},
-          {"id":"FC-MC05-EC05","description":"Product CI, independent review, realistic Robot object-storage/capacity journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+          {"id":"FC-MC06-EC01","description":"Authenticated family members can browse durable media through a persistent library that is sourced from canonical stored metadata rather than browser-local state.","status":"MISSING"},
+          {"id":"FC-MC06-EC02","description":"Timeline ordering and pagination are deterministic across restart and remain stable for equal timestamps, newly uploaded items and deleted or restored media.","status":"MISSING"},
+          {"id":"FC-MC06-EC03","description":"Library navigation opens the exact durable media object and preserves authorization, metadata consistency and fail-closed handling for missing or unhealthy objects.","status":"MISSING"},
+          {"id":"FC-MC06-EC04","description":"Empty, loading, pagination boundary, deleted-item and object-failure states are explicit and recoverable without silently losing or duplicating archive entries.","status":"MISSING"},
+          {"id":"FC-MC06-EC05","description":"Product CI, independent review, realistic Robot library-to-media journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
         ]
       },
-      "next": "MC-06"
+      "next": "MC-07"
     }
   ],
   "transitionRule": "Certified completion activates the next macrocycle immediately. A true human gate keeps its macrocycle OPEN as DEFERRED_HUMAN_GATE in pendingHumanGates but also advances the execution cursor so autonomous independent work never stops.",
