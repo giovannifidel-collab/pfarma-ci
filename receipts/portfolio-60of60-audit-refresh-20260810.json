@@ -1,0 +1,24 @@
+{
+  "schema": "razzo.portfolio-audit-refresh.v1",
+  "status": "COMPLETED",
+  "roadmapStatus": "COMPLETED_60_OF_60",
+  "productiveMacrocycles": 60,
+  "completedProductiveMacrocycles": 60,
+  "terminal": true,
+  "supersedesCertificationReceipt": "receipts/portfolio-60of60-completion.json",
+  "evidenceScope": "POST_CONTROLLER_MACROCYCLES_HAVE_PERSISTED_RECEIPTS; PRE_CONTROLLER_MACROCYCLES_ARE_RECORDED_AS_HISTORICAL_COMPLETION; CURRENT_CANONICAL_HEADS_HAVE_EXACT_SHA_POST_CLOSURE_REPLAY",
+  "projects": {
+    "project-giovanni": {"completedThrough": "MC-20", "currentCertifiedHead": "ddef8ef787b27743205450cd9ebe5dbb2ada5da7", "integrationLane": "integration/razzo"},
+    "pfarma-cloud": {"completedThrough": "MC-20", "currentCertifiedHead": "7e9334669573d838d0235478083f8befb96255ac", "integrationLane": "integration/razzo", "postClosureMaintenancePrs": [2201, 2202]},
+    "family-cloud": {"completedThrough": "MC-20", "currentCertifiedHead": "10f70823aa6304eb4ea08d58982117b0455801ee", "integrationLane": "agent/bootstrap-family-cloud"}
+  },
+  "auditReplay": {"runId": 31441542610, "conclusion": "success", "jobs": ["project-giovanni", "pfarma", "family-cloud"]},
+  "pfarmaAudit": {
+    "staleRevisionBreaker": {"pr": 2201, "mergeSha": "108bc289ad7e07a96e63e86addd7556d55fffa82"},
+    "strictRevisionHardening": {"pr": 2202, "mergeSha": "7e9334669573d838d0235478083f8befb96255ac"},
+    "technicalAuditReview": "PASS",
+    "independentReviewerApproval": false
+  },
+  "certification": "ROADMAP_COMPLETE_CURRENT_HEADS_AUDITED",
+  "note": "This receipt intentionally does not claim that pre-controller historical macrocycles have individual exact-SHA receipts."
+}
