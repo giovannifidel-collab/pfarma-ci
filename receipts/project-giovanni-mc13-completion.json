@@ -1,0 +1,12 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"project-giovanni",
+  "macrocycle":"MC-13",
+  "status":"COMPLETED",
+  "candidateSha":"121a76a688da9cb8b9fd972d93b3d63200a30cb0",
+  "integratedSha":"9b4e278cda7947ab03d32646b0ad827550f8a015",
+  "pullRequest":1074,
+  "certification":{"fabricRepository":"giovannifidel-collab/pfarma-ci","candidateWorkflowRunId":31400748832,"candidateJobId":93494812892,"postMergeWorkflowRunId":31401107719,"postMergeJobId":93496201035,"independentReview":"PASS","productCi":"PASS","robotReplay":"PASS","exactShaVerified":true,"postMergeReplay":"PASS","reviewEvidence":{"method":"criterion-by-criterion review of merged product diff","files":["lib/contextualTraining.ts","factory/mc13-context-modes.test.mjs"],"finding":"Context modes derive from canonical program/session identity, bound load and duration, fail closed without a safe equivalent, and emit provenance suitable for history/adaptation."}},
+  "exitCriteria":["PG-MC13-EC01","PG-MC13-EC02","PG-MC13-EC03","PG-MC13-EC04"],
+  "nextMacrocycle":"MC-14"
+}
