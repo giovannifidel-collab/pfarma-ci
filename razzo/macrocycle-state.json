@@ -1,8 +1,8 @@
 {
-  "version": 12,
+  "version": 13,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-10T09:52:00Z",
+  "updatedAt": "2026-08-10T10:11:00Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST_NONBLOCKING_HUMAN_GATES",
@@ -22,23 +22,24 @@
       "pendingHumanGates": [],
       "completed": [
         {"id":"MC-08","title":"Risultato, storico e progressione","status":"COMPLETED","integratedSha":"2286b866c2820d9cde737eb253582d69261b552d","receipt":"receipts/project-giovanni-mc08-completion.json"},
-        {"id":"MC-09","title":"Feedback, dolore, recupero e adattamento","status":"COMPLETED","integratedSha":"d1f90976db0417ae51b4651c44ee28cbf88eaa6e","receipt":"receipts/project-giovanni-mc09-completion.json"}
+        {"id":"MC-09","title":"Feedback, dolore, recupero e adattamento","status":"COMPLETED","integratedSha":"d1f90976db0417ae51b4651c44ee28cbf88eaa6e","receipt":"receipts/project-giovanni-mc09-completion.json"},
+        {"id":"MC-10","title":"Wearable e importazione dati fisici","status":"COMPLETED","integratedSha":"8e4fce3f4326929307528dd3737225ef2cd9223b","receipt":"receipts/project-giovanni-mc10-completion.json"}
       ],
       "active": {
-        "id": "MC-10",
-        "title": "Wearable e importazione dati fisici",
-        "outcome": "Wearable data is ingested, validated and linked to decisions.",
+        "id": "MC-11",
+        "title": "Analisi fotografica e checkpoint visivi",
+        "outcome": "Photo analysis is evidence-scored, safe and integrated into progression.",
         "status": "ACTIVE",
-        "activatedFrom": "MC-09",
-        "activationReceipt": "receipts/project-giovanni-mc09-completion.json",
+        "activatedFrom": "MC-10",
+        "activationReceipt": "receipts/project-giovanni-mc10-completion.json",
         "exitCriteria": [
-          {"id":"PG-MC10-EC01","description":"Authenticated wearable or physical-data imports persist timestamped signals with source provenance, stable identity and linkage to the correct user and training time window.","status":"MISSING"},
-          {"id":"PG-MC10-EC02","description":"Import normalization validates units, timestamps, ranges, duplicates and replay identity and fails closed on malformed or conflicting data without corrupting canonical training state.","status":"MISSING"},
-          {"id":"PG-MC10-EC03","description":"Readiness or subsequent recommendations consume persisted wearable evidence through a bounded explainable decision while remaining safe when data is absent, stale or rejected.","status":"MISSING"},
-          {"id":"PG-MC10-EC04","description":"Product CI, independent review, realistic Robot wearable-import-to-decision journey, exact-SHA verification, integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+          {"id":"PG-MC11-EC01","description":"Authenticated photo checkpoints persist source image identity, capture time, analysis version and attributable evidence without silently replacing prior checkpoints.","status":"MISSING"},
+          {"id":"PG-MC11-EC02","description":"Photo analysis validates image and model outputs, scores evidence quality and fails closed on malformed, low-confidence or unsafe interpretations.","status":"MISSING"},
+          {"id":"PG-MC11-EC03","description":"Longitudinal progression consumes durable visual checkpoint evidence only through bounded explainable signals and remains safe when photo evidence is absent, stale or rejected.","status":"MISSING"},
+          {"id":"PG-MC11-EC04","description":"Product CI, independent review, realistic Robot photo-checkpoint-to-progression journey, exact-SHA verification, integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
         ]
       },
-      "next": "MC-11"
+      "next": "MC-12"
     },
     {
       "id": "pfarma-cloud",
@@ -48,24 +49,25 @@
       "pendingHumanGates": [],
       "completed": [
         {"id":"MC-04","title":"Database operativo, persistenza e audit foundation","status":"COMPLETED","integratedSha":"60777d2723cdd5acbe8f384bfcfbda64fcd7bdb7","receipt":"receipts/pfarma-cloud-mc04-completion.json"},
-        {"id":"MC-05","title":"Catalogo prodotti, MINSAN, EAN e ricerca universale","status":"COMPLETED","integratedSha":"2a24f7798157b5a48a51201018e0927126af1907","receipt":"receipts/pfarma-cloud-mc05-completion.json"}
+        {"id":"MC-05","title":"Catalogo prodotti, MINSAN, EAN e ricerca universale","status":"COMPLETED","integratedSha":"2a24f7798157b5a48a51201018e0927126af1907","receipt":"receipts/pfarma-cloud-mc05-completion.json"},
+        {"id":"MC-06","title":"Magazzino, movimenti e disponibilità","status":"COMPLETED","integratedSha":"2a24f7798157b5a48a51201018e0927126af1907","receipt":"receipts/pfarma-cloud-mc06-completion.json"}
       ],
       "active": {
-        "id": "MC-06",
-        "title": "Magazzino, movimenti e disponibilità",
-        "outcome": "Stock changes are persistent, consistent and fully traceable.",
+        "id": "MC-07",
+        "title": "Lotti, scadenze, richiami e tracciabilità",
+        "outcome": "Lot-level inventory and safety controls work end to end.",
         "status": "ACTIVE",
-        "activatedFrom": "MC-05",
-        "activationReceipt": "receipts/pfarma-cloud-mc05-completion.json",
+        "activatedFrom": "MC-06",
+        "activationReceipt": "receipts/pfarma-cloud-mc06-completion.json",
         "exitCriteria": [
-          {"id":"PF-MC06-EC01","description":"Canonical persistent stock movements record product, location, quantity, reason, operator and replay identity transactionally in the authoritative inventory ledger.","status":"MISSING"},
-          {"id":"PF-MC06-EC02","description":"Physical and available stock are derived from authoritative durable movements, survive restart and reopen consistently, and fail closed on invalid or negative-state transitions.","status":"MISSING"},
-          {"id":"PF-MC06-EC03","description":"Adjustments, transfers, receiving and sale-driven movements reconcile consistently across locations while preserving complete audit attribution and no hidden mutable quantity source.","status":"MISSING"},
-          {"id":"PF-MC06-EC04","description":"Duplicate, retried, concurrent and conflicting movement requests are handled idempotently and transactionally with deterministic fail-closed conflict behavior.","status":"MISSING"},
-          {"id":"PF-MC06-EC05","description":"Product CI, independent review, PFarma delta Robot plus required cumulative simulation, exact-SHA integration and post-merge cumulative replay all pass and a completion receipt is persisted.","status":"MISSING"}
+          {"id":"PF-MC07-EC01","description":"Canonical lot records bind product, location, lot code, expiry and quantity provenance to authoritative durable inventory movements with complete audit attribution.","status":"MISSING"},
+          {"id":"PF-MC07-EC02","description":"Receiving, sale and transfer journeys preserve lot identity and FEFO/expiry constraints transactionally and fail closed on invalid, expired or inconsistent lot state.","status":"MISSING"},
+          {"id":"PF-MC07-EC03","description":"Expiry risk and recall workflows identify all affected durable stock and movements deterministically without hidden deletion or untraceable mutation.","status":"MISSING"},
+          {"id":"PF-MC07-EC04","description":"Duplicate, retried and concurrent lot operations remain idempotent and preserve traceability across restart and reconciliation.","status":"MISSING"},
+          {"id":"PF-MC07-EC05","description":"Product CI, independent review, PFarma delta Robot plus required cumulative simulation, exact-SHA integration and post-merge cumulative replay all pass and a completion receipt is persisted.","status":"MISSING"}
         ]
       },
-      "next": "MC-07"
+      "next": "MC-08"
     },
     {
       "id": "family-cloud",
@@ -76,24 +78,25 @@
       "completed": [
         {"id":"MC-04","title":"Upload reale e persistenza durevole","status":"COMPLETED","integratedSha":"f4f97661fb25485f6c33895b75a5cd5e9b066645","receipt":"receipts/family-cloud-mc04-completion.json"},
         {"id":"MC-05","title":"Storage oggetti e gestione capacità","status":"COMPLETED","integratedSha":"da331b1160209892d5275d05e95546d73e417b05","receipt":"receipts/family-cloud-mc05-completion.json"},
-        {"id":"MC-06","title":"Libreria, timeline e navigazione completa","status":"COMPLETED","integratedSha":"196da46816ff3e11381b96337b77648743ae154d","receipt":"receipts/family-cloud-mc06-completion.json"}
+        {"id":"MC-06","title":"Libreria, timeline e navigazione completa","status":"COMPLETED","integratedSha":"196da46816ff3e11381b96337b77648743ae154d","receipt":"receipts/family-cloud-mc06-completion.json"},
+        {"id":"MC-07","title":"Album, preferiti, tag e organizzazione","status":"COMPLETED","integratedSha":"196da46816ff3e11381b96337b77648743ae154d","receipt":"receipts/family-cloud-mc07-completion.json"}
       ],
       "active": {
-        "id": "MC-07",
-        "title": "Album, preferiti, tag e organizzazione",
-        "outcome": "Users can durably organize and retrieve family media.",
+        "id": "MC-08",
+        "title": "Ricerca, filtri, duplicati e qualità archivio",
+        "outcome": "The archive can be searched and cleaned without data loss.",
         "status": "ACTIVE",
-        "activatedFrom": "MC-06",
-        "activationReceipt": "receipts/family-cloud-mc06-completion.json",
+        "activatedFrom": "MC-07",
+        "activationReceipt": "receipts/family-cloud-mc07-completion.json",
         "exitCriteria": [
-          {"id":"FC-MC07-EC01","description":"Authenticated family members can create, rename and remove durable albums and reopen their organization after restart within the correct family/account scope.","status":"MISSING"},
-          {"id":"FC-MC07-EC02","description":"Favorites and tags persist on canonical media metadata and deterministic library queries and filters reflect those durable organization fields.","status":"MISSING"},
-          {"id":"FC-MC07-EC03","description":"Album membership and tag/favorite mutations are idempotent, authorization-enforced and remain consistent for missing, deleted and restored media without orphaning canonical references.","status":"MISSING"},
-          {"id":"FC-MC07-EC04","description":"Library navigation exposes albums, favorites and tags with explicit empty, conflict and recovery states without silently duplicating or losing organization data.","status":"MISSING"},
-          {"id":"FC-MC07-EC05","description":"Product CI, independent review, realistic Robot organization-and-retrieval journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+          {"id":"FC-MC08-EC01","description":"Authenticated archive search resolves durable media metadata, albums, tags and supported date/text fields deterministically within the correct family scope.","status":"MISSING"},
+          {"id":"FC-MC08-EC02","description":"Combinable filters and pagination remain stable across restart, equal timestamps and concurrent archive changes without silently skipping or duplicating results.","status":"MISSING"},
+          {"id":"FC-MC08-EC03","description":"Duplicate detection uses durable evidence and supports explicit review or reconciliation without destructive automatic deletion or cross-family leakage.","status":"MISSING"},
+          {"id":"FC-MC08-EC04","description":"Archive-quality anomalies, missing metadata and object inconsistencies are surfaced with recoverable actions while preserving canonical media and organization state.","status":"MISSING"},
+          {"id":"FC-MC08-EC05","description":"Product CI, independent review, realistic Robot search-filter-deduplicate journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
         ]
       },
-      "next": "MC-08"
+      "next": "MC-09"
     }
   ],
   "transitionRule": "Certified completion activates the next macrocycle immediately. A true human gate keeps its macrocycle OPEN as DEFERRED_HUMAN_GATE in pendingHumanGates but also advances the execution cursor so autonomous independent work never stops.",
