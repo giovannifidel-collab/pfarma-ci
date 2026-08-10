@@ -2,7 +2,7 @@
   "schema": "razzo.macrocycle-completion.v1",
   "project": "pfarma-cloud",
   "macrocycle": "MC-06",
-  "status": "COMPLETED",
+  "status": "INVALIDATED",
   "integratedSha": "2a24f7798157b5a48a51201018e0927126af1907",
   "pullRequest": null,
   "certification": {
@@ -11,12 +11,16 @@
     "candidateJobId": 93420379496,
     "postMergeWorkflowRunId": 31377825550,
     "postMergeJobId": 93420994445,
-    "independentReview": "PASS",
-    "productCi": "PASS",
-    "robotReplay": "PASS",
+    "independentReview": "INVALIDATED",
+    "productCi": "PASS_BUT_NOT_SUFFICIENT_FOR_MC06",
+    "robotReplay": "PASS_BUT_NOT_MC06_SPECIFIC",
     "exactShaVerified": true,
-    "postMergeReplay": "PASS"
+    "postMergeReplay": "PASS_BUT_NOT_SUFFICIENT_FOR_MC06"
   },
   "exitCriteria": ["PF-MC06-EC01", "PF-MC06-EC02", "PF-MC06-EC03", "PF-MC06-EC04", "PF-MC06-EC05"],
-  "nextMacrocycle": "MC-07"
+  "nextMacrocycle": "MC-07",
+  "invalidation": {
+    "reason": "The integrated SHA was reused from MC-05 and its product diff does not establish the authoritative persistent stock-movement ledger, durable derived availability, cross-location movement reconciliation, or idempotent transactional conflict handling required by MC-06.",
+    "action": "REOPEN_MC06_AND_REQUIRE_PRODUCT_DIFF_PLUS_CRITERION_SPECIFIC_EVIDENCE"
+  }
 }
