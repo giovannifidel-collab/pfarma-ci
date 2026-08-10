@@ -1,0 +1,16 @@
+{
+  "schema": "razzo.portfolio-completion.v1",
+  "status": "COMPLETED",
+  "productiveMacrocycles": 60,
+  "completedProductiveMacrocycles": 60,
+  "terminal": true,
+  "projects": {
+    "project-giovanni": {"completedThrough": "MC-20", "integratedSha": "ddef8ef787b27743205450cd9ebe5dbb2ada5da7"},
+    "pfarma-cloud": {"completedThrough": "MC-20", "integratedSha": "79e76acc5254d9e6ffb65b0d5247736d8bb4cf59"},
+    "family-cloud": {"completedThrough": "MC-20", "integratedSha": "10f70823aa6304eb4ea08d58982117b0455801ee"}
+  },
+  "finalExactShaReplay": {"runId": 31433765553, "conclusion": "success", "jobs": ["project-giovanni", "pfarma", "family-cloud"]},
+  "exactRefGate": {"runId": 31433765321, "conclusion": "success"},
+  "currentMacrocycleVerifier": {"runId": 31433765454, "conclusion": "success"},
+  "certification": "PORTFOLIO_60_OF_60_CERTIFIED"
+}
