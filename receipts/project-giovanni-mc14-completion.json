@@ -1,0 +1,12 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"project-giovanni",
+  "macrocycle":"MC-14",
+  "status":"COMPLETED",
+  "candidateSha":"2925089d51c88f8215442fdd657b6a25170260a1",
+  "integratedSha":"a4451685c42d35d89c4bb21508c9d6fb84ad86c1",
+  "pullRequest":1075,
+  "certification":{"fabricRepository":"giovannifidel-collab/pfarma-ci","candidateWorkflowRunId":31403690684,"candidateJobId":93504696981,"criterionVerifierRunId":31403690424,"postMergeWorkflowRunId":31404592741,"postMergeJobId":93507688377,"postMergeCriterionVerifierRunId":31404592887,"independentReview":"PASS","productCi":"PASS","robotReplay":"PASS","exactShaVerified":true,"postMergeReplay":"PASS","reviewEvidence":{"method":"criterion-by-criterion review plus focused exact-SHA verifier","files":["lib/safetyContract.ts","factory/mc14-safety-guardrails.test.mjs"],"finding":"Durable authenticated pain/stop/risk evidence feeds one fail-closed safety decision used by program, contextual execution and adaptation; unresolved risk blocks unsafe progression and retry/resolution provenance is retained."}},
+  "exitCriteria":["PG-MC14-EC01","PG-MC14-EC02","PG-MC14-EC03","PG-MC14-EC04"],
+  "nextMacrocycle":"MC-15"
+}
