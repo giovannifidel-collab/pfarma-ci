@@ -39,7 +39,7 @@ jobs:
           node-version: '22'
 
       - name: Install project
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: TypeScript compile proof
         run: npx tsc --noEmit
@@ -47,7 +47,7 @@ jobs:
       - name: Decision matrix proof
         shell: bash
         run: |
-          cat > /tmp/trainer-proof.ts <<'TS'
+          cat > trainer-proof.ts <<'TS'
           import assert from 'node:assert/strict';
           import { buildTrainerIntelligence } from './lib/trainerIntelligence.ts';
           import type { GeneratedWorkoutPlan } from './lib/workoutGenerator.ts';
@@ -96,4 +96,4 @@ jobs:
           console.log(`DEDUP_REMOVED=${result.duplicatesRemoved}`);
           console.log(`SAFETY=${safety.globalDecision}`);
           TS
-          npx --yes tsx@4 /tmp/trainer-proof.ts
+          npx --yes tsx@4 trainer-proof.ts
