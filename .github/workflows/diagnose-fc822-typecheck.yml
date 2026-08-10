@@ -1,0 +1,64 @@
+name: Diagnose Family 822 Typecheck
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Resolve Family SHA
+        id: source
+        run: echo "sha=$(tr -d '\r\n' < family-cloud-ref.txt)" >> "$GITHUB_OUTPUT"
+      - name: Require source token
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: product
+        run: npm install --no-audit --no-fund
+      - name: Serialize TypeScript diagnostics
+        working-directory: product
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import ts from 'typescript';
+          import {writeFileSync} from 'node:fs';
+          const configFile = ts.readConfigFile('tsconfig.json', ts.sys.readFile);
+          const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, '.');
+          const program = ts.createProgram({rootNames: parsed.fileNames, options: parsed.options});
+          const diagnostics = ts.getPreEmitDiagnostics(program).map(d => ({
+            code: d.code,
+            category: ts.DiagnosticCategory[d.category],
+            file: d.file?.fileName ?? null,
+            line: d.file && d.start != null ? d.file.getLineAndCharacterOfPosition(d.start).line + 1 : null,
+            column: d.file && d.start != null ? d.file.getLineAndCharacterOfPosition(d.start).character + 1 : null,
+            message: ts.flattenDiagnosticMessageText(d.messageText, '\n')
+          }));
+          writeFileSync('../family-822-diagnostics.json', JSON.stringify(diagnostics, null, 2));
+          console.log(`diagnostics=${diagnostics.length}`);
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: family-822-diagnostics
+          path: family-822-diagnostics.json
+          retention-days: 1
+      - if: always()
+        run: rm -rf product
