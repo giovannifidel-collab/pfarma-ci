@@ -1,0 +1,135 @@
+name: Audit Current Portfolio 60-of-60 Replay
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  project-giovanni:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        name: Resolve Project Giovanni SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/project-giovanni-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        run: test "$(git -C product rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: product
+        run: npm install --no-audit --no-fund
+      - name: TypeScript and release stability
+        working-directory: product
+        run: |
+          npx tsc --noEmit
+          node --test factory/mc20-release-stability.test.mjs
+          npm run test:factory --if-present
+          npm run factory:plan --if-present
+      - if: always()
+        run: rm -rf product
+
+  pfarma:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        name: Resolve PFarma SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < razzo/pfarma-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        run: test "$(git -C product rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Compile and finalization suites including stale-revision breaker
+        working-directory: product
+        env: {PFARMA_FEEDBACK_GITHUB_SYNC: '0'}
+        run: |
+          python -m compileall -q backend web tools tests factory application_runtime.py
+          PYTHONPATH=. python tests/test_pfarma_finalization_mc16_20.py -v
+          PYTHONPATH=. python tests/test_pfarma_finalization_auth.py -v
+          PYTHONPATH=. python tests/test_visit_services_stale_revision.py -v
+          python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime factory.test_human_gate_invariants -v
+          python -m factory.plan
+      - if: always()
+        run: rm -rf product
+
+  family-cloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: source
+        name: Resolve Family Cloud SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < family-cloud-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Require private-source token
+        env: {TOKEN: "${{ secrets.PFARMA_SOURCE_TOKEN }}"}
+        run: test -n "$TOKEN"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        run: test "$(git -C product rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: product
+        run: npm install --no-audit --no-fund
+      - name: Typecheck, full tests and planner
+        working-directory: product
+        run: |
+          npm run typecheck
+          npm test -- --runInBand
+          npm run factory:plan --if-present
+      - if: always()
+        run: rm -rf product
