@@ -1,0 +1,14 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "project-giovanni",
+  "macrocycle": "MC-20",
+  "title": "Release, osservabilità e stabilizzazione",
+  "status": "COMPLETED",
+  "integratedSha": "ddef8ef787b27743205450cd9ebe5dbb2ada5da7",
+  "integrationLane": "integration/razzo",
+  "productPrs": [1084, 1085],
+  "postMergePortfolioReplay": {"runId": 31433765553, "job": "project-giovanni", "conclusion": "success"},
+  "exactRefGate": {"runId": 31433765321, "conclusion": "success"},
+  "currentMacrocycleVerifier": {"runId": 31433765454, "conclusion": "success"},
+  "certification": "CERTIFIED_EXACT_SHA_POST_MERGE_FINAL"
+}
