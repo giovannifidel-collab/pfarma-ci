@@ -2,7 +2,7 @@
   "schema": "razzo.macrocycle-completion.v1",
   "project": "family-cloud",
   "macrocycle": "MC-07",
-  "status": "COMPLETED",
+  "status": "INVALIDATED",
   "integratedSha": "196da46816ff3e11381b96337b77648743ae154d",
   "pullRequest": null,
   "certification": {
@@ -11,12 +11,16 @@
     "candidateJobId": 93419793754,
     "postMergeWorkflowRunId": 31377825448,
     "postMergeJobId": 93420994718,
-    "independentReview": "PASS",
-    "productCi": "PASS",
-    "robotReplay": "PASS",
+    "independentReview": "INVALIDATED",
+    "productCi": "PASS_BUT_NOT_SUFFICIENT_FOR_MC07",
+    "robotReplay": "PASS_BUT_NOT_MC07_SPECIFIC",
     "exactShaVerified": true,
-    "postMergeReplay": "PASS"
+    "postMergeReplay": "PASS_BUT_NOT_SUFFICIENT_FOR_MC07"
   },
   "exitCriteria": ["FC-MC07-EC01", "FC-MC07-EC02", "FC-MC07-EC03", "FC-MC07-EC04", "FC-MC07-EC05"],
-  "nextMacrocycle": "MC-08"
+  "nextMacrocycle": "MC-08",
+  "invalidation": {
+    "reason": "The integrated SHA was reused from MC-06 and its product diff is an authentication-bootstrap origin-boundary fix, not durable album/favorite/tag organization and retrieval. It does not establish MC-07 exit criteria.",
+    "action": "REOPEN_MC07_AND_REQUIRE_PRODUCT_DIFF_PLUS_CRITERION_SPECIFIC_EVIDENCE"
+  }
 }
