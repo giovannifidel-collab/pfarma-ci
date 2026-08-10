@@ -1,0 +1,15 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "pfarma-cloud",
+  "macrocycle": "MC-14",
+  "title": "Laboratorio galenico e materie prime",
+  "status": "COMPLETED",
+  "candidateSha": "95e7c9d6b3021d8e8a46dbede4259c62528c1e74",
+  "integratedSha": "1387d3cbb4489cb1ae9fe402434a494e7b5afb1a",
+  "productPr": 2196,
+  "independentReview": {"reviewId": 4899948042, "result": "PASS"},
+  "candidateExactShaVerification": {"runId": 31419447025, "job": "quality", "conclusion": "success"},
+  "postMergeReplay": {"runId": 31421711724, "job": "pfarma-mc11", "conclusion": "success", "note": "workflow job name is legacy; exact checkout was integrated MC-14 SHA"},
+  "exitCriteria": ["PF-MC14-EC01", "PF-MC14-EC02", "PF-MC14-EC03", "PF-MC14-EC04", "PF-MC14-EC05"],
+  "certification": "CERTIFIED_EXACT_SHA_POST_MERGE"
+}
