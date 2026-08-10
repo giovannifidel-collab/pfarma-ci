@@ -87,7 +87,7 @@ jobs:
           python -m compileall -q backend web tools tests factory application_runtime.py
           PYTHONPATH=. python tests/test_pfarma_finalization_mc16_20.py -v
           PYTHONPATH=. python tests/test_pfarma_finalization_auth.py -v
-          PYTHONPATH=. python tests/test_visit_services_stale_revision.py -v
+          PYTHONPATH=. python tests/test_mc17_offline_revision_conflict.py -v
           python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime factory.test_human_gate_invariants -v
           python -m factory.plan
       - if: always()
