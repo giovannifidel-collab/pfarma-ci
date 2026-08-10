@@ -1,0 +1,15 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "project-giovanni",
+  "macrocycle": "MC-18",
+  "title": "Backup, export, restore e portabilità",
+  "status": "COMPLETED",
+  "candidateSha": "0753fc4409f70fc3e827f51461e21204450e1eb8",
+  "integratedSha": "dce41a8dcaa9d08dbb89a196e478adde5e4a4c38",
+  "productPr": 1081,
+  "independentReview": {"reviewId": 4899375823, "result": "PASS"},
+  "candidateExactShaVerification": {"runId": 31414148609, "job": "project-giovanni-mc18", "conclusion": "success"},
+  "postMergeReplay": {"runId": 31414483893, "job": "project-giovanni-mc18", "conclusion": "success"},
+  "exitCriteria": ["PG-MC18-EC01", "PG-MC18-EC02", "PG-MC18-EC03", "PG-MC18-EC04"],
+  "certification": "CERTIFIED_EXACT_SHA_POST_MERGE"
+}
