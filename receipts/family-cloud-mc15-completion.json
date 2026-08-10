@@ -1,0 +1,15 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "family-cloud",
+  "macrocycle": "MC-15",
+  "title": "Memorie, ricorrenze e prodotti derivati",
+  "status": "COMPLETED",
+  "candidateSha": "ddbd5df2ad8d4a95c42a36fa59c2186a7072c0f4",
+  "integratedSha": "a3a600b28267feedea952c68aea9f31360cdfe45",
+  "productPr": 812,
+  "independentReview": {"reviewId": 4899948878, "result": "PASS"},
+  "candidateExactShaVerification": {"runId": 31419047412, "job": "quality", "conclusion": "success"},
+  "postMergeReplay": {"runId": 31421711724, "job": "family-cloud-mc12", "conclusion": "success", "note": "workflow job name is legacy; exact checkout was integrated MC-15 SHA"},
+  "exitCriteria": ["FC-MC15-EC01", "FC-MC15-EC02", "FC-MC15-EC03", "FC-MC15-EC04", "FC-MC15-EC05"],
+  "certification": "CERTIFIED_EXACT_SHA_POST_MERGE"
+}
