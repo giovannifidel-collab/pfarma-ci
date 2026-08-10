@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
 jobs:
-  project-giovanni-mc16:
+  project-giovanni-mc18:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     steps:
@@ -28,8 +28,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - working-directory: product
-        run: npm install --no-audit --no-fund && npx --yes tsc --noEmit && node --test factory/mc16-offline-sync.test.mjs && npm run test:factory --if-present && npm run factory:plan --if-present
-  pfarma-mc11:
+        run: npm install --no-audit --no-fund && npx --yes tsc --noEmit && node --test factory/mc18-backup-portability.test.mjs && npm run test:factory --if-present && npm run factory:plan --if-present
+  pfarma-mc13:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     steps:
@@ -46,8 +46,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - working-directory: product
-        run: python -m compileall -q backend tests/test_customer_crm_mc11.py && PYTHONPATH=. python tests/test_customer_crm_mc11.py && python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
-  family-cloud-mc12:
+        run: python -m compileall -q backend tests/test_accounting_ledger_mc13.py && PYTHONPATH=. python tests/test_accounting_ledger_mc13.py && python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+  family-cloud-mc14:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     steps:
