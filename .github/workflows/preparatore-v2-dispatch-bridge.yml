@@ -167,6 +167,7 @@ jobs:
           elif parse_candidate "$JOB_DIR/codex.stdout" jsonl-stdout; then :
           else cat "$JOB_DIR/codex.stdout" "$JOB_DIR/codex.stderr" > "$JOB_DIR/codex.transcript.txt"; parse_candidate "$JOB_DIR/codex.transcript.txt" combined-transcript; fi
           test -s "$JOB_DIR/result.json"
+          node scripts/repair-preparatore-candidate.mjs "$JOB_DIR/result.json" "$JOB_DIR/prompt.txt"
 
       - name: Persist refreshed ChatGPT authentication
         if: always() && steps.prepare.outputs.claimed == 'true' && steps.restore.outcome == 'success'
