@@ -1,0 +1,29 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"pfarma-cloud",
+  "macrocycle":"MC-10",
+  "status":"COMPLETED",
+  "candidateSha":"db18cf5ec467c0521e1f19ad5bde0137ba8d0b6d",
+  "integratedSha":"659492487489c378da32ff7af9de5cbd5a06fa4e",
+  "pullRequest":2179,
+  "certification":{
+    "fabricRepository":"giovannifidel-collab/pfarma-ci",
+    "candidateWorkflowRunId":31407085079,
+    "postMergeWorkflowRunId":31407898567,
+    "postMergeJobId":93518765336,
+    "postMergeCriterionVerifierRunId":31407892258,
+    "postMergeCriterionVerifierJobId":93518568053,
+    "independentReview":"PASS",
+    "productCi":"PASS",
+    "robotReplay":"PASS",
+    "exactShaVerified":true,
+    "postMergeReplay":"PASS",
+    "reviewEvidence":{
+      "method":"criterion-by-criterion review plus exact-SHA cumulative and focused post-merge replay",
+      "files":["backend/pos_transaction.py","tests/test_pos_transaction_mc10.py"],
+      "finding":"Sale, payment and return records are durably linked to canonical identities; stock/payment effects are atomic and idempotent; returns remain original-sale linked, authorized and exactly-once; operator-visible states avoid hidden mutation."
+    }
+  },
+  "exitCriteria":["PF-MC10-EC01","PF-MC10-EC02","PF-MC10-EC03","PF-MC10-EC04","PF-MC10-EC05"],
+  "nextMacrocycle":"MC-11"
+}
