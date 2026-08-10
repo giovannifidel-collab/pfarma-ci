@@ -2,25 +2,27 @@
   "schema": "razzo.macrocycle-completion.v1",
   "project": "family-cloud",
   "macrocycle": "MC-07",
-  "status": "INVALIDATED",
-  "integratedSha": "196da46816ff3e11381b96337b77648743ae154d",
+  "status": "COMPLETED",
+  "candidateSha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
+  "integratedSha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
   "pullRequest": null,
   "certification": {
     "fabricRepository": "giovannifidel-collab/pfarma-ci",
-    "candidateWorkflowRunId": 31377439147,
-    "candidateJobId": 93419793754,
-    "postMergeWorkflowRunId": 31377825448,
-    "postMergeJobId": 93420994718,
-    "independentReview": "INVALIDATED",
-    "productCi": "PASS_BUT_NOT_SUFFICIENT_FOR_MC07",
-    "robotReplay": "PASS_BUT_NOT_MC07_SPECIFIC",
+    "candidateWorkflowRunId": 31380004522,
+    "candidateJobId": 93427842736,
+    "postMergeWorkflowRunId": 31380458756,
+    "postMergeJobId": 93429246907,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
     "exactShaVerified": true,
-    "postMergeReplay": "PASS_BUT_NOT_SUFFICIENT_FOR_MC07"
+    "postMergeReplay": "PASS",
+    "reviewEvidence": {
+      "method": "separate criterion review on exact current main",
+      "files": ["packages/organization/src/index.ts", "tests/organization-mc07.test.ts"],
+      "finding": "Album/favorite/tag state is durable and family-scoped; mutation replay is idempotent; authorization and missing-media paths fail explicitly; deleted media is reconciled; navigation exposes durable/empty recovery states."
+    }
   },
   "exitCriteria": ["FC-MC07-EC01", "FC-MC07-EC02", "FC-MC07-EC03", "FC-MC07-EC04", "FC-MC07-EC05"],
-  "nextMacrocycle": "MC-08",
-  "invalidation": {
-    "reason": "The integrated SHA was reused from MC-06 and its product diff is an authentication-bootstrap origin-boundary fix, not durable album/favorite/tag organization and retrieval. It does not establish MC-07 exit criteria.",
-    "action": "REOPEN_MC07_AND_REQUIRE_PRODUCT_DIFF_PLUS_CRITERION_SPECIFIC_EVIDENCE"
-  }
+  "nextMacrocycle": "MC-08"
 }
