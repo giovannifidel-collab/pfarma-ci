@@ -1,0 +1,14 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "family-cloud",
+  "macrocycle": "MC-14",
+  "title": "Backup verificabile e restore selettivo",
+  "status": "COMPLETED",
+  "candidateSha": "0925a55ebc7ef2952e172631fc0aa9fe2e18a755",
+  "integratedSha": "0ca5e8d8677c0b0b4b2b4a47efaee094505cd856",
+  "productPr": 808,
+  "independentReview": {"reviewId": 4899402854, "result": "PASS"},
+  "postMergeReplay": {"runId": 31414483893, "job": "family-cloud-mc14", "conclusion": "success"},
+  "exitCriteria": ["FC-MC14-EC01", "FC-MC14-EC02", "FC-MC14-EC03", "FC-MC14-EC04", "FC-MC14-EC05"],
+  "certification": "CERTIFIED_EXACT_SHA_POST_MERGE"
+}
