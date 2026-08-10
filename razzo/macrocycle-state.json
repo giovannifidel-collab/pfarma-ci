@@ -1,8 +1,8 @@
 {
-  "version": 17,
+  "version": 18,
   "schema": "razzo.macrocycle-state.v1",
   "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-10T14:58:00Z",
+  "updatedAt": "2026-08-10T15:36:00Z",
   "baselineMode": "incremental-non-destructive",
   "executionPolicy": {
     "mode": "MACROCYCLE_CLOSURE_FIRST_NONBLOCKING_HUMAN_GATES",
@@ -26,23 +26,24 @@
         {"id":"MC-10","title":"Wearable e importazione dati fisici","status":"COMPLETED","integratedSha":"8e4fce3f4326929307528dd3737225ef2cd9223b","receipt":"receipts/project-giovanni-mc10-completion.json"},
         {"id":"MC-11","title":"Analisi fotografica e checkpoint visivi","status":"COMPLETED","integratedSha":"cf9e62b0ea4eaeac0a7e00fdd48e253b716764e3","receipt":"receipts/project-giovanni-mc11-completion.json"},
         {"id":"MC-12","title":"Programmazione automatica multi-settimana","status":"COMPLETED","integratedSha":"ffe5f1d57fefc380d9e2d39e9e874e8f9ba014de","receipt":"receipts/project-giovanni-mc12-completion.json"},
-        {"id":"MC-13","title":"Modalità rapide, casa, viaggio e attrezzatura","status":"COMPLETED","integratedSha":"9b4e278cda7947ab03d32646b0ad827550f8a015","receipt":"receipts/project-giovanni-mc13-completion.json"}
+        {"id":"MC-13","title":"Modalità rapide, casa, viaggio e attrezzatura","status":"COMPLETED","integratedSha":"9b4e278cda7947ab03d32646b0ad827550f8a015","receipt":"receipts/project-giovanni-mc13-completion.json"},
+        {"id":"MC-14","title":"Sicurezza clinica e guardrail","status":"COMPLETED","integratedSha":"a4451685c42d35d89c4bb21508c9d6fb84ad86c1","receipt":"receipts/project-giovanni-mc14-completion.json"}
       ],
       "active": {
-        "id": "MC-14",
-        "title": "Sicurezza clinica e guardrail",
-        "outcome": "Pain, risk and stop conditions fail closed throughout the product.",
+        "id": "MC-15",
+        "title": "Progress dashboard e decisioni longitudinali",
+        "outcome": "The user can understand progress and the next justified action.",
         "status": "ACTIVE",
-        "activatedFrom": "MC-13",
-        "activationReceipt": "receipts/project-giovanni-mc13-completion.json",
+        "activatedFrom": "MC-14",
+        "activationReceipt": "receipts/project-giovanni-mc14-completion.json",
         "exitCriteria": [
-          {"id":"PG-MC14-EC01","description":"Authenticated durable safety evidence represents pain, stop conditions, relevant risk flags and source provenance without silently relaxing prior guardrails.","status":"MISSING"},
-          {"id":"PG-MC14-EC02","description":"Plan generation, contextual substitution, execution and adaptation all consume the same safety contract and fail closed before unsafe load or exercise progression.","status":"MISSING"},
-          {"id":"PG-MC14-EC03","description":"Safety-triggered stops and recoveries persist with explicit audit provenance, remain coherent after restart/retry, and prevent later recommendations from bypassing unresolved risk evidence.","status":"MISSING"},
-          {"id":"PG-MC14-EC04","description":"Product CI, independent review, realistic Robot pain/stop/recovery journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+          {"id":"PG-MC15-EC01","description":"Durable longitudinal progress metrics reconcile canonical workout, readiness, feedback, wearable, visual and safety evidence without double counting or losing source/version identity.","status":"MISSING"},
+          {"id":"PG-MC15-EC02","description":"The progress dashboard exposes understandable bounded trends and comparisons with explicit provenance, time windows and confidence instead of presenting unexplained aggregate scores.","status":"MISSING"},
+          {"id":"PG-MC15-EC03","description":"The next recommended action is deterministically justified by persisted longitudinal evidence and the active safety contract, and fails closed on stale, conflicting or insufficient evidence.","status":"MISSING"},
+          {"id":"PG-MC15-EC04","description":"Product CI, independent review, realistic Robot longitudinal-progress journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
         ]
       },
-      "next": "MC-15"
+      "next": "MC-16"
     },
     {
       "id": "pfarma-cloud",
@@ -55,24 +56,25 @@
         {"id":"MC-05","title":"Catalogo prodotti, MINSAN, EAN e ricerca universale","status":"COMPLETED","integratedSha":"2a24f7798157b5a48a51201018e0927126af1907","receipt":"receipts/pfarma-cloud-mc05-completion.json"},
         {"id":"MC-06","title":"Magazzino, movimenti e disponibilità","status":"COMPLETED","integratedSha":"131db79ac84f93269c500e2656d9921a77c4ef76","receipt":"receipts/pfarma-cloud-mc06-completion.json"},
         {"id":"MC-07","title":"Lotti, scadenze, richiami e tracciabilità","status":"COMPLETED","integratedSha":"193727ca6b5854f64a4f55fc0c77f198071769eb","receipt":"receipts/pfarma-cloud-mc07-completion.json"},
-        {"id":"MC-08","title":"Fornitori, ordini e riordino","status":"COMPLETED","integratedSha":"4589d94b0c6b189777c080e0c23c8d074de1e2ce","receipt":"receipts/pfarma-cloud-mc08-completion.json"}
+        {"id":"MC-08","title":"Fornitori, ordini e riordino","status":"COMPLETED","integratedSha":"4589d94b0c6b189777c080e0c23c8d074de1e2ce","receipt":"receipts/pfarma-cloud-mc08-completion.json"},
+        {"id":"MC-09","title":"Ricezione merce e riconciliazione","status":"COMPLETED","integratedSha":"e978c1370c28711c3dfea5ee148f4ae6ec293974","receipt":"receipts/pfarma-cloud-mc09-completion.json"}
       ],
       "active": {
-        "id": "MC-09",
-        "title": "Ricezione merce e riconciliazione",
-        "outcome": "Receiving updates orders, lots and stock atomically and idempotently.",
+        "id": "MC-10",
+        "title": "Vendita, cassa, pagamenti e resi",
+        "outcome": "The full sale and return journey is correct, persistent and auditable.",
         "status": "ACTIVE",
-        "activatedFrom": "MC-08",
-        "activationReceipt": "receipts/pfarma-cloud-mc08-completion.json",
+        "activatedFrom": "MC-09",
+        "activationReceipt": "receipts/pfarma-cloud-mc09-completion.json",
         "exitCriteria": [
-          {"id":"PF-MC09-EC01","description":"Durable receiving records bind purchase order, supplier, product, quantity, cost, lot/expiry evidence and operator attribution to canonical commercial and inventory identities.","status":"MISSING"},
-          {"id":"PF-MC09-EC02","description":"Accepted receipts update purchase-order fulfillment, lot state and inventory atomically while mismatched, excess, expired or incomplete evidence fails closed into an explicit discrepancy state.","status":"MISSING"},
-          {"id":"PF-MC09-EC03","description":"Duplicate, retried and concurrent receipt operations are idempotent and preserve immutable correction/reconciliation history without double-posting stock or commercial quantities.","status":"MISSING"},
-          {"id":"PF-MC09-EC04","description":"Operator receiving and reconciliation journeys expose pending, partial, complete and exception states with searchable discrepancies and no silent quantity or cost mutation.","status":"MISSING"},
-          {"id":"PF-MC09-EC05","description":"Product CI, independent review, PFarma receiving/reconciliation delta Robot plus required cumulative simulation, exact-SHA integration and post-merge cumulative replay all pass and a completion receipt is persisted.","status":"MISSING"}
+          {"id":"PF-MC10-EC01","description":"Durable sale/cart records bind products, quantities, prices, fiscal totals, operator and stock/lot context to canonical identities before commitment.","status":"MISSING"},
+          {"id":"PF-MC10-EC02","description":"Payment and sale finalization post commercial, inventory and lot effects atomically and idempotently, reject insufficient or unsafe stock, and never double-charge or double-decrement on retry/concurrency.","status":"MISSING"},
+          {"id":"PF-MC10-EC03","description":"Returns, corrections and refunds remain linked to the immutable original sale, are authorized and auditable, restore eligible stock exactly once and fail closed on invalid quantities or payment state.","status":"MISSING"},
+          {"id":"PF-MC10-EC04","description":"The operator POS journey supports search, cart edits, payment, receipt, correction and return with explicit pending/completed/exception states and no hidden financial or inventory mutation.","status":"MISSING"},
+          {"id":"PF-MC10-EC05","description":"Product CI, independent review, PFarma sale/payment/return delta Robot plus required cumulative simulation, exact-SHA integration and post-merge cumulative replay all pass and a completion receipt is persisted.","status":"MISSING"}
         ]
       },
-      "next": "MC-10"
+      "next": "MC-11"
     },
     {
       "id": "family-cloud",
@@ -86,24 +88,25 @@
         {"id":"MC-06","title":"Libreria, timeline e navigazione completa","status":"COMPLETED","integratedSha":"196da46816ff3e11381b96337b77648743ae154d","receipt":"receipts/family-cloud-mc06-completion.json"},
         {"id":"MC-07","title":"Album, preferiti, tag e organizzazione","status":"COMPLETED","integratedSha":"b4e796f0202fd1e6ae89029674d69210e9bbbc8d","receipt":"receipts/family-cloud-mc07-completion.json"},
         {"id":"MC-08","title":"Ricerca, filtri, duplicati e qualità archivio","status":"COMPLETED","integratedSha":"ebd6e921e89f3287dfeb8a478e8139abdfd43524","receipt":"receipts/family-cloud-mc08-completion.json"},
-        {"id":"MC-09","title":"Condivisione familiare e permessi granulari","status":"COMPLETED","integratedSha":"b9b6924210b33642436cd8278070bad73af60e01","receipt":"receipts/family-cloud-mc09-completion.json"}
+        {"id":"MC-09","title":"Condivisione familiare e permessi granulari","status":"COMPLETED","integratedSha":"b9b6924210b33642436cd8278070bad73af60e01","receipt":"receipts/family-cloud-mc09-completion.json"},
+        {"id":"MC-10","title":"Video, miniature e pipeline media","status":"COMPLETED","integratedSha":"9eee88bdd4a5f3e73bf4739a636f7ae76c85e104","receipt":"receipts/family-cloud-mc10-completion.json"}
       ],
       "active": {
-        "id": "MC-10",
-        "title": "Video, miniature e pipeline media",
-        "outcome": "Photo and video processing is reliable, bounded and recoverable.",
+        "id": "MC-11",
+        "title": "Importazione e migrazione archivi esistenti",
+        "outcome": "Existing family archives can be imported reversibly and verified.",
         "status": "ACTIVE",
-        "activatedFrom": "MC-09",
-        "activationReceipt": "receipts/family-cloud-mc09-completion.json",
+        "activatedFrom": "MC-10",
+        "activationReceipt": "receipts/family-cloud-mc10-completion.json",
         "exitCriteria": [
-          {"id":"FC-MC10-EC01","description":"Durable canonical processing jobs bind original media identity to requested thumbnail/video derivatives, processing version and family authorization without replacing original bytes.","status":"MISSING"},
-          {"id":"FC-MC10-EC02","description":"Thumbnail and video processing are deterministic and resource-bounded, verify derivative integrity, and fail closed with explicit actionable error states on unsupported or corrupt input.","status":"MISSING"},
-          {"id":"FC-MC10-EC03","description":"Processing retries, restart and concurrency are idempotent, recoverable and never duplicate or orphan canonical derivatives; failed jobs can resume without data loss.","status":"MISSING"},
-          {"id":"FC-MC10-EC04","description":"Authorized browsing and shared-media journeys resolve only verified derivatives and preserve explicit unavailable/processing/error states without leaking source metadata.","status":"MISSING"},
-          {"id":"FC-MC10-EC05","description":"Product CI, independent review, realistic Robot photo/video processing journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+          {"id":"FC-MC11-EC01","description":"Durable import manifests bind source archive identity, checksums, provenance and canonical target media mappings without modifying or replacing source evidence.","status":"MISSING"},
+          {"id":"FC-MC11-EC02","description":"Import validation, duplicate detection and conflict handling are deterministic, reviewable and reversible, and corrupt, unsupported or ambiguous source records fail closed before canonical mutation.","status":"MISSING"},
+          {"id":"FC-MC11-EC03","description":"Restarted, retried and concurrent imports are idempotent, resume from durable checkpoints and cannot duplicate or orphan media, metadata or storage objects; rollback preserves pre-import archive state.","status":"MISSING"},
+          {"id":"FC-MC11-EC04","description":"Successfully imported media participates in canonical browse, search, organization and sharing journeys while unavailable or failed imports expose explicit state without leaking inaccessible source metadata.","status":"MISSING"},
+          {"id":"FC-MC11-EC05","description":"Product CI, independent review, realistic Robot archive-import/migration journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
         ]
       },
-      "next": "MC-11"
+      "next": "MC-12"
     }
   ],
   "transitionRule": "Certified completion activates the next macrocycle immediately. A true human gate keeps its macrocycle OPEN as DEFERRED_HUMAN_GATE in pendingHumanGates but also advances the execution cursor so autonomous independent work never stops.",
