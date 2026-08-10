@@ -1,0 +1,12 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"pfarma-cloud",
+  "macrocycle":"MC-09",
+  "status":"COMPLETED",
+  "candidateSha":"dbe1d20f75b0aa59b0d5fd67954e2e652e18a8bf",
+  "integratedSha":"e978c1370c28711c3dfea5ee148f4ae6ec293974",
+  "pullRequest":2175,
+  "certification":{"fabricRepository":"giovannifidel-collab/pfarma-ci","candidateWorkflowRunId":31403690684,"candidateJobId":93504697018,"criterionVerifierRunId":31403690424,"postMergeWorkflowRunId":31404592741,"postMergeJobId":93507688492,"postMergeCriterionVerifierRunId":31404592887,"independentReview":"PASS","productCi":"PASS","robotReplay":"PASS","exactShaVerified":true,"postMergeReplay":"PASS","reviewEvidence":{"method":"criterion-by-criterion review plus focused exact-SHA receiving verifier and cumulative PFarma gate","files":["database/schema/0016_receiving_reconciliation_v1.sql","tests/test_receiving_reconciliation_mc09.py"],"finding":"Receiving binds canonical PO/supplier/product/lot/operator identities, posts accepted receipts through the lot/inventory transaction path, rejects discrepancies fail closed, serializes concurrent receipt work and exposes searchable reconciliation states."}},
+  "exitCriteria":["PF-MC09-EC01","PF-MC09-EC02","PF-MC09-EC03","PF-MC09-EC04","PF-MC09-EC05"],
+  "nextMacrocycle":"MC-10"
+}
