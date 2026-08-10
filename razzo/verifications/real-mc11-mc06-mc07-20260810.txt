@@ -1,0 +1,4 @@
+Verifier-only trigger for real macrocycle closure.
+Project Giovanni MC-11: 98ff84d96438b701cfc92fb717d7c06721da289f
+PFarma MC-06: ec64f2ea02360bc34291c3fc536090a40e6e1727
+Family Cloud MC-07: d4d71a0b944fe9b52b526f4e813367725394e3b7
