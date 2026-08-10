@@ -1,0 +1,16 @@
+{
+  "schema": "razzo.macrocycle-finalization.v1",
+  "project": "pfarma-cloud",
+  "macrocycles": ["MC-15", "MC-16", "MC-17", "MC-18", "MC-19", "MC-20"],
+  "status": "COMPLETED",
+  "integratedSha": "79e76acc5254d9e6ffb65b0d5247736d8bb4cf59",
+  "integrationLane": "integration/razzo",
+  "productPrs": [2198, 2199, 2200],
+  "finalCandidateSha": "4b7f3571b107b02936b551b5bcb779ec3ff1cc84",
+  "finalCandidateVerification": {"dedicatedRunId": 31432229951, "exactRefRunId": 31432230107, "conclusion": "success"},
+  "independentReviewId": 4900843720,
+  "postMergePortfolioReplay": {"runId": 31433765553, "job": "pfarma", "conclusion": "success"},
+  "exactRefGate": {"runId": 31433765321, "conclusion": "success"},
+  "currentMacrocycleVerifier": {"runId": 31433765454, "conclusion": "success"},
+  "certification": "CERTIFIED_EXACT_SHA_POST_MERGE_FINAL"
+}
