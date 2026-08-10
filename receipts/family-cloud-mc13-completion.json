@@ -1,0 +1,18 @@
+{
+  "schema":"razzo.completion-receipt.v1",
+  "project":"family-cloud",
+  "macrocycle":"MC-13",
+  "title":"Conflitti, idempotenza e consistenza distribuita",
+  "status":"CLOSED",
+  "productPr":803,
+  "candidateSha":"513fc9c3a66d39619d1a3303e5916e871c22b05d",
+  "integratedSha":"19df1d7973598028e249637f7e80af478350cbb9",
+  "candidateVerifierRun":31411808573,
+  "candidateHostedCiRun":31411807801,
+  "independentReview":{"type":"RAZZO_SEPARATE_REVIEW_PASS","reviewId":4899183212,"result":"NO_COMPLETION_BLOCKER"},
+  "postMergeVerifierRun":31412306699,
+  "postMergeVerifierResult":"SUCCESS",
+  "criteria":["FC-MC13-EC01","FC-MC13-EC02","FC-MC13-EC03","FC-MC13-EC04","FC-MC13-EC05"],
+  "closedAt":"2026-08-10T17:06:28Z",
+  "nextActive":"MC-14"
+}
