@@ -1,0 +1,14 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"family-cloud",
+  "macrocycle":"MC-16",
+  "title":"Privacy, cifratura e ciclo di vita dati",
+  "status":"COMPLETED",
+  "candidateSha":"f0ff60c76be1bc2f6700b8f50d204b51cbcab4d4",
+  "integratedSha":"06616652082d885c3a4090f1d313ca23f72b765e",
+  "productPr":817,
+  "independentReview":{"reviewId":4900199348,"result":"PASS"},
+  "candidateExactShaVerification":{"runId":31423413063,"job":"quality","conclusion":"success"},
+  "postMergeReplay":{"runId":31423807715,"job":"family-cloud-mc12","conclusion":"success","note":"legacy workflow job name; exact checkout was integrated MC-16 SHA"},
+  "certification":"CERTIFIED_EXACT_SHA_POST_MERGE"
+}
