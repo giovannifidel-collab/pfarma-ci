@@ -1,0 +1,30 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "pfarma-cloud",
+  "macrocycle": "MC-05",
+  "status": "COMPLETED",
+  "integratedSha": "2a24f7798157b5a48a51201018e0927126af1907",
+  "evidencePullRequests": [234, 241, 1205, 1380, 2090, 2111, 2112, 2125, 2126, 2127, 2128, 2129],
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "verificationPullRequest": 1021,
+    "postMergeWorkflowRunId": 31376110092,
+    "jobId": 93415594140,
+    "independentContext": "RAZZO breaker follow-ups plus exact integration-head replay",
+    "exactShaVerified": true,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "cumulativeRobot": "PASS",
+    "postMergeReplay": "PASS"
+  },
+  "criterionEvidence": {
+    "PF-MC05-EC01": "Canonical PostgreSQL Product Master on products + product_identifiers is mutable and transactional; MINSAN/EAN/canonical identifier boundaries fail closed on invalid/ambiguous records and DB constraints preserve canonical conflicts.",
+    "PF-MC05-EC02": "Product Master create/update are retry-safe under advisory locks, commit transactionally, reopen through the canonical PostgreSQL reader and write attributable operational_write_audit evidence.",
+    "PF-MC05-EC03": "Merged universal/product lookup resolves MINSAN, EAN, canonical IDs and text through real PostgreSQL readers; ambiguous/unavailable paths fail closed and lookup does not invent or silently create products.",
+    "PF-MC05-EC04": "Merged pharmaceutical master snapshots/import planning provide deterministic replay-stable create/update/retain-historical reconciliation with provider/conflict validation; canonical Product Master mutations are transactional and idempotency-fingerprinted.",
+    "PF-MC05-EC05": "Exact integrated head 2a24f779... passed RAZZO Exact Ref Gates run 31376110092, job 93415594140, including exact checkout, core regressions, Operator Robot core/sale/feedback and planner; verifier #1021 records the closure replay."
+  },
+  "exitCriteria": ["PF-MC05-EC01", "PF-MC05-EC02", "PF-MC05-EC03", "PF-MC05-EC04", "PF-MC05-EC05"],
+  "nextMacrocycle": "MC-06"
+}
