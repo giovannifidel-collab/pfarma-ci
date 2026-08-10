@@ -1,0 +1,12 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"pfarma-cloud",
+  "macrocycle":"MC-08",
+  "status":"COMPLETED",
+  "candidateSha":"914dc804672716a76eb916cf4b1ad74563b1980c",
+  "integratedSha":"4589d94b0c6b189777c080e0c23c8d074de1e2ce",
+  "pullRequest":2170,
+  "certification":{"fabricRepository":"giovannifidel-collab/pfarma-ci","candidateWorkflowRunId":31400748832,"candidateJobId":93494812826,"postMergeWorkflowRunId":31401107719,"postMergeJobId":93496201172,"independentReview":"PASS","productCi":"PASS","robotReplay":"PASS","exactShaVerified":true,"postMergeReplay":"PASS","reviewEvidence":{"method":"criterion-by-criterion review of merged product diff","files":["database/schema/0015_supplier_orders_v1.sql","tests/test_razzo_supplier_staging_regression.py"],"finding":"Durable suppliers and purchase orders preserve commercial evidence and attribution; reorder proposals are review-only and stale-aware; lifecycle transitions are bounded, auditable and idempotent without inventory/receiving mutation."}},
+  "exitCriteria":["PF-MC08-EC01","PF-MC08-EC02","PF-MC08-EC03","PF-MC08-EC04","PF-MC08-EC05"],
+  "nextMacrocycle":"MC-09"
+}
