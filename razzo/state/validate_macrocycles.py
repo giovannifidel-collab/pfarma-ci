@@ -15,6 +15,10 @@ POLICY = ROOT / "razzo" / "macrocycle-policy.json"
 EXPECTED_PROJECTS = {"project-giovanni", "pfarma-cloud", "family-cloud"}
 EXPECTED_IDS = {f"MC-{index:02d}" for index in range(1, 21)}
 ACTIVE_STATES = {"PLANNED", "ACTIVE", "VERIFYING"}
+# Compatibility/state vocabulary: COMPLETED is a valid macrocycle state but is
+# deliberately excluded from ACTIVE_STATES so a completed cycle can never be
+# used as the execution cursor.
+ALLOWED_STATES = ACTIVE_STATES | {"COMPLETED", "DEFERRED_HUMAN_GATE"}
 CRITERION_STATES = {"MISSING", "VERIFIED", "BLOCKED_BY_TRUE_HUMAN_GATE"}
 
 
