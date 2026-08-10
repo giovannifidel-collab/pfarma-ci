@@ -1,0 +1,15 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "project-giovanni",
+  "macrocycle": "MC-19",
+  "title": "Collaudo end-to-end e performance",
+  "status": "COMPLETED",
+  "candidateSha": "8f028c7c8bc06cc3933c214c106b2ce54cfbf900",
+  "integratedSha": "bbb16e0d69560374df2d984dcd609a0f18086887",
+  "productPr": 1083,
+  "independentReview": {"reviewId": 4900019466, "result": "PASS"},
+  "candidateExactShaVerification": {"runId": 31421375921, "job": "project-giovanni", "conclusion": "success"},
+  "postMergeReplay": {"runId": 31421711724, "job": "project-giovanni-mc16", "conclusion": "success", "note": "workflow job name is legacy; exact checkout was integrated MC-19 SHA"},
+  "exitCriteria": ["PG-MC19-EC01", "PG-MC19-EC02", "PG-MC19-EC03", "PG-MC19-EC04"],
+  "certification": "CERTIFIED_EXACT_SHA_POST_MERGE"
+}
