@@ -1,0 +1,28 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "project-giovanni",
+  "macrocycle": "MC-09",
+  "status": "COMPLETED",
+  "integratedSha": "d1f90976db0417ae51b4651c44ee28cbf88eaa6e",
+  "evidencePullRequests": [178, 1030, 1068],
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "verificationPullRequest": 1021,
+    "postMergeWorkflowRunId": 31376110092,
+    "jobId": 93415594191,
+    "independentContext": "RAZZO breaker review plus exact integration-head replay",
+    "exactShaVerified": true,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "postMergeReplay": "PASS"
+  },
+  "criterionEvidence": {
+    "PG-MC09-EC01": "Merged authenticated user-scoped durable workout-feedback persistence and authenticated history restore are ancestors of the certified integration head.",
+    "PG-MC09-EC02": "Merged abnormal-symptom/stop feedback blocks automatic progression and preserves explicit REVIEW/decision behavior; automaticPlanChange remains false.",
+    "PG-MC09-EC03": "Merged bounded adaptation consumes persisted recent feedback and measured exercise signals, produces explainable KEEP/PROGRESS/REVISE output, and requires explicit version activation.",
+    "PG-MC09-EC04": "Exact integration head d1f90976... passed RAZZO Exact Ref Gates run 31376110092, job 93415594191, including exact checkout, TypeScript, Factory tests/planner and build; verifier #1021 records the closure replay."
+  },
+  "exitCriteria": ["PG-MC09-EC01", "PG-MC09-EC02", "PG-MC09-EC03", "PG-MC09-EC04"],
+  "nextMacrocycle": "MC-10"
+}
