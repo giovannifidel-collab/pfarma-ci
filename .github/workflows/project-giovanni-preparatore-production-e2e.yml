@@ -1,0 +1,59 @@
+name: Project Giovanni Preparatore · Public Production E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/project-giovanni-preparatore-production-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-giovanni-preparatore-public-e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: photo-ai-private
+    steps:
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Checkout latest Project Giovanni production source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: main
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: worker
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install isolated JPEG fixture encoder
+        working-directory: worker
+        run: npm install --no-save --no-audit --no-fund jpeg-js@0.4.4
+
+      - name: Run production E2E against Vercel
+        working-directory: worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PRODUCTION_BASE_URL: https://project-giovanni.vercel.app
+        run: node scripts/preparatore-production-e2e-smoke-runner.mjs
