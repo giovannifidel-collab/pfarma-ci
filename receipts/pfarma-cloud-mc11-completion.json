@@ -1,0 +1,27 @@
+{
+  "schema":"razzo.macrocycle-completion.v1",
+  "project":"pfarma-cloud",
+  "macrocycle":"MC-11",
+  "status":"COMPLETED",
+  "candidateSha":"fd7108c5709404789fdbc812406d0baa2259291d",
+  "integratedSha":"737396feac83537001c6b7d8dd5d599563f6e028",
+  "pullRequest":2186,
+  "certification":{
+    "fabricRepository":"giovannifidel-collab/pfarma-ci",
+    "criterionVerifierRunId":31410004285,
+    "postMergeWorkflowRunId":31410316595,
+    "postMergeCriterionVerifierRunId":31410316532,
+    "independentReview":"PASS",
+    "productCi":"PASS",
+    "robotReplay":"PASS",
+    "exactShaVerified":true,
+    "postMergeReplay":"PASS",
+    "reviewEvidence":{
+      "method":"criterion-by-criterion review plus focused exact-SHA verifier",
+      "files":["backend/customer_crm.py","tests/test_customer_crm_mc11.py"],
+      "finding":"Canonical audited customers enforce duplicate-safe contact identity and consent; reservations persist explicit lifecycle state with transactional exact-once availability effects; follow-ups are attributable, consent-aware and linked to their originating reservation."
+    }
+  },
+  "exitCriteria":["PF-MC11-EC01","PF-MC11-EC02","PF-MC11-EC03","PF-MC11-EC04","PF-MC11-EC05"],
+  "nextMacrocycle":"MC-12"
+}
