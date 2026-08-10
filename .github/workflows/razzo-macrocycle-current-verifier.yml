@@ -1,0 +1,53 @@
+name: RAZZO Current Macrocycle Verifier
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/project-giovanni-ref.txt'
+      - 'razzo/pfarma-ref.txt'
+      - 'family-cloud-ref.txt'
+      - '.github/workflows/razzo-macrocycle-current-verifier.yml'
+permissions: {contents: read}
+jobs:
+  project-giovanni-mc15:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+      - id: ref
+        run: echo "sha=$(tr -d '\r\n' < razzo/project-giovanni-ref.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with: {repository: giovannifidel-collab/project-giovanni, ref: '${{ steps.ref.outputs.sha }}', token: '${{ secrets.PFARMA_SOURCE_TOKEN }}', path: product, persist-credentials: false}
+      - run: test "$(git -C product rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: product
+        run: npm install --no-audit --no-fund && npx --yes tsc --noEmit && node --test factory/mc15-longitudinal-progress.test.mjs && npm run test:factory --if-present
+  pfarma-mc10:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+      - id: ref
+        run: echo "sha=$(tr -d '\r\n' < razzo/pfarma-ref.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with: {repository: giovannifidel-collab/pfarma-cloud, ref: '${{ steps.ref.outputs.sha }}', token: '${{ secrets.PFARMA_SOURCE_TOKEN }}', path: product, persist-credentials: false}
+      - run: test "$(git -C product rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - working-directory: product
+        run: python -m compileall -q backend tests/test_pos_transaction_mc10.py && PYTHONPATH=. python tests/test_pos_transaction_mc10.py && python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+  family-cloud-mc11:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+      - id: ref
+        run: echo "sha=$(tr -d '\r\n' < family-cloud-ref.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with: {repository: giovannifidel-collab/family-cloud, ref: '${{ steps.ref.outputs.sha }}', token: '${{ secrets.PFARMA_SOURCE_TOKEN }}', path: product, persist-credentials: false}
+      - run: test "$(git -C product rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: product
+        run: npm install --no-audit --no-fund && npm run typecheck && npm test -- --runInBand
