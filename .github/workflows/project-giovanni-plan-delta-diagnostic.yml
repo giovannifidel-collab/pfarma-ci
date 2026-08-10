@@ -1,0 +1,94 @@
+name: Project Giovanni · Plan Delta Diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/project-giovanni-plan-delta-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: photo-ai-private
+    env:
+      TARGET_JOB_ID: 20fb3518-4741-448d-90dd-56adca22fe48
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Compare active cloud plan with real PLUS proposal
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const base = process.env.SUPABASE_URL?.replace(/\/$/, '');
+          const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+          const jobId = process.env.TARGET_JOB_ID;
+          if (!base || !key || !jobId) throw new Error('missing configuration');
+          const headers = { Authorization: `Bearer ${key}`, apikey: key };
+          const jres = await fetch(`${base}/rest/v1/preparatore_v2_jobs?id=eq.${encodeURIComponent(jobId)}&select=user_id,status,result_payload`, { headers });
+          if (!jres.ok) throw new Error(`job read ${jres.status}`);
+          const rows = await jres.json();
+          const job = rows[0];
+          if (!job || job.status !== 'succeeded' || !job.result_payload?.plan) throw new Error('target job is not a succeeded plan');
+          const userId = job.user_id;
+          const statePath = ['app-state', userId, 'plan-version-ledger:v1.json'].map(encodeURIComponent).join('/');
+          const sres = await fetch(`${base}/storage/v1/object/preparatore-v2-worker-state/${statePath}`, { headers });
+          if (!sres.ok) throw new Error(`active ledger read ${sres.status}`);
+          const ledger = await sres.json();
+          const active = ledger?.versions?.find((v) => v.id === ledger.activeVersionId && v.status === 'active');
+          if (!active?.plan) throw new Error('active plan missing');
+          const oldPlan = active.plan;
+          const newPlan = job.result_payload.plan;
+
+          const value = (e) => e?.target?.mode === 'reps'
+            ? `${e.target.sets}x${e.target.repsMin}-${e.target.repsMax}${Number.isFinite(e.target.reserveReps) ? ` RIR${e.target.reserveReps}` : ''}`
+            : e?.target?.mode === 'time' ? `${e.target.sets}x${e.target.secondsMin}-${e.target.secondsMax}s` : String(e?.prescription || '');
+          const totalSets = (p) => (p.days || []).flatMap(d => d.exercises || []).reduce((s,e)=>s+(Number(e?.target?.sets)||0),0);
+          const focusSets = (p) => {
+            const out = {};
+            for (const d of p.days || []) for (const e of d.exercises || []) out[e.focus || '—'] = (out[e.focus || '—'] || 0) + (Number(e?.target?.sets)||0);
+            return out;
+          };
+          const deltas = [];
+          let exerciseChanges=0, doseChanges=0, restChanges=0, dayMetaChanges=0, added=0, removed=0;
+          const days = Math.max(oldPlan.days?.length || 0, newPlan.days?.length || 0);
+          for (let i=0;i<days;i++) {
+            const a=oldPlan.days?.[i], b=newPlan.days?.[i];
+            if (!a || !b) { deltas.push(`DAY ${i+1}: ${a?'REMOVED':'ADDED'}`); dayMetaChanges++; continue; }
+            if (a.title !== b.title || a.emphasis !== b.emphasis || a.durationMinutes !== b.durationMinutes || a.warmupMinutes !== b.warmupMinutes) {
+              dayMetaChanges++;
+              deltas.push(`DAY ${i+1} META: ${a.title} [${a.emphasis}, ${a.durationMinutes}m, warmup ${a.warmupMinutes}] -> ${b.title} [${b.emphasis}, ${b.durationMinutes}m, warmup ${b.warmupMinutes}]`);
+            }
+            const maxEx=Math.max(a.exercises?.length||0,b.exercises?.length||0);
+            for (let j=0;j<maxEx;j++) {
+              const x=a.exercises?.[j], y=b.exercises?.[j];
+              if (!x && y) { added++; exerciseChanges++; deltas.push(`D${i+1} E${j+1} ADDED: ${y.name} ${value(y)} rest ${y.restSeconds}s`); continue; }
+              if (x && !y) { removed++; exerciseChanges++; deltas.push(`D${i+1} E${j+1} REMOVED: ${x.name} ${value(x)} rest ${x.restSeconds}s`); continue; }
+              if (!x || !y) continue;
+              if (x.name !== y.name || x.focus !== y.focus) { exerciseChanges++; deltas.push(`D${i+1} E${j+1} EXERCISE: ${x.name} -> ${y.name}`); }
+              if (value(x) !== value(y)) { doseChanges++; deltas.push(`D${i+1} ${y.name} DOSE: ${value(x)} -> ${value(y)}`); }
+              if (Number(x.restSeconds)!==Number(y.restSeconds)) { restChanges++; deltas.push(`D${i+1} ${y.name} REST: ${x.restSeconds}s -> ${y.restSeconds}s`); }
+            }
+          }
+          const oldFocus=focusSets(oldPlan), newFocus=focusSets(newPlan);
+          const allFocus=[...new Set([...Object.keys(oldFocus),...Object.keys(newFocus)])];
+          const focusDelta=allFocus.map(k=>`${k}:${oldFocus[k]||0}->${newFocus[k]||0}`).join(', ');
+          const substantive = exerciseChanges>0 || doseChanges>0 || dayMetaChanges>0 || totalSets(oldPlan)!==totalSets(newPlan) || allFocus.some(k=>(oldFocus[k]||0)!==(newFocus[k]||0));
+          console.log('=== PLAN_DELTA_DIAGNOSTIC ===');
+          console.log(`ACTIVE_VERSION=${active.versionNumber}`);
+          console.log(`DAYS=${oldPlan.days?.length||0}->${newPlan.days?.length||0}`);
+          console.log(`TOTAL_SETS=${totalSets(oldPlan)}->${totalSets(newPlan)}`);
+          console.log(`FOCUS_SETS=${focusDelta}`);
+          console.log(`EXERCISE_CHANGES=${exerciseChanges} ADDED=${added} REMOVED=${removed}`);
+          console.log(`DOSE_CHANGES=${doseChanges}`);
+          console.log(`REST_CHANGES=${restChanges}`);
+          console.log(`DAY_META_CHANGES=${dayMetaChanges}`);
+          console.log(`SUBSTANTIVE_CHANGE=${substantive}`);
+          console.log(`REST_ONLY=${!substantive && restChanges>0}`);
+          console.log('--- DELTAS ---');
+          for (const line of deltas) console.log(line);
+          NODE
