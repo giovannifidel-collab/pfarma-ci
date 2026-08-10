@@ -44,11 +44,13 @@ jobs:
       - name: Compile final product
         working-directory: product
         run: python -m compileall -q backend web tools tests factory application_runtime.py
-      - name: MC16-MC20 finalization suite
+      - name: MC16-MC20 finalization suites
         working-directory: product
         env:
           PFARMA_FEEDBACK_GITHUB_SYNC: '0'
-        run: PYTHONPATH=. python tests/test_pfarma_finalization_mc16_20.py -v
+        run: |
+          PYTHONPATH=. python tests/test_pfarma_finalization_mc16_20.py -v
+          PYTHONPATH=. python tests/test_pfarma_finalization_auth.py -v
       - name: Existing Factory regressions
         working-directory: product
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime factory.test_human_gate_invariants -v
