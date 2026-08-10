@@ -1,0 +1,31 @@
+{
+  "schema": "razzo.macrocycle-completion.v1",
+  "project": "family-cloud",
+  "macrocycle": "MC-06",
+  "status": "COMPLETED",
+  "integratedSha": "196da46816ff3e11381b96337b77648743ae154d",
+  "evidencePullRequests": [689, 779, 780, 786],
+  "certification": {
+    "fabricRepository": "giovannifidel-collab/pfarma-ci",
+    "candidateVerificationPullRequest": 1020,
+    "postMergeVerificationPullRequest": 1022,
+    "candidateWorkflowRunId": 31374438180,
+    "postMergeWorkflowRunId": 31376198230,
+    "jobId": 93415873791,
+    "independentContext": "RAZZO breaker review plus exact integration-head replay",
+    "exactShaVerified": true,
+    "independentReview": "PASS",
+    "productCi": "PASS",
+    "robotReplay": "PASS",
+    "postMergeReplay": "PASS"
+  },
+  "criterionEvidence": {
+    "FC-MC06-EC01": "Merged canonical durable library query and authenticated account-scoped reopen use server-stored media metadata rather than browser-local alpha state.",
+    "FC-MC06-EC02": "Merged durable query capability provides deterministic ordering, stable pagination and owner-scoped snapshot revisions; concurrent mutation invalidates stale pagination rather than silently skipping or duplicating items.",
+    "FC-MC06-EC03": "Merged authenticated preview/open flow resolves exact durable media bytes with integrity verification and fail-closed missing/unhealthy-object behavior.",
+    "FC-MC06-EC04": "Merged canonical library UI and durable API expose empty/search/pagination/deletion/failure recovery paths while preserving snapshot consistency and account scope.",
+    "FC-MC06-EC05": "Candidate #786 passed exact-SHA hosted CI run 31374438180 before integration; integrated head 196da468... passed post-merge exact private checkout, typecheck, full tests and Factory planner smoke on run 31376198230, job 93415873791; verifier #1022 records the replay."
+  },
+  "exitCriteria": ["FC-MC06-EC01", "FC-MC06-EC02", "FC-MC06-EC03", "FC-MC06-EC04", "FC-MC06-EC05"],
+  "nextMacrocycle": "MC-07"
+}
