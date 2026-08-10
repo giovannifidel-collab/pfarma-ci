@@ -67,17 +67,19 @@ def validate_pending(project_id: str,pending: Any,completed_ids:set[str],active_
 
 def validate_terminal_evidence(state:dict[str,Any])->None:
     snapshot=load_json(CERTIFIED_HEADS); heads=snapshot.get("projects")
-    require(isinstance(heads,dict) and set(heads)==EXPECTED_PROJECTS,"terminal certified-head snapshot must cover exactly the product portfolio")
-    for project_id,sha in heads.items(): require(exact_sha(sha),f"{project_id}: current certified head must be exact SHA")
+    require(snapshot.get("semantics")=="IMMUTABLE_AUDIT_SNAPSHOT_NOT_LIVE_BRANCH_POINTER","terminal audited-head snapshot semantics are invalid")
+    require(isinstance(heads,dict) and set(heads)==EXPECTED_PROJECTS,"terminal audited-head snapshot must cover exactly the product portfolio")
+    for project_id,sha in heads.items(): require(exact_sha(sha),f"{project_id}: audited head must be exact SHA")
     receipt=load_json(receipt_path(state.get("terminalReceipt"))); projects=receipt.get("projects")
     require(isinstance(projects,dict) and set(projects)==EXPECTED_PROJECTS,"terminal receipt must cover exactly the product portfolio")
     require(bool(receipt.get("evidenceScope")),"terminal receipt must declare evidenceScope")
-    require(receipt.get("certification")=="ROADMAP_COMPLETE_CURRENT_HEADS_AUDITED","terminal receipt certification semantics are stale")
+    require(receipt.get("certification")=="ROADMAP_COMPLETE_AUDITED_HEADS","terminal receipt certification semantics are stale")
+    require(receipt.get("auditReplay",{}).get("runId")==snapshot.get("auditReplayRunId"),"terminal receipt and audited snapshot must reference the same replay")
     state_by_id={p.get("id"):p for p in state.get("projects",[]) if isinstance(p,dict)}
     for project_id,sha in heads.items():
         entry=projects.get(project_id); require(isinstance(entry,dict),f"{project_id}: terminal receipt project entry is required")
-        require(entry.get("currentCertifiedHead")==sha,f"{project_id}: terminal receipt head does not match certified snapshot")
-        require(state_by_id.get(project_id,{}).get("completedThrough")=="MC-20",f"{project_id}: certified terminal project must complete through MC-20")
+        require(entry.get("auditedHead")==sha,f"{project_id}: terminal receipt head does not match audited snapshot")
+        require(state_by_id.get(project_id,{}).get("completedThrough")=="MC-20",f"{project_id}: audited terminal project must complete through MC-20")
 
 def validate()->None:
     policy=load_json(POLICY); roadmap=load_json(ROADMAP); state=load_json(STATE)
