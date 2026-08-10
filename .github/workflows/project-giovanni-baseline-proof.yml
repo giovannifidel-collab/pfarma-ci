@@ -1,0 +1,35 @@
+name: Project Giovanni · Baseline Delta Proof
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/project-giovanni-baseline-proof.yml']
+permissions:
+  contents: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    environment: photo-ai-private
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      JOB_ID: 6c89bbbd-31fc-404d-9287-9c56b978922d
+    steps:
+      - name: Assert Delta Audit used an active baseline
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const base=process.env.SUPABASE_URL?.replace(/\/$/,'');
+          const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+          const id=process.env.JOB_ID;
+          const r=await fetch(`${base}/rest/v1/preparatore_v2_jobs?id=eq.${id}&select=status,result_payload&limit=1`,{headers:{Authorization:`Bearer ${key}`,apikey:key}});
+          if(!r.ok) throw new Error(`read ${r.status}`);
+          const row=(await r.json())[0];
+          if(!row) throw new Error('synthetic job already unavailable');
+          const audit=row.result_payload?.deltaAudit;
+          console.log(`STATUS=${row.status}`);
+          console.log(`DELTA_RECOMMENDATION=${audit?.recommendation}`);
+          console.log(`DELTA_SCORE=${audit?.score}`);
+          console.log(`INITIAL_PLAN=${audit?.metrics?.initialPlan}`);
+          console.log(`ACTIVATION_ALLOWED=${row.result_payload?.activationAllowed}`);
+          if(row.status!=='succeeded'||!audit||audit.metrics?.initialPlan!==false) throw new Error('active baseline was not proven inside Delta Audit');
+          NODE
