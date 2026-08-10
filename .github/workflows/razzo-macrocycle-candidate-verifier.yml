@@ -1,0 +1,75 @@
+name: RAZZO Macrocycle Candidate Verifier
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'razzo/project-giovanni-ref.txt'
+      - 'razzo/pfarma-ref.txt'
+      - 'family-cloud-ref.txt'
+      - '.github/workflows/razzo-macrocycle-candidate-verifier.yml'
+permissions:
+  contents: read
+jobs:
+  project-giovanni-mc14:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: ref
+        run: echo "sha=$(tr -d '\r\n' < razzo/project-giovanni-ref.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.ref.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C product rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: product
+        run: npm install --no-audit --no-fund && npx --yes tsc --noEmit && node --test factory/mc14-safety-guardrails.test.mjs
+  pfarma-mc09:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: ref
+        run: echo "sha=$(tr -d '\r\n' < razzo/pfarma-ref.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: ${{ steps.ref.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C product rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - working-directory: product
+        run: PYTHONPATH=. python tests/test_receiving_reconciliation_mc09.py
+  family-cloud-mc10:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - id: ref
+        run: echo "sha=$(tr -d '\r\n' < family-cloud-ref.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ steps.ref.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          fetch-depth: 1
+          persist-credentials: false
+      - run: test "$(git -C product rev-parse HEAD)" = '${{ steps.ref.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: product
+        run: npm install --no-audit --no-fund && npm test -- --runInBand
