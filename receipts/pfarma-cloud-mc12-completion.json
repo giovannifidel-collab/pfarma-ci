@@ -1,0 +1,18 @@
+{
+  "schema":"razzo.completion-receipt.v1",
+  "project":"pfarma-cloud",
+  "macrocycle":"MC-12",
+  "title":"Documenti, fatturazione e numerazioni",
+  "status":"CLOSED",
+  "productPr":2190,
+  "candidateSha":"0c3449efb85964cc2d58fc4026e794451d40c42e",
+  "integratedSha":"6a0927954e07dbb61ca755bc9d1b915d77a38ac5",
+  "candidateVerifierRun":31411808573,
+  "candidateExactRefGateRun":31411807273,
+  "independentReview":{"type":"RAZZO_SEPARATE_REVIEW_PASS","reviewId":4899181511,"result":"NO_COMPLETION_BLOCKER"},
+  "postMergeVerifierRun":31412306699,
+  "postMergeVerifierResult":"SUCCESS",
+  "criteria":["PF-MC12-EC01","PF-MC12-EC02","PF-MC12-EC03","PF-MC12-EC04","PF-MC12-EC05"],
+  "closedAt":"2026-08-10T17:06:28Z",
+  "nextActive":"MC-13"
+}
