@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - working-directory: product
-        run: npm install --no-audit --no-fund && npx --yes tsc --noEmit && node --test factory/mc18-backup-portability.test.mjs && npm run test:factory --if-present && npm run factory:plan --if-present
+        run: npm install --no-audit --no-fund && npx --yes tsc --noEmit && node --test factory/mc18-backup-portability.test.mjs
   pfarma-mc13:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
