@@ -1,10 +1,11 @@
 {
-  "schema": "razzo.terminal-certified-heads.v1",
+  "schema": "razzo.terminal-audited-heads.v1",
   "roadmapStatus": "COMPLETED_60_OF_60",
-  "auditReplayRunId": 31441542610,
+  "auditReplayRunId": 31441955941,
+  "semantics": "IMMUTABLE_AUDIT_SNAPSHOT_NOT_LIVE_BRANCH_POINTER",
   "projects": {
     "project-giovanni": "ddef8ef787b27743205450cd9ebe5dbb2ada5da7",
     "pfarma-cloud": "7e9334669573d838d0235478083f8befb96255ac",
-    "family-cloud": "10f70823aa6304eb4ea08d58982117b0455801ee"
+    "family-cloud": "e319b94e90a3d18d5df32378e7927b2b6d91dfd5"
   }
 }
