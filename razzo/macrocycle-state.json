@@ -1,26 +1,22 @@
 {
-  "version": 19,
-  "schema": "razzo.macrocycle-state.v1",
-  "sourceOfTruth": "live-github-reconciliation-before-persisted-state",
-  "updatedAt": "2026-08-10T16:17:00Z",
-  "baselineMode": "incremental-non-destructive",
-  "executionPolicy": {
-    "mode": "MACROCYCLE_CLOSURE_FIRST_NONBLOCKING_HUMAN_GATES",
-    "antiLoopRule": "Reject work unless it verifies a missing exit criterion, removes a named completion blocker, or safely advances beyond a deferred true human gate.",
-    "waveSuccessRule": "A wave is productive only if it verifies an exit criterion, clears a gate, integrates an exact-SHA candidate, emits a receipt, closes a macrocycle, or advances the execution cursor past a true human gate.",
-    "blockedProjectRule": "A true human gate blocks only its exact sensitive action and strictly dependent work; it is persisted to pendingHumanGates and never stops the project scheduler or other enabled projects.",
-    "fanOutRule": "Dispatch closure work independently for every enabled project and continue safe work even when one or more human gates are pending.",
-    "completionOrder": ["BUILD_EXIT_CRITERIA","PRODUCT_CI_EXACT_SHA","INDEPENDENT_REVIEW","ROBOT_VERIFY","INTEGRATE","POST_MERGE_ROBOT_REPLAY","COMPLETION_RECEIPT","ACTIVATE_NEXT_MACROCYCLE"],
-    "humanGateOrder": ["PERSIST_HUMAN_GATE","NOTIFY_HUMAN","DEFER_GATED_MACROCYCLE","ADVANCE_EXECUTION_CURSOR","CONTINUE_INDEPENDENT_WORK","REVISIT_GATE_ON_EACH_TRIGGER"]
+  "version":20,
+  "schema":"razzo.macrocycle-state.v1",
+  "sourceOfTruth":"live-github-reconciliation-before-persisted-state",
+  "updatedAt":"2026-08-10T16:44:00Z",
+  "baselineMode":"incremental-non-destructive",
+  "executionPolicy":{
+    "mode":"MACROCYCLE_CLOSURE_FIRST_NONBLOCKING_HUMAN_GATES",
+    "antiLoopRule":"Reject work unless it verifies a missing exit criterion, removes a named completion blocker, or safely advances beyond a deferred true human gate.",
+    "waveSuccessRule":"A wave is productive only if it verifies an exit criterion, clears a gate, integrates an exact-SHA candidate, emits a receipt, closes a macrocycle, or advances the execution cursor past a true human gate.",
+    "blockedProjectRule":"A true human gate blocks only its exact sensitive action and strictly dependent work; it is persisted to pendingHumanGates and never stops the project scheduler or other enabled projects.",
+    "fanOutRule":"Dispatch closure work independently for every enabled project and continue safe work even when one or more human gates are pending.",
+    "completionOrder":["BUILD_EXIT_CRITERIA","PRODUCT_CI_EXACT_SHA","INDEPENDENT_REVIEW","ROBOT_VERIFY","INTEGRATE","POST_MERGE_ROBOT_REPLAY","COMPLETION_RECEIPT","ACTIVATE_NEXT_MACROCYCLE"],
+    "humanGateOrder":["PERSIST_HUMAN_GATE","NOTIFY_HUMAN","DEFER_GATED_MACROCYCLE","ADVANCE_EXECUTION_CURSOR","CONTINUE_INDEPENDENT_WORK","REVISIT_GATE_ON_EACH_TRIGGER"]
   },
-  "projects": [
+  "projects":[
     {
-      "id": "project-giovanni",
-      "repository": "giovannifidel-collab/project-giovanni",
-      "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
-      "productiveMacrocycles": 20,
-      "pendingHumanGates": [],
-      "completed": [
+      "id":"project-giovanni","repository":"giovannifidel-collab/project-giovanni","baseline":{"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},"productiveMacrocycles":20,"pendingHumanGates":[],
+      "completed":[
         {"id":"MC-08","title":"Risultato, storico e progressione","status":"COMPLETED","integratedSha":"2286b866c2820d9cde737eb253582d69261b552d","receipt":"receipts/project-giovanni-mc08-completion.json"},
         {"id":"MC-09","title":"Feedback, dolore, recupero e adattamento","status":"COMPLETED","integratedSha":"d1f90976db0417ae51b4651c44ee28cbf88eaa6e","receipt":"receipts/project-giovanni-mc09-completion.json"},
         {"id":"MC-10","title":"Wearable e importazione dati fisici","status":"COMPLETED","integratedSha":"8e4fce3f4326929307528dd3737225ef2cd9223b","receipt":"receipts/project-giovanni-mc10-completion.json"},
@@ -28,63 +24,39 @@
         {"id":"MC-12","title":"Programmazione automatica multi-settimana","status":"COMPLETED","integratedSha":"ffe5f1d57fefc380d9e2d39e9e874e8f9ba014de","receipt":"receipts/project-giovanni-mc12-completion.json"},
         {"id":"MC-13","title":"Modalità rapide, casa, viaggio e attrezzatura","status":"COMPLETED","integratedSha":"9b4e278cda7947ab03d32646b0ad827550f8a015","receipt":"receipts/project-giovanni-mc13-completion.json"},
         {"id":"MC-14","title":"Sicurezza clinica e guardrail","status":"COMPLETED","integratedSha":"a4451685c42d35d89c4bb21508c9d6fb84ad86c1","receipt":"receipts/project-giovanni-mc14-completion.json"},
-        {"id":"MC-15","title":"Progress dashboard e decisioni longitudinali","status":"COMPLETED","integratedSha":"ff8cdba1ba844bd6e6374164ebe61c62c1f1e0b9","receipt":"receipts/project-giovanni-mc15-completion.json"}
+        {"id":"MC-15","title":"Progress dashboard e decisioni longitudinali","status":"COMPLETED","integratedSha":"ff8cdba1ba844bd6e6374164ebe61c62c1f1e0b9","receipt":"receipts/project-giovanni-mc15-completion.json"},
+        {"id":"MC-16","title":"Offline, resilienza e sincronizzazione","status":"COMPLETED","integratedSha":"f968cd84d497e890feca8aef2dc3c24d4284873b","receipt":"receipts/project-giovanni-mc16-completion.json"}
       ],
-      "active": {
-        "id":"MC-16",
-        "title":"Offline, resilienza e sincronizzazione",
-        "outcome":"Core journeys survive connectivity loss and reconcile safely.",
-        "status":"ACTIVE",
-        "activatedFrom":"MC-15",
-        "activationReceipt":"receipts/project-giovanni-mc15-completion.json",
-        "exitCriteria":[
-          {"id":"PG-MC16-EC01","description":"Core workout, readiness, feedback and progress writes can be queued durably while offline with authenticated user, source version and causal identity preserved.","status":"MISSING"},
-          {"id":"PG-MC16-EC02","description":"Reconnect synchronization is idempotent and deterministic, rejects stale or conflicting unsafe mutations, and cannot duplicate sessions, feedback or progression evidence.","status":"MISSING"},
-          {"id":"PG-MC16-EC03","description":"Offline and recovery states are explicit to the user; safety-critical decisions fail closed when required evidence is unavailable or unresolved.","status":"MISSING"},
-          {"id":"PG-MC16-EC04","description":"Product CI, independent review, realistic offline/reconnect Robot journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
-        ]
-      },
-      "next":"MC-17"
+      "active":{"id":"MC-17","title":"Privacy, autorizzazioni e protezione dati","outcome":"Personal and image data have enforced lifecycle and access controls.","status":"ACTIVE","activatedFrom":"MC-16","activationReceipt":"receipts/project-giovanni-mc16-completion.json","exitCriteria":[
+        {"id":"PG-MC17-EC01","description":"Authenticated authorization boundaries are enforced for personal, training, wearable and image records; cross-user or stale-session access fails closed across read and mutation paths.","status":"MISSING"},
+        {"id":"PG-MC17-EC02","description":"Consent, retention, withdrawal and deletion lifecycle state is durable, attributable and deterministic, including dependent or derived records without silent orphaning.","status":"MISSING"},
+        {"id":"PG-MC17-EC03","description":"Sensitive image and physical evidence is minimized and protected across upload, read, export and deletion, with no browser-local, query or direct-object bypass of authorization.","status":"MISSING"},
+        {"id":"PG-MC17-EC04","description":"Product CI, independent review, realistic privacy/authorization Robot journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+      ]},"next":"MC-18"
     },
     {
-      "id": "pfarma-cloud",
-      "repository": "giovannifidel-collab/pfarma-cloud",
-      "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
-      "productiveMacrocycles": 20,
-      "pendingHumanGates": [],
-      "completed": [
+      "id":"pfarma-cloud","repository":"giovannifidel-collab/pfarma-cloud","baseline":{"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},"productiveMacrocycles":20,"pendingHumanGates":[],
+      "completed":[
         {"id":"MC-04","title":"Database operativo, persistenza e audit foundation","status":"COMPLETED","integratedSha":"60777d2723cdd5acbe8f384bfcfbda64fcd7bdb7","receipt":"receipts/pfarma-cloud-mc04-completion.json"},
         {"id":"MC-05","title":"Catalogo prodotti, MINSAN, EAN e ricerca universale","status":"COMPLETED","integratedSha":"2a24f7798157b5a48a51201018e0927126af1907","receipt":"receipts/pfarma-cloud-mc05-completion.json"},
         {"id":"MC-06","title":"Magazzino, movimenti e disponibilità","status":"COMPLETED","integratedSha":"131db79ac84f93269c500e2656d9921a77c4ef76","receipt":"receipts/pfarma-cloud-mc06-completion.json"},
         {"id":"MC-07","title":"Lotti, scadenze, richiami e tracciabilità","status":"COMPLETED","integratedSha":"193727ca6b5854f64a4f55fc0c77f198071769eb","receipt":"receipts/pfarma-cloud-mc07-completion.json"},
         {"id":"MC-08","title":"Fornitori, ordini e riordino","status":"COMPLETED","integratedSha":"4589d94b0c6b189777c080e0c23c8d074de1e2ce","receipt":"receipts/pfarma-cloud-mc08-completion.json"},
         {"id":"MC-09","title":"Ricezione merce e riconciliazione","status":"COMPLETED","integratedSha":"e978c1370c28711c3dfea5ee148f4ae6ec293974","receipt":"receipts/pfarma-cloud-mc09-completion.json"},
-        {"id":"MC-10","title":"Vendita, cassa, pagamenti e resi","status":"COMPLETED","integratedSha":"659492487489c378da32ff7af9de5cbd5a06fa4e","receipt":"receipts/pfarma-cloud-mc10-completion.json"}
+        {"id":"MC-10","title":"Vendita, cassa, pagamenti e resi","status":"COMPLETED","integratedSha":"659492487489c378da32ff7af9de5cbd5a06fa4e","receipt":"receipts/pfarma-cloud-mc10-completion.json"},
+        {"id":"MC-11","title":"Clienti, prenotazioni e CRM operativo","status":"COMPLETED","integratedSha":"737396feac83537001c6b7d8dd5d599563f6e028","receipt":"receipts/pfarma-cloud-mc11-completion.json"}
       ],
-      "active": {
-        "id":"MC-11",
-        "title":"Clienti, prenotazioni e CRM operativo",
-        "outcome":"Reservations and customer follow-up operate on real persistent data.",
-        "status":"ACTIVE",
-        "activatedFrom":"MC-10",
-        "activationReceipt":"receipts/pfarma-cloud-mc10-completion.json",
-        "exitCriteria":[
-          {"id":"PF-MC11-EC01","description":"Canonical customer records persist validated identity, contact, consent and audit metadata with deterministic duplicate handling and authorized updates.","status":"MISSING"},
-          {"id":"PF-MC11-EC02","description":"Reservations bind customer, product/service, quantity, status, timestamps and operator to durable records and update availability exactly once through retries and corrections.","status":"MISSING"},
-          {"id":"PF-MC11-EC03","description":"CRM follow-up tasks and communication outcomes are attributable, searchable, consent-aware and linked to the originating customer/reservation without hidden mutation.","status":"MISSING"},
-          {"id":"PF-MC11-EC04","description":"The operator journey supports customer search/create, reservation lifecycle and follow-up with explicit pending/completed/cancelled/exception states.","status":"MISSING"},
-          {"id":"PF-MC11-EC05","description":"Product CI, independent review, PFarma customer/reservation/CRM Robot plus required cumulative simulation, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
-        ]
-      },
-      "next":"MC-12"
+      "active":{"id":"MC-12","title":"Documenti, fatturazione e numerazioni","outcome":"Operational documents are generated, stored and validated consistently.","status":"ACTIVE","activatedFrom":"MC-11","activationReceipt":"receipts/pfarma-cloud-mc11-completion.json","exitCriteria":[
+        {"id":"PF-MC12-EC01","description":"Canonical durable document and invoice records bind customer, sale or service origin, fiscal totals, operator and document type to validated persistent identities before issuance.","status":"MISSING"},
+        {"id":"PF-MC12-EC02","description":"Document series and numbering are deterministic, collision-safe and exactly-once under retry and concurrency, with gaps or conflicts explicitly attributable rather than silently reused.","status":"MISSING"},
+        {"id":"PF-MC12-EC03","description":"Issued documents remain immutable or explicitly versioned; corrections, credit notes and replacements link to the original and fail closed on invalid totals, origin or lifecycle state.","status":"MISSING"},
+        {"id":"PF-MC12-EC04","description":"The operator journey can create, reopen, search and export documents with explicit draft/issued/corrected/exception states and no hidden fiscal mutation.","status":"MISSING"},
+        {"id":"PF-MC12-EC05","description":"Product CI, independent review, PFarma document/invoice Robot plus required cumulative simulation, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+      ]},"next":"MC-13"
     },
     {
-      "id": "family-cloud",
-      "repository": "giovannifidel-collab/family-cloud",
-      "baseline": {"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},
-      "productiveMacrocycles": 20,
-      "pendingHumanGates": [],
-      "completed": [
+      "id":"family-cloud","repository":"giovannifidel-collab/family-cloud","baseline":{"id":"MC-00","status":"INCREMENTAL_RECONCILIATION_REQUIRED","mustNotBlockSafeProductWork":true},"productiveMacrocycles":20,"pendingHumanGates":[],
+      "completed":[
         {"id":"MC-04","title":"Upload reale e persistenza durevole","status":"COMPLETED","integratedSha":"f4f97661fb25485f6c33895b75a5cd5e9b066645","receipt":"receipts/family-cloud-mc04-completion.json"},
         {"id":"MC-05","title":"Storage oggetti e gestione capacità","status":"COMPLETED","integratedSha":"da331b1160209892d5275d05e95546d73e417b05","receipt":"receipts/family-cloud-mc05-completion.json"},
         {"id":"MC-06","title":"Libreria, timeline e navigazione completa","status":"COMPLETED","integratedSha":"196da46816ff3e11381b96337b77648743ae154d","receipt":"receipts/family-cloud-mc06-completion.json"},
@@ -92,24 +64,16 @@
         {"id":"MC-08","title":"Ricerca, filtri, duplicati e qualità archivio","status":"COMPLETED","integratedSha":"ebd6e921e89f3287dfeb8a478e8139abdfd43524","receipt":"receipts/family-cloud-mc08-completion.json"},
         {"id":"MC-09","title":"Condivisione familiare e permessi granulari","status":"COMPLETED","integratedSha":"b9b6924210b33642436cd8278070bad73af60e01","receipt":"receipts/family-cloud-mc09-completion.json"},
         {"id":"MC-10","title":"Video, miniature e pipeline media","status":"COMPLETED","integratedSha":"9eee88bdd4a5f3e73bf4739a636f7ae76c85e104","receipt":"receipts/family-cloud-mc10-completion.json"},
-        {"id":"MC-11","title":"Importazione e migrazione archivi esistenti","status":"COMPLETED","integratedSha":"7f92a98c4cc980c4fec22a9647fe2190ac45bb48","receipt":"receipts/family-cloud-mc11-completion.json"}
+        {"id":"MC-11","title":"Importazione e migrazione archivi esistenti","status":"COMPLETED","integratedSha":"7f92a98c4cc980c4fec22a9647fe2190ac45bb48","receipt":"receipts/family-cloud-mc11-completion.json"},
+        {"id":"MC-12","title":"Family Node e sincronizzazione dispositivi","status":"COMPLETED","integratedSha":"c463e9439f9cad5785437f1f51b3373d050d1dd2","receipt":"receipts/family-cloud-mc12-completion.json"}
       ],
-      "active": {
-        "id":"MC-12",
-        "title":"Family Node e sincronizzazione dispositivi",
-        "outcome":"Authorized nodes synchronize durable state without duplication.",
-        "status":"ACTIVE",
-        "activatedFrom":"MC-11",
-        "activationReceipt":"receipts/family-cloud-mc11-completion.json",
-        "exitCriteria":[
-          {"id":"FC-MC12-EC01","description":"Authorized family nodes have durable identities, scoped credentials and synchronization cursors bound to the family and device lifecycle.","status":"MISSING"},
-          {"id":"FC-MC12-EC02","description":"Media, metadata and organization changes synchronize incrementally and idempotently with checksums/version identity, without duplicating or orphaning canonical objects.","status":"MISSING"},
-          {"id":"FC-MC12-EC03","description":"Interrupted, retried and concurrent node synchronization resumes from durable checkpoints and fails closed on unauthorized, corrupt or causally ambiguous changes.","status":"MISSING"},
-          {"id":"FC-MC12-EC04","description":"Node availability, lag, failures and reconciliation state are explicit and do not leak inaccessible family metadata across authorization boundaries.","status":"MISSING"},
-          {"id":"FC-MC12-EC05","description":"Product CI, independent review, realistic multi-node synchronization Robot journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
-        ]
-      },
-      "next":"MC-13"
+      "active":{"id":"MC-13","title":"Conflitti, idempotenza e consistenza distribuita","outcome":"Concurrent changes reconcile deterministically and safely.","status":"ACTIVE","activatedFrom":"MC-12","activationReceipt":"receipts/family-cloud-mc12-completion.json","exitCriteria":[
+        {"id":"FC-MC13-EC01","description":"Distributed media, metadata and organization mutations retain durable causal/version identity and conflicting concurrent changes produce explicit family-scoped conflict records.","status":"MISSING"},
+        {"id":"FC-MC13-EC02","description":"Retry and conflict resolution are deterministic and idempotent, preserve canonical provenance and never silently overwrite, duplicate or orphan valid media or metadata.","status":"MISSING"},
+        {"id":"FC-MC13-EC03","description":"Concurrent edits, interrupted reconciliation and partition-like replay resume from durable checkpoints and fail closed on causal ambiguity, corruption or unauthorized resolution.","status":"MISSING"},
+        {"id":"FC-MC13-EC04","description":"Conflict, lag and reconciliation health are explicitly visible to authorized family members without leaking inaccessible object or member metadata.","status":"MISSING"},
+        {"id":"FC-MC13-EC05","description":"Product CI, independent review, realistic multi-node conflict/reconciliation Robot journey, exact-SHA integration and post-merge replay all pass and a completion receipt is persisted.","status":"MISSING"}
+      ]},"next":"MC-14"
     }
   ],
   "transitionRule":"Certified completion activates the next macrocycle immediately. A true human gate keeps its macrocycle OPEN as DEFERRED_HUMAN_GATE in pendingHumanGates but also advances the execution cursor so autonomous independent work never stops.",
