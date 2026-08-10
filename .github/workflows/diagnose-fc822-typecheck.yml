@@ -34,17 +34,22 @@ jobs:
         with: {node-version: '22'}
       - working-directory: product
         run: npm install --no-audit --no-fund
-      - name: Serialize TypeScript diagnostics
+      - name: Capture tsc CLI and compiler API diagnostics
         working-directory: product
         shell: bash
         run: |
-          node --input-type=module <<'NODE'
+          set +e
+          ./node_modules/.bin/tsc --noEmit --pretty false > ../family-822-tsc-cli.log 2>&1
+          cli_code=$?
+          set -e
+          CLI_CODE="$cli_code" node --input-type=module <<'NODE'
           import ts from 'typescript';
-          import {writeFileSync} from 'node:fs';
+          import {writeFileSync, readFileSync} from 'node:fs';
           const configFile = ts.readConfigFile('tsconfig.json', ts.sys.readFile);
           const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, '.');
           const program = ts.createProgram({rootNames: parsed.fileNames, options: parsed.options});
-          const diagnostics = ts.getPreEmitDiagnostics(program).map(d => ({
+          const raw = [...(parsed.errors || []), ...ts.getPreEmitDiagnostics(program)];
+          const diagnostics = raw.map(d => ({
             code: d.code,
             category: ts.DiagnosticCategory[d.category],
             file: d.file?.fileName ?? null,
@@ -52,13 +57,16 @@ jobs:
             column: d.file && d.start != null ? d.file.getLineAndCharacterOfPosition(d.start).character + 1 : null,
             message: ts.flattenDiagnosticMessageText(d.messageText, '\n')
           }));
-          writeFileSync('../family-822-diagnostics.json', JSON.stringify(diagnostics, null, 2));
-          console.log(`diagnostics=${diagnostics.length}`);
+          const payload = {cliExitCode: Number(process.env.CLI_CODE), cliLog: readFileSync('../family-822-tsc-cli.log','utf8'), configErrors: parsed.errors?.length || 0, diagnostics};
+          writeFileSync('../family-822-diagnostics.json', JSON.stringify(payload, null, 2));
+          console.log(`cli=${payload.cliExitCode} diagnostics=${diagnostics.length}`);
           NODE
       - uses: actions/upload-artifact@v4
         with:
           name: family-822-diagnostics
-          path: family-822-diagnostics.json
+          path: |
+            family-822-diagnostics.json
+            family-822-tsc-cli.log
           retention-days: 1
       - if: always()
         run: rm -rf product
