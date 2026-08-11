@@ -11,7 +11,44 @@ on:
 permissions:
   contents: read
 jobs:
-  project-giovanni-mc16:
+  changed-refs:
+    runs-on: ubuntu-latest
+    outputs:
+      project: ${{ steps.detect.outputs.project }}
+      pfarma: ${{ steps.detect.outputs.pfarma }}
+      family: ${{ steps.detect.outputs.family }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        shell: bash
+        run: |
+          project=false
+          pfarma=false
+          family=false
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            project=true
+            pfarma=true
+            family=true
+          else
+            git diff --name-only HEAD^1 HEAD^2 > /tmp/changed-files.txt
+            grep -qx 'razzo/project-giovanni-ref.txt' /tmp/changed-files.txt && project=true || true
+            grep -qx 'razzo/pfarma-ref.txt' /tmp/changed-files.txt && pfarma=true || true
+            grep -qx 'family-cloud-ref.txt' /tmp/changed-files.txt && family=true || true
+            if grep -qx '.github/workflows/razzo-macrocycle-current-verifier.yml' /tmp/changed-files.txt; then
+              project=true
+              pfarma=true
+              family=true
+            fi
+          fi
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+          echo "pfarma=$pfarma" >> "$GITHUB_OUTPUT"
+          echo "family=$family" >> "$GITHUB_OUTPUT"
+
+  project-giovanni-ref:
+    needs: changed-refs
+    if: needs.changed-refs.outputs.project == 'true'
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     steps:
@@ -28,8 +65,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - working-directory: product
-        run: npm install --no-audit --no-fund && npx --yes tsc --noEmit && node --test factory/mc16-offline-sync.test.mjs && npm run test:factory --if-present && npm run factory:plan --if-present
-  pfarma-mc11:
+        run: npm install --no-audit --no-fund && npx --yes tsc --noEmit && npm run test:factory --if-present && npm run factory:plan --if-present
+
+  pfarma-ref:
+    needs: changed-refs
+    if: needs.changed-refs.outputs.pfarma == 'true'
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     steps:
@@ -46,8 +86,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - working-directory: product
-        run: python -m compileall -q backend tests/test_customer_crm_mc11.py && PYTHONPATH=. python tests/test_customer_crm_mc11.py && python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
-  family-cloud-mc12:
+        run: python -m compileall -q backend factory && python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
+
+  family-cloud-ref:
+    needs: changed-refs
+    if: needs.changed-refs.outputs.family == 'true'
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     steps:

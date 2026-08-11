@@ -18,6 +18,8 @@ ALLOWED_TOP_LEVEL = {
     PurePosixPath("family-cloud-ref.txt"),
 }
 
+# Exact evidence paths stay explicit. Do not widen this to all of razzo/: the
+# public-boundary job must continue to reject arbitrary files by default.
 ALLOWED_EXACT = {
     PurePosixPath("bundle/README.md"),
     PurePosixPath("bundle/pfarma-ci.bundle.json"),
@@ -34,6 +36,8 @@ ALLOWED_EXACT = {
     PurePosixPath("razzo/macrocycle-state.json"),
     PurePosixPath("razzo/robot-qa-policy.json"),
     PurePosixPath("razzo/robot-missions/pfarma-mc04.json"),
+    PurePosixPath("razzo/terminal-certified-heads.json"),
+    PurePosixPath("razzo/verifications/real-mc11-mc06-mc07-20260810.txt"),
     PurePosixPath("razzo/state/validate_macrocycles.py"),
     PurePosixPath("razzo/state/test_validate_macrocycles.py"),
     PurePosixPath("razzo/state/validate_robot_qa.py"),
