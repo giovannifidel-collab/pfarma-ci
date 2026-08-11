@@ -1,0 +1,197 @@
+name: FC-P01 Real Render Visual QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/fc-p01-real-render-visual-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-render-before-after:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    env:
+      BASELINE_SHA: e319b94e90a3d18d5df32378e7927b2b6d91dfd5
+      CANDIDATE_SHA: 07249dd732e807d1fbda9df04485d49d2dc04fd6
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require private source token
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+
+      - name: Checkout baseline Family Cloud
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ env.BASELINE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: before
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout candidate Family Cloud
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: ${{ env.CANDIDATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: after
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Attest exact SHAs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C before rev-parse HEAD)" = "$BASELINE_SHA"
+          test "$(git -C after rev-parse HEAD)" = "$CANDIDATE_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install browser driver
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Create deterministic photo fixture
+        shell: python
+        run: |
+          import struct, zlib
+          w, h = 640, 400
+          rows = []
+          for y in range(h):
+              row = bytearray([0])
+              for x in range(w):
+                  row.extend((40 + (x * 120 // w), 90 + (y * 90 // h), 150 + ((x+y) * 70 // (w+h))))
+              rows.append(bytes(row))
+          raw = b''.join(rows)
+          def chunk(kind, data):
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b'')
+          open('family-memory.png', 'wb').write(png)
+
+      - name: Start exact Family Cloud servers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fc-before" "$RUNNER_TEMP/fc-after" visual-qa
+          PORT=4173 FAMILY_CLOUD_DATA_ROOT="$RUNNER_TEMP/fc-before" node before/scripts/dev-server.mjs >visual-qa/before-server.log 2>&1 &
+          echo $! > visual-qa/before-server.pid
+          PORT=4174 FAMILY_CLOUD_DATA_ROOT="$RUNNER_TEMP/fc-after" node after/scripts/dev-server.mjs >visual-qa/after-server.log 2>&1 &
+          echo $! > visual-qa/after-server.pid
+          for port in 4173 4174; do
+            for i in $(seq 1 30); do curl -fsS "http://127.0.0.1:$port/" >/dev/null && break; sleep 1; done
+            curl -fsS "http://127.0.0.1:$port/" >/dev/null
+          done
+
+      - name: Render actual library and photo detail BEFORE and AFTER
+        shell: bash
+        run: |
+          cat > visual-qa/render.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import { writeFile } from 'node:fs/promises';
+          import { resolve } from 'node:path';
+
+          const browser = await chromium.launch({ headless: true });
+          const fixture = resolve('family-memory.png');
+          const output = resolve('visual-qa');
+          const password = 'FamilyCloud-QA-2026!';
+          const evidence = [];
+
+          async function establish(page, base, email, register) {
+            await page.goto(`${base}/auth.html`, { waitUntil: 'networkidle' });
+            if (register) {
+              const registered = await page.evaluate(async ({ email, password }) => {
+                const r = await fetch('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
+                return { ok: r.ok, status: r.status };
+              }, { email, password });
+              if (!registered.ok) throw new Error(`registration failed ${registered.status}`);
+            }
+            const logged = await page.evaluate(async ({ email, password }) => {
+              const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ email, password }) });
+              return { ok: r.ok, status: r.status };
+            }, { email, password });
+            if (!logged.ok) throw new Error(`login failed ${logged.status}`);
+            await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+            await page.waitForFunction(() => !document.querySelector('#app')?.classList.contains('locked'));
+          }
+
+          async function desktop(label, base, expectPolish) {
+            const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+            const page = await context.newPage();
+            const email = `${label}@visual.qa`;
+            await establish(page, base, email, true);
+            await page.locator('#media-input').setInputFiles(fixture);
+            await page.waitForSelector('.media-grid .card');
+            await page.waitForTimeout(500);
+            await page.screenshot({ path: `${output}/${label}-desktop-library.png`, fullPage: true });
+            await page.locator('.media-grid .card .thumb').first().click();
+            await page.waitForSelector('#detail-dialog[open]');
+            await page.waitForTimeout(600);
+            const polished = await page.locator('.consumer-detail-layout').count() > 0;
+            if (polished !== expectPolish) throw new Error(`${label}: polish marker expected=${expectPolish} actual=${polished}`);
+            const details = polished ? await page.locator('.consumer-technical-details').count() : 0;
+            const layout = polished ? await page.locator('.consumer-detail-layout').evaluate((node) => getComputedStyle(node).display) : 'legacy';
+            evidence.push({ label, viewport: 'desktop', polished, technicalDetails: details, layout });
+            await page.screenshot({ path: `${output}/${label}-desktop-detail.png`, fullPage: false });
+            await context.close();
+          }
+
+          async function mobile(label, base, expectPolish) {
+            const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+            const page = await context.newPage();
+            await establish(page, base, `${label}@visual.qa`, false);
+            await page.waitForSelector('.media-grid .card');
+            await page.waitForTimeout(400);
+            await page.screenshot({ path: `${output}/${label}-mobile-library.png`, fullPage: true });
+            await page.locator('.media-grid .card .thumb').first().click();
+            await page.waitForSelector('#detail-dialog[open]');
+            await page.waitForTimeout(500);
+            const polished = await page.locator('.consumer-detail-layout').count() > 0;
+            if (polished !== expectPolish) throw new Error(`${label} mobile: polish marker expected=${expectPolish} actual=${polished}`);
+            const columns = polished ? await page.locator('.consumer-detail-layout').evaluate((node) => getComputedStyle(node).gridTemplateColumns) : 'legacy';
+            evidence.push({ label, viewport: 'mobile', polished, columns });
+            await page.screenshot({ path: `${output}/${label}-mobile-detail.png`, fullPage: false });
+            await context.close();
+          }
+
+          await desktop('before', 'http://127.0.0.1:4173', false);
+          await desktop('after', 'http://127.0.0.1:4174', true);
+          await mobile('before', 'http://127.0.0.1:4173', false);
+          await mobile('after', 'http://127.0.0.1:4174', true);
+          await browser.close();
+          await writeFile(`${output}/manifest.json`, JSON.stringify({ baseline: process.env.BASELINE_SHA, candidate: process.env.CANDIDATE_SHA, evidence }, null, 2));
+          EOF
+          node visual-qa/render.mjs
+
+      - name: Upload real-render evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fc-p01-real-render-before-after
+          path: |
+            visual-qa/*.png
+            visual-qa/manifest.json
+            visual-qa/*-server.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stop servers
+        if: always()
+        shell: bash
+        run: |
+          test ! -f visual-qa/before-server.pid || kill "$(cat visual-qa/before-server.pid)" 2>/dev/null || true
+          test ! -f visual-qa/after-server.pid || kill "$(cat visual-qa/after-server.pid)" 2>/dev/null || true
