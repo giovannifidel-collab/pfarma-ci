@@ -118,7 +118,9 @@ def validate_terminal_evidence(state: dict[str, Any]) -> None:
 
 def validate_perfection_receipt(project_id: str, cycle_id: str, lane: str, receipt: dict[str, Any]) -> None:
     prefix, expected_lane = PERFECTION_PROJECTS[project_id]
-    require(re.fullmatch(rf"{prefix}-P\d{{2}}", cycle_id) is not None, f"{project_id}: invalid Perfection cycle ID {cycle_id}")
+    cycle_match = re.fullmatch(rf"{prefix}-(P\d{{2}})", cycle_id)
+    require(cycle_match is not None, f"{project_id}: invalid Perfection cycle ID {cycle_id}")
+    cycle_suffix = cycle_match.group(1)
     require(receipt.get("schema") == "razzo.perfection-cycle-receipt.v1", f"{project_id}/{cycle_id}: receipt schema mismatch")
     require(receipt.get("roadmap") == "PERFECTION_V1", f"{project_id}/{cycle_id}: wrong roadmap receipt")
     require(receipt.get("project") == project_id and receipt.get("cycle") == cycle_id, f"{project_id}/{cycle_id}: receipt identity mismatch")
@@ -131,7 +133,7 @@ def validate_perfection_receipt(project_id: str, cycle_id: str, lane: str, recei
     require(receipt.get("noKnownUnresolvedBlocker") is True, f"{project_id}/{cycle_id}: unresolved blocker prevents closure")
     require(receipt.get("immutableEvidence") is True, f"{project_id}/{cycle_id}: evidence must be immutable")
     require(receipt.get("independentReviewerApproval") is False, f"{project_id}/{cycle_id}: independent approval must not be fabricated")
-    require(receipt.get("closureCertification") == "PERFECTION_P01_COMPLETED", f"{project_id}/{cycle_id}: closure certification mismatch")
+    require(receipt.get("closureCertification") == f"PERFECTION_{cycle_suffix}_COMPLETED", f"{project_id}/{cycle_id}: closure certification mismatch")
     evidence = receipt.get("evidence")
     require(isinstance(evidence, list) and evidence, f"{project_id}/{cycle_id}: evidence is required")
     successful_kinds: set[str] = set()
@@ -145,7 +147,9 @@ def validate_perfection_receipt(project_id: str, cycle_id: str, lane: str, recei
         if "integrationSha" in item:
             require(item["integrationSha"] == receipt["integrationSha"], f"{project_id}/{cycle_id}: evidence integration SHA mismatch")
     require(any("product-ci" in kind for kind in successful_kinds), f"{project_id}/{cycle_id}: exact-SHA product CI evidence is required")
-    if receipt.get("productSpecificQaRequired") is True:
+    qa_required = receipt.get("productSpecificQaRequired")
+    require(isinstance(qa_required, bool), f"{project_id}/{cycle_id}: productSpecificQaRequired must be boolean")
+    if qa_required:
         qa_kind = receipt.get("productSpecificQaKind")
         require(isinstance(qa_kind, str) and qa_kind in successful_kinds, f"{project_id}/{cycle_id}: required product QA evidence is missing")
 
@@ -155,7 +159,11 @@ def validate_perfection() -> None:
     require(state.get("roadmap") == "PERFECTION_V1", "Perfection roadmap ID mismatch")
     require(state.get("baseRoadmap") == "COMPLETED_60_OF_60", "Perfection must layer on the immutable 60/60 roadmap")
     require(state.get("historicalTerminalRoadmapUnchanged") is True, "Perfection cannot rewrite historical 60/60 completion")
-    require(state.get("status") == "P01_COMPLETE", "Perfection v1 P01 closure status is invalid")
+    status = state.get("status")
+    status_match = re.fullmatch(r"P(\d{2})_COMPLETE", status) if isinstance(status, str) else None
+    require(status_match is not None, "Perfection rolling closure status is invalid")
+    completed_through = int(status_match.group(1))
+    require(completed_through >= 1, "Perfection must close at least P01")
     governance = state.get("governance")
     require(isinstance(governance, dict), "Perfection governance is required")
     require(set(governance.get("closureRequires", [])) == PERFECTION_REQUIRED_CLOSURE, "Perfection closure gates are incomplete")
@@ -167,19 +175,21 @@ def validate_perfection() -> None:
         require(isinstance(project, dict), f"{project_id}: Perfection project entry is invalid")
         prefix, lane = PERFECTION_PROJECTS[project_id]
         require(project.get("lane") == lane, f"{project_id}: Perfection lane mismatch")
-        require(project.get("active") is None and project.get("next") is None, f"{project_id}: P01 closure must not invent an active/next cycle")
+        require(project.get("active") is None and project.get("next") is None, f"{project_id}: closed Perfection ledger must not invent an active/next cycle")
         completed = project.get("completed")
-        require(isinstance(completed, list) and len(completed) == 1, f"{project_id}: P01 ledger must contain exactly one completed cycle")
-        item = completed[0]
-        require(isinstance(item, dict), f"{project_id}: Perfection completion entry is invalid")
-        cycle_id = item.get("id")
-        require(cycle_id == f"{prefix}-P01", f"{project_id}: first Perfection closure must be {prefix}-P01")
-        require(item.get("status") == "COMPLETED", f"{project_id}/{cycle_id}: completion status mismatch")
-        receipt = load_json(receipt_path(item.get("receipt")))
-        validate_perfection_receipt(project_id, cycle_id, lane, receipt)
-        completed_count += 1
-    require(state.get("completedMacrocycles") == completed_count == 3, "Perfection P01 portfolio must close exactly three macrocycles")
-    require(state.get("pendingHumanGates") == [], "Perfection P01 closure cannot retain pending human gates")
+        require(isinstance(completed, list) and len(completed) == completed_through, f"{project_id}: Perfection ledger must be gapless through P{completed_through:02d}")
+        for index, item in enumerate(completed, start=1):
+            require(isinstance(item, dict), f"{project_id}: Perfection completion entry is invalid")
+            expected_cycle = f"{prefix}-P{index:02d}"
+            cycle_id = item.get("id")
+            require(cycle_id == expected_cycle, f"{project_id}: expected sequential Perfection closure {expected_cycle}")
+            require(item.get("status") == "COMPLETED", f"{project_id}/{cycle_id}: completion status mismatch")
+            receipt = load_json(receipt_path(item.get("receipt")))
+            validate_perfection_receipt(project_id, cycle_id, lane, receipt)
+            completed_count += 1
+    expected_total = completed_through * len(EXPECTED_PROJECTS)
+    require(state.get("completedMacrocycles") == completed_count == expected_total, f"Perfection P{completed_through:02d} portfolio must close exactly {expected_total} macrocycles")
+    require(state.get("pendingHumanGates") == [], "Perfection closed portfolio cannot retain pending human gates")
 
 def validate() -> None:
     policy = load_json(POLICY)
@@ -241,4 +251,4 @@ if __name__ == "__main__":
     except ValueError as exc:
         print(f"RAZZO macrocycle validation failed: {exc}", file=sys.stderr)
         raise SystemExit(1)
-    print("RAZZO macrocycle validation passed: historical 60/60 + Perfection v1 P01")
+    print("RAZZO macrocycle validation passed: historical 60/60 + rolling Perfection v1")

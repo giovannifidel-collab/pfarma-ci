@@ -2,7 +2,7 @@
   "schema": "razzo.perfection-roadmap.v1",
   "roadmap": "PERFECTION_V1",
   "baseRoadmap": "COMPLETED_60_OF_60",
-  "status": "P01_COMPLETE",
+  "status": "P02_COMPLETE",
   "governance": {
     "closureRequires": [
       "exactShaProductCi",
@@ -22,6 +22,11 @@
           "id": "PG-P01",
           "status": "COMPLETED",
           "receipt": "receipts/perfection-v1/project-giovanni-p01.json"
+        },
+        {
+          "id": "PG-P02",
+          "status": "COMPLETED",
+          "receipt": "receipts/perfection-v1/project-giovanni-p02.json"
         }
       ],
       "active": null,
@@ -34,6 +39,11 @@
           "id": "PF-P01",
           "status": "COMPLETED",
           "receipt": "receipts/perfection-v1/pfarma-cloud-p01.json"
+        },
+        {
+          "id": "PF-P02",
+          "status": "COMPLETED",
+          "receipt": "receipts/perfection-v1/pfarma-cloud-p02.json"
         }
       ],
       "active": null,
@@ -46,13 +56,18 @@
           "id": "FC-P01",
           "status": "COMPLETED",
           "receipt": "receipts/perfection-v1/family-cloud-p01.json"
+        },
+        {
+          "id": "FC-P02",
+          "status": "COMPLETED",
+          "receipt": "receipts/perfection-v1/family-cloud-p02.json"
         }
       ],
       "active": null,
       "next": null
     }
   },
-  "completedMacrocycles": 3,
+  "completedMacrocycles": 6,
   "pendingHumanGates": [],
   "historicalTerminalRoadmapUnchanged": true
 }

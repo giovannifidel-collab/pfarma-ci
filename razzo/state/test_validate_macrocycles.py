@@ -44,35 +44,45 @@ class MacrocycleValidatorTests(unittest.TestCase):
         for project in state["projects"]:
             self.assertTrue(project["terminalReceipt"].startswith("receipts/"))
 
-    def test_perfection_v1_closes_exactly_three_p01_cycles(self) -> None:
+    def test_perfection_v1_closes_six_cycles_through_p02(self) -> None:
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
         self.assertEqual(state["roadmap"], "PERFECTION_V1")
         self.assertEqual(state["baseRoadmap"], "COMPLETED_60_OF_60")
+        self.assertEqual(state["status"], "P02_COMPLETE")
         self.assertTrue(state["historicalTerminalRoadmapUnchanged"])
-        self.assertEqual(state["completedMacrocycles"], 3)
+        self.assertEqual(state["completedMacrocycles"], 6)
         expected = {
-            "project-giovanni": "PG-P01",
-            "pfarma-cloud": "PF-P01",
-            "family-cloud": "FC-P01",
+            "project-giovanni": ["PG-P01", "PG-P02"],
+            "pfarma-cloud": ["PF-P01", "PF-P02"],
+            "family-cloud": ["FC-P01", "FC-P02"],
         }
-        for project_id, cycle_id in expected.items():
+        for project_id, cycle_ids in expected.items():
             project = state["projects"][project_id]
-            self.assertEqual(project["completed"][0]["id"], cycle_id)
-            self.assertEqual(project["completed"][0]["status"], "COMPLETED")
+            self.assertEqual([item["id"] for item in project["completed"]], cycle_ids)
+            self.assertTrue(all(item["status"] == "COMPLETED" for item in project["completed"]))
             self.assertIsNone(project["active"])
             self.assertIsNone(project["next"])
-            self.assertTrue((MODULE.ROOT / project["completed"][0]["receipt"]).is_file())
+            for item in project["completed"]:
+                self.assertTrue((MODULE.ROOT / item["receipt"]).is_file())
 
     def test_perfection_receipts_do_not_claim_independent_approval(self) -> None:
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
-        for project_id, project in state["projects"].items():
-            receipt = MODULE.load_json(MODULE.receipt_path(project["completed"][0]["receipt"]))
-            self.assertFalse(receipt["independentReviewerApproval"])
+        for project in state["projects"].values():
+            for item in project["completed"]:
+                receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
+                self.assertFalse(receipt["independentReviewerApproval"])
+
+    def test_perfection_p02_receipts_use_cycle_specific_certification(self) -> None:
+        state = MODULE.load_json(MODULE.PERFECTION_STATE)
+        for project in state["projects"].values():
+            item = project["completed"][1]
+            receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
+            self.assertEqual(receipt["closureCertification"], "PERFECTION_P02_COMPLETED")
 
     def test_perfection_receipt_rejects_fabricated_independent_approval(self) -> None:
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
         project = state["projects"]["project-giovanni"]
-        item = project["completed"][0]
+        item = project["completed"][1]
         receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
         tampered = copy.deepcopy(receipt)
         tampered["independentReviewerApproval"] = True
@@ -82,12 +92,22 @@ class MacrocycleValidatorTests(unittest.TestCase):
     def test_perfection_receipt_rejects_red_evidence(self) -> None:
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
         project = state["projects"]["family-cloud"]
-        item = project["completed"][0]
+        item = project["completed"][1]
         receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
         tampered = copy.deepcopy(receipt)
         tampered["evidence"][0]["conclusion"] = "failure"
         with self.assertRaisesRegex(ValueError, "all evidence must be successful"):
             MODULE.validate_perfection_receipt("family-cloud", item["id"], project["lane"], tampered)
+
+    def test_perfection_receipt_rejects_wrong_cycle_certification(self) -> None:
+        state = MODULE.load_json(MODULE.PERFECTION_STATE)
+        project = state["projects"]["pfarma-cloud"]
+        item = project["completed"][1]
+        receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
+        tampered = copy.deepcopy(receipt)
+        tampered["closureCertification"] = "PERFECTION_P01_COMPLETED"
+        with self.assertRaisesRegex(ValueError, "closure certification mismatch"):
+            MODULE.validate_perfection_receipt("pfarma-cloud", item["id"], project["lane"], tampered)
 
     def test_family_p01_requires_real_render_qa(self) -> None:
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
