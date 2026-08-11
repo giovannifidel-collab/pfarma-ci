@@ -4,7 +4,7 @@ import json
 import os
 import struct
 import subprocess
-import sys
+import tempfile
 import time
 import urllib.request
 import zlib
@@ -53,17 +53,42 @@ def png(width, height, rgb, accent):
             row.extend(color)
         rows.append(bytes(row))
     raw = b''.join(rows)
+
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+
     return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b'')
+
+
+def valid_video_fixture():
+    ffmpeg = subprocess.run(['bash', '-lc', 'command -v ffmpeg || true'], capture_output=True, text=True, check=True).stdout.strip()
+    if not ffmpeg:
+        raise RuntimeError('ffmpeg unavailable: cannot create a valid browser video fixture')
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / 'fixture.mp4'
+        subprocess.run([
+            ffmpeg, '-v', 'error', '-f', 'lavfi', '-i', 'color=c=0x3568a8:s=320x240:d=0.7',
+            '-vf', 'format=yuv420p', '-an', '-c:v', 'libx264', '-movflags', '+faststart', '-y', str(target)
+        ], check=True)
+        data = target.read_bytes()
+    if not data or len(data) > 10 * 1024 * 1024:
+        raise RuntimeError('invalid generated video fixture')
+    return data
 
 
 def wait_for(session, expression, timeout=12):
     deadline = time.time() + timeout
+    last_error = None
     while time.time() < deadline:
-        if execute(session, f'return Boolean({expression});'):
-            return
+        try:
+            if execute(session, f'return Boolean({expression});'):
+                return
+        except Exception as error:
+            last_error = error
+            break
         time.sleep(0.25)
+    if last_error:
+        raise RuntimeError(f'browser stopped responding while waiting for {expression}: {last_error}') from last_error
     raise RuntimeError(f'timed out waiting for: {expression}')
 
 
@@ -81,7 +106,7 @@ def main():
         else:
             raise RuntimeError('chromedriver did not become ready')
 
-        created = wd('POST', '/session', {'capabilities': {'alwaysMatch': {'browserName': 'chrome', 'goog:chromeOptions': {'args': ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--window-size=1440,1000']}}}})
+        created = wd('POST', '/session', {'capabilities': {'alwaysMatch': {'browserName': 'chrome', 'goog:chromeOptions': {'args': ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--autoplay-policy=no-user-gesture-required', '--window-size=1440,1000']}}}})
         session = created.get('sessionId') if isinstance(created, dict) else None
         if not session:
             raise RuntimeError(f'no webdriver session id: {created!r}')
@@ -105,7 +130,7 @@ def main():
             ('vacanza-mare-2024.png', 'image/png', png(360, 260, (46, 115, 175), (255, 213, 79)), ['spiaggia','mare','vacanza','meta:data:2024-08-15','ai:spiaggia','ai:mare','ai:analizzato']),
             ('famiglia-giardino.png', 'image/png', png(360, 260, (70, 133, 83), (237, 231, 177)), ['famiglia','giardino','meta:data:2025-05-04','ai:famiglia','ai:giardino','ai:persona','ai:analizzato']),
             ('tramonto-viaggio.png', 'image/png', png(360, 260, (151, 84, 94), (246, 170, 95)), ['tramonto','viaggio','meta:data:2026-07-22','ai:tramonto','ai:analizzato']),
-            ('mare-sera.mp4', 'video/mp4', b'\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2', ['mare','video','meta:data:2026-07-22','ai:mare','ai:analizzato']),
+            ('mare-sera.mp4', 'video/mp4', valid_video_fixture(), ['mare','video','meta:data:2026-07-22','ai:mare','ai:analizzato']),
         ]
         upload_script = """
           const done=arguments[arguments.length-1];
@@ -118,20 +143,21 @@ def main():
             if(!tagged.ok) throw new Error(await tagged.text()); done({id:media.id,status:response.status});
           })().catch(error=>done({error:String(error)}));
         """
+        stamp = int(time.time())
         for index, (name, media_type, data, tags) in enumerate(fixtures):
-            result = execute(session, upload_script, [name, media_type, base64.b64encode(data).decode(), f'visual-{index}-{int(time.time())}', tags], True)
+            result = execute(session, upload_script, [name, media_type, base64.b64encode(data).decode(), f'visual-{index}-{stamp}', tags], True)
             if result.get('error'):
                 raise RuntimeError(f'fixture upload failed: {result}')
 
         wd('POST', f'/session/{session}/url', {'url': BASE + '/'})
-        wait_for(session, "document.querySelectorAll('#media-grid [data-id]').length >= 4")
-        wait_for(session, "document.querySelectorAll('.timeline-group').length >= 2")
+        wait_for(session, "document.querySelectorAll('#media-grid [data-id]').length >= 4", timeout=15)
+        wait_for(session, "document.querySelectorAll('.timeline-group').length >= 2", timeout=15)
         desktop = execute(session, "return {width:innerWidth,scrollWidth:document.documentElement.scrollWidth,cards:document.querySelectorAll('#media-grid [data-id]').length,groups:document.querySelectorAll('.timeline-group').length,videos:document.querySelectorAll('.media-card-video').length,nav:getComputedStyle(document.querySelector('.media-primary-nav')).display};")
         if desktop['scrollWidth'] > desktop['width'] + 2 or desktop['cards'] < 4 or desktop['groups'] < 2 or desktop['videos'] < 1 or desktop['nav'] == 'none':
             raise RuntimeError(f'desktop layout contract failed: {desktop}')
         screenshot(session, 'desktop-home.png')
 
-        opened = execute(session, "const b=document.querySelector('#media-grid [data-id] [data-action=details]'); if(b){b.click(); return true;} return false;")
+        opened = execute(session, "const b=document.querySelector('#media-grid [data-id] [data-action=\"detail\"]'); if(b){b.click(); return true;} return false;")
         if not opened:
             raise RuntimeError('detail trigger unavailable')
         wait_for(session, "document.querySelector('#detail-dialog')?.open === true")
@@ -164,11 +190,15 @@ def main():
         print(json.dumps({'desktop': desktop, 'mobile': mobile}, indent=2))
     finally:
         if session:
-            try: wd('DELETE', f'/session/{session}')
-            except Exception: pass
+            try:
+                wd('DELETE', f'/session/{session}')
+            except Exception:
+                pass
         process.terminate()
-        try: process.wait(timeout=3)
-        except subprocess.TimeoutExpired: process.kill()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
         driver_log.close()
 
 
