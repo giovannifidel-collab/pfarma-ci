@@ -1,0 +1,24 @@
+{
+  "schema": "razzo.perfection-cycle-receipt.v1",
+  "roadmap": "PERFECTION_V1",
+  "project": "family-cloud",
+  "cycle": "FC-P03",
+  "status": "COMPLETED",
+  "canonicalLane": "agent/bootstrap-family-cloud",
+  "productPullRequest": 834,
+  "candidateSha": "8663bf4cd2bc24e084d00b3aeb1dbd33bc496686",
+  "integrationSha": "4340804c4d45dd8b8874774073cf74b4a55b3a77",
+  "verifierPullRequest": 1126,
+  "postMergeReplayPullRequest": 1128,
+  "evidence": [
+    {"kind": "exact-sha-product-ci", "runId": 31483273139, "conclusion": "success"},
+    {"kind": "real-render-visual-qa", "pullRequestCommentId": 5252103643, "desktopScreenshotSha256": "6b958bcb9470ff4dcd46be3efba978553730fbb2f3324cff4a0a3a2bf999d32d", "mobileScreenshotSha256": "09a252d4e0115e44817db10a0e3aa84a498672d7f159b9dd1655bcf13f4048cc", "conclusion": "success"},
+    {"kind": "post-merge-exact-sha-replay", "runId": 31483650320, "integrationSha": "4340804c4d45dd8b8874774073cf74b4a55b3a77", "conclusion": "success"}
+  ],
+  "productSpecificQaRequired": true,
+  "productSpecificQaKind": "real-render-visual-qa",
+  "noKnownUnresolvedBlocker": true,
+  "independentReviewerApproval": false,
+  "closureCertification": "PERFECTION_P03_COMPLETED",
+  "immutableEvidence": true
+}
