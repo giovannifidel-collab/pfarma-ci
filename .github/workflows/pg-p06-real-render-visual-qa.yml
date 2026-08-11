@@ -1,0 +1,77 @@
+name: Project Giovanni PG-P06 Real Render Visual QA
+
+on:
+  pull_request:
+    paths:
+      - 'project-giovanni-source-ref.txt'
+      - '.github/workflows/pg-p06-real-render-visual-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact Project Giovanni SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n ' < project-giovanni-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Checkout exact private product
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.GITHUB_PRODUCT_SOURCE_TOKEN || secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          persist-credentials: false
+      - name: Attest exact SHA
+        run: test "$(git -C product rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install product dependencies
+        working-directory: product
+        run: npm install --no-audit --no-fund
+      - name: Start exact candidate
+        working-directory: product
+        shell: bash
+        run: |
+          npm run dev -- --hostname 127.0.0.1 > /tmp/pg-p06-next.log 2>&1 &
+          echo $! > /tmp/pg-p06-next.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/progress-intelligence >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/pg-p06-next.log
+          exit 1
+      - name: Install Chromium
+        run: npx -y playwright@1.55.0 install --with-deps chromium
+      - name: Capture desktop and mobile
+        run: |
+          mkdir -p visual-qa
+          npx -y playwright@1.55.0 screenshot --wait-for-timeout=1500 --viewport-size="1440,1100" http://127.0.0.1:3000/progress-intelligence visual-qa/progress-desktop.png
+          npx -y playwright@1.55.0 screenshot --wait-for-timeout=1500 --device="iPhone 13" http://127.0.0.1:3000/progress-intelligence visual-qa/progress-mobile.png
+          test -s visual-qa/progress-desktop.png
+          test -s visual-qa/progress-mobile.png
+      - name: Upload visual evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg-p06-real-render-${{ steps.source.outputs.sha }}
+          path: visual-qa/*.png
+          if-no-files-found: error
+          retention-days: 30
+      - name: Stop candidate
+        if: always()
+        run: test ! -f /tmp/pg-p06-next.pid || kill "$(cat /tmp/pg-p06-next.pid)" || true
