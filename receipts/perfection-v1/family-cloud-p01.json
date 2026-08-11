@@ -1,0 +1,23 @@
+{
+  "schema": "razzo.perfection-cycle-receipt.v1",
+  "roadmap": "PERFECTION_V1",
+  "project": "family-cloud",
+  "cycle": "FC-P01",
+  "status": "COMPLETED",
+  "canonicalLane": "agent/bootstrap-family-cloud",
+  "productPullRequest": 829,
+  "candidateSha": "07249dd732e807d1fbda9df04485d49d2dc04fd6",
+  "integrationSha": "0946d3c4bc4a68876b7f9adec097f5838abca818",
+  "verifierPullRequest": 1105,
+  "evidence": [
+    {"kind": "exact-sha-product-ci", "runId": 31469590127, "conclusion": "success"},
+    {"kind": "real-render-visual-qa", "runId": 31469590159, "conclusion": "success"},
+    {"kind": "offline-identity-breaker-ci", "runId": 31461726386, "conclusion": "success"}
+  ],
+  "productSpecificQaRequired": true,
+  "productSpecificQaKind": "real-render-visual-qa",
+  "noKnownUnresolvedBlocker": true,
+  "independentReviewerApproval": false,
+  "closureCertification": "PERFECTION_P01_COMPLETED",
+  "immutableEvidence": true
+}
