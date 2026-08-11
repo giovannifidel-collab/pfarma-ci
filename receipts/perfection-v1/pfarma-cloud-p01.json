@@ -1,0 +1,20 @@
+{
+  "schema": "razzo.perfection-cycle-receipt.v1",
+  "roadmap": "PERFECTION_V1",
+  "project": "pfarma-cloud",
+  "cycle": "PF-P01",
+  "status": "COMPLETED",
+  "canonicalLane": "integration/razzo",
+  "productPullRequest": 2213,
+  "candidateSha": "59f6dee80f6e918b5fd8ab9a5012d1cae8076202",
+  "integrationSha": "21d213364ce7da0bec0e27c2cf7bd6a7cf88b69c",
+  "verifierPullRequest": 1103,
+  "evidence": [
+    {"kind": "post-merge-exact-sha-product-ci", "runId": 31469856623, "conclusion": "success"}
+  ],
+  "productSpecificQaRequired": false,
+  "noKnownUnresolvedBlocker": true,
+  "independentReviewerApproval": false,
+  "closureCertification": "PERFECTION_P01_COMPLETED",
+  "immutableEvidence": true
+}
