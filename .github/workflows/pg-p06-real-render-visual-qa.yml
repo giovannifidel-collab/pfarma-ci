@@ -49,6 +49,8 @@ jobs:
         shell: bash
         env:
           PG_VISUAL_QA: '1'
+          NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321'
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'pg-visual-qa-public-placeholder'
         run: |
           npm run dev -- --hostname 127.0.0.1 > /tmp/pg-p06-next.log 2>&1 &
           echo $! > /tmp/pg-p06-next.pid
