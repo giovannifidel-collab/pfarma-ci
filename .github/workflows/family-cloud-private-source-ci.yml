@@ -130,12 +130,20 @@ jobs:
           set -euo pipefail
           chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           driver="$(command -v chromedriver || true)"
-          if [[ -z "$chrome" || -z "$driver" ]]; then
+          ffmpeg="$(command -v ffmpeg || true)"
+          if [[ -z "$chrome" || -z "$driver" || -z "$ffmpeg" ]]; then
             sudo apt-get update -y
-            sudo apt-get install -y chromium chromium-driver
-            chrome="$(command -v chromium || command -v google-chrome)"
+            packages=()
+            if [[ -z "$chrome" || -z "$driver" ]]; then packages+=(chromium chromium-driver); fi
+            if [[ -z "$ffmpeg" ]]; then packages+=(ffmpeg); fi
+            sudo apt-get install -y "${packages[@]}"
+            chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
             driver="$(command -v chromedriver)"
+            ffmpeg="$(command -v ffmpeg)"
           fi
+          test -x "$chrome"
+          test -x "$driver"
+          test -x "$ffmpeg"
           rm -rf family-cloud-visual-artifacts
           mkdir -p family-cloud-visual-artifacts
           export FAMILY_CLOUD_DATA_ROOT="$RUNNER_TEMP/family-cloud-visual-data"
