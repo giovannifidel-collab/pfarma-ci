@@ -84,3 +84,5 @@ jobs:
           console.log('SAFETY_CONSTRAINT_VETO=PASS');
           console.log('OUTCOME_FIRST_PROOF=PASS');
           NODE
+
+# rerun after private contract-length correction
