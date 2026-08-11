@@ -90,7 +90,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
       - name: Restore persistent online repository cache
         uses: actions/cache@v4
         with:
