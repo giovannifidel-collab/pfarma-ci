@@ -44,17 +44,17 @@ class MacrocycleValidatorTests(unittest.TestCase):
         for project in state["projects"]:
             self.assertTrue(project["terminalReceipt"].startswith("receipts/"))
 
-    def test_perfection_v1_closes_six_cycles_through_p02(self) -> None:
+    def test_perfection_v1_closes_nine_cycles_through_p03(self) -> None:
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
         self.assertEqual(state["roadmap"], "PERFECTION_V1")
         self.assertEqual(state["baseRoadmap"], "COMPLETED_60_OF_60")
-        self.assertEqual(state["status"], "P02_COMPLETE")
+        self.assertEqual(state["status"], "P03_COMPLETE")
         self.assertTrue(state["historicalTerminalRoadmapUnchanged"])
-        self.assertEqual(state["completedMacrocycles"], 6)
+        self.assertEqual(state["completedMacrocycles"], 9)
         expected = {
-            "project-giovanni": ["PG-P01", "PG-P02"],
-            "pfarma-cloud": ["PF-P01", "PF-P02"],
-            "family-cloud": ["FC-P01", "FC-P02"],
+            "project-giovanni": ["PG-P01", "PG-P02", "PG-P03"],
+            "pfarma-cloud": ["PF-P01", "PF-P02", "PF-P03"],
+            "family-cloud": ["FC-P01", "FC-P02", "FC-P03"],
         }
         for project_id, cycle_ids in expected.items():
             project = state["projects"][project_id]
@@ -79,10 +79,19 @@ class MacrocycleValidatorTests(unittest.TestCase):
             receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
             self.assertEqual(receipt["closureCertification"], "PERFECTION_P02_COMPLETED")
 
+    def test_perfection_p03_receipts_use_cycle_specific_certification(self) -> None:
+        state = MODULE.load_json(MODULE.PERFECTION_STATE)
+        for project in state["projects"].values():
+            item = project["completed"][2]
+            receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
+            self.assertEqual(receipt["closureCertification"], "PERFECTION_P03_COMPLETED")
+            kinds = {e["kind"] for e in receipt["evidence"] if e["conclusion"] == "success"}
+            self.assertIn("post-merge-exact-sha-replay", kinds)
+
     def test_perfection_receipt_rejects_fabricated_independent_approval(self) -> None:
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
         project = state["projects"]["project-giovanni"]
-        item = project["completed"][1]
+        item = project["completed"][2]
         receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
         tampered = copy.deepcopy(receipt)
         tampered["independentReviewerApproval"] = True
@@ -92,7 +101,7 @@ class MacrocycleValidatorTests(unittest.TestCase):
     def test_perfection_receipt_rejects_red_evidence(self) -> None:
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
         project = state["projects"]["family-cloud"]
-        item = project["completed"][1]
+        item = project["completed"][2]
         receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
         tampered = copy.deepcopy(receipt)
         tampered["evidence"][0]["conclusion"] = "failure"
@@ -102,10 +111,10 @@ class MacrocycleValidatorTests(unittest.TestCase):
     def test_perfection_receipt_rejects_wrong_cycle_certification(self) -> None:
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
         project = state["projects"]["pfarma-cloud"]
-        item = project["completed"][1]
+        item = project["completed"][2]
         receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
         tampered = copy.deepcopy(receipt)
-        tampered["closureCertification"] = "PERFECTION_P01_COMPLETED"
+        tampered["closureCertification"] = "PERFECTION_P02_COMPLETED"
         with self.assertRaisesRegex(ValueError, "closure certification mismatch"):
             MODULE.validate_perfection_receipt("pfarma-cloud", item["id"], project["lane"], tampered)
 
@@ -113,6 +122,16 @@ class MacrocycleValidatorTests(unittest.TestCase):
         state = MODULE.load_json(MODULE.PERFECTION_STATE)
         project = state["projects"]["family-cloud"]
         item = project["completed"][0]
+        receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
+        self.assertTrue(receipt["productSpecificQaRequired"])
+        self.assertEqual(receipt["productSpecificQaKind"], "real-render-visual-qa")
+        kinds = {e["kind"] for e in receipt["evidence"] if e["conclusion"] == "success"}
+        self.assertIn("real-render-visual-qa", kinds)
+
+    def test_family_p03_requires_real_render_qa(self) -> None:
+        state = MODULE.load_json(MODULE.PERFECTION_STATE)
+        project = state["projects"]["family-cloud"]
+        item = project["completed"][2]
         receipt = MODULE.load_json(MODULE.receipt_path(item["receipt"]))
         self.assertTrue(receipt["productSpecificQaRequired"])
         self.assertEqual(receipt["productSpecificQaKind"], "real-render-visual-qa")
