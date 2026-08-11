@@ -7,6 +7,8 @@ on:
       - "razzo/macrocycle-policy.json"
       - "razzo/macrocycles.json"
       - "razzo/macrocycle-state.json"
+      - "razzo/state/perfection-v1.json"
+      - "receipts/perfection-v1/**"
       - "razzo/state/validate_macrocycles.py"
       - "razzo/state/test_validate_macrocycles.py"
       - ".github/workflows/razzo-macrocycle-policy.yml"
@@ -18,8 +20,11 @@ on:
       - "razzo/macrocycle-policy.json"
       - "razzo/macrocycles.json"
       - "razzo/macrocycle-state.json"
+      - "razzo/state/perfection-v1.json"
+      - "receipts/perfection-v1/**"
       - "razzo/state/validate_macrocycles.py"
       - "razzo/state/test_validate_macrocycles.py"
+      - ".github/workflows/razzo-macrocycle-policy.yml"
 
 permissions:
   contents: read
