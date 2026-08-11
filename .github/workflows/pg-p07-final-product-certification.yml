@@ -1,0 +1,99 @@
+name: Project Giovanni PG-P07 Final Product Certification
+
+on:
+  pull_request:
+    paths:
+      - 'project-giovanni-source-ref.txt'
+      - '.github/workflows/pg-p07-final-product-certification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve exact candidate
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n ' < project-giovanni-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Checkout exact private product
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.GITHUB_PRODUCT_SOURCE_TOKEN || secrets.PROJECT_GIOVANNI_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
+          path: product
+          persist-credentials: false
+      - name: Attest exact SHA
+        run: test "$(git -C product rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: product
+        run: npm install --no-audit --no-fund
+      - name: Run final contract directly
+        working-directory: product
+        run: node --test factory/pg-p07-final-certification.test.mjs
+      - name: Start exact candidate
+        working-directory: product
+        shell: bash
+        env:
+          PG_VISUAL_QA: '1'
+          NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321'
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'pg-final-cert-public-placeholder'
+        run: |
+          npm run dev -- --hostname 127.0.0.1 > /tmp/pg-p07-next.log 2>&1 &
+          echo $! > /tmp/pg-p07-next.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/progress-intelligence >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/pg-p07-next.log
+          exit 1
+      - name: Warm response and performance smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:3000/progress-intelligence >/dev/null
+          total=0
+          for i in 1 2 3 4 5; do
+            ms=$(curl -fsS -o /dev/null -w '%{time_total}' http://127.0.0.1:3000/progress-intelligence | awk '{printf "%d", $1*1000}')
+            total=$((total + ms))
+          done
+          avg=$((total / 5))
+          echo "Warm local average: ${avg}ms"
+          test "$avg" -lt 5000
+      - name: Install Chromium
+        run: npx -y playwright@1.55.0 install --with-deps chromium
+      - name: Capture desktop tablet mobile
+        run: |
+          mkdir -p final-certification
+          npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1200 --viewport-size="1440,1000" http://127.0.0.1:3000/progress-intelligence final-certification/desktop.png
+          npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1200 --viewport-size="1024,768" http://127.0.0.1:3000/progress-intelligence final-certification/tablet.png
+          npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1200 --viewport-size="390,844" http://127.0.0.1:3000/progress-intelligence final-certification/mobile.png
+          test -s final-certification/desktop.png
+          test -s final-certification/tablet.png
+          test -s final-certification/mobile.png
+      - name: Upload final visual evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-giovanni-pg-p07-final-${{ steps.source.outputs.sha }}
+          path: final-certification/*.png
+          if-no-files-found: error
+          retention-days: 90
+      - name: Stop candidate
+        if: always()
+        run: test ! -f /tmp/pg-p07-next.pid || kill "$(cat /tmp/pg-p07-next.pid)" || true
