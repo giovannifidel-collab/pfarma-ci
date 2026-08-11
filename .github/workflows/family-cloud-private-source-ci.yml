@@ -149,7 +149,8 @@ jobs:
             sleep .25
           done
           test "$ready" = 1
-          CHROMEDRIVER_BIN="$driver" VISUAL_OUT="$PWD/family-cloud-visual-artifacts" python3 scripts/family-cloud-visual-smoke.py
+          set -o pipefail
+          CHROMEDRIVER_BIN="$driver" VISUAL_OUT="$PWD/family-cloud-visual-artifacts" python3 scripts/family-cloud-visual-smoke.py 2>&1 | tee family-cloud-visual-artifacts/visual-smoke.log
           cleanup
           trap - EXIT
 
