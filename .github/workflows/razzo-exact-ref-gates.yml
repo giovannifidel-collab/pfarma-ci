@@ -120,6 +120,9 @@ jobs:
       - name: Compatibility wave tests
         working-directory: pfarma-cloud
         run: python tools/test_razzo_executor.py
+      - name: Focused global-search receiving handoff regression
+        working-directory: pfarma-cloud
+        run: PYTHONPATH=. python -m unittest web.test_global_search_purchase_order_handoff -v
       - name: Factory core regression tests
         working-directory: pfarma-cloud
         run: python -m unittest factory.test_razzo_executor factory.test_continuous_loop factory.test_github_worker_runtime -v
