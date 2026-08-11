@@ -1,4 +1,4 @@
-name: Project Giovanni PG-P07 Final Product Certification
+name: Project Giovanni Visual Premium Final Certification
 
 on:
   pull_request:
@@ -44,7 +44,7 @@ jobs:
       - name: Install dependencies
         working-directory: product
         run: npm install --no-audit --no-fund
-      - name: Run final contract directly
+      - name: Run terminal product contract
         working-directory: product
         run: node --test factory/pg-p07-final-certification.test.mjs
       - name: Start exact candidate
@@ -53,47 +53,45 @@ jobs:
         env:
           PG_VISUAL_QA: '1'
           NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321'
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'pg-final-cert-public-placeholder'
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'pg-visual-premium-public-placeholder'
         run: |
-          npm run dev -- --hostname 127.0.0.1 > /tmp/pg-p07-next.log 2>&1 &
-          echo $! > /tmp/pg-p07-next.pid
+          npm run dev -- --hostname 127.0.0.1 > /tmp/pg-premium-next.log 2>&1 &
+          echo $! > /tmp/pg-premium-next.pid
           for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3000/progress-intelligence >/dev/null; then exit 0; fi
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null && curl -fsS http://127.0.0.1:3000/progress-intelligence >/dev/null; then exit 0; fi
             sleep 1
           done
-          cat /tmp/pg-p07-next.log
+          cat /tmp/pg-premium-next.log
           exit 1
-      - name: Warm response and performance smoke
+      - name: Warm response smoke
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS http://127.0.0.1:3000/progress-intelligence >/dev/null
-          total=0
-          for i in 1 2 3 4 5; do
-            ms=$(curl -fsS -o /dev/null -w '%{time_total}' http://127.0.0.1:3000/progress-intelligence | awk '{printf "%d", $1*1000}')
-            total=$((total + ms))
+          for url in http://127.0.0.1:3000/ http://127.0.0.1:3000/progress-intelligence; do
+            curl -fsS "$url" >/dev/null
+            ms=$(curl -fsS -o /dev/null -w '%{time_total}' "$url" | awk '{printf "%d", $1*1000}')
+            echo "$url warm response: ${ms}ms"
+            test "$ms" -lt 5000
           done
-          avg=$((total / 5))
-          echo "Warm local average: ${avg}ms"
-          test "$avg" -lt 5000
       - name: Install Chromium
         run: npx -y playwright@1.55.0 install --with-deps chromium
-      - name: Capture desktop tablet mobile
+      - name: Capture premium home and progress at desktop tablet mobile
         run: |
-          mkdir -p final-certification
-          npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1200 --viewport-size="1440,1000" http://127.0.0.1:3000/progress-intelligence final-certification/desktop.png
-          npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1200 --viewport-size="1024,768" http://127.0.0.1:3000/progress-intelligence final-certification/tablet.png
-          npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1200 --viewport-size="390,844" http://127.0.0.1:3000/progress-intelligence final-certification/mobile.png
-          test -s final-certification/desktop.png
-          test -s final-certification/tablet.png
-          test -s final-certification/mobile.png
-      - name: Upload final visual evidence
+          mkdir -p visual-premium
+          for route in home progress; do
+            if [ "$route" = home ]; then url='http://127.0.0.1:3000/'; else url='http://127.0.0.1:3000/progress-intelligence'; fi
+            npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1600 --full-page --viewport-size="1440,1100" "$url" "visual-premium/${route}-desktop.png"
+            npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1600 --full-page --viewport-size="820,1180" "$url" "visual-premium/${route}-tablet.png"
+            npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1600 --full-page --viewport-size="390,844" "$url" "visual-premium/${route}-mobile.png"
+          done
+          test "$(find visual-premium -name '*.png' -size +10k | wc -l)" -eq 6
+      - name: Upload premium visual evidence
         uses: actions/upload-artifact@v4
         with:
-          name: project-giovanni-pg-p07-final-${{ steps.source.outputs.sha }}
-          path: final-certification/*.png
+          name: project-giovanni-visual-premium-${{ steps.source.outputs.sha }}
+          path: visual-premium/*.png
           if-no-files-found: error
           retention-days: 90
       - name: Stop candidate
         if: always()
-        run: test ! -f /tmp/pg-p07-next.pid || kill "$(cat /tmp/pg-p07-next.pid)" || true
+        run: test ! -f /tmp/pg-premium-next.pid || kill "$(cat /tmp/pg-premium-next.pid)" || true
