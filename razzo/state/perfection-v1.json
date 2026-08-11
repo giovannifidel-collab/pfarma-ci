@@ -2,7 +2,7 @@
   "schema": "razzo.perfection-roadmap.v1",
   "roadmap": "PERFECTION_V1",
   "baseRoadmap": "COMPLETED_60_OF_60",
-  "status": "P02_COMPLETE",
+  "status": "P03_COMPLETE",
   "governance": {
     "closureRequires": [
       "exactShaProductCi",
@@ -18,16 +18,9 @@
     "project-giovanni": {
       "lane": "integration/razzo",
       "completed": [
-        {
-          "id": "PG-P01",
-          "status": "COMPLETED",
-          "receipt": "receipts/perfection-v1/project-giovanni-p01.json"
-        },
-        {
-          "id": "PG-P02",
-          "status": "COMPLETED",
-          "receipt": "receipts/perfection-v1/project-giovanni-p02.json"
-        }
+        {"id": "PG-P01", "status": "COMPLETED", "receipt": "receipts/perfection-v1/project-giovanni-p01.json"},
+        {"id": "PG-P02", "status": "COMPLETED", "receipt": "receipts/perfection-v1/project-giovanni-p02.json"},
+        {"id": "PG-P03", "status": "COMPLETED", "receipt": "receipts/perfection-v1/project-giovanni-p03.json"}
       ],
       "active": null,
       "next": null
@@ -35,16 +28,9 @@
     "pfarma-cloud": {
       "lane": "integration/razzo",
       "completed": [
-        {
-          "id": "PF-P01",
-          "status": "COMPLETED",
-          "receipt": "receipts/perfection-v1/pfarma-cloud-p01.json"
-        },
-        {
-          "id": "PF-P02",
-          "status": "COMPLETED",
-          "receipt": "receipts/perfection-v1/pfarma-cloud-p02.json"
-        }
+        {"id": "PF-P01", "status": "COMPLETED", "receipt": "receipts/perfection-v1/pfarma-cloud-p01.json"},
+        {"id": "PF-P02", "status": "COMPLETED", "receipt": "receipts/perfection-v1/pfarma-cloud-p02.json"},
+        {"id": "PF-P03", "status": "COMPLETED", "receipt": "receipts/perfection-v1/pfarma-cloud-p03.json"}
       ],
       "active": null,
       "next": null
@@ -52,22 +38,15 @@
     "family-cloud": {
       "lane": "agent/bootstrap-family-cloud",
       "completed": [
-        {
-          "id": "FC-P01",
-          "status": "COMPLETED",
-          "receipt": "receipts/perfection-v1/family-cloud-p01.json"
-        },
-        {
-          "id": "FC-P02",
-          "status": "COMPLETED",
-          "receipt": "receipts/perfection-v1/family-cloud-p02.json"
-        }
+        {"id": "FC-P01", "status": "COMPLETED", "receipt": "receipts/perfection-v1/family-cloud-p01.json"},
+        {"id": "FC-P02", "status": "COMPLETED", "receipt": "receipts/perfection-v1/family-cloud-p02.json"},
+        {"id": "FC-P03", "status": "COMPLETED", "receipt": "receipts/perfection-v1/family-cloud-p03.json"}
       ],
       "active": null,
       "next": null
     }
   },
-  "completedMacrocycles": 6,
+  "completedMacrocycles": 9,
   "pendingHumanGates": [],
   "historicalTerminalRoadmapUnchanged": true
 }

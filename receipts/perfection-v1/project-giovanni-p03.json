@@ -1,0 +1,22 @@
+{
+  "schema": "razzo.perfection-cycle-receipt.v1",
+  "roadmap": "PERFECTION_V1",
+  "project": "project-giovanni",
+  "cycle": "PG-P03",
+  "status": "COMPLETED",
+  "canonicalLane": "integration/razzo",
+  "productPullRequest": 1089,
+  "candidateSha": "27dee5dbdad31de7079094a50980cf3a5e9a73f3",
+  "integrationSha": "b67dd788d2061291759541fb73d3e4063be6b4a1",
+  "verifierPullRequest": 1124,
+  "postMergeReplayPullRequest": 1128,
+  "evidence": [
+    {"kind": "exact-sha-product-ci", "runId": 31483376759, "conclusion": "success"},
+    {"kind": "post-merge-exact-sha-replay", "runId": 31483650451, "integrationSha": "b67dd788d2061291759541fb73d3e4063be6b4a1", "conclusion": "success"}
+  ],
+  "productSpecificQaRequired": false,
+  "noKnownUnresolvedBlocker": true,
+  "independentReviewerApproval": false,
+  "closureCertification": "PERFECTION_P03_COMPLETED",
+  "immutableEvidence": true
+}
