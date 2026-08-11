@@ -1,0 +1,47 @@
+{
+  "schema": "razzo.visual-premium-completion.v1",
+  "project": "project-giovanni",
+  "pass": "VISUAL_PREMIUM_PASS",
+  "status": "COMPLETED",
+  "terminal": true,
+  "canonical": {
+    "repository": "giovannifidel-collab/project-giovanni",
+    "branch": "integration/razzo",
+    "auditedHead": "0104ad0ac59e00eb22a1df80dcd4ffe49de27adc",
+    "productPr": 1096
+  },
+  "scope": {
+    "sharedPremiumVisualLayer": true,
+    "flagshipHomeRedesign": true,
+    "bentoFunctionalHierarchy": true,
+    "premiumCardsMetricsWorkoutSurfaces": true,
+    "responsiveBreakpoints": ["desktop", "tablet", "mobile"],
+    "reducedMotionPreserved": true,
+    "focusAndAccessibilityPreserved": true,
+    "productSemanticsChanged": false
+  },
+  "candidateEvidence": {
+    "candidateSha": "ab1059b91c00fa275595d5a1e27e07c0bb54673b",
+    "hostedCi": {"runId": 31521540637, "runNumber": 830, "conclusion": "success"},
+    "visualCertification": {"runId": 31521540648, "runNumber": 5, "conclusion": "success"},
+    "bootstrap": {"runId": 31521540599, "runNumber": 3218, "conclusion": "success"}
+  },
+  "postMergeEvidence": {
+    "integrationSha": "0104ad0ac59e00eb22a1df80dcd4ffe49de27adc",
+    "hostedCi": {"runId": 31521816535, "runNumber": 831, "conclusion": "success"},
+    "visualCertification": {"runId": 31521815747, "runNumber": 6, "conclusion": "success"},
+    "bootstrap": {"runId": 31521815812, "runNumber": 3219, "conclusion": "success"},
+    "visualArtifact": {
+      "id": 9113354773,
+      "name": "project-giovanni-visual-premium-0104ad0ac59e00eb22a1df80dcd4ffe49de27adc",
+      "digest": "sha256:0b3a7be87c2afde35cced335a5e91c1e35c4f302821028bbb226912abe6b5a9e",
+      "screenshots": 6
+    }
+  },
+  "perfectionV1": {
+    "status": "COMPLETED_7_OF_7",
+    "reopened": false,
+    "technicalClosurePreserved": true
+  },
+  "certification": "PROJECT_GIOVANNI_VISUAL_PREMIUM_PASS_COMPLETE_AUDITED_HEAD"
+}
