@@ -1,39 +1,39 @@
 {
-  "version": 6,
-  "sourceOfTruth": "github-current-integration-heads-open-product-prs-and-enabled-registry",
-  "rediscoveryEpoch": "2026-08-09T09:45:00Z",
+  "version": 7,
+  "sourceOfTruth": "current-public-exact-refs-and-perfection-v1-closure-ledger",
+  "rediscoveryEpoch": "2026-08-11T08:23:00Z",
   "factoryAllocationPaused": false,
-  "resumeReason": "owner instructed the Factory to continue closure-first on active macrocycles",
+  "resumeReason": "Perfection P01 closures consumed; rediscover next safe product work from current exact refs.",
   "projects": [
     {
       "id": "project-giovanni",
-      "exactSha": "0cec483667809d44e72f8e4e514f46cd29399379",
-      "ready": 4,
+      "exactSha": "5232e860e845172ec104c4b32b4ec28a6822f91c",
+      "ready": 0,
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "issue=#152; active=MC-09; focus=missing-exit-criteria",
-      "collisionDomain": "product/project-giovanni-mc09-feedback-adaptation"
+      "queueHint": "perfection=PG-P01-complete; action=rediscover-next-safe-work",
+      "collisionDomain": "product/project-giovanni-perfection-next-discovery"
     },
     {
       "id": "pfarma-cloud",
-      "exactSha": "7e30322973310b29ee8bf3db24464b713b7d81b9",
-      "ready": 5,
+      "exactSha": "ec64f2ea02360bc34291c3fc536090a40e6e1727",
+      "ready": 0,
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "issue=#2072; active=MC-05; focus=missing-exit-criteria",
-      "collisionDomain": "product/pfarma-mc05-product-catalog-search"
+      "queueHint": "perfection=PF-P01-complete; action=rediscover-next-safe-work",
+      "collisionDomain": "product/pfarma-perfection-next-discovery"
     },
     {
       "id": "family-cloud",
-      "exactSha": "b99fd32f296cd323ffd8ad59bf0e335d20fcae73",
-      "ready": 5,
+      "exactSha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
+      "ready": 0,
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "issue=#706; active=MC-05; focus=missing-exit-criteria",
-      "collisionDomain": "product/family-cloud-mc05-object-storage-capacity"
+      "queueHint": "perfection=FC-P01-complete; action=rediscover-next-safe-work",
+      "collisionDomain": "product/family-cloud-perfection-next-discovery"
     }
   ]
 }
