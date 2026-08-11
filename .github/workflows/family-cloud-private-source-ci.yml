@@ -122,6 +122,48 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+      - name: Real runtime and browser render gate
+        shell: bash
+        env:
+          FAMILY_CLOUD_REF: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          driver="$(command -v chromedriver || true)"
+          if [[ -z "$chrome" || -z "$driver" ]]; then
+            sudo apt-get update -y
+            sudo apt-get install -y chromium chromium-driver
+            chrome="$(command -v chromium || command -v google-chrome)"
+            driver="$(command -v chromedriver)"
+          fi
+          rm -rf family-cloud-visual-artifacts
+          mkdir -p family-cloud-visual-artifacts
+          export FAMILY_CLOUD_DATA_ROOT="$RUNNER_TEMP/family-cloud-visual-data"
+          (cd private-source && npm run dev) > family-cloud-runtime.log 2>&1 &
+          server_pid=$!
+          cleanup() { kill "$server_pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4173/healthz >/dev/null; then ready=1; break; fi
+            sleep .25
+          done
+          test "$ready" = 1
+          CHROMEDRIVER_BIN="$driver" VISUAL_OUT="$PWD/family-cloud-visual-artifacts" python3 scripts/family-cloud-visual-smoke.py
+          cleanup
+          trap - EXIT
+
+      - name: Upload real-render evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: family-cloud-real-render-${{ steps.source.outputs.sha }}
+          path: |
+            family-cloud-visual-artifacts
+            family-cloud-runtime.log
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Remove private source checkout
         if: always()
         shell: bash
