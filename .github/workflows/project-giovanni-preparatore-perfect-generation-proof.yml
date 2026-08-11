@@ -1,0 +1,167 @@
+name: Project Giovanni Preparatore · Perfect Generation Proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/project-giovanni-preparatore-perfect-generation-proof.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: photo-ai-private
+    steps:
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Checkout latest Project Giovanni
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: main
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Perfect generation deterministic proof
+        shell: bash
+        run: |
+          cat > perfect-generation-proof.mjs <<'NODE'
+          import assert from 'node:assert/strict';
+          import { buildPreparatoreTrainingContext } from './scripts/preparatore-training-context.mjs';
+          import { repairCandidate } from './scripts/repair-preparatore-candidate.mjs';
+          import { normalizeSucceededResult, finisherMinutesFromText as contractFinisherMinutes } from './scripts/preparatore-v2-result-contract.mjs';
+          import { auditPlanDelta, finisherMinutesFromText as auditFinisherMinutes } from './scripts/preparatore-plan-delta-audit.mjs';
+
+          const setRecord = (exerciseName, value, setIndex, completedAt) => ({ exerciseName, mode:'reps', value, setIndex, completedAt });
+          const feedbackRow = ({ event, id, completedAt, row, lateral, deadbug }) => ({
+            event_id:`workout_feedback:${event}`,
+            session_id:id,
+            completed_at:completedAt,
+            client_created_at:completedAt,
+            payload:{
+              id, completedAt, sessionLabel:'Upper test', plannedSets:9, completedSets:9,
+              perceivedEffort:7, completed:true, painOrAbnormalSymptoms:false, recoveryAfter:4,
+              setRecords:[
+                ...row.map((v,i)=>setRecord('Rematore con elastico sotto i piedi',v,i,completedAt)),
+                ...lateral.map((v,i)=>setRecord('Alzate laterali con elastico sotto i piedi',v,i,completedAt)),
+                ...deadbug.map((v,i)=>setRecord('Dead bug controllato',v,i,completedAt)),
+              ]
+            }
+          });
+          const older = feedbackRow({event:'older',id:'older',completedAt:'2026-08-09T08:00:00.000Z',row:[16,17,17],lateral:[15,15,16],deadbug:[20,20]});
+          const latest = feedbackRow({event:'latest',id:'latest',completedAt:'2026-08-10T08:00:00.000Z',row:[19,20,20],lateral:[14,14,15],deadbug:[25,25]});
+          const duplicate = feedbackRow({event:'duplicate',id:'duplicate',completedAt:'2026-08-10T08:04:00.000Z',row:[19,20,20],lateral:[14,14,15],deadbug:[25,25]});
+          const training = buildPreparatoreTrainingContext([duplicate,latest,older],{nowMs:Date.parse('2026-08-11T10:00:00.000Z')});
+          assert.equal(training.dataQuality.duplicatesRemoved,1);
+          assert.equal(training.dataQuality.feedbackSessions,2);
+          const deadMetric = training.exerciseProgression.find(x=>x.exerciseName==='Dead bug controllato');
+          assert.equal(deadMetric.planTargetComparable,false);
+          assert.equal(deadMetric.measurementUnit,'recorded_repetitions_side_unspecified');
+          console.log('DEDUP=PASS');
+          console.log('DEAD_BUG_SEMANTICS=PASS');
+
+          const reps = (sets,repsMin,repsMax,reserveReps=2)=>({mode:'reps',sets,repsMin,repsMax,reserveReps});
+          const activeExercises = [
+            {name:'Rematore con elastico sotto i piedi',prescription:'4 x 10-15',restSeconds:50,focus:'Tirata',target:reps(4,10,15,2),requires:['elastici']},
+            {name:'Alzate laterali con elastico sotto i piedi',prescription:'3 x 12-15',restSeconds:35,focus:'Spinta',target:reps(3,12,15,2),requires:['elastici']},
+            {name:'Dead bug controllato',prescription:'2 x 8-12',restSeconds:25,focus:'Core',target:reps(2,8,12,3)},
+          ];
+          const context = {
+            profile:{daysPerWeek:1,minutesPerSession:30,equipment:['elastici'],priorities:'spalle dorsali braccia'},
+            activePlanContext:{versionNumber:4,versionId:'v4',plan:{summary:'active',rationale:['storico reale','foto secondarie','baseline'],safetyNote:'safe',days:[{day:1,title:'Upper',durationMinutes:30,emphasis:'Spinta',warmupMinutes:4,exercises:activeExercises,finisher:'Solo se restano 2 minuti: marcia controllata.'}]}},
+            trainingContext:{
+              ...training,
+              exerciseProgression:[
+                {exerciseName:'Rematore con elastico sotto i piedi',mode:'reps',latestAverageValue:19.7,previousAverageValue:16.8,changePercent:17.3,direction:'improving',observations:3,planTargetComparable:true},
+                {exerciseName:'Alzate laterali con elastico sotto i piedi',mode:'reps',latestAverageValue:14.3,previousAverageValue:15.4,changePercent:-7.1,direction:'declining',observations:3,planTargetComparable:true},
+                {exerciseName:'Dead bug controllato',mode:'reps',latestAverageValue:25,previousAverageValue:20,changePercent:25,direction:'improving',observations:3,planTargetComparable:false,measurementUnit:'recorded_repetitions_side_unspecified',unitNote:'ambiguous total vs side'},
+              ]
+            }
+          };
+          const catalog = new Map([
+            ['band_row',{id:'band_row',name:'Rematore con elastico sotto i piedi',focus:'Tirata',mode:'reps',requires:['elastici']}],
+            ['band_lateral_raise',{id:'band_lateral_raise',name:'Alzate laterali con elastico sotto i piedi',focus:'Spinta',mode:'reps',requires:['elastici']}],
+            ['dead_bug',{id:'dead_bug',name:'Dead bug controllato',focus:'Core',mode:'reps',requires:[]}],
+          ]);
+          const finding = {category:'muscle_development',observation:'V-taper migliorabile',confidence:'medium',evidence:['dorsali poco marcati'],alternativeExplanations:['posa'],checkpointTrend:'not_available',trainingImplication:'mantieni tirata',actionStrength:'cautious_adjustment'};
+          const raw = {
+            analysis:{analysisConfidence:'medium',imageQuality:{front:'usable',side:'usable',back:'usable'},summary:'analisi',priorities:['V-taper','Ricomposizione','Upper back'],limitations:['foto non standardizzate'],visualFindings:[finding]},
+            plan:{summary:'candidate',rationale:['storico performance reale','foto usate come segnale secondario','delta mirato'],safetyNote:'safe',days:[{
+              day:1,title:'Upper',durationMinutes:30,emphasis:'Spinta',warmupMinutes:4,
+              exercises:[
+                {exerciseId:'band_row',sets:4,repsMin:12,repsMax:15,seconds:null,reserveReps:2,restSeconds:50},
+                {exerciseId:'band_lateral_raise',sets:3,repsMin:10,repsMax:14,seconds:null,reserveReps:3,restSeconds:40},
+                {exerciseId:'dead_bug',sets:2,repsMin:10,repsMax:14,seconds:null,reserveReps:2,restSeconds:25},
+              ],
+              finisher:'Solo se restano 2 minuti: 4 alternanze di 20 secondi rapidi e 10 secondi facili.'
+            }]}
+          };
+          const repaired = repairCandidate(raw,context,catalog).candidate;
+          assert.equal(repaired.analysis.visualFindings.length,1);
+          assert.equal(repaired.analysis.visualFindings[0].category,'muscle_development');
+          const [row,lateral,dead] = repaired.plan.days[0].exercises;
+          assert.deepEqual([row.sets,row.repsMin,row.repsMax],[4,10,15]);
+          assert.deepEqual([lateral.sets,lateral.repsMin,lateral.repsMax,lateral.reserveReps],[3,12,15,3]);
+          assert.ok(lateral.restSeconds >= 50);
+          assert.deepEqual([dead.sets,dead.repsMin,dead.repsMax],[2,8,12]);
+          assert.ok(repaired.plan.rationale.some(x=>x.includes('aumentando prudentemente resistenza/difficoltà')));
+          assert.ok(repaired.plan.rationale.some(x=>x.includes('in calo')));
+          assert.ok(repaired.plan.rationale.some(x=>x.includes('per-lato')));
+          console.log('VISUAL_FINDINGS_PRESERVED=PASS');
+          console.log('SATURATED_LOAD_PROGRESSION=PASS');
+          console.log('LATERAL_DECLINE_GUARD=PASS');
+          console.log('DEAD_BUG_BASELINE_GUARD=PASS');
+
+          const finalShape = {
+            model:'Codex ChatGPT · GitHub Actions',persisted:false,automaticPlanChange:false,
+            analysis:{analysisConfidence:'medium',imageQuality:{front:'usable',side:'usable',back:'usable'},summary:'Analisi strategica.',priorities:['V-taper','Ricomposizione','Upper back'],limitations:['Foto non standardizzate.'],visualFindings:[finding],bodyCompositionEstimate:{available:false,rangeMin:null,rangeMax:null,confidence:'low',basis:'non misurabile',uncertaintyFactors:['luce']}},
+            plan:{summary:'Scheda candidata.',rationale:['Storico reale considerato.','Foto usate come segnale secondario.','Progressione mirata.'],safetyNote:'Interrompi in caso di dolore.',days:[{
+              day:1,title:'Gambe test',durationMinutes:30,emphasis:'Gambe',warmupMinutes:5,
+              exercises:[
+                {name:'Squat a corpo libero controllato',prescription:'3 x 8-12 · 3 RIR',restSeconds:50,focus:'Gambe',target:reps(3,8,12,3)},
+                {name:'Glute bridge',prescription:'3 x 12-15 · 2 RIR',restSeconds:50,focus:'Gambe',target:reps(3,12,15,2)},
+                {name:'Dead bug controllato',prescription:'2 x 8-12 · 3 RIR',restSeconds:25,focus:'Core',target:reps(2,8,12,3)},
+              ],
+              finisher:'Solo se restano 2 minuti: 4 alternanze di 20 secondi rapidi e 10 secondi facili.'
+            }]}
+          };
+          const normalized = normalizeSucceededResult(finalShape);
+          const day = normalized.plan.days[0];
+          assert.equal(contractFinisherMinutes(day.finisher,30,5,3),2);
+          assert.equal(auditFinisherMinutes(day.finisher),2);
+          assert.equal(day.timeBudget.finisher,2);
+          assert.equal(day.timeBudget.warmup+day.timeBudget.work+day.timeBudget.transitions+day.timeBudget.finisher,30);
+          assert.ok(day.warmupSteps.some(step=>/anche e caviglie/i.test(step.name)));
+          assert.ok(!day.warmupSteps.some(step=>/spalle e torace/i.test(step.name)));
+          console.log('FINISHER_BUDGET=PASS');
+          console.log('SPECIFIC_WARMUP=PASS');
+
+          const activePlan = {summary:'active',rationale:['storico','foto','baseline'],safetyNote:'safe',days:[{...day,exercises:day.exercises.map(x=>({...x}))}]};
+          const goodAudit = auditPlanDelta(activePlan,{...normalized.plan,days:[{...day,exercises:day.exercises.map((x,i)=>i===0?{...x,target:{...x.target,repsMax:x.target.repsMax+1},prescription:'3 x 8-13 · 3 RIR'}:x)}]},{profile:{priorities:'gambe'},trainingContext:training,analysis:normalized.analysis});
+          assert.equal(goodAudit.metrics.timeChecks[0].budgetConsistent,true);
+          const badPlan = structuredClone(normalized.plan);
+          badPlan.days[0].timeBudget.finisher = 4;
+          badPlan.days[0].timeBudget.work -= 2;
+          const badAudit = auditPlanDelta(activePlan,badPlan,{profile:{priorities:'gambe'},trainingContext:training,analysis:normalized.analysis});
+          assert.equal(badAudit.metrics.timeChecks[0].budgetConsistent,false);
+          assert.ok(badAudit.reasons.some(reason=>reason.includes('Audit temporale incoerente')));
+          console.log('DELTA_TIME_CONSISTENCY=PASS');
+          console.log('PERFECT_GENERATION_PROOF=PASS');
+          NODE
+          node perfect-generation-proof.mjs
