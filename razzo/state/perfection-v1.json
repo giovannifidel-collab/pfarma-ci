@@ -1,0 +1,58 @@
+{
+  "schema": "razzo.perfection-roadmap.v1",
+  "roadmap": "PERFECTION_V1",
+  "baseRoadmap": "COMPLETED_60_OF_60",
+  "status": "P01_COMPLETE",
+  "governance": {
+    "closureRequires": [
+      "exactShaProductCi",
+      "canonicalIntegration",
+      "postMergeOrEquivalentReplay",
+      "productSpecificQaWhenDeclared",
+      "noKnownUnresolvedBlocker"
+    ],
+    "independentReviewerApprovalRequired": false,
+    "reviewSemantics": "Technical or breaker review is never represented as independent reviewer approval."
+  },
+  "projects": {
+    "project-giovanni": {
+      "lane": "integration/razzo",
+      "completed": [
+        {
+          "id": "PG-P01",
+          "status": "COMPLETED",
+          "receipt": "receipts/perfection-v1/project-giovanni-p01.json"
+        }
+      ],
+      "active": null,
+      "next": null
+    },
+    "pfarma-cloud": {
+      "lane": "integration/razzo",
+      "completed": [
+        {
+          "id": "PF-P01",
+          "status": "COMPLETED",
+          "receipt": "receipts/perfection-v1/pfarma-cloud-p01.json"
+        }
+      ],
+      "active": null,
+      "next": null
+    },
+    "family-cloud": {
+      "lane": "agent/bootstrap-family-cloud",
+      "completed": [
+        {
+          "id": "FC-P01",
+          "status": "COMPLETED",
+          "receipt": "receipts/perfection-v1/family-cloud-p01.json"
+        }
+      ],
+      "active": null,
+      "next": null
+    }
+  },
+  "completedMacrocycles": 3,
+  "pendingHumanGates": [],
+  "historicalTerminalRoadmapUnchanged": true
+}
