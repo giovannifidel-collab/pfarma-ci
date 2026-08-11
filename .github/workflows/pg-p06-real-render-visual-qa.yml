@@ -47,6 +47,8 @@ jobs:
       - name: Start exact candidate
         working-directory: product
         shell: bash
+        env:
+          PG_VISUAL_QA: '1'
         run: |
           npm run dev -- --hostname 127.0.0.1 > /tmp/pg-p06-next.log 2>&1 &
           echo $! > /tmp/pg-p06-next.pid
