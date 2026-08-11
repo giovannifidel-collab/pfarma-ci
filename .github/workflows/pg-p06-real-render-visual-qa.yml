@@ -66,7 +66,7 @@ jobs:
         run: |
           mkdir -p visual-qa
           npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1500 --viewport-size="1440,1100" http://127.0.0.1:3000/progress-intelligence visual-qa/progress-desktop.png
-          npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1500 --device="iPhone 13" http://127.0.0.1:3000/progress-intelligence visual-qa/progress-mobile.png
+          npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=1500 --viewport-size="390,844" http://127.0.0.1:3000/progress-intelligence visual-qa/progress-mobile.png
           test -s visual-qa/progress-desktop.png
           test -s visual-qa/progress-mobile.png
       - name: Upload visual evidence
