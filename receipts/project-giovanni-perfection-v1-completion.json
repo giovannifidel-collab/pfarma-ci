@@ -1,0 +1,46 @@
+{
+  "schema": "razzo.perfection-completion.v1",
+  "project": "project-giovanni",
+  "roadmap": "PERFECTION_V1",
+  "status": "COMPLETED_7_OF_7",
+  "terminal": true,
+  "completedAt": "2026-08-11T19:36:00+02:00",
+  "canonical": {
+    "repository": "giovannifidel-collab/project-giovanni",
+    "branch": "integration/razzo",
+    "auditedHead": "3558b2173df73289ba2329742407059e1f00930e",
+    "mergeVerified": true
+  },
+  "cycles": [
+    {"id":"PG-P01","title":"Canonical Journey","pr":1087,"candidate":"ca7a8c5d6dbb6b8593aca2731f45d58738130f10","status":"CLOSED"},
+    {"id":"PG-P02","title":"Workout Execution Pro","pr":1088,"candidate":"238d541c1bda3ed90b8c0e1688775a6065601e66","status":"CLOSED"},
+    {"id":"PG-P03","title":"Adaptive Trainer Intelligence","pr":1089,"candidate":"27dee5d60aa48bc5094eab3b59a08e77950355d5","status":"CLOSED"},
+    {"id":"PG-P04","title":"Progress & Body Intelligence","pr":1092,"candidate":"598c1fb76b849a3f13b00bf938af0f76299dbbd9","status":"CLOSED"},
+    {"id":"PG-P05","title":"Mobile, Wearable & Offline Continuity","pr":1093,"candidate":"70ad53440a66f05f4ac0f8ac80e5f17c0cb389a2","status":"CLOSED"},
+    {"id":"PG-P06","title":"Visual & UX Perfection","pr":1094,"candidate":"c83a586d42da29ff5f08621c193deec759ccf00d","status":"CLOSED"},
+    {"id":"PG-P07","title":"Final Product Certification","pr":1095,"candidate":"c075839746055dedbf2c4d8b0c268ad2f469019d","status":"CLOSED"}
+  ],
+  "terminalReplay": {
+    "controlPlaneCommit": "a33d948b35735ce05022984985797f292d476d1e",
+    "hostedCi": {"runId":31512990918,"runNumber":825,"conclusion":"success"},
+    "finalProductCertification": {"runId":31512990899,"runNumber":2,"conclusion":"success"},
+    "bootstrap": {"runId":31512990905,"runNumber":3210,"conclusion":"success"},
+    "breakpoints": ["desktop","tablet","mobile"],
+    "exactSha": true,
+    "postMerge": true
+  },
+  "invariants": {
+    "automaticPlanChange": false,
+    "canonicalDailyJourney": true,
+    "offlineRecoveryAndExactlyOnce": true,
+    "releaseExactShaRollbackContract": true,
+    "realDeviceEvidenceSeparatedFromSelfTests": true,
+    "accessibilityAndResponsiveVisualQa": true
+  },
+  "historicalRoadmap": {
+    "macrocycles": "MC01-MC20",
+    "status": "UNCHANGED_AND_CLOSED",
+    "reopened": false
+  },
+  "certification": "PROJECT_GIOVANNI_PERFECTION_V1_COMPLETE_AUDITED_HEAD"
+}
