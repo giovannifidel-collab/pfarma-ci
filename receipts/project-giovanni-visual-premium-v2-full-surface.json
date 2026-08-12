@@ -1,0 +1,38 @@
+{
+  "schema": "razzo.post-terminal-visual-receipt.v1",
+  "project": "project-giovanni",
+  "phase": "VISUAL_PREMIUM_V2_FULL_SURFACE",
+  "status": "COMPLETED",
+  "terminal": true,
+  "historicalRoadmapImmutable": true,
+  "perfectionV1Immutable": true,
+  "canonicalLane": "integration/razzo",
+  "canonicalAuditedHead": "a7aa877690ac8803a502e1e5a3c1d6232b64cb99",
+  "productPullRequests": [1097, 1098],
+  "verification": {
+    "verifierPullRequest": 1149,
+    "verifierHead": "52cbb76884da65d50063d9d558a97b9a63bf1854",
+    "hostedCi": {
+      "runId": 31589726341,
+      "runNumber": 843,
+      "conclusion": "success"
+    },
+    "fullSurfaceVisualCertification": {
+      "runId": 31589726408,
+      "runNumber": 6,
+      "conclusion": "success",
+      "routes": 16,
+      "breakpoints": ["desktop", "mobile"],
+      "screenshots": 32,
+      "artifactId": 9138661330,
+      "artifactName": "project-giovanni-v2-full-surface-a7aa877690ac8803a502e1e5a3c1d6232b64cb99",
+      "artifactDigest": "sha256:682c3d2b9b3dc87faf4970d648518b299e6eb9a2af15fad5942c1f8fd5f92475"
+    },
+    "bootstrap": {
+      "runId": 31589726319,
+      "runNumber": 3256,
+      "conclusion": "success"
+    }
+  },
+  "certification": "PROJECT_GIOVANNI_VISUAL_PREMIUM_V2_FULL_SURFACE_EXACT_SHA_VERIFIED"
+}
