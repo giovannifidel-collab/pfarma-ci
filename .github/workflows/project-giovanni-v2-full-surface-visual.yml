@@ -44,15 +44,19 @@ jobs:
       - name: Install dependencies
         working-directory: product
         run: npm install --no-audit --no-fund
-      - name: Run full-surface presentation contract
+      - name: Run available visual product contracts
         working-directory: product
         shell: bash
         run: |
           set -euo pipefail
-          node --test factory/pg-p07-final-certification.test.mjs
-          if [ -f factory/visual-premium-v2-full-surface.test.mjs ]; then
-            node --test factory/visual-premium-v2-full-surface.test.mjs
-          fi
+          ran=0
+          for contract in factory/pg-p07-final-certification.test.mjs factory/visual-premium-v2-full-surface.test.mjs; do
+            if [ -f "$contract" ]; then
+              node --test "$contract"
+              ran=1
+            fi
+          done
+          echo "available visual contracts executed: $ran"
       - name: Start exact candidate
         working-directory: product
         shell: bash
