@@ -1,0 +1,126 @@
+name: Project Giovanni Apple Native CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'project-giovanni-source-ref.txt'
+      - '.github/workflows/project-giovanni-apple-native-ci.yml'
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'Exact private Project Giovanni SHA/ref'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-giovanni-apple-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apple-native:
+    runs-on: macos-15
+    timeout-minutes: 35
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public control plane
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve exact private source ref
+        id: resolve
+        shell: bash
+        env:
+          DISPATCH_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          ref="${DISPATCH_REF:-}"
+          if [ -z "$ref" ]; then ref="$(tr -d '[:space:]' < project-giovanni-source-ref.txt)"; fi
+          test -n "$ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Require private-source token
+        shell: bash
+        env:
+          GIO_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIO_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Checkout exact private Project Giovanni source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.resolve.outputs.ref }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: project-giovanni
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Attest exact private SHA
+        id: source
+        working-directory: project-giovanni
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Apple native candidate SHA: $sha"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: project-giovanni/native/apple
+        run: xcodegen generate
+
+      - name: Build iPhone companion and embedded Watch app without signing
+        working-directory: project-giovanni/native/apple
+        env:
+          SUPABASE_URL: https://ci-placeholder.supabase.co
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project ProjectGiovanniNative.xcodeproj \
+            -scheme ProjectGiovanni \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            SUPABASE_URL="$SUPABASE_URL" \
+            SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            build
+
+      - name: Build watchOS target without signing
+        working-directory: project-giovanni/native/apple
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project ProjectGiovanniNative.xcodeproj \
+            -target ProjectGiovanniWatch \
+            -configuration Debug \
+            -sdk watchsimulator \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Apple native build summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Project Giovanni Apple native CI'
+            echo "- exact private SHA: ${{ steps.source.outputs.sha }}"
+            echo '- generated from native/apple/project.yml with XcodeGen'
+            echo '- iPhone companion: unsigned simulator build'
+            echo '- Apple Watch target: unsigned watchOS simulator build'
+            echo '- physical-device Watch Connectivity delivery still requires paired Apple hardware and signing'
+          } >> "$GITHUB_STEP_SUMMARY"
