@@ -1,0 +1,58 @@
+{
+  "schema": "razzo.visual-premium-completion.v1",
+  "project": "project-giovanni",
+  "pass": "VISUAL_PREMIUM_V2_ATHLETIC_EDITORIAL",
+  "status": "COMPLETED",
+  "terminal": true,
+  "canonical": {
+    "repository": "giovannifidel-collab/project-giovanni",
+    "branch": "integration/razzo",
+    "auditedHead": "9a22a30204627c9aa44e8304d40640c3315a3a3c",
+    "productPr": 1097
+  },
+  "scope": {
+    "darkAthleticEditorialSystem": true,
+    "highContrastPerformanceAccent": true,
+    "oversizedPerformanceTypography": true,
+    "actionFirstHomeHierarchy": true,
+    "commandStatusPanel": true,
+    "trainTrackAdaptSignalRail": true,
+    "bentoTrainingSurfaces": true,
+    "workoutAndProgressVisualLanguageUnified": true,
+    "responsiveBreakpoints": ["desktop", "tablet", "mobile"],
+    "realRenderHomeAndProgress": true,
+    "reducedMotionPreserved": true,
+    "focusAndAccessibilityPreserved": true,
+    "canonicalJourneyHierarchyPreserved": true,
+    "productSemanticsChanged": false
+  },
+  "candidateEvidence": {
+    "candidateSha": "cba8c2a22079dc14c73986053678169fb609d3f5",
+    "hostedCi": {"runId": 31574795410, "runNumber": 838, "conclusion": "success"},
+    "visualCertification": {"runId": 31574795431, "runNumber": 10, "conclusion": "success"},
+    "bootstrap": {"runId": 31574795402, "runNumber": 3241, "conclusion": "success"}
+  },
+  "postMergeEvidence": {
+    "integrationSha": "9a22a30204627c9aa44e8304d40640c3315a3a3c",
+    "hostedCi": {"runId": 31575052376, "runNumber": 839, "conclusion": "success"},
+    "visualCertification": {"runId": 31575052334, "runNumber": 11, "conclusion": "success"},
+    "bootstrap": {"runId": 31575052347, "runNumber": 3244, "conclusion": "success"},
+    "visualArtifact": {
+      "id": 9132860127,
+      "name": "project-giovanni-visual-premium-9a22a30204627c9aa44e8304d40640c3315a3a3c",
+      "digest": "sha256:2bad0cb9cfac338a61f03993d0a010cf9a4abb9be55718e52b7ef51a85d24d12",
+      "screenshots": 6
+    }
+  },
+  "perfectionV1": {
+    "status": "COMPLETED_7_OF_7",
+    "reopened": false,
+    "technicalClosurePreserved": true
+  },
+  "previousVisualPremiumPass": {
+    "auditedHead": "0104ad0ac59e00eb22a1df80dcd4ffe49de27adc",
+    "supersededVisually": true,
+    "technicalEvidencePreserved": true
+  },
+  "certification": "PROJECT_GIOVANNI_VISUAL_PREMIUM_V2_COMPLETE_AUDITED_HEAD"
+}
