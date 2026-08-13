@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          routes=(/ /today /daily-journey /workout-session /progress-intelligence /assessment /weekly-check-in /personalization /active-plan /workout-history /offline-readiness /travel-equipment /adaptation-proposal /latest-ai-result /photo-followup-checkpoint /reset-t0)
+          routes=(/ /today /daily-journey /workout-session /progress-intelligence /assessment /weekly-check-in /personalization /active-plan /workout-history /offline-readiness /travel-equipment /adaptation-proposal /latest-ai-result /photo-followup-checkpoint /reset-t0 /health /wearlink /status)
           for route in "${routes[@]}"; do
             code=$(curl -L -sS -o /tmp/page.html -w '%{http_code}' "http://127.0.0.1:3000$route")
             test "$code" = 200
@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p visual-full-surface
-          routes=(home:/ today:/today journey:/daily-journey workout:/workout-session progress:/progress-intelligence assessment:/assessment checkin:/weekly-check-in personalization:/personalization plan:/active-plan history:/workout-history offline:/offline-readiness travel:/travel-equipment adaptation:/adaptation-proposal photoai:/latest-ai-result checkpoint:/photo-followup-checkpoint reset:/reset-t0)
+          routes=(home:/ today:/today journey:/daily-journey workout:/workout-session progress:/progress-intelligence assessment:/assessment checkin:/weekly-check-in personalization:/personalization plan:/active-plan history:/workout-history offline:/offline-readiness travel:/travel-equipment adaptation:/adaptation-proposal photoai:/latest-ai-result checkpoint:/photo-followup-checkpoint reset:/reset-t0 health:/health wearlink:/wearlink status:/status)
           for item in "${routes[@]}"; do
             name="${item%%:*}"
             route="${item#*:}"
@@ -100,7 +100,7 @@ jobs:
             npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=900 --full-page --viewport-size="1440,1000" "$url" "visual-full-surface/${name}-desktop.png"
             npx -y playwright@1.55.0 screenshot --browser=chromium --wait-for-timeout=900 --full-page --viewport-size="390,844" "$url" "visual-full-surface/${name}-mobile.png"
           done
-          test "$(find visual-full-surface -name '*.png' -size +8k | wc -l)" -eq 32
+          test "$(find visual-full-surface -name '*.png' -size +8k | wc -l)" -eq 38
       - name: Upload full-surface visual evidence
         uses: actions/upload-artifact@v4
         with:
