@@ -42,7 +42,7 @@ jobs:
     env:
       PGPASSWORD: postgres
     steps:
-      - name: Check out public CI control repository
+      - name: Check out public CI workaround repository
         uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -88,9 +88,10 @@ jobs:
         run: |
           set -euo pipefail
           node --check 'private-source/cloudflare/functions/api/[[path]].js'
+          node --check private-source/cloudflare/functions/api/resume.js
           node --check private-source/cloudflare/public/app.js
 
-      - name: Validate required HIVE files
+      - name: Validate required HIVE files and isolation
         shell: bash
         run: |
           set -euo pipefail
@@ -98,23 +99,29 @@ jobs:
           test -s private-source/db/001_tables.sql
           test -s private-source/db/002_functions.sql
           test -s private-source/db/003_seed_projects.sql
+          test -s private-source/db/004_integrity.sql
           test -s private-source/cloudflare/public/index.html
           test -s private-source/cloudflare/public/styles.css
           grep -q 'HIVE / ALVEARE' private-source/cloudflare/public/index.html
           grep -q 'hive-alveare' private-source/db/003_seed_projects.sql
-          ! grep -q "'hive'.*project-giovanni" private-source/db/003_seed_projects.sql
+          grep -q 'github-limit-workaround-only' private-source/db/003_seed_projects.sql
+          grep -q 'hive_integrity_audit' private-source/db/004_integrity.sql
+          ! grep -q "('hive'.*'https://github.com/giovannifidel-collab/project-giovanni'" private-source/db/003_seed_projects.sql
+          ! grep -q "('giochem'.*'https://github.com/giovannifidel-collab/project-giovanni'" private-source/db/003_seed_projects.sql
 
       - name: PostgreSQL recovery smoke
         shell: bash
         run: |
           set -euo pipefail
-          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -f private-source/db/001_tables.sql
-          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -f private-source/db/002_functions.sql
-          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -f private-source/db/003_seed_projects.sql
+          for f in private-source/db/[0-9][0-9][0-9]_*.sql; do
+            echo "Applying $f"
+            psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -f "$f"
+          done
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_create_checkpoint('hive','CI recovery smoke');"
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_enqueue_task('hive','CI task smoke',50,'{}'::jsonb,'{}'::uuid[]);"
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_dashboard();"
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_resume_bundle('hive');"
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -Atc "select (hive_integrity_audit()->>'ok')::boolean;" | grep -qx true
 
       - name: HIVE hosted CI summary
         if: always()
@@ -123,7 +130,7 @@ jobs:
           {
             echo '## HIVE private-source hosted CI'
             echo '- authoritative repository: giovannifidel-collab/hive-alveare (private)'
-            echo '- public transport: giovannifidel-collab/pfarma-ci'
+            echo '- pfarma-ci role: GitHub limitation workaround only'
             echo "- exact SHA: ${{ steps.source.outputs.sha }}"
             echo '- private source is checked out ephemerally on the GitHub-hosted runner'
             echo '- no HIVE plaintext source is committed into this public repository'
