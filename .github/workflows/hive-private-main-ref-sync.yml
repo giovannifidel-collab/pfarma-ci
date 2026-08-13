@@ -1,0 +1,66 @@
+name: HIVE Private Main Ref Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hive-private-main-ref-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public CI transport
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Require private-source token
+        shell: bash
+        env:
+          HIVE_TOKEN: ${{ secrets.HIVE_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${HIVE_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Resolve private HIVE main
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ env.PRIVATE_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$(curl -fsSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            'https://api.github.com/repos/giovannifidel-collab/hive-alveare/commits/main' | jq -r '.sha')"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Could not resolve HIVE main SHA.' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Update public exact-source pointer
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha='${{ steps.source.outputs.sha }}'
+          old="$(tr -d '\r\n' < hive-source-ref.txt 2>/dev/null || true)"
+          if [ "$old" = "$sha" ]; then
+            echo 'HIVE source pointer already current.'
+            exit 0
+          fi
+          printf '%s\n' "$sha" > hive-source-ref.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add hive-source-ref.txt
+          git commit -m "CI: follow private HIVE main $sha"
+          git push origin HEAD:main
