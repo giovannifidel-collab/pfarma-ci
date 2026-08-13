@@ -1,0 +1,135 @@
+name: HIVE Private Source Hosted CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'hive-source-ref.txt'
+      - '.github/workflows/hive-private-source-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'hive-source-ref.txt'
+      - '.github/workflows/hive-private-source-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-private-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hive_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d hive_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - name: Check out public CI control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate requested HIVE SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f hive-source-ref.txt
+          sha="$(tr -d '\r\n' < hive-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'hive-source-ref.txt is not a canonical commit SHA.' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require private-source token
+        shell: bash
+        env:
+          HIVE_TOKEN: ${{ secrets.HIVE_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${HIVE_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out exact private HIVE commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact commit
+        shell: bash
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+
+      - name: Validate edge JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check 'private-source/cloudflare/functions/api/[[path]].js'
+          node --check private-source/cloudflare/public/app.js
+
+      - name: Validate required HIVE files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s private-source/README.md
+          test -s private-source/db/001_tables.sql
+          test -s private-source/db/002_functions.sql
+          test -s private-source/db/003_seed_projects.sql
+          test -s private-source/cloudflare/public/index.html
+          test -s private-source/cloudflare/public/styles.css
+          grep -q 'HIVE / ALVEARE' private-source/cloudflare/public/index.html
+          grep -q 'hive-alveare' private-source/db/003_seed_projects.sql
+          ! grep -q "'hive'.*project-giovanni" private-source/db/003_seed_projects.sql
+
+      - name: PostgreSQL recovery smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -f private-source/db/001_tables.sql
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -f private-source/db/002_functions.sql
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -f private-source/db/003_seed_projects.sql
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_create_checkpoint('hive','CI recovery smoke');"
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_enqueue_task('hive','CI task smoke',50,'{}'::jsonb,'{}'::uuid[]);"
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_dashboard();"
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_resume_bundle('hive');"
+
+      - name: HIVE hosted CI summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## HIVE private-source hosted CI'
+            echo '- authoritative repository: giovannifidel-collab/hive-alveare (private)'
+            echo '- public transport: giovannifidel-collab/pfarma-ci'
+            echo "- exact SHA: ${{ steps.source.outputs.sha }}"
+            echo '- private source is checked out ephemerally on the GitHub-hosted runner'
+            echo '- no HIVE plaintext source is committed into this public repository'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf private-source
