@@ -1,0 +1,90 @@
+name: GIOCHEM V3 Package Native Frozen Receptors
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v3-native-receptors-ref.txt'
+      - '.github/workflows/giochem-validation-v3-package-native-receptors.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 1}
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v3-native-receptors-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install lightweight geometry dependency
+        working-directory: private-source
+        run: python -m pip install --disable-pip-version-check --no-cache-dir numpy scipy rdkit
+      - name: Package exact native receptors
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v3-native-receptors
+          python scripts/validation_v3_package_native_receptors.py \
+            --output-dir /tmp/v3-native-receptors \
+            --manifest /tmp/v3-native-receptors-manifest.json
+      - name: Verify package is label-free and byte-preserved
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status=="FROZEN_NATIVE_RECEPTOR_PACKAGE_READY_NO_SCREENING_SCORES" and .receptorCount==6 and .screeningLigandsRead==false and .screeningLabelsRead==false and .screeningScoresProduced==false and .receptorFilesModified==false' /tmp/v3-native-receptors-manifest.json
+          test "$(find /tmp/v3-native-receptors -name '*_protein.mol2' | wc -l)" -eq 6
+          jq -e '[.receptors[] | (.nativeCounts.atoms >= 100 and .nativeCounts.substructures >= 20 and .pairedCrystalLigandPackaged == false and .bindingBox.paddingAngstrom == 12)] | all' /tmp/v3-native-receptors-manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-native-frozen-receptors
+          path: /tmp/v3-native-receptors
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-native-frozen-receptors-manifest
+          path: /tmp/v3-native-receptors-manifest.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3 — native frozen receptors'
+            echo "- source SHA: ${{ steps.source.outputs.sha }}"
+            jq -r '.receptors[] | "- \(.target)/\(.pdbId): atoms=\(.nativeCounts.atoms), SHA256=\(.nativeReceptorSha256), box=\(.bindingBox.size.x)x\(.bindingBox.size.y)x\(.bindingBox.size.z) Å"' /tmp/v3-native-receptors-manifest.json
+            echo '- receptor atoms modified: NO'
+            echo '- screening ligands/labels/scores: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: rm -rf private-source /tmp/v3-native-receptors
