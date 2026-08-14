@@ -1,0 +1,74 @@
+name: GIOCHEM V3 Receptor MOL2 Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v3-receptor-diagnostic-ref.txt'
+      - '.github/workflows/giochem-validation-v3-receptor-mol2-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v3-receptor-diagnostic-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token" || exit 1
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run receptor metadata diagnostic only
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validation_v3_receptor_mol2_diagnostic.py --output /tmp/receptor-mol2-diagnostic.json
+          jq -e '.status == "RECEPTOR_MOL2_METADATA_DIAGNOSTIC_ONLY" and .screeningLigandsRead == false and .screeningLabelsRead == false and .screeningScoresProduced == false' /tmp/receptor-mol2-diagnostic.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-receptor-mol2-diagnostic
+          path: /tmp/receptor-mol2-diagnostic.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Safe diagnostic summary
+        shell: bash
+        run: |
+          {
+            echo '## V3 receptor MOL2 substructure diagnostic'
+            jq -r '.receptors[] | "- \(.target)/\(.pdbId): missing subst IDs=\(.missingSubstructureIdCount), atoms=\(.missingSubstructureAtomCount); details=" + (.missingSubstructureIds|tostring)' /tmp/receptor-mol2-diagnostic.json
+            echo '- screening ligands, labels, scores: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: rm -rf private-source
