@@ -1,0 +1,104 @@
+name: GIOCHEM V3.1 GNINA Static NVIDIA Runtime Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/giochem-v31-gnina-static-nvidia-runtime-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve complete NVIDIA cuDNN runtime wheel set
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/nvidia-wheels
+          python -m pip download --disable-pip-version-check --only-binary=:all: \
+            nvidia-cudnn-cu12 -d /tmp/nvidia-wheels
+          find /tmp/nvidia-wheels -maxdepth 1 -name '*.whl' -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | tee /tmp/nvidia-wheel-sha256.txt
+          python -m pip install --disable-pip-version-check --no-index \
+            --find-links /tmp/nvidia-wheels nvidia-cudnn-cu12
+          python - <<'PY' > /tmp/nvidia-runtime.json
+          import importlib.metadata as md, json, pathlib
+          import nvidia.cudnn, nvidia.cublas
+          pkgs = {}
+          for dist in ('nvidia-cudnn-cu12','nvidia-cublas-cu12'):
+              try: pkgs[dist] = md.version(dist)
+              except md.PackageNotFoundError: pkgs[dist] = None
+          libdirs = []
+          for mod in (nvidia.cudnn, nvidia.cublas):
+              d = pathlib.Path(mod.__file__).resolve().parent / 'lib'
+              if d.exists(): libdirs.append(str(d))
+          print(json.dumps({'packages':pkgs,'libDirs':libdirs}))
+          PY
+          cat /tmp/nvidia-runtime.json
+          jq -e '.packages["nvidia-cudnn-cu12"] != null and .packages["nvidia-cublas-cu12"] != null and (.libDirs|length)>=2' /tmp/nvidia-runtime.json
+
+      - name: Download and verify official GNINA v1.3.3 asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 \
+            -o /tmp/gnina.cuda12.8.static \
+            'https://github.com/gnina/gnina/releases/download/v1.3.3/gnina.cuda12.8.static'
+          expected='3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172'
+          actual="$(sha256sum /tmp/gnina.cuda12.8.static | awk '{print $1}')"
+          test "$actual" = "$expected"
+          echo "$actual" > /tmp/gnina-sha256.txt
+          chmod +x /tmp/gnina.cuda12.8.static
+
+      - name: Verify dynamic dependency closure and execute GNINA
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$(jq -r '.libDirs | join(":")' /tmp/nvidia-runtime.json):${LD_LIBRARY_PATH:-}"
+          ldd /tmp/gnina.cuda12.8.static | tee /tmp/gnina-ldd.txt
+          if grep -q 'not found' /tmp/gnina-ldd.txt; then
+            echo 'FAIL-CLOSED: unresolved GNINA dynamic dependency' >&2
+            grep 'not found' /tmp/gnina-ldd.txt >&2
+            exit 1
+          fi
+          /tmp/gnina.cuda12.8.static --version 2>&1 | tee /tmp/gnina-version.txt
+          /tmp/gnina.cuda12.8.static --help > /tmp/gnina-help.txt 2>&1
+          grep -F 'v1.3.3' /tmp/gnina-version.txt
+          grep -qi 'cnn_scoring' /tmp/gnina-help.txt
+          grep -qi 'no_gpu' /tmp/gnina-help.txt
+
+      - name: Emit immutable runtime candidate evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg gninaSha "$(cat /tmp/gnina-sha256.txt)" \
+            --arg version "$(tr '\n' ' ' < /tmp/gnina-version.txt | sed 's/[[:space:]]\+/ /g')" \
+            --argjson runtime "$(cat /tmp/nvidia-runtime.json)" \
+            --arg wheelHashes "$(cat /tmp/nvidia-wheel-sha256.txt)" \
+            '{status:"PASS",scientificDataUsed:false,ampcUsed:false,litPcbaUsed:false,gnina:{release:"v1.3.3",asset:"gnina.cuda12.8.static",sha256:$gninaSha,versionOutput:$version},nvidiaRuntime:$runtime,wheelSha256Manifest:$wheelHashes,capabilities:{cnnScoring:true,noGpu:true}}' \
+            > /tmp/giochem-v31-gnina-static-runtime.json
+          jq -e '.status=="PASS" and .scientificDataUsed==false and .gnina.sha256=="3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172"' /tmp/giochem-v31-gnina-static-runtime.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v31-gnina-static-nvidia-runtime
+          path: |
+            /tmp/giochem-v31-gnina-static-runtime.json
+            /tmp/nvidia-runtime.json
+            /tmp/nvidia-wheel-sha256.txt
+            /tmp/gnina-version.txt
+            /tmp/gnina-ldd.txt
+          if-no-files-found: error
+          retention-days: 90
