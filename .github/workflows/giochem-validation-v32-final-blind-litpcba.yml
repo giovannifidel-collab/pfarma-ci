@@ -26,6 +26,7 @@ jobs:
       gnina_sha: ${{ steps.lock.outputs.gnina_sha }}
       private_source_sha: ${{ steps.lock.outputs.private_source_sha }}
       cache_key: ${{ steps.lock.outputs.cache_key }}
+      score_matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,6 +66,24 @@ jobs:
           echo "gnina_sha=$gnina_sha" >> "$GITHUB_OUTPUT"
           echo "private_source_sha=$source_ref" >> "$GITHUB_OUTPUT"
           echo "cache_key=giochem-v31-gnina-runtime-$runtime_sha" >> "$GITHUB_OUTPUT"
+
+      - id: shards
+        name: Freeze exactly 80 total blind scoring partitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix="$(python - <<'PY'
+          import json
+          include = []
+          for target, count in (("ESR_antago", 27), ("PPARG", 27), ("TP53", 26)):
+              for shard in range(count):
+                  include.append({"target": target, "shard": shard, "shard_count": count})
+          assert len(include) == 80
+          print(json.dumps({"include": include}, separators=(",", ":")))
+          PY
+          )"
+          test "$(jq '.include | length' <<<"$matrix")" -eq 80
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
       - name: Download frozen full-AMPC PASS report
         uses: actions/download-artifact@v4
@@ -127,7 +146,7 @@ jobs:
             echo "- blind seal run: ${{ steps.lock.outputs.blind_run }}"
             echo '- LIT-PCBA scores before this job: ZERO'
             echo '- truth downloaded by scoring jobs: NO'
-            echo '- blind scoring partitions per target: 80'
+            echo '- blind scoring partitions total: 80 (ESR 27, PPARG 27, TP53 26)'
           } >> "$GITHUB_STEP_SUMMARY"
 
   score:
@@ -138,9 +157,7 @@ jobs:
     environment: pfarma-ci-trusted
     strategy:
       fail-fast: false
-      matrix:
-        target: [ESR_antago, PPARG, TP53]
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79]
+      matrix: ${{ fromJSON(needs.prerequisites.outputs.score_matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -249,7 +266,7 @@ jobs:
             --runtime-lock-sha256 '${{ needs.prerequisites.outputs.runtime_lock_sha }}' \
             --source-code-sha '${{ needs.prerequisites.outputs.private_source_sha }}' \
             --shard-index ${{ matrix.shard }} \
-            --shard-count 80 \
+            --shard-count ${{ matrix.shard_count }} \
             --output /tmp/${{ matrix.target }}-v32-final-shard-${{ matrix.shard }}.jsonl
 
       - name: Recheck no truth leaked after scoring
