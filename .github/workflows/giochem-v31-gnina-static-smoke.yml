@@ -1,0 +1,83 @@
+name: GIOCHEM V3.1 GNINA Static Runtime Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/giochem-v31-gnina-static-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Verify official GNINA v1.3.3 static asset
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download official release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://github.com/gnina/gnina/releases/download/v1.3.3/gnina.cuda12.8.static'
+          curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 \
+            -o /tmp/gnina.cuda12.8.static "$url"
+          test -s /tmp/gnina.cuda12.8.static
+
+      - name: Verify frozen official SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172'
+          actual="$(sha256sum /tmp/gnina.cuda12.8.static | awk '{print $1}')"
+          test "$actual" = "$expected"
+          echo "$actual" > /tmp/gnina-static-sha256.txt
+          stat -c '%s' /tmp/gnina.cuda12.8.static > /tmp/gnina-static-bytes.txt
+
+      - name: Execute without scientific data
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x /tmp/gnina.cuda12.8.static
+          /tmp/gnina.cuda12.8.static --version 2>&1 | tee /tmp/gnina-static-version.txt
+          /tmp/gnina.cuda12.8.static --help > /tmp/gnina-static-help.txt 2>&1
+          grep -F 'v1.3.3' /tmp/gnina-static-version.txt
+          grep -qi 'cnn_scoring' /tmp/gnina-static-help.txt
+          grep -qi 'no_gpu' /tmp/gnina-static-help.txt
+
+      - name: Emit runtime report
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg version "$(tr '\n' ' ' < /tmp/gnina-static-version.txt | sed 's/[[:space:]]\+/ /g')" \
+            --arg sha256 "$(cat /tmp/gnina-static-sha256.txt)" \
+            --argjson bytes "$(cat /tmp/gnina-static-bytes.txt)" \
+            '{status:"PASS",scientificDataUsed:false,ampcUsed:false,litPcbaUsed:false,distribution:"official GitHub Release asset",release:"v1.3.3",asset:"gnina.cuda12.8.static",sha256:$sha256,bytes:$bytes,versionOutput:$version,capabilities:{cnnScoring:true,noGpu:true}}' \
+            > /tmp/giochem-v31-gnina-static-smoke.json
+          jq -e '.status=="PASS" and .scientificDataUsed==false and .sha256=="3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172" and .capabilities.cnnScoring==true and .capabilities.noGpu==true' /tmp/giochem-v31-gnina-static-smoke.json
+
+      - name: Upload provenance only
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v31-gnina-static-runtime-smoke
+          path: |
+            /tmp/giochem-v31-gnina-static-smoke.json
+            /tmp/gnina-static-version.txt
+            /tmp/gnina-static-sha256.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.1 — GNINA official static runtime smoke'
+            echo '- release: v1.3.3'
+            echo '- asset: gnina.cuda12.8.static'
+            echo "- SHA-256: $(cat /tmp/gnina-static-sha256.txt)"
+            echo "- version: $(tr '\n' ' ' < /tmp/gnina-static-version.txt)"
+            echo '- CNN scoring/no_gpu available: YES'
+            echo '- AMPC/LIT-PCBA used: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
