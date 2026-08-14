@@ -35,19 +35,30 @@ jobs:
           python -m pip install --disable-pip-version-check --no-index --find-links /tmp/nvidia-wheels nvidia-cudnn-cu12
           python - <<'PY' > /tmp/runtime-meta.json
           import importlib.metadata as md, json, pathlib
-          import nvidia.cudnn, nvidia.cublas
-          libs=[]
-          for mod in (nvidia.cudnn,nvidia.cublas):
-              p=pathlib.Path(mod.__file__).resolve().parent/'lib'
-              if p.exists(): libs.append(str(p))
-          print(json.dumps({
-            'packages': {
-              'nvidia-cudnn-cu12': md.version('nvidia-cudnn-cu12'),
-              'nvidia-cublas-cu12': md.version('nvidia-cublas-cu12')
-            },
-            'libDirs': libs
-          }))
+
+          distributions = ('nvidia-cudnn-cu12','nvidia-cublas-cu12','nvidia-cuda-nvrtc-cu12')
+          packages = {}
+          libdirs = []
+          for dist_name in distributions:
+              dist = md.distribution(dist_name)
+              packages[dist_name] = dist.version
+              files = list(dist.files or [])
+              roots = set()
+              for rel in files:
+                  text = str(rel)
+                  if '/lib/' in text and (text.endswith('.so') or '.so.' in text):
+                      full = pathlib.Path(dist.locate_file(rel)).resolve()
+                      if full.exists():
+                          roots.add(str(full.parent))
+              libdirs.extend(sorted(roots))
+          # Preserve first-seen order while deduplicating.
+          seen=set(); libdirs=[x for x in libdirs if not (x in seen or seen.add(x))]
+          if not libdirs:
+              raise RuntimeError('No NVIDIA runtime library directories resolved from installed distributions')
+          print(json.dumps({'packages':packages,'libDirs':libdirs}))
           PY
+          cat /tmp/runtime-meta.json
+          jq -e '.packages["nvidia-cudnn-cu12"] != null and .packages["nvidia-cublas-cu12"] != null and .packages["nvidia-cuda-nvrtc-cu12"] != null and (.libDirs|length)>=2' /tmp/runtime-meta.json
 
       - name: Download and verify official GNINA v1.3.3
         shell: bash
@@ -80,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, pathlib, re
+          import hashlib, json, pathlib
           wheel_dir=pathlib.Path('/tmp/nvidia-wheels')
           wheels=[]
           for p in sorted(wheel_dir.glob('*.whl')):
@@ -107,7 +118,7 @@ jobs:
           }
           pathlib.Path('giochem-v31-gnina-runtime-lock.json').write_text(json.dumps(lock,indent=2)+'\n')
           PY
-          jq -e '.status=="FROZEN_ZERO_DATA_RUNTIME_PASS" and .scientificDataUsed==false and .gnina.sha256=="3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172" and .execution.noGpu==true and (.nvidiaRuntime.wheels|length)>=2' giochem-v31-gnina-runtime-lock.json
+          jq -e '.status=="FROZEN_ZERO_DATA_RUNTIME_PASS" and .scientificDataUsed==false and .gnina.sha256=="3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172" and .execution.noGpu==true and (.nvidiaRuntime.wheels|length)>=3' giochem-v31-gnina-runtime-lock.json
 
       - name: Commit lock only if changed
         shell: bash
@@ -131,5 +142,6 @@ jobs:
             /tmp/ldd.txt
             /tmp/version.txt
             /tmp/wheel-sha.txt
+            /tmp/runtime-meta.json
           if-no-files-found: error
           retention-days: 90
