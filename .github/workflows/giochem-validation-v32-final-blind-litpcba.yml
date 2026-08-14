@@ -1,0 +1,402 @@
+name: GIOCHEM Validation V3.2 Final Blind LIT-PCBA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v32-final-upstream-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prerequisites:
+    name: Verify immutable PASS prerequisites before external holdout
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      full_ampc_run: ${{ steps.lock.outputs.full_ampc_run }}
+      full_ampc_artifact: ${{ steps.lock.outputs.full_ampc_artifact }}
+      pose_run: ${{ steps.lock.outputs.pose_run }}
+      receptor_run: ${{ steps.lock.outputs.receptor_run }}
+      blind_run: ${{ steps.lock.outputs.blind_run }}
+      runtime_lock_sha: ${{ steps.lock.outputs.runtime_lock_sha }}
+      gnina_sha: ${{ steps.lock.outputs.gnina_sha }}
+      private_source_sha: ${{ steps.lock.outputs.private_source_sha }}
+      cache_key: ${{ steps.lock.outputs.cache_key }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - id: lock
+        name: Parse final upstream lock and freeze provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          lock=giochem-v32-final-upstream-lock.json
+          test -s "$lock"
+          jq -e '.status == "V32_FINAL_PREREQUISITES_PASS" and .litPcbaScoresProduced == false and .blindRunId == 31807671790 and .runtimeLockSha256 == "a3838e2ec2987e2ec98f0a4f07420e27887809ba3aa64e43382f9073e9c8e54a" and .gninaBinarySha256 == "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172"' "$lock"
+          source_ref="$(tr -d '\r\n' < giochem-v32-final-source-ref.txt)"
+          test "$(jq -r '.privateSourceSha' "$lock")" = "$source_ref"
+          full_run="$(jq -r '.fullAmpcRunId' "$lock")"
+          full_artifact="$(jq -r '.fullAmpcArtifactName' "$lock")"
+          pose_run="$(jq -r '.poseRunId' "$lock")"
+          receptor_run="$(jq -r '.receptorRunId' "$lock")"
+          blind_run="$(jq -r '.blindRunId' "$lock")"
+          runtime_sha="$(jq -r '.runtimeLockSha256' "$lock")"
+          gnina_sha="$(jq -r '.gninaBinarySha256' "$lock")"
+          for value in "$full_run" "$pose_run" "$receptor_run" "$blind_run"; do
+            [[ "$value" =~ ^[0-9]+$ ]] || { echo 'FAIL-CLOSED invalid upstream run id' >&2; exit 1; }
+          done
+          case "$full_artifact" in
+            giochem-v32-cnnscore-full-ampc-report|giochem-v32-cnnscore-reuse-full-ampc-report) ;;
+            *) echo 'FAIL-CLOSED unsupported full-AMPC artifact name' >&2; exit 1;;
+          esac
+          echo "full_ampc_run=$full_run" >> "$GITHUB_OUTPUT"
+          echo "full_ampc_artifact=$full_artifact" >> "$GITHUB_OUTPUT"
+          echo "pose_run=$pose_run" >> "$GITHUB_OUTPUT"
+          echo "receptor_run=$receptor_run" >> "$GITHUB_OUTPUT"
+          echo "blind_run=$blind_run" >> "$GITHUB_OUTPUT"
+          echo "runtime_lock_sha=$runtime_sha" >> "$GITHUB_OUTPUT"
+          echo "gnina_sha=$gnina_sha" >> "$GITHUB_OUTPUT"
+          echo "private_source_sha=$source_ref" >> "$GITHUB_OUTPUT"
+          echo "cache_key=giochem-v31-gnina-runtime-$runtime_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Download frozen full-AMPC PASS report
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.lock.outputs.full_ampc_run }}
+          github-token: ${{ github.token }}
+          name: ${{ steps.lock.outputs.full_ampc_artifact }}
+          path: /tmp/full-ampc
+
+      - name: Download frozen pose-gate PASS report
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.lock.outputs.pose_run }}
+          github-token: ${{ github.token }}
+          name: giochem-v32-cnnscore-pose-gate-report
+          path: /tmp/pose
+
+      - name: Download frozen GNINA receptor manifest
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.lock.outputs.receptor_run }}
+          github-token: ${{ github.token }}
+          name: giochem-v32-frozen-gnina-receptors-manifest
+          path: /tmp/receptor-manifest
+
+      - name: Download blind seal manifest only (no truth)
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.lock.outputs.blind_run }}
+          github-token: ${{ github.token }}
+          name: giochem-v3-blind-manifest
+          path: /tmp/blind-manifest
+
+      - name: Enforce every prerequisite before any LIT-PCBA score
+        shell: bash
+        run: |
+          set -euo pipefail
+          full="$(find /tmp/full-ampc -type f -name '*.json' -print -quit)"
+          pose="$(find /tmp/pose -type f -name '*.json' -print -quit)"
+          receptor="$(find /tmp/receptor-manifest -type f -name '*.json' -print -quit)"
+          blind="$(find /tmp/blind-manifest -type f -name '*.json' -print -quit)"
+          test -n "$full" -a -n "$pose" -a -n "$receptor" -a -n "$blind"
+          jq -e '.status == "V32_FULL_AMPC_PASS" and .scientificRole == "METHOD_DEVELOPMENT_CONFIRMATION_ONLY_NOT_VALIDATION" and .selectedRanker == "gnina_cnn_score" and .candidateCount == 1 and .litPcbaConsumed == false and .fullAmpcExitGate.pass == true and ([.fullAmpcExitGate.checks[]] | all)' "$full"
+          jq -e '.status == "V32_POSE_GATE_PASS" and .pass == true and .method == "gnina_cnn_score" and .panelSize == 4 and .litPcbaConsumed == false and ([.checks[]] | all)' "$pose"
+          jq -e '.status == "FROZEN_GNINA_RECEPTOR_PACKAGE_READY_NO_HOLDOUT_SCORES" and .receptorCount == 6 and .screeningLigandsRead == false and .screeningLabelsRead == false and .screeningScoresProduced == false and .litPcbaPartitionVFilesRead == false' "$receptor"
+          jq -e '.status == "BLIND_HOLDOUT_SEALED_NO_SCORES" and .holdoutScoresProduced == false and .totals.records == 2497 and .totals.actives == 47 and .totals.inactives == 2450' "$blind"
+          test "$(jq -r '.runtime.runtimeLockSha256' "$full")" = '${{ steps.lock.outputs.runtime_lock_sha }}'
+          test "$(jq -r '.runtime.gninaBinarySha256' "$full")" = '${{ steps.lock.outputs.gnina_sha }}'
+          test "$(jq -r '.runtime.runtimeLockSha256' "$pose")" = '${{ steps.lock.outputs.runtime_lock_sha }}'
+          test "$(jq -r '.runtime.gninaBinarySha256' "$pose")" = '${{ steps.lock.outputs.gnina_sha }}'
+
+      - name: Prerequisite summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.2 — final holdout interlock OPEN'
+            echo "- full-AMPC PASS run: ${{ steps.lock.outputs.full_ampc_run }}"
+            echo "- pose PASS run: ${{ steps.lock.outputs.pose_run }}"
+            echo "- receptor package run: ${{ steps.lock.outputs.receptor_run }}"
+            echo "- blind seal run: ${{ steps.lock.outputs.blind_run }}"
+            echo '- LIT-PCBA scores before this job: ZERO'
+            echo '- truth downloaded by scoring jobs: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  score:
+    name: Blind ${{ matrix.target }} shard ${{ matrix.shard }}
+    needs: prerequisites
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    environment: pfarma-ci-trusted
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ESR_antago, PPARG, TP53]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify immutable source/runtime lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(tr -d '\r\n' < giochem-v32-final-source-ref.txt)" = '${{ needs.prerequisites.outputs.private_source_sha }}'
+          test "$(sha256sum giochem-v31-gnina-runtime-lock.json | awk '{print $1}')" = '${{ needs.prerequisites.outputs.runtime_lock_sha }}'
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ needs.prerequisites.outputs.private_source_sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download blind ligand inputs ONLY
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.prerequisites.outputs.blind_run }}
+          github-token: ${{ github.token }}
+          name: giochem-v3-blind-ligands
+          path: /tmp/blind
+
+      - name: Download frozen GNINA receptors
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.prerequisites.outputs.receptor_run }}
+          github-token: ${{ github.token }}
+          name: giochem-v32-frozen-gnina-receptors
+          path: /tmp/receptors
+
+      - name: Download frozen receptor manifest
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.prerequisites.outputs.receptor_run }}
+          github-token: ${{ github.token }}
+          name: giochem-v32-frozen-gnina-receptors-manifest
+          path: /tmp/receptor-manifest
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: /tmp/giochem-gnina-runtime
+          key: ${{ needs.prerequisites.outputs.cache_key }}
+          fail-on-cache-miss: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deterministic ligand-preparation stack
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y autodock-vina >/dev/null
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+
+      - name: Bind immutable GNINA runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          libdirs="$(cat /tmp/giochem-gnina-runtime/ld-library-path.txt)"; test -n "$libdirs"
+          echo "LD_LIBRARY_PATH=$libdirs:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo 'GIOCHEM_GNINA_BIN=/tmp/giochem-gnina-runtime/gnina' >> "$GITHUB_ENV"
+          test "$(sha256sum /tmp/giochem-gnina-runtime/gnina | awk '{print $1}')" = '${{ needs.prerequisites.outputs.gnina_sha }}'
+
+      - name: Confirm scoring worker has no truth artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! find /tmp -type f -name '*.truth.jsonl' -print -quit | grep -q .
+          blind="$(find /tmp/blind -type f -name '${{ matrix.target }}.blind.jsonl' -print -quit)"
+          receptor_manifest="$(find /tmp/receptor-manifest -type f -name '*.json' -print -quit)"
+          test -n "$blind" -a -n "$receptor_manifest"
+          echo "BLIND_INPUT=$blind" >> "$GITHUB_ENV"
+          echo "RECEPTOR_MANIFEST=$receptor_manifest" >> "$GITHUB_ENV"
+
+      - name: Score label-free frozen holdout shard
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validation_v32_blind_score_worker.py \
+            --target '${{ matrix.target }}' \
+            --blind-input "$BLIND_INPUT" \
+            --receptor-dir /tmp/receptors \
+            --receptor-manifest "$RECEPTOR_MANIFEST" \
+            --runtime-lock-sha256 '${{ needs.prerequisites.outputs.runtime_lock_sha }}' \
+            --source-code-sha '${{ needs.prerequisites.outputs.private_source_sha }}' \
+            --shard-index ${{ matrix.shard }} \
+            --shard-count 24 \
+            --output /tmp/${{ matrix.target }}-v32-final-shard-${{ matrix.shard }}.jsonl
+
+      - name: Recheck no truth leaked after scoring
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=/tmp/${{ matrix.target }}-v32-final-shard-${{ matrix.shard }}.jsonl
+          if grep -E '"(label|active|inactive|truth|smiles|experimentalOutcome|originalCompoundId)"' "$file"; then
+            echo 'FAIL-CLOSED: prohibited field in holdout score artifact' >&2
+            exit 1
+          fi
+
+      - name: Upload sealed blind score shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v32-final-${{ matrix.target }}-shard-${{ matrix.shard }}
+          path: /tmp/${{ matrix.target }}-v32-final-shard-${{ matrix.shard }}.jsonl
+          if-no-files-found: error
+          retention-days: 90
+
+      - if: always()
+        run: rm -rf private-source /tmp/blind /tmp/receptors /tmp/receptor-manifest
+
+  evaluate:
+    name: Seal scores, unblind once, apply frozen final gates
+    needs: [prerequisites, score]
+    if: always() && needs.prerequisites.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ needs.prerequisites.outputs.private_source_sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download ALL sealed blind score shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: giochem-v32-final-*-shard-*
+          path: /tmp/final-scores
+          merge-multiple: true
+
+      - name: Download blind seal manifest
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.prerequisites.outputs.blind_run }}
+          github-token: ${{ github.token }}
+          name: giochem-v3-blind-manifest
+          path: /tmp/blind-manifest
+
+      - name: Download sealed truth NOW, only after all score jobs ended
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.prerequisites.outputs.blind_run }}
+          github-token: ${{ github.token }}
+          name: giochem-v3-sealed-truth
+          path: /tmp/truth
+
+      - name: Download frozen pose PASS report
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.prerequisites.outputs.pose_run }}
+          github-token: ${{ github.token }}
+          name: giochem-v32-cnnscore-pose-gate-report
+          path: /tmp/pose
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install final statistical evaluation stack only
+        shell: bash
+        run: python -m pip install --disable-pip-version-check --no-cache-dir numpy scikit-learn
+
+      - name: One-shot final evaluation after complete-score sealing
+        id: final
+        working-directory: private-source
+        shell: bash
+        run: |
+          set +e
+          blind_manifest="$(find /tmp/blind-manifest -type f -name '*.json' -print -quit)"
+          pose_report="$(find /tmp/pose -type f -name '*.json' -print -quit)"
+          python scripts/validation_v32_final_evaluate.py \
+            --scores-dir /tmp/final-scores \
+            --truth-dir /tmp/truth \
+            --blind-manifest "$blind_manifest" \
+            --pose-report "$pose_report" \
+            --runtime-lock-sha256 '${{ needs.prerequisites.outputs.runtime_lock_sha }}' \
+            --gnina-sha256 '${{ needs.prerequisites.outputs.gnina_sha }}' \
+            --output /tmp/giochem-v32-final-validation.json
+          code=$?
+          set -e
+          test -s /tmp/giochem-v32-final-validation.json || exit 1
+          echo "scientific_exit=$code" >> "$GITHUB_OUTPUT"
+          test "$code" -eq 0 -o "$code" -eq 5
+
+      - name: Enforce no partial/manual qualification semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.method == "gnina_cnn_score" and .unblindingProtocol.scoreCoverageSealedBeforeTruthLoad == true and .qualification.manualOverrideAllowed == false and .qualification.partialPassAllowed == false and .qualification.postHocExclusionAllowed == false' /tmp/giochem-v32-final-validation.json
+
+      - name: Upload authoritative final validation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v32-final-validation-report
+          path: /tmp/giochem-v32-final-validation.json
+          if-no-files-found: error
+          retention-days: 180
+
+      - name: Final scientific verdict
+        shell: bash
+        run: |
+          {
+            echo '# GIOCHEM Validation Suite V3.2 — FINAL VERDICT'
+            echo "- status: $(jq -r '.status' /tmp/giochem-v32-final-validation.json)"
+            echo "- pooled target-standardized ROC-AUC: $(jq -r '.pooledTargetStandardizedRocAuc' /tmp/giochem-v32-final-validation.json)"
+            echo "- bootstrap 95% lower: $(jq -r '.bootstrap95.lower95' /tmp/giochem-v32-final-validation.json)"
+            echo "- permutation p: $(jq -r '.permutationTest.pValue' /tmp/giochem-v32-final-validation.json)"
+            echo "- macro target ROC-AUC: $(jq -r '.macroMeanTargetRocAuc' /tmp/giochem-v32-final-validation.json)"
+            echo "- EF1 targets passing: $(jq -r '.ef1TargetsAtGate' /tmp/giochem-v32-final-validation.json)/3"
+            echo "- EF5 targets passing: $(jq -r '.ef5TargetsAtGate' /tmp/giochem-v32-final-validation.json)/3"
+            echo "- macro EF5: $(jq -r '.macroMeanEf5' /tmp/giochem-v32-final-validation.json)"
+            echo "- pose gate: $(jq -r '.gates.pose' /tmp/giochem-v32-final-validation.json)"
+            echo "- all gates: $(jq -c '.gates' /tmp/giochem-v32-final-validation.json)"
+            jq -r '.targets | to_entries[] | "- \(.key): AUC=\(.value.metrics.rocAuc), EF1=\(.value.metrics.ef1.enrichmentFactor), EF5=\(.value.metrics.ef5.enrichmentFactor), failures=\(.value.failedLigands)/\(.value.records)"' /tmp/giochem-v32-final-validation.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: always()
+        run: rm -rf private-source /tmp/final-scores /tmp/truth /tmp/blind-manifest /tmp/pose
