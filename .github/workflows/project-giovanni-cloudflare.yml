@@ -23,6 +23,8 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
       ORIGIN: https://project-giovanni.project-giovanni.workers.dev
+      NEXT_PUBLIC_SUPABASE_URL: https://deajmdwxabusamcfasha.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_X6CLuqLEArHbpegmjF_cow_WDQHIC_1
     steps:
       - name: Check out public CI bridge
         uses: actions/checkout@v4
