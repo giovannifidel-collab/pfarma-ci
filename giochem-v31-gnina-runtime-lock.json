@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "status": "FROZEN_ZERO_DATA_RUNTIME_PASS",
+  "scientificDataUsed": false,
+  "ampcUsed": false,
+  "litPcbaUsed": false,
+  "gnina": {
+    "release": "v1.3.3",
+    "asset": "gnina.cuda12.8.static",
+    "url": "https://github.com/gnina/gnina/releases/download/v1.3.3/gnina.cuda12.8.static",
+    "sha256": "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172",
+    "versionOutput": "gnina v1.3.3 master:6fe1ce2   Built Jun 30 2026."
+  },
+  "nvidiaRuntime": {
+    "packages": {
+      "nvidia-cublas-cu12": "12.9.2.10",
+      "nvidia-cuda-nvrtc-cu12": "12.9.86",
+      "nvidia-cuda-runtime-cu12": "12.9.79",
+      "nvidia-cudnn-cu12": "9.24.0.43",
+      "nvidia-cufft-cu12": "11.4.1.4",
+      "nvidia-cusolver-cu12": "11.7.5.82",
+      "nvidia-cusparse-cu12": "12.5.10.65",
+      "nvidia-nvjitlink-cu12": "12.9.86"
+    },
+    "wheels": [
+      {
+        "file": "nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_x86_64.whl",
+        "sha256": "e4f53a8ca8c5d6e8c492d0d0a3d565ecb59a751b19cfdaa4f6da0ab2104c1702"
+      },
+      {
+        "file": "nvidia_cuda_nvrtc_cu12-12.9.86-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl",
+        "sha256": "210cf05005a447e29214e9ce50851e83fc5f4358df8b453155d5e1918094dcb4"
+      },
+      {
+        "file": "nvidia_cuda_runtime_cu12-12.9.79-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "sha256": "25bba2dfb01d48a9b59ca474a1ac43c6ebf7011f1b0b8cc44f54eb6ac48a96c3"
+      },
+      {
+        "file": "nvidia_cudnn_cu12-9.24.0.43-py3-none-manylinux_2_27_x86_64.whl",
+        "sha256": "f424192dd85e7d29f44be18df2dae4c80d32c67a29c0d42f5c283c40cfdf871c"
+      },
+      {
+        "file": "nvidia_cufft_cu12-11.4.1.4-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "sha256": "c67884f2a7d276b4b80eb56a79322a95df592ae5e765cf1243693365ccab4e28"
+      },
+      {
+        "file": "nvidia_cusolver_cu12-11.7.5.82-py3-none-manylinux_2_27_x86_64.whl",
+        "sha256": "15da72d1340d29b5b3cf3fd100e3cd53421dde36002eda6ed93811af63c40d88"
+      },
+      {
+        "file": "nvidia_cusparse_cu12-12.5.10.65-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "sha256": "73060ce019ac064a057267c585bf1fd5a353734151f87472ff02b2c5c9984e78"
+      },
+      {
+        "file": "nvidia_nvjitlink_cu12-12.9.86-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl",
+        "sha256": "e3f1171dbdc83c5932a45f0f4c99180a70de9bd2718c1ab77d14104f6d7147f9"
+      }
+    ]
+  },
+  "execution": {
+    "noGpu": true,
+    "cnnScoring": true
+  }
+}
