@@ -13,7 +13,7 @@ permissions:
 jobs:
   freeze:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,42 +23,53 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Resolve NVIDIA runtime wheels
+      - name: Resolve complete NVIDIA runtime wheels
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/nvidia-wheels
           python -m pip download --disable-pip-version-check --only-binary=:all: \
-            nvidia-cudnn-cu12 -d /tmp/nvidia-wheels
+            nvidia-cudnn-cu12 \
+            nvidia-cuda-runtime-cu12 \
+            nvidia-cusparse-cu12 \
+            nvidia-cufft-cu12 \
+            nvidia-cusolver-cu12 \
+            -d /tmp/nvidia-wheels
           find /tmp/nvidia-wheels -maxdepth 1 -name '*.whl' -print0 | sort -z | xargs -0 sha256sum > /tmp/wheel-sha.txt
           cat /tmp/wheel-sha.txt
-          python -m pip install --disable-pip-version-check --no-index --find-links /tmp/nvidia-wheels nvidia-cudnn-cu12
+          python -m pip install --disable-pip-version-check --no-index --find-links /tmp/nvidia-wheels \
+            nvidia-cudnn-cu12 nvidia-cuda-runtime-cu12 nvidia-cusparse-cu12 nvidia-cufft-cu12 nvidia-cusolver-cu12
           python - <<'PY' > /tmp/runtime-meta.json
           import importlib.metadata as md, json, pathlib
 
-          distributions = ('nvidia-cudnn-cu12','nvidia-cublas-cu12','nvidia-cuda-nvrtc-cu12')
           packages = {}
           libdirs = []
-          for dist_name in distributions:
-              dist = md.distribution(dist_name)
-              packages[dist_name] = dist.version
-              files = list(dist.files or [])
+          for dist in md.distributions():
+              name = (dist.metadata.get('Name') or '').lower()
+              if not name.startswith('nvidia-'):
+                  continue
               roots = set()
-              for rel in files:
+              for rel in list(dist.files or []):
                   text = str(rel)
                   if '/lib/' in text and (text.endswith('.so') or '.so.' in text):
                       full = pathlib.Path(dist.locate_file(rel)).resolve()
                       if full.exists():
                           roots.add(str(full.parent))
-              libdirs.extend(sorted(roots))
-          # Preserve first-seen order while deduplicating.
+              if roots:
+                  packages[name] = dist.version
+                  libdirs.extend(sorted(roots))
           seen=set(); libdirs=[x for x in libdirs if not (x in seen or seen.add(x))]
-          if not libdirs:
-              raise RuntimeError('No NVIDIA runtime library directories resolved from installed distributions')
-          print(json.dumps({'packages':packages,'libDirs':libdirs}))
+          required={
+              'nvidia-cudnn-cu12','nvidia-cublas-cu12','nvidia-cuda-nvrtc-cu12',
+              'nvidia-cuda-runtime-cu12','nvidia-cusparse-cu12','nvidia-cufft-cu12','nvidia-cusolver-cu12'
+          }
+          missing=sorted(required-set(packages))
+          if missing:
+              raise RuntimeError(f'Missing required NVIDIA runtime packages after install: {missing}')
+          print(json.dumps({'packages':dict(sorted(packages.items())),'libDirs':libdirs}))
           PY
           cat /tmp/runtime-meta.json
-          jq -e '.packages["nvidia-cudnn-cu12"] != null and .packages["nvidia-cublas-cu12"] != null and .packages["nvidia-cuda-nvrtc-cu12"] != null and (.libDirs|length)>=2' /tmp/runtime-meta.json
+          jq -e '(.packages|length)>=7 and (.libDirs|length)>=7' /tmp/runtime-meta.json
 
       - name: Download and verify official GNINA v1.3.3
         shell: bash
@@ -79,7 +90,11 @@ jobs:
           set -euo pipefail
           export LD_LIBRARY_PATH="$(jq -r '.libDirs|join(":")' /tmp/runtime-meta.json):${LD_LIBRARY_PATH:-}"
           ldd /tmp/gnina | tee /tmp/ldd.txt
-          ! grep -q 'not found' /tmp/ldd.txt
+          if grep -q 'not found' /tmp/ldd.txt; then
+            echo 'FAIL-CLOSED: unresolved GNINA runtime dependencies' >&2
+            grep 'not found' /tmp/ldd.txt >&2
+            exit 1
+          fi
           /tmp/gnina --version 2>&1 | tee /tmp/version.txt
           /tmp/gnina --help > /tmp/help.txt 2>&1
           grep -F 'v1.3.3' /tmp/version.txt
@@ -118,7 +133,7 @@ jobs:
           }
           pathlib.Path('giochem-v31-gnina-runtime-lock.json').write_text(json.dumps(lock,indent=2)+'\n')
           PY
-          jq -e '.status=="FROZEN_ZERO_DATA_RUNTIME_PASS" and .scientificDataUsed==false and .gnina.sha256=="3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172" and .execution.noGpu==true and (.nvidiaRuntime.wheels|length)>=3' giochem-v31-gnina-runtime-lock.json
+          jq -e '.status=="FROZEN_ZERO_DATA_RUNTIME_PASS" and .scientificDataUsed==false and .gnina.sha256=="3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172" and .execution.noGpu==true and (.nvidiaRuntime.wheels|length)>=7' giochem-v31-gnina-runtime-lock.json
 
       - name: Commit lock only if changed
         shell: bash
@@ -130,7 +145,7 @@ jobs:
           if git diff --cached --quiet; then
             echo 'Runtime lock already identical.'
           else
-            git commit -m 'ci(giochem): freeze GNINA v1.3.3 runtime lock'
+            git commit -m 'ci(giochem): freeze GNINA v1.3.3 complete runtime lock'
             git push origin HEAD:main
           fi
 
