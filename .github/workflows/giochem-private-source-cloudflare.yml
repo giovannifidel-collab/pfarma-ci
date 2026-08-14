@@ -69,6 +69,7 @@ jobs:
           test -s private-source/cloud/worker.js
           test -s private-source/wrangler.jsonc
           test -s private-source/package.json
+          test -s private-source/scientific-api/requirements.txt
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -86,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
-          python -m pip install --disable-pip-version-check --no-cache-dir 'fastapi>=0.115,<1' 'pydantic>=2.8,<3' 'SQLAlchemy>=2.0,<3'
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
           npm test
           python -m py_compile scientific-api/main.py scientific-api/advanced.py scientific-api/agent_runtime.py cloud-worker/worker.py scripts/benchmark_1iep.py
           node --check cloud/worker.js
