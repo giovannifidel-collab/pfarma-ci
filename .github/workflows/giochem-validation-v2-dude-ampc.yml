@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'giochem-source-ref.txt'
+      - '.github/workflows/giochem-validation-v2-dude-ampc.yml'
 
 permissions:
   contents: read
@@ -81,14 +82,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          jq -e '.status == "PREREGISTERED_BEFORE_OUTCOMES" and .blindScreening.useAllActives == true and .blindScreening.useAllDecoys == true and .scientificPolicy.noPostHocThresholdTuning == true' validation/v2/preregistration.json
+          jq -e '.status == "PREREGISTERED_BEFORE_OUTCOMES" and .blindScreening.pdb == "1L2S" and .blindScreening.useAllActives == true and .blindScreening.useAllDecoys == true and .scientificPolicy.noPostHocThresholdTuning == true' validation/v2/preregistration.json
 
       - name: Dock full DUD-E AMPC shard
         working-directory: private-source
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/validation_v2_dude_screen.py \
+          python scripts/validation_v2_dude_screen_rcsb.py \
             --shard-index ${{ matrix.shard }} --shard-count 12 \
             --output /tmp/ampc-shard-${{ matrix.shard }}.jsonl
 
