@@ -1,0 +1,162 @@
+name: GIOCHEM Private Source Cloudflare Bridge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-source-ref.txt'
+      - '.github/workflows/giochem-private-source-cloudflare.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: giochem-private-source-cloudflare
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: pfarma-ci-trusted
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
+      ORIGIN: https://giochem-cloud.project-giovanni.workers.dev
+    steps:
+      - name: Check out public CI bridge
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate exact private-source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f giochem-source-ref.txt
+          sha="$(tr -d '\r\n' < giochem-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid GIOCHEM source SHA' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private-source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token" || { echo 'Missing GIOCHEM_SOURCE_TOKEN/PFARMA_SOURCE_TOKEN' >&2; exit 1; }
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out exact private GIOCHEM commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact commit and repository isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+          test -s private-source/cloud/worker.js
+          test -s private-source/wrangler.jsonc
+          test -s private-source/package.json
+          ! grep -R --line-number --fixed-strings 'project-giovanni' private-source/.github 2>/dev/null | grep -v 'workers.dev' || true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: private-source/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install and run authoritative GIOCHEM tests
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm test
+          python -m py_compile scientific-api/main.py scientific-api/advanced.py scientific-api/agent_runtime.py cloud-worker/worker.py scripts/benchmark_1iep.py
+          node --check cloud/worker.js
+
+      - name: Resolve Cloudflare deploy token from public bridge only
+        shell: bash
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_TOKEN_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${CF_TOKEN:-${CF_TOKEN_FALLBACK:-}}"
+          test -n "$token" || { echo 'Missing CLOUDFLARE_API_TOKEN or PFARMA_CLOUDFLARE_API_TOKEN in pfarma-ci/pfarma-ci-trusted' >&2; exit 1; }
+          echo "CF_DEPLOY_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Deploy exact private commit to Cloudflare
+        working-directory: private-source
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ env.CF_DEPLOY_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.123.0 deploy
+
+      - name: Resolve GIOCHEM access token for production verification
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ secrets.GIOCHEM_ACCESS_TOKEN }}
+          ACCESS_TOKEN_FALLBACK: ${{ secrets.PFARMA_GIOCHEM_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${ACCESS_TOKEN:-${ACCESS_TOKEN_FALLBACK:-}}"
+          test -n "$token" || { echo 'Missing GIOCHEM_ACCESS_TOKEN in public bridge' >&2; exit 1; }
+          echo "GIOCHEM_VERIFY_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Verify production runtime, HIVE announcement and RCSB proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          auth="Authorization: Bearer $GIOCHEM_VERIFY_TOKEN"
+          curl -fsS -H "$auth" "$ORIGIN/api/health" > /tmp/health.json
+          node - <<'NODE'
+          const h=require('/tmp/health.json');
+          if(h.status!=='ok') throw new Error('health not ok');
+          if(h.version!=='1.7.0-cloudflare-hive') throw new Error(`unexpected version ${h.version}`);
+          if(h.runtimeAnnouncement?.announced!==true) throw new Error('HIVE runtime announcement missing');
+          if(h.ownership?.orchestration!=='HIVE') throw new Error('HIVE ownership missing');
+          if(h.ownership?.duplicateScheduler!==false) throw new Error('duplicate scheduler invariant failed');
+          NODE
+          curl -fsS -H "$auth" "$ORIGIN/api/target?pdb=1IEP" > /tmp/target.json
+          node -e "const x=require('/tmp/target.json'); if(!x || x.error) process.exit(1)"
+          curl -fsS -H "$auth" "$ORIGIN/api/pdb?pdb=1IEP" > /tmp/1iep.pdb
+          grep -Eq '^(ATOM|HETATM)' /tmp/1iep.pdb
+
+      - name: Public bridge summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM private-source → public pfarma-ci → Cloudflare'
+            echo '- authoritative source: giovannifidel-collab/giochem (private)'
+            echo '- execution/deploy bridge: giovannifidel-collab/pfarma-ci (public)'
+            echo "- exact source SHA: ${{ steps.source.outputs.sha }}"
+            echo '- target: giochem-cloud / Cloudflare account project giovanni'
+            echo '- HIVE remains orchestration owner; GIOCHEM Neon remains scientific-state owner'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf private-source
