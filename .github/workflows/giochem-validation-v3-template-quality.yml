@@ -1,0 +1,98 @@
+name: GIOCHEM Validation V3 Template Quality Freeze
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v3-template-ref.txt'
+      - '.github/workflows/giochem-validation-v3-template-quality.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rank:
+    name: Rank untouched LIT-PCBA receptors by RCSB quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve exact private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v3-template-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token" || exit 1
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Rank templates using only RCSB structural-quality metadata
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validation_v3_litpcba_template_quality.py \
+            --target ESR_antago \
+            --target PPARG \
+            --target TP53 \
+            --select 2 \
+            --output /tmp/giochem-v3-template-quality.json
+
+      - name: Enforce outcome-independent selection semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "PRE_HOLDOUT_TEMPLATE_SELECTION" and .scientificRole == "OUTCOME_INDEPENDENT_METADATA_ONLY" and (.targets | length) == 3' /tmp/giochem-v3-template-quality.json
+          jq -e '[.targets[] | (.selectedTemplates | length) == 2] | all' /tmp/giochem-v3-template-quality.json
+
+      - name: Upload receptor freeze evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-template-quality
+          path: /tmp/giochem-v3-template-quality.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Selection summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3 — outcome-independent receptor selection'
+            echo "- private source SHA: ${{ steps.source.outputs.sha }}"
+            jq -r '.targets[] | "- \(.target): " + ([.selectedTemplates[] | "\(.pdbId) (\(.resolutionAngstrom) Å, Rfree=\(.rFree))"] | join(", "))' /tmp/giochem-v3-template-quality.json
+            echo '- GIOCHEM holdout scores inspected: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean private source
+        if: always()
+        run: rm -rf private-source
