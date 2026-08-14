@@ -1,0 +1,93 @@
+name: gio-OS Private Source CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gio-os-source-ref.txt'
+      - '.github/workflows/gio-os-private-source-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'gio-os-source-ref.txt'
+      - '.github/workflows/gio-os-private-source-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gio-os-private-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prototype0-structure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public CI control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate requested gio-OS SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f gio-os-source-ref.txt
+          sha="$(tr -d '\r\n' < gio-os-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'gio-os-source-ref.txt is not a canonical commit SHA.' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Fail closed unless private-source token is configured
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+
+      - name: Check out exact private gio-OS commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/gio-OS
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact private commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C private-source rev-parse HEAD)"
+          test "$actual" = '${{ steps.source.outputs.sha }}'
+
+      - name: Validate Prototype 0 repository contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f private-source/README.md
+          test -f private-source/docs/ARCHITECTURE.md
+          test -f private-source/device/lavender/README.md
+          test -f private-source/network/wifi-capability-probe.sh
+          grep -q 'Prototype 0' private-source/README.md
+          grep -q 'lavender' private-source/device/lavender/README.md
+
+      - name: Shell syntax check
+        shell: bash
+        run: bash -n private-source/network/wifi-capability-probe.sh
+
+      - name: Verify public relay contains no private source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -d device
+          test ! -d network
+          test ! -d private-source-copy
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf private-source
