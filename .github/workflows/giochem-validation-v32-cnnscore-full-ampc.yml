@@ -1,0 +1,318 @@
+name: GIOCHEM Validation V3.2 CNNscore Full AMPC
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v32-cnnscore-ref.txt'
+      - '.github/workflows/giochem-validation-v32-cnnscore-full-ampc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  authorize:
+    name: Audit exploratory CNNscore selection before full AMPC
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+      lock_sha256: ${{ steps.lock.outputs.sha256 }}
+      public_runtime_sha: ${{ steps.lock.outputs.public_sha }}
+      cache_key: ${{ steps.lock.outputs.cache_key }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v32-cnnscore-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - id: lock
+        name: Verify the same zero-data GNINA runtime lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "FROZEN_ZERO_DATA_RUNTIME_PASS" and .scientificDataUsed == false and .ampcUsed == false and .litPcbaUsed == false and .execution.noGpu == true and .gnina.sha256 == "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172"' giochem-v31-gnina-runtime-lock.json
+          lock_sha="$(sha256sum giochem-v31-gnina-runtime-lock.json | awk '{print $1}')"
+          echo "sha256=$lock_sha" >> "$GITHUB_OUTPUT"
+          echo "public_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "cache_key=giochem-v31-gnina-runtime-$lock_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download exact sealed V3.1 GNINA development shards
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 31816939456
+          github-token: ${{ github.token }}
+          pattern: giochem-v31-gnina-static-ampc-shard-*
+          path: /tmp/v31-sealed-shards
+          merge-multiple: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install metric stack only
+        run: python -m pip install --disable-pip-version-check --no-cache-dir numpy scikit-learn
+
+      - name: Audit the explicitly exploratory CNNscore evidence
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validation_v32_verify_cnnscore_exploratory.py \
+            --input-dir /tmp/v31-sealed-shards \
+            --output /tmp/v32-cnnscore-selection-audit.json
+          jq -e '.status == "V32_EXPLORATORY_SELECTION_AUDITED" and .ranker == "gnina_cnn_score" and .redockingPerformed == false and .litPcbaConsumed == false and .checks.rocAuc == true and .checks.ef5 == true and .checks.technicalFailures == true' /tmp/v32-cnnscore-selection-audit.json
+          test "$(jq -r '.runtimeLockSha256' /tmp/v32-cnnscore-selection-audit.json)" = '${{ steps.lock.outputs.sha256 }}'
+
+      - name: Upload V3.2 selection audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v32-cnnscore-selection-audit
+          path: /tmp/v32-cnnscore-selection-audit.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Authorization summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.2 — CNNscore development selection audit'
+            echo '- source sealed run: 31816939456'
+            echo "- AUC: $(jq -r '.metrics.rocAuc' /tmp/v32-cnnscore-selection-audit.json)"
+            echo "- EF5: $(jq -r '.metrics.ef5.enrichmentFactor' /tmp/v32-cnnscore-selection-audit.json)"
+            echo "- failures: $(jq -r '.failures.rows' /tmp/v32-cnnscore-selection-audit.json)"
+            echo '- exploratory result explicitly post-V3.1: YES'
+            echo '- full-AMPC alternatives allowed: NO'
+            echo '- LIT-PCBA consumed: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  screen:
+    name: V3.2 CNNscore full-AMPC shard ${{ matrix.shard }}
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: pfarma-ci-trusted
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify immutable V3.2 source and runtime lock
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(tr -d '\r\n' < giochem-v32-cnnscore-ref.txt)"
+          test "$source_sha" = '${{ needs.authorize.outputs.source_sha }}'
+          test "$(sha256sum giochem-v31-gnina-runtime-lock.json | awk '{print $1}')" = '${{ needs.authorize.outputs.lock_sha256 }}'
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: /tmp/giochem-gnina-runtime
+          key: ${{ needs.authorize.outputs.cache_key }}
+          fail-on-cache-miss: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deterministic AMPC preparation stack
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y autodock-vina >/dev/null
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+
+      - name: Bind exact hash-locked GNINA runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          libdirs="$(cat /tmp/giochem-gnina-runtime/ld-library-path.txt)"; test -n "$libdirs"
+          echo "LD_LIBRARY_PATH=$libdirs:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo 'GIOCHEM_GNINA_BIN=/tmp/giochem-gnina-runtime/gnina' >> "$GITHUB_ENV"
+          test "$(sha256sum /tmp/giochem-gnina-runtime/gnina | awk '{print $1}')" = '3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172'
+
+      - name: Verify frozen V3.2 single-ranker protocol
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "DEVELOPMENT_CANDIDATE_SELECTED_ON_AMPC_SUBSET_BEFORE_FULL_AMPC_CONFIRMATION" and .transparency.candidateSelectionWasPreregisteredBeforeSubsetOutcome == false and .selectedMethod.ranker == "gnina_cnn_score" and .selectedMethod.candidateCountForFullAmpc == 1 and .selectedMethod.fullAmpcReselectionAllowed == false and .selectedMethod.fullAmpcAlternativeRankersAllowed == false and .fullAmpcConfirmation.exitGate.thresholdsChangedFromV31 == false' validation/v3/development_protocol_v32_cnnscore.json
+
+      - name: Run CNNscore-only full authoritative AMPC shard
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validation_v32_cnnscore_full_ampc_worker.py \
+            --shard-index ${{ matrix.shard }} \
+            --shard-count 24 \
+            --runtime-lock-sha256 '${{ needs.authorize.outputs.lock_sha256 }}' \
+            --public-runtime-source-sha '${{ needs.authorize.outputs.public_runtime_sha }}' \
+            --output /tmp/v32-cnnscore-full-ampc-${{ matrix.shard }}.jsonl
+
+      - name: Upload V3.2 full-AMPC shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v32-cnnscore-full-ampc-shard-${{ matrix.shard }}
+          path: /tmp/v32-cnnscore-full-ampc-${{ matrix.shard }}.jsonl
+          if-no-files-found: error
+          retention-days: 30
+
+      - if: always()
+        run: rm -rf private-source
+
+  aggregate:
+    name: Apply frozen V3.2 full-AMPC confirmation gate
+    needs: [authorize, screen]
+    if: always() && needs.authorize.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v32-cnnscore-ref.txt)"; [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: giochem-v32-cnnscore-full-ampc-shard-*
+          path: /tmp/v32-full-ampc-shards
+          merge-multiple: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: python -m pip install --disable-pip-version-check --no-cache-dir numpy scikit-learn
+
+      - name: Apply frozen V3.2 full-AMPC gate once
+        id: evaluate
+        working-directory: private-source
+        shell: bash
+        run: |
+          set +e
+          python scripts/validation_v32_cnnscore_full_ampc_aggregate.py \
+            --input-dir /tmp/v32-full-ampc-shards \
+            --output /tmp/giochem-v32-cnnscore-full-ampc.json
+          code=$?
+          set -e
+          test -s /tmp/giochem-v32-cnnscore-full-ampc.json || exit 1
+          echo "scientific_exit=$code" >> "$GITHUB_OUTPUT"
+          test "$code" -eq 0 -o "$code" -eq 5
+
+      - name: Verify external holdout remains untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.scientificRole == "METHOD_DEVELOPMENT_CONFIRMATION_ONLY_NOT_VALIDATION" and .selectedRanker == "gnina_cnn_score" and .candidateCount == 1 and .litPcbaConsumed == false and .dataset.records == 2964 and .dataset.completeAcrossShards == true' /tmp/giochem-v32-cnnscore-full-ampc.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v32-cnnscore-full-ampc-report
+          path: /tmp/giochem-v32-cnnscore-full-ampc.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Scientific summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.2 — CNNscore full-AMPC confirmation'
+            echo '- ranker: gnina_cnn_score'
+            echo "- AUC: $(jq -r '.metrics.rocAuc' /tmp/giochem-v32-cnnscore-full-ampc.json)"
+            echo "- EF1: $(jq -r '.metrics.ef1.enrichmentFactor' /tmp/giochem-v32-cnnscore-full-ampc.json)"
+            echo "- EF5: $(jq -r '.metrics.ef5.enrichmentFactor' /tmp/giochem-v32-cnnscore-full-ampc.json)"
+            echo "- BEDROC20: $(jq -r '.metrics.bedrocAlpha20' /tmp/giochem-v32-cnnscore-full-ampc.json)"
+            echo "- failures: $(jq -r '.failures.rows' /tmp/giochem-v32-cnnscore-full-ampc.json)"
+            echo "- gate: $(jq -r '.status' /tmp/giochem-v32-cnnscore-full-ampc.json)"
+            echo '- LIT-PCBA consumed: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: always()
+        run: rm -rf private-source /tmp/v32-full-ampc-shards
