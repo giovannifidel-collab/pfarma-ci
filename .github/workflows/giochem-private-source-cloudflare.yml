@@ -23,7 +23,7 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
       ORIGIN: https://giochem-cloud.project-giovanni.workers.dev
-      GIOCHEM_OPENFE_DATA: ${{ runner.temp }}/giochem-openfe
+      GIOCHEM_OPENFE_DATA: /tmp/giochem-openfe
     steps:
       - name: Check out public CI bridge
         uses: actions/checkout@v4
