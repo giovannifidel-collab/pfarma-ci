@@ -52,7 +52,7 @@ jobs:
           sudo apt-get install -y autodock-vina
           python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
           python -m pip install --disable-pip-version-check --no-cache-dir 'openmm>=8.2'
-          python -m pip install --disable-pip-version-check --no-cache-dir 'git+https://github.com/openmm/pdbfixer.git@1.12'
+          python -m pip install --disable-pip-version-check --no-cache-dir 'git+https://github.com/openmm/pdbfixer.git@v1.12'
           mkdir -p "$GIOCHEM_OPENFE_DATA"
           python - <<'PY'
           import openmm, pdbfixer
