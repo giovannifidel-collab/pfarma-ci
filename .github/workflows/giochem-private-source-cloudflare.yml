@@ -23,6 +23,7 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
       ORIGIN: https://giochem-cloud.project-giovanni.workers.dev
+      GIOCHEM_OPENFE_DATA: ${{ runner.temp }}/giochem-openfe
     steps:
       - name: Check out public CI bridge
         uses: actions/checkout@v4
@@ -86,6 +87,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "$GIOCHEM_OPENFE_DATA"
           if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
           python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
           npm test
