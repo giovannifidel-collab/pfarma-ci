@@ -69,14 +69,11 @@ jobs:
           test -s private-source/cloud/worker.js
           test -s private-source/wrangler.jsonc
           test -s private-source/package.json
-          test -s private-source/package-lock.json
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: private-source/package-lock.json
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -88,7 +85,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm ci
+          if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
           npm test
           python -m py_compile scientific-api/main.py scientific-api/advanced.py scientific-api/agent_runtime.py cloud-worker/worker.py scripts/benchmark_1iep.py
           node --check cloud/worker.js
@@ -146,7 +143,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo '## GIOCHEM private-source → public pfarma-ci → Cloudflare'
+            echo '## GIOCHEM private-source -> public pfarma-ci -> Cloudflare'
             echo '- authoritative source: giovannifidel-collab/giochem (private)'
             echo '- execution/deploy bridge: giovannifidel-collab/pfarma-ci (public)'
             echo "- exact source SHA: ${{ steps.source.outputs.sha }}"
