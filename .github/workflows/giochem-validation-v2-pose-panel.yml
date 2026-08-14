@@ -62,7 +62,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install real scientific engines
+      - name: Install real scientific engines and receptor-repair stack
         working-directory: private-source
         shell: bash
         run: |
@@ -70,13 +70,17 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y autodock-vina
           python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+          python -m pip install --disable-pip-version-check --no-cache-dir 'openmm>=8.2'
+          python -m pip install --disable-pip-version-check --no-cache-dir 'git+https://github.com/openmm/pdbfixer.git@v1.12'
           mkdir -p "$GIOCHEM_OPENFE_DATA"
           vina --version
           python - <<'PY'
-          import rdkit, meeko, numpy
+          import rdkit, meeko, numpy, openmm, pdbfixer
           print('RDKIT', rdkit.__version__)
           print('MEEKO', getattr(meeko,'__version__','installed'))
           print('NUMPY', numpy.__version__)
+          print('OPENMM', openmm.__version__)
+          print('PDBFIXER', getattr(pdbfixer,'__version__','1.12-source'))
           PY
 
       - name: Verify preregistration predates V2 outcomes
@@ -93,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          python scripts/validation_v2_pose_panel_prepared.py --output /tmp/giochem-v2-pose-panel.json
+          python scripts/validation_v2_pose_panel_fixed.py --output /tmp/giochem-v2-pose-panel.json
           rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           test -s /tmp/giochem-v2-pose-panel.json || exit "$rc"
