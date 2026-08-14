@@ -1,0 +1,119 @@
+name: Project Giovanni Cloudflare Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'project-giovanni-cloudflare-source-ref.txt'
+      - '.github/workflows/project-giovanni-cloudflare.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-giovanni-cloudflare
+  cancel-in-progress: false
+
+jobs:
+  validate-deploy-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: pfarma-ci-trusted
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
+      ORIGIN: https://project-giovanni.project-giovanni.workers.dev
+    steps:
+      - name: Check out public CI bridge
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate exact private-source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < project-giovanni-cloudflare-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PROJECT_GIOVANNI_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${SOURCE_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token" || { echo 'Missing private source token' >&2; exit 1; }
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out exact private source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify migration contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+          test -s private-source/wrangler.jsonc
+          test -s private-source/package.json
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install and build OpenNext
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm run build
+          npx opennextjs-cloudflare build
+
+      - name: Resolve Cloudflare token
+        shell: bash
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_TOKEN_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${CF_TOKEN:-${CF_TOKEN_FALLBACK:-}}"
+          test -n "$token" || { echo 'Missing Cloudflare deploy token' >&2; exit 1; }
+          echo "CF_DEPLOY_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Deploy to Cloudflare Workers
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLOUDFLARE_API_TOKEN="$CF_DEPLOY_TOKEN" npx wrangler deploy
+
+      - name: Verify production HTTP surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for attempt in $(seq 1 18); do
+            status="$(curl -L -sS -o /tmp/project-giovanni.html -w '%{http_code}' "$ORIGIN/")"
+            echo "attempt $attempt status=$status"
+            if [ "$status" = 200 ] && grep -Eqi '<html|<!doctype' /tmp/project-giovanni.html; then ready=1; break; fi
+            sleep 5
+          done
+          test "$ready" = 1 || { echo 'Cloudflare Project Giovanni verification failed' >&2; head -c 1200 /tmp/project-giovanni.html >&2 || true; exit 1; }
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf private-source
