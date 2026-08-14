@@ -1,0 +1,128 @@
+name: GIOCHEM Validation V3.1 GNINA Static AMPC Reanalysis
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v31-gnina-reanalysis-ref.txt'
+      - '.github/workflows/giochem-validation-v31-gnina-static-ampc-reanalysis.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reaggregate:
+    name: Reaggregate sealed GNINA phase-1 shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - id: source
+        name: Resolve corrected immutable private aggregator source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v31-gnina-reanalysis-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download the exact 12 sealed scientific shards from the original run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 31816939456
+          github-token: ${{ github.token }}
+          pattern: giochem-v31-gnina-static-ampc-shard-*
+          path: /tmp/v31-gnina-static-shards
+          merge-multiple: true
+
+      - name: Verify exact sealed shard count before aggregation
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(find /tmp/v31-gnina-static-shards -maxdepth 1 -name '*.jsonl' -type f | wc -l)"
+          test "$count" -eq 12
+          echo "sealed shard files=$count"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install metric stack only
+        shell: bash
+        run: python -m pip install --disable-pip-version-check --no-cache-dir numpy scikit-learn
+
+      - name: Apply corrected frozen aggregation once
+        id: evaluate
+        working-directory: private-source
+        shell: bash
+        run: |
+          set +e
+          python scripts/validation_v31_gnina_ampc_aggregate_static.py \
+            --input-dir /tmp/v31-gnina-static-shards \
+            --output /tmp/giochem-v31-gnina-static-ampc.json
+          code=$?
+          set -e
+          test -s /tmp/giochem-v31-gnina-static-ampc.json || exit 1
+          echo "scientific_exit=$code" >> "$GITHUB_OUTPUT"
+          test "$code" -eq 0 -o "$code" -eq 5
+
+      - name: Verify correction semantics and untouched external holdout
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.aggregationCorrection.type == "TECHNICAL_METADATA_ENUMERATION_ONLY" and .aggregationCorrection.sourceRun == 31816939456 and .aggregationCorrection.redockingPerformed == false and .aggregationCorrection.thresholdsChanged == false and .aggregationCorrection.candidateIdentitiesChanged == false and .litPcbaConsumed == false and .dataset.records == 813 and .dataset.completeAcrossShards == true and (.candidates | keys | sort) == ["gnina_cnn_affinity","gnina_cnn_vs"]' /tmp/giochem-v31-gnina-static-ampc.json
+
+      - name: Upload authoritative corrected phase-1 report
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v31-gnina-static-ampc-report
+          path: /tmp/giochem-v31-gnina-static-ampc.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Scientific summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.1 — corrected GNINA AMPC aggregation'
+            echo '- original sealed scoring run: 31816939456'
+            echo "- corrected aggregator source: ${{ steps.source.outputs.sha }}"
+            echo "- selected ranker: $(jq -r '.selection.selected' /tmp/giochem-v31-gnina-static-ampc.json)"
+            echo "- CNNaffinity AUC: $(jq -r '.candidates.gnina_cnn_affinity.rocAuc' /tmp/giochem-v31-gnina-static-ampc.json)"
+            echo "- CNNaffinity EF5: $(jq -r '.candidates.gnina_cnn_affinity.ef5.enrichmentFactor' /tmp/giochem-v31-gnina-static-ampc.json)"
+            echo "- CNN_VS AUC: $(jq -r '.candidates.gnina_cnn_vs.rocAuc' /tmp/giochem-v31-gnina-static-ampc.json)"
+            echo "- CNN_VS EF5: $(jq -r '.candidates.gnina_cnn_vs.ef5.enrichmentFactor' /tmp/giochem-v31-gnina-static-ampc.json)"
+            echo "- failures: $(jq -r '.failures.rows' /tmp/giochem-v31-gnina-static-ampc.json)"
+            echo "- phase-1 gate: $(jq -r '.status' /tmp/giochem-v31-gnina-static-ampc.json)"
+            echo '- redocking: NO'
+            echo '- LIT-PCBA consumed: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: always()
+        run: rm -rf private-source /tmp/v31-gnina-static-shards
