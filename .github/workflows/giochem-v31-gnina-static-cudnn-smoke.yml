@@ -1,0 +1,102 @@
+name: GIOCHEM V3.1 GNINA Static + cuDNN Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/giochem-v31-gnina-static-cudnn-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve and install NVIDIA cuDNN 9 wheel without scientific data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cudnn-wheel
+          python -m pip download --disable-pip-version-check --no-deps --only-binary=:all: \
+            nvidia-cudnn-cu12 -d /tmp/cudnn-wheel
+          wheel="$(find /tmp/cudnn-wheel -maxdepth 1 -name 'nvidia_cudnn_cu12-*.whl' -print -quit)"
+          test -n "$wheel"
+          sha256sum "$wheel" | tee /tmp/cudnn-wheel-sha256.txt
+          python -m pip install --disable-pip-version-check --no-deps "$wheel"
+          python - <<'PY' > /tmp/cudnn-runtime.json
+          import json
+          import pathlib
+          import importlib.metadata as md
+          import nvidia.cudnn
+          root = pathlib.Path(nvidia.cudnn.__file__).resolve().parent
+          lib = root / 'lib'
+          libs = sorted(p.name for p in lib.glob('libcudnn*.so*'))
+          print(json.dumps({
+              'package': 'nvidia-cudnn-cu12',
+              'version': md.version('nvidia-cudnn-cu12'),
+              'libDir': str(lib),
+              'libraries': libs,
+          }))
+          PY
+          cat /tmp/cudnn-runtime.json
+          jq -e '.libraries | any(startswith("libcudnn.so.9"))' /tmp/cudnn-runtime.json
+
+      - name: Download and verify official GNINA v1.3.3 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 \
+            -o /tmp/gnina.cuda12.8.static \
+            'https://github.com/gnina/gnina/releases/download/v1.3.3/gnina.cuda12.8.static'
+          expected='3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172'
+          actual="$(sha256sum /tmp/gnina.cuda12.8.static | awk '{print $1}')"
+          test "$actual" = "$expected"
+          echo "$actual" > /tmp/gnina-sha256.txt
+          chmod +x /tmp/gnina.cuda12.8.static
+
+      - name: Execute GNINA CPU runtime with isolated cuDNN libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          cudnn_lib="$(jq -r '.libDir' /tmp/cudnn-runtime.json)"
+          export LD_LIBRARY_PATH="$cudnn_lib:${LD_LIBRARY_PATH:-}"
+          /tmp/gnina.cuda12.8.static --version 2>&1 | tee /tmp/gnina-version.txt
+          /tmp/gnina.cuda12.8.static --help > /tmp/gnina-help.txt 2>&1
+          grep -F 'v1.3.3' /tmp/gnina-version.txt
+          grep -qi 'cnn_scoring' /tmp/gnina-help.txt
+          grep -qi 'no_gpu' /tmp/gnina-help.txt
+
+      - name: Freeze probe evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel="$(find /tmp/cudnn-wheel -maxdepth 1 -name 'nvidia_cudnn_cu12-*.whl' -print -quit)"
+          wheel_sha="$(sha256sum "$wheel" | awk '{print $1}')"
+          wheel_name="$(basename "$wheel")"
+          jq -n \
+            --arg gninaSha "$(cat /tmp/gnina-sha256.txt)" \
+            --arg gninaVersion "$(tr '\n' ' ' < /tmp/gnina-version.txt | sed 's/[[:space:]]\+/ /g')" \
+            --arg cudnnVersion "$(jq -r '.version' /tmp/cudnn-runtime.json)" \
+            --arg cudnnWheel "$wheel_name" \
+            --arg cudnnWheelSha "$wheel_sha" \
+            '{status:"PASS",scientificDataUsed:false,ampcUsed:false,litPcbaUsed:false,gnina:{release:"v1.3.3",asset:"gnina.cuda12.8.static",sha256:$gninaSha,versionOutput:$gninaVersion},cudnn:{package:"nvidia-cudnn-cu12",version:$cudnnVersion,wheel:$cudnnWheel,wheelSha256:$cudnnWheelSha},execution:{noGpuCapable:true,cnnScoringCapable:true}}' \
+            > /tmp/giochem-v31-static-cudnn-smoke.json
+          cat /tmp/giochem-v31-static-cudnn-smoke.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v31-static-cudnn-smoke
+          path: |
+            /tmp/giochem-v31-static-cudnn-smoke.json
+            /tmp/cudnn-runtime.json
+            /tmp/cudnn-wheel-sha256.txt
+            /tmp/gnina-version.txt
+          if-no-files-found: error
+          retention-days: 90
