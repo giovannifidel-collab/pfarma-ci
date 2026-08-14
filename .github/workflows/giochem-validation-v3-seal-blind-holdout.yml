@@ -1,0 +1,119 @@
+name: GIOCHEM Validation V3 Seal Blind Holdout
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v3-blind-ref.txt'
+      - '.github/workflows/giochem-validation-v3-seal-blind-holdout.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  seal:
+    name: Build sealed blind LIT-PCBA V handoff
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve exact private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v3-blind-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token" || exit 1
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build process-blind holdout and sealed truth files
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v3-blind
+          python scripts/validation_v3_build_blind_holdout.py \
+            --output-dir /tmp/v3-blind \
+            --manifest /tmp/v3-blind-manifest.json
+
+      - name: Verify no truth leaked into scoring inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "BLIND_HOLDOUT_SEALED_NO_SCORES" and .holdoutScoresProduced == false and .totals.records == 2497 and .totals.actives == 47 and .totals.inactives == 2450' /tmp/v3-blind-manifest.json
+          test "$(find /tmp/v3-blind -name '*.blind.jsonl' | wc -l)" -eq 3
+          test "$(find /tmp/v3-blind -name '*.truth.jsonl' | wc -l)" -eq 3
+          if grep -E '"(label|active|inactive|sourceFile|originalCompoundId)"' /tmp/v3-blind/*.blind.jsonl; then
+            echo 'FAIL-CLOSED: truth-like field leaked into blind input' >&2
+            exit 1
+          fi
+
+      - name: Upload blind ligand inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-blind-ligands
+          path: /tmp/v3-blind/*.blind.jsonl
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload sealed truth separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-sealed-truth
+          path: /tmp/v3-blind/*.truth.jsonl
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload seal manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-blind-manifest
+          path: /tmp/v3-blind-manifest.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Seal summary without per-compound data
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3 — blind holdout sealed'
+            echo "- private source SHA: ${{ steps.source.outputs.sha }}"
+            echo '- holdout docking scores produced: NO'
+            jq -r '.targets[] | "- \(.target): \(.records) opaque ligands; blind SHA256=\(.blindSha256); truth SHA256=\(.truthSha256)"' /tmp/v3-blind-manifest.json
+            echo '- score inputs contain labels: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean private source and plaintext working set
+        if: always()
+        shell: bash
+        run: rm -rf private-source /tmp/v3-blind
