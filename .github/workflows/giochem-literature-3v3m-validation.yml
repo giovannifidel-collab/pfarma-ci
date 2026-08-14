@@ -1,0 +1,158 @@
+name: GIOCHEM Literature Validation 3V3M ML188
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-source-ref.txt'
+      - '.github/workflows/giochem-literature-3v3m-validation.yml'
+
+permissions:
+  contents: read
+
+env:
+  ORIGIN: https://giochem-cloud.project-giovanni.workers.dev
+  GIOCHEM_OPENFE_DATA: /tmp/giochem-openfe
+
+jobs:
+  replicate-study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve exact private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Checkout exact private GIOCHEM commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install real Tier-1 engines
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y autodock-vina
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+          mkdir -p "$GIOCHEM_OPENFE_DATA"
+          vina --version
+          python - <<'PY'
+          import rdkit,meeko
+          print('RDKIT',rdkit.__version__)
+          print('MEEKO',getattr(meeko,'__version__','installed'))
+          PY
+
+      - name: Start GIOCHEM Scientific Core
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup python -m uvicorn main:app --app-dir scientific-api --host 127.0.0.1 --port 8001 >/tmp/giochem-study-science.log 2>&1 &
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:8001/health >/tmp/health.json && break; sleep 2; done
+          python - <<'PY'
+          import json
+          h=json.load(open('/tmp/health.json'))
+          assert h.get('rdkitVersion') and h.get('meekoVersion') and h.get('vinaAvailable') is True,h
+          PY
+
+      - name: Independently replicate published 3V3M ML188 Vina redocking
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/benchmark_literature_3v3m.py --science-url http://127.0.0.1:8001 --threshold 2.0 --literature-tolerance 1.0 --exhaustiveness 32 | tee /tmp/literature-3v3m.json
+          python - <<'PY'
+          import json
+          r=json.load(open('/tmp/literature-3v3m.json'))
+          assert r['result']=='PASS',r
+          assert r['observed']['bestCrystalRmsdAngstrom'] <= 2.0,r
+          assert r['observed']['literatureConcordant'] is True,r
+          print('LITERATURE_REPLICATION_PASS',r['observed'])
+          PY
+
+      - name: Resolve production access token
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ secrets.GIOCHEM_ACCESS_TOKEN }}
+          ACCESS_TOKEN_FALLBACK: ${{ secrets.PFARMA_GIOCHEM_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${ACCESS_TOKEN:-${ACCESS_TOKEN_FALLBACK:-}}"
+          test -n "$token"
+          echo "GIOCHEM_VERIFY_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Persist external-literature evidence to GIOCHEM Neon
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n --slurpfile report /tmp/literature-3v3m.json --arg sha '${{ steps.source.outputs.sha }}' \
+            '{projectId:"giochem-core",item:{id:"validation-literature-3v3m-ml188-v1",type:"external-literature-validation",title:"External literature replication — 3V3M / ML188 / AutoDock Vina",status:$report[0].result,evidenceClass:"computed",reference:{pmid:"32769050",doi:"10.1016/j.jmgm.2020.107745",publishedRmsdAngstrom:0.926},sourceCommit:$sha,report:$report[0],validatedAt:(now|todateiso8601)}}' > /tmp/store-note.json
+          curl -fsS -X POST -H "Authorization: Bearer $GIOCHEM_VERIFY_TOKEN" -H 'content-type: application/json' --data-binary @/tmp/store-note.json "$ORIGIN/api/store/notebook" >/tmp/store.json
+          jq -e '.ok == true' /tmp/store.json
+
+      - name: Verify production scientific ownership invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $GIOCHEM_VERIFY_TOKEN" "$ORIGIN/api/health" >/tmp/prod-health.json
+          node - <<'NODE'
+          const h=require('/tmp/prod-health.json');
+          if(h.status!=='ok') throw new Error('production unhealthy');
+          if(h.ownership?.orchestration!=='HIVE') throw new Error('HIVE ownership missing');
+          if(h.ownership?.duplicateScheduler!==false) throw new Error('duplicate scheduler invariant failed');
+          NODE
+
+      - name: Study replication summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## External literature replication'
+            echo '- Study: Repurposing approved drugs as potential inhibitors of 3CL-protease of SARS-CoV-2'
+            echo '- PMID: 32769050'
+            echo '- PDB: 3V3M; ligand: ML188 / 0EN'
+            echo '- Published AutoDock Vina redocking RMSD: 0.926 Å'
+            if test -s /tmp/literature-3v3m.json; then
+              echo "- GIOCHEM RMSD: $(jq -r '.observed.bestCrystalRmsdAngstrom' /tmp/literature-3v3m.json) Å"
+              echo "- Absolute delta: $(jq -r '.observed.absoluteDeltaFromPublishedAngstrom' /tmp/literature-3v3m.json) Å"
+              echo "- Result: $(jq -r '.result' /tmp/literature-3v3m.json)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean private source
+        if: always()
+        run: rm -rf private-source
