@@ -16,7 +16,7 @@ env:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment: pfarma-ci-trusted
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/giochem
-          ref: ff04b65b6f60ce678757e0516bbecba6d01cce47
+          ref: 709d061e68aa1fffba64c2e431458ff051ee5e80
           token: ${{ env.PRIVATE_SOURCE_TOKEN }}
           path: private-source
           fetch-depth: 1
@@ -51,8 +51,15 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y autodock-vina
           python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+          python -m pip install --disable-pip-version-check --no-cache-dir 'openmm>=8.2'
+          python -m pip install --disable-pip-version-check --no-cache-dir 'git+https://github.com/openmm/pdbfixer.git@1.12'
           mkdir -p "$GIOCHEM_OPENFE_DATA"
-      - name: Prepare every V2 pose receptor with Meeko
+          python - <<'PY'
+          import openmm, pdbfixer
+          print('OPENMM', openmm.__version__)
+          print('PDBFIXER', getattr(pdbfixer, '__version__', '1.12-source'))
+          PY
+      - name: Prepare every V2 pose receptor with PDBFixer and Meeko
         working-directory: private-source
         run: python scripts/test_v2_pose_receptors.py
       - name: Clean
