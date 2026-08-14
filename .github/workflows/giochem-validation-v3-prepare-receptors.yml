@@ -69,14 +69,32 @@ jobs:
           mk_prepare_receptor.py --help >/dev/null
 
       - name: Prepare frozen receptor package without screening ligands or labels
+        id: prepare
         working-directory: private-source
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           mkdir -p /tmp/v3-receptors
           python scripts/validation_v3_prepare_frozen_receptors_safe2.py \
             --output-dir /tmp/v3-receptors \
-            --manifest /tmp/v3-receptors-manifest.json
+            --manifest /tmp/v3-receptors-manifest.json \
+            > /tmp/v3-receptor-preparation.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/v3-receptor-preparation.log
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+
+      - name: Upload fail-closed preparation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-receptor-preparation-diagnostics
+          path: |
+            /tmp/v3-receptor-preparation.log
+            /tmp/v3-receptors-manifest.json
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Verify receptor package semantics and auditable fragment handling
         shell: bash
