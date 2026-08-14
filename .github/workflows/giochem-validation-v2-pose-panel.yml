@@ -5,7 +5,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'giochem-source-ref.txt'
+      - 'giochem-v2-pose-source-ref.txt'
+      - '.github/workflows/giochem-validation-v2-pose-panel.yml'
 
 permissions:
   contents: read
@@ -31,8 +32,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sha="$(tr -d '\r\n' < giochem-source-ref.txt)"
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid GIOCHEM source SHA' >&2; exit 1; }
+          sha="$(tr -d '\r\n' < giochem-v2-pose-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid GIOCHEM V2 pose source SHA' >&2; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Resolve private source token
@@ -92,7 +93,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          python scripts/validation_v2_pose_panel.py --output /tmp/giochem-v2-pose-panel.json
+          python scripts/validation_v2_pose_panel_prepared.py --output /tmp/giochem-v2-pose-panel.json
           rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           test -s /tmp/giochem-v2-pose-panel.json || exit "$rc"
