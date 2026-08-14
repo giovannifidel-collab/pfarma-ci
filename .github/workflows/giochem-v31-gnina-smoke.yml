@@ -1,0 +1,72 @@
+name: GIOCHEM V3.1 GNINA Runtime Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/giochem-v31-gnina-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Resolve and verify GNINA container runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Pull official GNINA container without scientific data
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull gnina/gnina:latest
+
+      - name: Freeze image identity and executable provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image inspect gnina/gnina:latest > /tmp/gnina-image-inspect.json
+          repo_digest="$(jq -r '.[0].RepoDigests[0]' /tmp/gnina-image-inspect.json)"
+          image_id="$(jq -r '.[0].Id' /tmp/gnina-image-inspect.json)"
+          test -n "$repo_digest" && test "$repo_digest" != null
+          echo "$repo_digest" > /tmp/gnina-repo-digest.txt
+          echo "$image_id" > /tmp/gnina-image-id.txt
+          docker run --rm gnina/gnina:latest gnina --version 2>&1 | tee /tmp/gnina-version.txt
+          docker run --rm gnina/gnina:latest gnina --help > /tmp/gnina-help.txt 2>&1
+          grep -qi 'cnn_scoring' /tmp/gnina-help.txt
+          grep -qi 'cnn' /tmp/gnina-help.txt
+
+      - name: Emit machine-readable smoke report
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg repoDigest "$(cat /tmp/gnina-repo-digest.txt)" \
+            --arg imageId "$(cat /tmp/gnina-image-id.txt)" \
+            --arg version "$(tr '\n' ' ' < /tmp/gnina-version.txt | sed 's/[[:space:]]\+/ /g')" \
+            '{status:"PASS",scientificDataUsed:false,ampcUsed:false,litPcbaUsed:false,container:"gnina/gnina:latest",repoDigest:$repoDigest,imageId:$imageId,versionOutput:$version,requiredCapabilities:{cnnScoring:true}}' \
+            > /tmp/giochem-v31-gnina-smoke.json
+          jq -e '.status == "PASS" and .scientificDataUsed == false and .requiredCapabilities.cnnScoring == true and (.repoDigest | contains("@sha256:"))' /tmp/giochem-v31-gnina-smoke.json
+
+      - name: Upload runtime provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v31-gnina-runtime-smoke
+          path: |
+            /tmp/giochem-v31-gnina-smoke.json
+            /tmp/gnina-version.txt
+            /tmp/gnina-repo-digest.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Smoke summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.1 — GNINA runtime smoke'
+            echo "- container digest: $(cat /tmp/gnina-repo-digest.txt)"
+            echo "- version: $(tr '\n' ' ' < /tmp/gnina-version.txt)"
+            echo '- CNN scoring capability: PRESENT'
+            echo '- AMPC/LIT-PCBA scientific data used: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
