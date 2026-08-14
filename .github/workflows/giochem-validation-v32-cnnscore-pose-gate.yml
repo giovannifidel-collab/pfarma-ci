@@ -1,0 +1,116 @@
+name: GIOCHEM Validation V3.2 CNNscore Pose Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v32-pose-ref.txt'
+      - '.github/workflows/giochem-validation-v32-cnnscore-pose-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 1}
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v32-pose-ref.txt)"; [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - id: lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status=="FROZEN_ZERO_DATA_RUNTIME_PASS" and .scientificDataUsed==false and .ampcUsed==false and .litPcbaUsed==false and .gnina.sha256=="3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172"' giochem-v31-gnina-runtime-lock.json
+          sha="$(sha256sum giochem-v31-gnina-runtime-lock.json | awk '{print $1}')"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "cache_key=giochem-v31-gnina-runtime-$sha" >> "$GITHUB_OUTPUT"
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: /tmp/giochem-gnina-runtime
+          key: ${{ steps.lock.outputs.cache_key }}
+          fail-on-cache-miss: true
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install frozen pose-preparation stack
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y autodock-vina >/dev/null
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+          python -m pip install --disable-pip-version-check --no-cache-dir pdbfixer==1.12 openmm
+      - name: Bind exact GNINA runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          libdirs="$(cat /tmp/giochem-gnina-runtime/ld-library-path.txt)"; test -n "$libdirs"
+          echo "LD_LIBRARY_PATH=$libdirs:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo 'GIOCHEM_GNINA_BIN=/tmp/giochem-gnina-runtime/gnina' >> "$GITHUB_ENV"
+          test "$(sha256sum /tmp/giochem-gnina-runtime/gnina | awk '{print $1}')" = '3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172'
+      - name: Verify pose policy frozen before full-AMPC outcome
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status=="FROZEN_BEFORE_V32_FULL_AMPC_OUTCOME_AND_BEFORE_ANY_LIT_PCBA_GIOCHEM_SCORE" and .method=="gnina_cnn_score" and .execution.exhaustiveness==32 and .execution.numModes==20 and .acceptance.panelSize==4 and .acceptance.minimumComplexesTop1AtOrBelowThreshold==3 and .acceptance.top1ThresholdAngstrom==2.0 and .acceptance.medianComplexTop1RmsdMaximumAngstrom==2.0 and .acceptance.everyComplexBestWithinTop10RmsdMaximumAngstrom==2.0' validation/v3/final_v32_pose_gate_policy.json
+      - name: Execute frozen crystallographic pose gate
+        id: evaluate
+        working-directory: private-source
+        shell: bash
+        run: |
+          set +e
+          python scripts/validation_v32_cnnscore_pose_gate.py \
+            --runtime-lock-sha256 '${{ steps.lock.outputs.sha }}' \
+            --output /tmp/giochem-v32-cnnscore-pose-gate.json
+          code=$?
+          set -e
+          test -s /tmp/giochem-v32-cnnscore-pose-gate.json || exit 1
+          echo "scientific_exit=$code" >> "$GITHUB_OUTPUT"
+          test "$code" -eq 0 -o "$code" -eq 5
+      - name: Verify no external screening holdout consumed
+        shell: bash
+        run: jq -e '.litPcbaConsumed==false and .panelSize==4 and .method=="gnina_cnn_score"' /tmp/giochem-v32-cnnscore-pose-gate.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v32-cnnscore-pose-gate-report
+          path: /tmp/giochem-v32-cnnscore-pose-gate.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Pose summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.2 — CNNscore crystallographic pose gate'
+            echo "- top1 successes: $(jq -r '.top1SuccessesAtThreshold' /tmp/giochem-v32-cnnscore-pose-gate.json)/4"
+            echo "- median top1 RMSD: $(jq -r '.medianTop1RmsdAngstrom' /tmp/giochem-v32-cnnscore-pose-gate.json) Å"
+            echo "- all complexes best-within-top10 <=2 Å: $(jq -r '.allComplexesBestWithinTop10AtThreshold' /tmp/giochem-v32-cnnscore-pose-gate.json)"
+            echo "- gate: $(jq -r '.status' /tmp/giochem-v32-cnnscore-pose-gate.json)"
+            echo '- LIT-PCBA consumed: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
