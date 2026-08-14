@@ -1,0 +1,63 @@
+name: GIOCHEM V3 Receptor Component Inventory
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v3-component-inventory-ref.txt'
+      - '.github/workflows/giochem-validation-v3-component-inventory.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 1}
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v3-component-inventory-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Resolve private token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Inventory structural components only
+        working-directory: private-source
+        run: python scripts/validation_v3_receptor_component_inventory.py --output /tmp/components.json
+      - name: Verify no screening data used
+        run: jq -e '.status == "RECEPTOR_COMPONENT_METADATA_INVENTORY_ONLY" and .screeningLigandsRead == false and .screeningLabelsRead == false and .screeningScoresProduced == false and (.receptors|length)==6' /tmp/components.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-receptor-component-inventory
+          path: /tmp/components.json
+          retention-days: 30
+      - name: Summary
+        run: |
+          {
+            echo '## Frozen receptor component inventory'
+            jq -r '.receptors[] | "- \(.target)/\(.pdbId): nonstandard=" + ((.nonstandardComponents|length)|tostring) + ", solvent=" + ((.solventComponents|length)|tostring) + ", unmapped=" + ((.unmappedAtomGroups|length)|tostring)' /tmp/components.json
+          } >> "$GITHUB_STEP_SUMMARY"
