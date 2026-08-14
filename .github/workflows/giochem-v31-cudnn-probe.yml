@@ -1,0 +1,77 @@
+name: GIOCHEM V3.1 cuDNN 9 Runtime Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/giochem-v31-cudnn-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Inspect preinstalled CUDA/cuDNN runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "OS=$(lsb_release -ds)"
+            echo "CUDA_HOME=${CUDA_HOME:-}"
+            command -v nvcc || true
+            nvcc --version || true
+            ldconfig -p | grep -i cudnn || true
+            find /usr /opt -maxdepth 5 -name 'libcudnn.so*' -print 2>/dev/null | head -50 || true
+          } | tee /tmp/cudnn-preinstalled.txt
+
+      - name: Probe apt package availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          {
+            apt-cache policy libcudnn9-cuda-12 || true
+            apt-cache search '^libcudnn9' || true
+          } | tee /tmp/cudnn-apt.txt
+          candidate="$(apt-cache policy libcudnn9-cuda-12 2>/dev/null | awk '/Candidate:/ {print $2; exit}')"
+          if test -n "$candidate" && test "$candidate" != '(none)'; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+          fi
+        id: apt
+
+      - name: Install cuDNN runtime when available
+        if: steps.apt.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends libcudnn9-cuda-12
+          ldconfig -p | grep -F 'libcudnn.so.9'
+          ldconfig -p | grep -i cudnn > /tmp/cudnn-after-install.txt
+
+      - name: Emit probe report
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg aptAvailable '${{ steps.apt.outputs.available }}' \
+            --arg hasCudnn9 "$(if ldconfig -p | grep -q 'libcudnn.so.9'; then echo true; else echo false; fi)" \
+            '{status:"COMPLETE",scientificDataUsed:false,aptPackageAvailable:($aptAvailable=="true"),libcudnn9Resolvable:($hasCudnn9=="true")}' \
+            > /tmp/cudnn-probe.json
+          cat /tmp/cudnn-probe.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v31-cudnn-probe
+          path: |
+            /tmp/cudnn-probe.json
+            /tmp/cudnn-preinstalled.txt
+            /tmp/cudnn-apt.txt
+            /tmp/cudnn-after-install.txt
+          if-no-files-found: warn
+          retention-days: 30
