@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'giochem-v31-gnina-runtime-lock.json'
+      - 'giochem-v31-gnina-static-ref.txt'
+      - '.github/workflows/giochem-validation-v31-gnina-static-ampc.yml'
   workflow_dispatch:
 
 permissions:
