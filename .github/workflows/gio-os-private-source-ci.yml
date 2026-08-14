@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  prototype0-structure:
+  host-only-gates:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: pfarma-ci-trusted
@@ -64,20 +64,19 @@ jobs:
           actual="$(git -C private-source rev-parse HEAD)"
           test "$actual" = '${{ steps.source.outputs.sha }}'
 
-      - name: Validate Prototype 0 repository contract
+      - name: Run complete host-only Prototype 0 gates
+        working-directory: private-source
+        shell: bash
+        run: make test
+
+      - name: Verify private-source hygiene
+        working-directory: private-source
         shell: bash
         run: |
           set -euo pipefail
-          test -f private-source/README.md
-          test -f private-source/docs/ARCHITECTURE.md
-          test -f private-source/device/lavender/README.md
-          test -f private-source/network/wifi-capability-probe.sh
-          grep -q 'Prototype 0' private-source/README.md
-          grep -q 'lavender' private-source/device/lavender/README.md
-
-      - name: Shell syntax check
-        shell: bash
-        run: bash -n private-source/network/wifi-capability-probe.sh
+          ! grep -RIE --exclude-dir=.git '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AIza[0-9A-Za-z_-]{20,}|gh[pousr]_[0-9A-Za-z]{20,})' .
+          test ! -d proprietary
+          test ! -d vendor/google
 
       - name: Verify public relay contains no private source tree
         shell: bash
