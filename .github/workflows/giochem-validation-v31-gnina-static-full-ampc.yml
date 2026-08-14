@@ -1,0 +1,266 @@
+name: GIOCHEM Validation V3.1 GNINA Static Full AMPC
+
+on:
+  workflow_run:
+    workflows: ["GIOCHEM Validation V3.1 GNINA Static AMPC Gate"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  gate:
+    name: Authorize full AMPC only from phase-1 PASS
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.gate.outputs.authorized }}
+      ranker: ${{ steps.gate.outputs.ranker }}
+      lock_sha256: ${{ steps.gate.outputs.lock_sha256 }}
+      public_runtime_sha: ${{ steps.gate.outputs.public_runtime_sha }}
+      cache_key: ${{ steps.gate.outputs.cache_key }}
+      phase1_run: ${{ steps.gate.outputs.phase1_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve phase-1 run ID
+        id: runid
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test '${{ github.event_name }}' = 'workflow_run'; then
+            run_id='${{ github.event.workflow_run.id }}'
+          else
+            echo 'Manual dispatch is intentionally non-authorizing without a phase-1 run artifact.' >&2
+            run_id='0'
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download sealed phase-1 report
+        if: steps.runid.outputs.run_id != '0'
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.runid.outputs.run_id }}
+          github-token: ${{ github.token }}
+          name: giochem-v31-gnina-static-ampc-report
+          path: /tmp/phase1
+
+      - name: Apply authorization gate
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'authorized=false' >> "$GITHUB_OUTPUT"
+          echo 'ranker=' >> "$GITHUB_OUTPUT"
+          echo 'lock_sha256=' >> "$GITHUB_OUTPUT"
+          echo 'public_runtime_sha=' >> "$GITHUB_OUTPUT"
+          echo 'cache_key=' >> "$GITHUB_OUTPUT"
+          echo "phase1_run=${{ steps.runid.outputs.run_id }}" >> "$GITHUB_OUTPUT"
+          test '${{ steps.runid.outputs.run_id }}' != '0' || exit 0
+          report=/tmp/phase1/giochem-v31-gnina-static-ampc.json
+          test -s "$report"
+          jq -e '.scientificRole == "METHOD_DEVELOPMENT_ONLY_NOT_VALIDATION" and .litPcbaConsumed == false and .dataset.records == 813 and .dataset.completeAcrossShards == true' "$report"
+          if test "$(jq -r '.status' "$report")" != 'PHASE1_PASS'; then
+            echo 'Phase 1 did not pass; full AMPC remains prohibited.'
+            exit 0
+          fi
+          ranker="$(jq -r '.selection.selected' "$report")"
+          case "$ranker" in
+            gnina_cnn_affinity|gnina_cnn_vs) ;;
+            *) echo 'FAIL-CLOSED: invalid phase-1 winner' >&2; exit 1;;
+          esac
+          lock_sha="$(jq -r '.runtime.runtimeLockSha256' "$report")"
+          public_sha="$(jq -r '.runtime.publicRuntimeSourceSha' "$report")"
+          current_lock_sha="$(sha256sum giochem-v31-gnina-runtime-lock.json | awk '{print $1}')"
+          test "$lock_sha" = "$current_lock_sha"
+          [[ "$public_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+          echo "ranker=$ranker" >> "$GITHUB_OUTPUT"
+          echo "lock_sha256=$lock_sha" >> "$GITHUB_OUTPUT"
+          echo "public_runtime_sha=$public_sha" >> "$GITHUB_OUTPUT"
+          echo "cache_key=giochem-v31-gnina-runtime-$lock_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Gate summary
+        shell: bash
+        run: |
+          {
+            echo '## GNINA V3.1 full-AMPC authorization'
+            echo "- phase-1 run: ${{ steps.runid.outputs.run_id }}"
+            echo "- authorized: ${{ steps.gate.outputs.authorized }}"
+            echo "- selected ranker: ${{ steps.gate.outputs.ranker }}"
+            echo '- LIT-PCBA touched: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  screen:
+    name: Full AMPC ${{ needs.gate.outputs.ranker }} shard ${{ matrix.shard }}
+    needs: gate
+    if: needs.gate.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: pfarma-ci-trusted
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v31-gnina-static-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          test "$(sha256sum giochem-v31-gnina-runtime-lock.json | awk '{print $1}')" = '${{ needs.gate.outputs.lock_sha256 }}'
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: /tmp/giochem-gnina-runtime
+          key: ${{ needs.gate.outputs.cache_key }}
+          fail-on-cache-miss: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install deterministic AMPC preparation stack
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y autodock-vina >/dev/null
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+      - name: Bind immutable GNINA runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          libdirs="$(cat /tmp/giochem-gnina-runtime/ld-library-path.txt)"; test -n "$libdirs"
+          echo "LD_LIBRARY_PATH=$libdirs:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo 'GIOCHEM_GNINA_BIN=/tmp/giochem-gnina-runtime/gnina' >> "$GITHUB_ENV"
+          test "$(sha256sum /tmp/giochem-gnina-runtime/gnina | awk '{print $1}')" = '3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172'
+      - name: Run frozen winner on full authoritative AMPC
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validation_v31_gnina_full_ampc_worker_static.py \
+            --ranker '${{ needs.gate.outputs.ranker }}' \
+            --shard-index ${{ matrix.shard }} \
+            --shard-count 24 \
+            --runtime-lock-sha256 '${{ needs.gate.outputs.lock_sha256 }}' \
+            --public-runtime-source-sha '${{ needs.gate.outputs.public_runtime_sha }}' \
+            --output /tmp/v31-gnina-full-ampc-${{ matrix.shard }}.jsonl
+      - name: Upload full-AMPC development-confirmation shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v31-gnina-full-ampc-shard-${{ matrix.shard }}
+          path: /tmp/v31-gnina-full-ampc-${{ matrix.shard }}.jsonl
+          if-no-files-found: error
+          retention-days: 30
+      - if: always()
+        run: rm -rf private-source
+
+  aggregate:
+    name: Apply frozen full-AMPC confirmation gate
+    needs: [gate, screen]
+    if: always() && needs.gate.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 1}
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v31-gnina-static-ref.txt)"; [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: giochem-v31-gnina-full-ampc-shard-*
+          path: /tmp/full-ampc-shards
+          merge-multiple: true
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install --disable-pip-version-check --no-cache-dir numpy scikit-learn
+      - name: Apply frozen full-AMPC gate once
+        id: evaluate
+        working-directory: private-source
+        shell: bash
+        run: |
+          set +e
+          python scripts/validation_v31_gnina_full_ampc_aggregate_static.py \
+            --input-dir /tmp/full-ampc-shards \
+            --ranker '${{ needs.gate.outputs.ranker }}' \
+            --output /tmp/giochem-v31-gnina-full-ampc.json
+          code=$?
+          set -e
+          test -s /tmp/giochem-v31-gnina-full-ampc.json || exit 1
+          echo "scientific_exit=$code" >> "$GITHUB_OUTPUT"
+          test "$code" -eq 0 -o "$code" -eq 5
+      - name: Verify external holdout remains untouched
+        shell: bash
+        run: jq -e '.litPcbaConsumed == false and .dataset.records == 2964 and .dataset.completeAcrossShards == true' /tmp/giochem-v31-gnina-full-ampc.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v31-gnina-full-ampc-report
+          path: /tmp/giochem-v31-gnina-full-ampc.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Scientific summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.1 — full-AMPC confirmation'
+            echo "- ranker: $(jq -r '.selectedRanker' /tmp/giochem-v31-gnina-full-ampc.json)"
+            echo "- AUC: $(jq -r '.metrics.rocAuc' /tmp/giochem-v31-gnina-full-ampc.json)"
+            echo "- EF1: $(jq -r '.metrics.ef1.enrichmentFactor' /tmp/giochem-v31-gnina-full-ampc.json)"
+            echo "- EF5: $(jq -r '.metrics.ef5.enrichmentFactor' /tmp/giochem-v31-gnina-full-ampc.json)"
+            echo "- BEDROC20: $(jq -r '.metrics.bedrocAlpha20' /tmp/giochem-v31-gnina-full-ampc.json)"
+            echo "- gate: $(jq -r '.status' /tmp/giochem-v31-gnina-full-ampc.json)"
+            echo '- LIT-PCBA consumed: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: rm -rf private-source /tmp/full-ampc-shards
