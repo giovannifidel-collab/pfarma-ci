@@ -1,0 +1,170 @@
+name: GIOCHEM Tier-1 1IEP Redocking
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-source-ref.txt'
+      - '.github/workflows/giochem-tier1-redock.yml'
+
+permissions:
+  contents: read
+
+env:
+  ORIGIN: https://giochem-cloud.project-giovanni.workers.dev
+  GIOCHEM_OPENFE_DATA: /tmp/giochem-openfe
+
+jobs:
+  redock-1iep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public bridge
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid GIOCHEM source SHA' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token" || { echo 'Missing private source token' >&2; exit 1; }
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out exact private GIOCHEM source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Tier-1 scientific engines
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y autodock-vina
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+          mkdir -p "$GIOCHEM_OPENFE_DATA"
+          command -v vina
+          vina --version
+          python - <<'PY'
+          import rdkit, meeko
+          print('RDKIT', rdkit.__version__)
+          print('MEEKO', getattr(meeko,'__version__','installed'))
+          PY
+
+      - name: Start local Scientific API
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup python -m uvicorn main:app --app-dir scientific-api --host 127.0.0.1 --port 8001 >/tmp/giochem-science.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8001/health >/tmp/tier1-health.json; then break; fi
+            sleep 2
+          done
+          cat /tmp/tier1-health.json
+          python - <<'PY'
+          import json
+          h=json.load(open('/tmp/tier1-health.json'))
+          assert h.get('rdkitVersion'), h
+          assert h.get('meekoVersion'), h
+          assert h.get('vinaAvailable') is True, h
+          print('TIER1_ENGINE_MATRIX_OK')
+          PY
+
+      - name: Run canonical crystallographic redocking benchmark 1IEP
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/benchmark_1iep.py --science-url http://127.0.0.1:8001 --threshold 2.0 --exhaustiveness 32 | tee /tmp/1iep-redocking.json
+          python - <<'PY'
+          import json
+          r=json.load(open('/tmp/1iep-redocking.json'))
+          out=r['result']
+          rmsd=out.get('bestCrystalRmsd')
+          assert rmsd is not None, r
+          assert out.get('validation')=='PASS', r
+          assert float(rmsd) <= 2.0, r
+          print('GIOCHEM_1IEP_REDOCK_VALIDATED', rmsd)
+          PY
+
+      - name: Resolve production access token
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ secrets.GIOCHEM_ACCESS_TOKEN }}
+          ACCESS_TOKEN_FALLBACK: ${{ secrets.PFARMA_GIOCHEM_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${ACCESS_TOKEN:-${ACCESS_TOKEN_FALLBACK:-}}"
+          test -n "$token" || { echo 'Missing GIOCHEM production access token' >&2; exit 1; }
+          echo "GIOCHEM_VERIFY_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Persist validated protocol evidence in GIOCHEM Neon
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n --slurpfile report /tmp/1iep-redocking.json --arg sha '${{ steps.source.outputs.sha }}' \
+            '{projectId:"giochem-core",item:{id:"validation-1iep-tier1-v1",type:"scientific-validation",title:"1IEP crystallographic redocking validation",status:"PASS",evidenceClass:"computed",protocol:{engine:"AutoDock Vina",rmsdThresholdAngstrom:2.0,exhaustiveness:32},sourceCommit:$sha,report:$report[0],validatedAt:(now|todateiso8601)}}' \
+            >/tmp/notebook-record.json
+          curl -fsS -X POST -H "Authorization: Bearer $GIOCHEM_VERIFY_TOKEN" -H 'content-type: application/json' \
+            --data-binary @/tmp/notebook-record.json "$ORIGIN/api/store/notebook" >/tmp/store.json
+          jq -e '.ok == true' /tmp/store.json
+
+      - name: Verify production still healthy and HIVE-owned
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $GIOCHEM_VERIFY_TOKEN" "$ORIGIN/api/health" >/tmp/prod-health.json
+          node - <<'NODE'
+          const h=require('/tmp/prod-health.json');
+          if(h.status!=='ok') throw new Error('production health degraded');
+          if(h.version!=='1.7.0-cloudflare-hive') throw new Error(`unexpected production version ${h.version}`);
+          if(h.ownership?.orchestration!=='HIVE') throw new Error('HIVE ownership missing');
+          if(h.ownership?.duplicateScheduler!==false) throw new Error('duplicate scheduler invariant failed');
+          NODE
+
+      - name: Scientific validation summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM Tier-1 scientific validation'
+            echo "- private source SHA: ${{ steps.source.outputs.sha }}"
+            echo '- benchmark: RCSB 1IEP crystallographic ligand redocking'
+            echo '- acceptance: symmetry-aware heavy-atom RMSD <= 2.0 Å'
+            echo '- engine: real AutoDock Vina + Meeko + RDKit on GitHub-hosted Linux runner'
+            echo '- evidence policy: fail-closed; no RMSD means failure'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean private source
+        if: always()
+        shell: bash
+        run: rm -rf private-source
