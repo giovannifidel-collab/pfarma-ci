@@ -80,15 +80,6 @@ jobs:
           test -n "$token" || { echo 'Missing Cloudflare deploy token' >&2; exit 1; }
           echo "CF_DEPLOY_TOKEN=$token" >> "$GITHUB_ENV"
 
-      - name: Ensure private R2 bucket
-        working-directory: private-source/cloudflare
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! CLOUDFLARE_API_TOKEN="$CF_DEPLOY_TOKEN" npx --yes wrangler@4.123.0 r2 bucket create family-cloud-media 2>&1 | tee /tmp/r2-create.log; then
-            grep -Eqi 'already exists|bucket.*exists' /tmp/r2-create.log || exit 1
-          fi
-
       - name: Deploy Family Cloud Worker
         working-directory: private-source/cloudflare
         shell: bash
@@ -106,7 +97,7 @@ jobs:
             health_status="$(curl -sS -o /tmp/fc-health.json -w '%{http_code}' "$ORIGIN/api/core?action=health")"
             echo "attempt=$attempt root=$status health=$health_status"
             if [ "$status" = 200 ] && [ "$health_status" = 200 ]; then
-              node -e "const h=require('/tmp/fc-health.json');if(!h.ok||h.persistent!=='cloudflare-r2'||h.version!==4)process.exit(1)" && ready=1 && break
+              node -e "const fs=require('fs');const h=JSON.parse(fs.readFileSync('/tmp/fc-health.json','utf8'));if(!h.ok||h.persistent!=='cloudflare-r2'||h.version!==4)process.exit(1)" && ready=1 && break
             fi
             sleep 5
           done
