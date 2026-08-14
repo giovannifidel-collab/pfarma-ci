@@ -146,6 +146,8 @@ jobs:
             echo 'Runtime lock already identical.'
           else
             git commit -m 'ci(giochem): freeze GNINA v1.3.3 complete runtime lock'
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           fi
 
