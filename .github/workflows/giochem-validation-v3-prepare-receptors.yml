@@ -74,17 +74,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/v3-receptors
-          python scripts/validation_v3_prepare_frozen_receptors.py \
+          python scripts/validation_v3_prepare_frozen_receptors_safe2.py \
             --output-dir /tmp/v3-receptors \
             --manifest /tmp/v3-receptors-manifest.json
 
-      - name: Verify receptor package semantics
+      - name: Verify receptor package semantics and auditable fragment handling
         shell: bash
         run: |
           set -euo pipefail
           jq -e '.status == "FROZEN_RECEPTOR_PACKAGE_READY_NO_SCREENING_SCORES" and .receptorCount == 6 and .screeningLabelsRead == false and .screeningLigandsRead == false and .screeningScoresProduced == false' /tmp/v3-receptors-manifest.json
           test "$(find /tmp/v3-receptors -name '*.pdbqt' | wc -l)" -eq 6
           jq -e '[.receptors[] | (.preparedPdbqtAtomRecords >= 100 and .bindingBox.paddingAngstrom == 12 and .bindingBox.size.x > 0 and .bindingBox.size.y > 0 and .bindingBox.size.z > 0)] | all' /tmp/v3-receptors-manifest.json
+          jq -e '[.receptors[] | select(.pdbId == "5ufx") | (.mol2Translation.disconnectedUnmappedAtomCountRemoved == 8 and (.mol2Translation.disconnectedUnmappedComponentsRemoved | length) == 1 and .mol2Translation.disconnectedUnmappedComponentsRemoved[0].externalBondCount == 0)] | all' /tmp/v3-receptors-manifest.json
+          jq -e '[.receptors[] | select(.pdbId != "5ufx") | ((.mol2Translation.disconnectedUnmappedAtomCountRemoved // 0) == 0)] | all' /tmp/v3-receptors-manifest.json
 
       - name: Upload immutable receptor package
         uses: actions/upload-artifact@v4
@@ -108,7 +110,7 @@ jobs:
           {
             echo '## GIOCHEM V3 — frozen receptor package'
             echo "- private source SHA: ${{ steps.source.outputs.sha }}"
-            jq -r '.receptors[] | "- \(.target)/\(.pdbId): \(.preparedPdbqtAtomRecords) atoms; PDBQT SHA256=\(.preparedPdbqtSha256); box=\(.bindingBox.size.x)x\(.bindingBox.size.y)x\(.bindingBox.size.z) Å"' /tmp/v3-receptors-manifest.json
+            jq -r '.receptors[] | "- \(.target)/\(.pdbId): \(.preparedPdbqtAtomRecords) atoms; PDBQT SHA256=\(.preparedPdbqtSha256); box=\(.bindingBox.size.x)x\(.bindingBox.size.y)x\(.bindingBox.size.z) Å; disconnected unmapped atoms removed=\(.mol2Translation.disconnectedUnmappedAtomCountRemoved // 0)"' /tmp/v3-receptors-manifest.json
             echo '- screening ligands/labels read: NO'
             echo '- screening scores produced: NO'
           } >> "$GITHUB_STEP_SUMMARY"
