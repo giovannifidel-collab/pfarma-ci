@@ -1,0 +1,92 @@
+name: GIOCHEM V3.2 Package GNINA Receptors
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v32-gnina-receptors-ref.txt'
+      - '.github/workflows/giochem-validation-v32-package-gnina-receptors.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 1}
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v32-gnina-receptors-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install scientific translation stack
+        working-directory: private-source
+        run: python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+      - name: Verify transfer frozen before full-AMPC outcome
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "FROZEN_BEFORE_V32_FULL_AMPC_OUTCOME_AND_BEFORE_ANY_LIT_PCBA_GIOCHEM_SCORE" and .method.ranker == "gnina_cnn_score" and .method.fallbackRankerAllowed == false and .runtime.parameterRetuningAllowed == false and .receptors.translation.meekoReceptorParameterizationAllowed == false' validation/v3/final_v32_cnnscore_transfer_policy.json
+      - name: Build deterministic GNINA PDB receptor package
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v32-gnina-receptors
+          python scripts/validation_v3_package_gnina_receptors.py \
+            --output-dir /tmp/v32-gnina-receptors \
+            --manifest /tmp/v32-gnina-receptors-manifest.json
+      - name: Enforce outcome-independent package semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "FROZEN_GNINA_RECEPTOR_PACKAGE_READY_NO_HOLDOUT_SCORES" and .receptorCount == 6 and .screeningLigandsRead == false and .screeningLabelsRead == false and .screeningScoresProduced == false and .litPcbaPartitionVFilesRead == false and .translationPolicy.meekoReceptorPreparation == false and .translationPolicy.geometryOptimization == false' /tmp/v32-gnina-receptors-manifest.json
+          test "$(find /tmp/v32-gnina-receptors -name '*.pdb' -type f | wc -l)" -eq 6
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v32-frozen-gnina-receptors
+          path: /tmp/v32-gnina-receptors
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v32-frozen-gnina-receptors-manifest
+          path: /tmp/v32-gnina-receptors-manifest.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.2 — frozen GNINA receptor PDB package'
+            jq -r '.receptors[] | "- \(.target)/\(.pdbId): atoms=\(.pdbAtomCount), residues=\(.pdbResidueCount), SHA256=\(.gninaReceptorPdbSha256)"' /tmp/v32-gnina-receptors-manifest.json
+            echo '- LIT-PCBA screening compounds/labels/scores read: NO'
+            echo '- geometry optimization / side-chain rebuilding: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
