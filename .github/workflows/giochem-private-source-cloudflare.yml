@@ -61,7 +61,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify exact commit and repository isolation
+      - name: Verify exact commit and required release files
         shell: bash
         run: |
           set -euo pipefail
@@ -69,7 +69,7 @@ jobs:
           test -s private-source/cloud/worker.js
           test -s private-source/wrangler.jsonc
           test -s private-source/package.json
-          ! grep -R --line-number --fixed-strings 'project-giovanni' private-source/.github 2>/dev/null | grep -v 'workers.dev' || true
+          test -s private-source/package-lock.json
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -101,17 +101,15 @@ jobs:
         run: |
           set -euo pipefail
           token="${CF_TOKEN:-${CF_TOKEN_FALLBACK:-}}"
-          test -n "$token" || { echo 'Missing CLOUDFLARE_API_TOKEN or PFARMA_CLOUDFLARE_API_TOKEN in pfarma-ci/pfarma-ci-trusted' >&2; exit 1; }
+          test -n "$token" || { echo 'Missing CLOUDFLARE_API_TOKEN/PFARMA_CLOUDFLARE_API_TOKEN in public pfarma-ci bridge' >&2; exit 1; }
           echo "CF_DEPLOY_TOKEN=$token" >> "$GITHUB_ENV"
 
       - name: Deploy exact private commit to Cloudflare
         working-directory: private-source
         shell: bash
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ env.CF_DEPLOY_TOKEN }}
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.123.0 deploy
+          CLOUDFLARE_API_TOKEN="$CF_DEPLOY_TOKEN" npx --yes wrangler@4.123.0 deploy
 
       - name: Resolve GIOCHEM access token for production verification
         shell: bash
@@ -121,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           token="${ACCESS_TOKEN:-${ACCESS_TOKEN_FALLBACK:-}}"
-          test -n "$token" || { echo 'Missing GIOCHEM_ACCESS_TOKEN in public bridge' >&2; exit 1; }
+          test -n "$token" || { echo 'Missing GIOCHEM_ACCESS_TOKEN in public pfarma-ci bridge' >&2; exit 1; }
           echo "GIOCHEM_VERIFY_TOKEN=$token" >> "$GITHUB_ENV"
 
       - name: Verify production runtime, HIVE announcement and RCSB proxy
