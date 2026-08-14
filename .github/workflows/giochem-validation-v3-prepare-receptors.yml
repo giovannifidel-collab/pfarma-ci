@@ -1,0 +1,119 @@
+name: GIOCHEM Validation V3 Prepare Frozen Receptors
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v3-receptors-ref.txt'
+      - '.github/workflows/giochem-validation-v3-prepare-receptors.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare six frozen LIT-PCBA receptor conformations
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve exact private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v3-receptors-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token" || exit 1
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install receptor-preparation stack
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y openbabel autodock-vina
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+          obabel -V
+          vina --version
+          mk_prepare_receptor.py --help >/dev/null
+
+      - name: Prepare frozen receptor package without screening ligands or labels
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v3-receptors
+          python scripts/validation_v3_prepare_frozen_receptors.py \
+            --output-dir /tmp/v3-receptors \
+            --manifest /tmp/v3-receptors-manifest.json
+
+      - name: Verify receptor package semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "FROZEN_RECEPTOR_PACKAGE_READY_NO_SCREENING_SCORES" and .receptorCount == 6 and .screeningLabelsRead == false and .screeningLigandsRead == false and .screeningScoresProduced == false' /tmp/v3-receptors-manifest.json
+          test "$(find /tmp/v3-receptors -name '*.pdbqt' | wc -l)" -eq 6
+          jq -e '[.receptors[] | (.preparedPdbqtAtomRecords >= 100 and .bindingBox.paddingAngstrom == 12 and .bindingBox.size.x > 0 and .bindingBox.size.y > 0 and .bindingBox.size.z > 0)] | all' /tmp/v3-receptors-manifest.json
+
+      - name: Upload immutable receptor package
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-frozen-receptors
+          path: /tmp/v3-receptors
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload receptor manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-frozen-receptors-manifest
+          path: /tmp/v3-receptors-manifest.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Receptor freeze summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3 — frozen receptor package'
+            echo "- private source SHA: ${{ steps.source.outputs.sha }}"
+            jq -r '.receptors[] | "- \(.target)/\(.pdbId): \(.preparedPdbqtAtomRecords) atoms; PDBQT SHA256=\(.preparedPdbqtSha256); box=\(.bindingBox.size.x)x\(.bindingBox.size.y)x\(.bindingBox.size.z) Å"' /tmp/v3-receptors-manifest.json
+            echo '- screening ligands/labels read: NO'
+            echo '- screening scores produced: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean private source and receptor plaintext workspace
+        if: always()
+        shell: bash
+        run: rm -rf private-source /tmp/v3-receptors
