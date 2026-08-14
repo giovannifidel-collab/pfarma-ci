@@ -1,0 +1,99 @@
+name: GIOCHEM Validation V3 LIT-PCBA Inventory
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-v3-benchmark-ref.txt'
+      - '.github/workflows/giochem-validation-v3-litpcba-inventory.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    name: Inventory untouched LIT-PCBA candidates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public CI bridge
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve exact private benchmark source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-v3-benchmark-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token" || exit 1
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out immutable private source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Inventory target cardinality and receptor templates without scoring
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validation_v3_litpcba_inventory.py \
+            --target ESR_antago \
+            --target PPARG \
+            --target TP53 \
+            --output /tmp/giochem-v3-litpcba-inventory.json
+
+      - name: Verify pre-holdout semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "BENCHMARK_INVENTORY_ONLY" and .scientificRole == "PRE_HOLDOUT_METADATA_INSPECTION_NO_GIOCHEM_SCORES" and (.targets | length) == 3' /tmp/giochem-v3-litpcba-inventory.json
+          jq -e '[.targets[] | (.fullSet.records > 0 and .templateCount > 0 and .allTemplatesHavePairedLigand == true)] | all' /tmp/giochem-v3-litpcba-inventory.json
+
+      - name: Upload benchmark inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v3-litpcba-inventory
+          path: /tmp/giochem-v3-litpcba-inventory.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Inventory summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3 — LIT-PCBA pre-holdout inventory'
+            echo "- private source SHA: ${{ steps.source.outputs.sha }}"
+            jq -r '.targets[] | "- \(.target): \(.fullSet.actives) actives + \(.fullSet.inactives) inactives; \(.templateCount) paired receptor templates"' /tmp/giochem-v3-litpcba-inventory.json
+            echo '- GIOCHEM scores inspected: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean private source
+        if: always()
+        run: rm -rf private-source
