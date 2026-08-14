@@ -1,0 +1,172 @@
+name: GIOCHEM Validation V2 Pose Panel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'giochem-source-ref.txt'
+
+permissions:
+  contents: read
+
+env:
+  ORIGIN: https://giochem-cloud.project-giovanni.workers.dev
+  GIOCHEM_OPENFE_DATA: /tmp/giochem-openfe
+
+jobs:
+  pose-panel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public CI bridge
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve exact private source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < giochem-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid GIOCHEM source SHA' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token" || { echo 'Missing private source token' >&2; exit 1; }
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out exact private GIOCHEM source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install real scientific engines
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y autodock-vina
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+          mkdir -p "$GIOCHEM_OPENFE_DATA"
+          vina --version
+          python - <<'PY'
+          import rdkit, meeko, numpy
+          print('RDKIT', rdkit.__version__)
+          print('MEEKO', getattr(meeko,'__version__','installed'))
+          print('NUMPY', numpy.__version__)
+          PY
+
+      - name: Verify preregistration predates V2 outcomes
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "PREREGISTERED_BEFORE_OUTCOMES" and .scientificPolicy.noPostHocThresholdTuning == true and .scientificPolicy.failClosed == true' validation/v2/preregistration.json
+
+      - name: Run stochastic native-redocking and ABL cross-docking panel
+        id: panel
+        continue-on-error: true
+        working-directory: private-source
+        shell: bash
+        run: |
+          set +e
+          python scripts/validation_v2_pose_panel.py --output /tmp/giochem-v2-pose-panel.json
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          test -s /tmp/giochem-v2-pose-panel.json || exit "$rc"
+          exit 0
+
+      - name: Upload V2 pose evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v2-pose-panel
+          path: /tmp/giochem-v2-pose-panel.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Resolve production access token
+        if: always()
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ secrets.GIOCHEM_ACCESS_TOKEN }}
+          ACCESS_TOKEN_FALLBACK: ${{ secrets.PFARMA_GIOCHEM_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${ACCESS_TOKEN:-${ACCESS_TOKEN_FALLBACK:-}}"
+          test -n "$token" || { echo 'Missing production access token' >&2; exit 1; }
+          echo "GIOCHEM_VERIFY_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Persist V2 pose evidence to GIOCHEM Neon
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/giochem-v2-pose-panel.json
+          jq -n --slurpfile report /tmp/giochem-v2-pose-panel.json --arg sha '${{ steps.source.outputs.sha }}' \
+            '{projectId:"giochem-core",item:{id:"validation-suite-v2-pose-panel",type:"validation-suite-v2",title:"GIOCHEM Validation Suite V2 — pose robustness and ABL cross-docking",status:$report[0].posePanelPrimaryGate,evidenceClass:"computed",sourceCommit:$sha,preregistration:"validation/v2/preregistration.json",report:$report[0],validatedAt:(now|todateiso8601)}}' >/tmp/v2-pose-note.json
+          curl -fsS -X POST -H "Authorization: Bearer $GIOCHEM_VERIFY_TOKEN" -H 'content-type: application/json' \
+            --data-binary @/tmp/v2-pose-note.json "$ORIGIN/api/store/notebook" >/tmp/v2-pose-store.json
+          jq -e '.ok == true' /tmp/v2-pose-store.json
+
+      - name: Verify production ownership invariants
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $GIOCHEM_VERIFY_TOKEN" "$ORIGIN/api/health" >/tmp/prod-health.json
+          node - <<'NODE'
+          const h=require('/tmp/prod-health.json');
+          if(h.status!=='ok') throw new Error('production unhealthy');
+          if(h.ownership?.orchestration!=='HIVE') throw new Error('HIVE ownership missing');
+          if(h.ownership?.duplicateScheduler!==false) throw new Error('duplicate scheduler invariant failed');
+          NODE
+
+      - name: V2 pose summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM Validation Suite V2 — Pose Panel'
+            echo "- private source SHA: ${{ steps.source.outputs.sha }}"
+            if test -s /tmp/giochem-v2-pose-panel.json; then
+              echo "- primary pose gate: $(jq -r '.posePanelPrimaryGate' /tmp/giochem-v2-pose-panel.json)"
+              echo "- 1IEP median RMSD: $(jq -r '.nativePoseRobustness.systems["1IEP"].summary.medianRmsd' /tmp/giochem-v2-pose-panel.json) Å"
+              echo "- 3V3M median RMSD: $(jq -r '.nativePoseRobustness.systems["3V3M"].summary.medianRmsd' /tmp/giochem-v2-pose-panel.json) Å"
+              echo "- 3V3M literature delta: $(jq -r '.literatureConcordance3V3M.absoluteDeltaAngstrom' /tmp/giochem-v2-pose-panel.json) Å"
+              echo "- ABL non-native cross-dock qualification: $(jq -r '.ablCrossDocking.result' /tmp/giochem-v2-pose-panel.json)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce frozen primary pose gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/giochem-v2-pose-panel.json
+          jq -e '.posePanelPrimaryGate == "PASS"' /tmp/giochem-v2-pose-panel.json
+
+      - name: Clean private source
+        if: always()
+        run: rm -rf private-source
