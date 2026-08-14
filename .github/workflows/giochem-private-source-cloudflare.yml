@@ -128,7 +128,16 @@ jobs:
         run: |
           set -euo pipefail
           auth="Authorization: Bearer $GIOCHEM_VERIFY_TOKEN"
-          curl -fsS -H "$auth" "$ORIGIN/api/health" > /tmp/health.json
+          ready=0
+          for attempt in $(seq 1 12); do
+            if curl -fsS -H "$auth" "$ORIGIN/api/health" > /tmp/health.json; then
+              version="$(node -e "const h=require('/tmp/health.json');process.stdout.write(String(h.version||''))")"
+              echo "Production propagation attempt $attempt: $version"
+              if [ "$version" = '1.7.0-cloudflare-hive' ]; then ready=1; break; fi
+            fi
+            sleep 5
+          done
+          test "$ready" = 1 || { echo 'Cloudflare did not expose GIOCHEM 1.7.0 within propagation window' >&2; cat /tmp/health.json >&2 || true; exit 1; }
           node - <<'NODE'
           const h=require('/tmp/health.json');
           if(h.status!=='ok') throw new Error('health not ok');
