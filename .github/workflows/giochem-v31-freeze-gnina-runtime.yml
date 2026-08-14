@@ -1,0 +1,135 @@
+name: GIOCHEM V3.1 Freeze GNINA Runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/giochem-v31-freeze-gnina-runtime.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve NVIDIA runtime wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/nvidia-wheels
+          python -m pip download --disable-pip-version-check --only-binary=:all: \
+            nvidia-cudnn-cu12 -d /tmp/nvidia-wheels
+          find /tmp/nvidia-wheels -maxdepth 1 -name '*.whl' -print0 | sort -z | xargs -0 sha256sum > /tmp/wheel-sha.txt
+          cat /tmp/wheel-sha.txt
+          python -m pip install --disable-pip-version-check --no-index --find-links /tmp/nvidia-wheels nvidia-cudnn-cu12
+          python - <<'PY' > /tmp/runtime-meta.json
+          import importlib.metadata as md, json, pathlib
+          import nvidia.cudnn, nvidia.cublas
+          libs=[]
+          for mod in (nvidia.cudnn,nvidia.cublas):
+              p=pathlib.Path(mod.__file__).resolve().parent/'lib'
+              if p.exists(): libs.append(str(p))
+          print(json.dumps({
+            'packages': {
+              'nvidia-cudnn-cu12': md.version('nvidia-cudnn-cu12'),
+              'nvidia-cublas-cu12': md.version('nvidia-cublas-cu12')
+            },
+            'libDirs': libs
+          }))
+          PY
+
+      - name: Download and verify official GNINA v1.3.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://github.com/gnina/gnina/releases/download/v1.3.3/gnina.cuda12.8.static'
+          curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 -o /tmp/gnina "$url"
+          expected='3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172'
+          actual="$(sha256sum /tmp/gnina | awk '{print $1}')"
+          test "$actual" = "$expected"
+          chmod +x /tmp/gnina
+          echo "$url" > /tmp/gnina-url.txt
+          echo "$actual" > /tmp/gnina-sha.txt
+
+      - name: Zero-data runtime smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$(jq -r '.libDirs|join(":")' /tmp/runtime-meta.json):${LD_LIBRARY_PATH:-}"
+          ldd /tmp/gnina | tee /tmp/ldd.txt
+          ! grep -q 'not found' /tmp/ldd.txt
+          /tmp/gnina --version 2>&1 | tee /tmp/version.txt
+          /tmp/gnina --help > /tmp/help.txt 2>&1
+          grep -F 'v1.3.3' /tmp/version.txt
+          grep -qi 'cnn_scoring' /tmp/help.txt
+          grep -qi 'no_gpu' /tmp/help.txt
+
+      - name: Build immutable runtime lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, pathlib, re
+          wheel_dir=pathlib.Path('/tmp/nvidia-wheels')
+          wheels=[]
+          for p in sorted(wheel_dir.glob('*.whl')):
+              wheels.append({'file':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          runtime=json.loads(pathlib.Path('/tmp/runtime-meta.json').read_text())
+          lock={
+            'schemaVersion':1,
+            'status':'FROZEN_ZERO_DATA_RUNTIME_PASS',
+            'scientificDataUsed':False,
+            'ampcUsed':False,
+            'litPcbaUsed':False,
+            'gnina':{
+              'release':'v1.3.3',
+              'asset':'gnina.cuda12.8.static',
+              'url':pathlib.Path('/tmp/gnina-url.txt').read_text().strip(),
+              'sha256':pathlib.Path('/tmp/gnina-sha.txt').read_text().strip(),
+              'versionOutput':pathlib.Path('/tmp/version.txt').read_text().strip()
+            },
+            'nvidiaRuntime':{
+              'packages':runtime['packages'],
+              'wheels':wheels
+            },
+            'execution':{'noGpu':True,'cnnScoring':True}
+          }
+          pathlib.Path('giochem-v31-gnina-runtime-lock.json').write_text(json.dumps(lock,indent=2)+'\n')
+          PY
+          jq -e '.status=="FROZEN_ZERO_DATA_RUNTIME_PASS" and .scientificDataUsed==false and .gnina.sha256=="3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172" and .execution.noGpu==true and (.nvidiaRuntime.wheels|length)>=2' giochem-v31-gnina-runtime-lock.json
+
+      - name: Commit lock only if changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'giochem-validation-bot'
+          git config user.email 'giochem-validation-bot@users.noreply.github.com'
+          git add giochem-v31-gnina-runtime-lock.json
+          if git diff --cached --quiet; then
+            echo 'Runtime lock already identical.'
+          else
+            git commit -m 'ci(giochem): freeze GNINA v1.3.3 runtime lock'
+            git push origin HEAD:main
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v31-gnina-runtime-lock-evidence
+          path: |
+            giochem-v31-gnina-runtime-lock.json
+            /tmp/ldd.txt
+            /tmp/version.txt
+            /tmp/wheel-sha.txt
+          if-no-files-found: error
+          retention-days: 90
