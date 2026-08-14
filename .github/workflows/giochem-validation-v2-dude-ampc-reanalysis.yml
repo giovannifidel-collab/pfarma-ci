@@ -1,0 +1,156 @@
+name: GIOCHEM Validation V2 DUD-E AMPC Reanalysis
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/giochem-validation-v2-dude-ampc-reanalysis.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ORIGIN: https://giochem-cloud.project-giovanni.workers.dev
+  SCREENING_RUN_ID: '31799029634'
+  SCREENING_SOURCE_SHA: '83cf7496231225d0c74f63f517fe31a54b1b02ce'
+  ANALYSIS_SOURCE_SHA: '8d8922171bfdc3554cb7786d08b3594ec681f59a'
+
+jobs:
+  reanalyse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public bridge
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out exact analysis source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ env.ANALYSIS_SOURCE_SHA }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download immutable screening shards from completed run
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: giovannifidel-collab/pfarma-ci
+          run-id: ${{ env.SCREENING_RUN_ID }}
+          pattern: giochem-v2-ampc-shard-*
+          path: /tmp/ampc-shards
+          merge-multiple: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install frozen metric stack
+        run: python -m pip install --disable-pip-version-check --no-cache-dir numpy scikit-learn
+
+      - name: Recompute metrics without changing any scientific threshold
+        id: aggregate
+        continue-on-error: true
+        working-directory: private-source
+        shell: bash
+        run: |
+          set +e
+          python scripts/validation_v2_dude_aggregate.py --input-dir /tmp/ampc-shards --output /tmp/giochem-v2-dude-ampc-authoritative.json
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          test -s /tmp/giochem-v2-dude-ampc-authoritative.json || exit "$rc"
+          exit 0
+
+      - name: Upload corrected analysis evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v2-dude-ampc-authoritative-analysis
+          path: /tmp/giochem-v2-dude-ampc-authoritative.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Resolve production access token
+        if: always()
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ secrets.GIOCHEM_ACCESS_TOKEN }}
+          ACCESS_TOKEN_FALLBACK: ${{ secrets.PFARMA_GIOCHEM_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${ACCESS_TOKEN:-${ACCESS_TOKEN_FALLBACK:-}}"
+          test -n "$token"
+          echo "GIOCHEM_VERIFY_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Persist authoritative screening interpretation to GIOCHEM Neon
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /tmp/giochem-v2-dude-ampc-authoritative.json
+          jq -n --slurpfile report /tmp/giochem-v2-dude-ampc-authoritative.json \
+            --arg screeningSha "$SCREENING_SOURCE_SHA" --arg analysisSha "$ANALYSIS_SOURCE_SHA" --arg screeningRun "$SCREENING_RUN_ID" \
+            '{projectId:"giochem-core",item:{id:"validation-suite-v2-dude-ampc",type:"validation-suite-v2",title:"GIOCHEM Validation Suite V2 — DUD-E AMPC full blind screening",status:$report[0].result,evidenceClass:"computed",screeningSourceCommit:$screeningSha,analysisSourceCommit:$analysisSha,screeningRunId:$screeningRun,preregistration:"validation/v2/preregistration.json",report:$report[0],validatedAt:(now|todateiso8601)}}' >/tmp/note.json
+          curl -fsS -X POST -H "Authorization: Bearer $GIOCHEM_VERIFY_TOKEN" -H 'content-type: application/json' --data-binary @/tmp/note.json "$ORIGIN/api/store/notebook" >/tmp/store.json
+          jq -e '.ok == true' /tmp/store.json
+
+      - name: Verify production ownership invariants
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -H "Authorization: Bearer $GIOCHEM_VERIFY_TOKEN" "$ORIGIN/api/health" >/tmp/prod-health.json
+          node - <<'NODE'
+          const h=require('/tmp/prod-health.json');
+          if(h.status!=='ok') throw new Error('production unhealthy');
+          if(h.ownership?.orchestration!=='HIVE') throw new Error('HIVE ownership missing');
+          if(h.ownership?.duplicateScheduler!==false) throw new Error('duplicate scheduler invariant failed');
+          NODE
+
+      - name: Scientific result summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## V2 DUD-E AMPC authoritative reanalysis'
+            echo "- screening run: $SCREENING_RUN_ID"
+            echo "- screening source: $SCREENING_SOURCE_SHA"
+            echo "- analysis source: $ANALYSIS_SOURCE_SHA"
+            if test -s /tmp/giochem-v2-dude-ampc-authoritative.json; then
+              echo "- authoritative package: $(jq -r '.dataset.actives' /tmp/giochem-v2-dude-ampc-authoritative.json) actives + $(jq -r '.dataset.decoys' /tmp/giochem-v2-dude-ampc-authoritative.json) decoys"
+              echo "- complete: $(jq -r '.dataset.complete' /tmp/giochem-v2-dude-ampc-authoritative.json)"
+              echo "- ROC-AUC: $(jq -r '.metrics.rocAuc' /tmp/giochem-v2-dude-ampc-authoritative.json)"
+              echo "- EF1%: $(jq -r '.metrics.ef1.enrichmentFactor' /tmp/giochem-v2-dude-ampc-authoritative.json)"
+              echo "- EF5%: $(jq -r '.metrics.ef5.enrichmentFactor' /tmp/giochem-v2-dude-ampc-authoritative.json)"
+              echo "- frozen scientific gate: $(jq -r '.result' /tmp/giochem-v2-dude-ampc-authoritative.json)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce unchanged preregistered screening gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.result == "PASS"' /tmp/giochem-v2-dude-ampc-authoritative.json
+
+      - name: Clean private source
+        if: always()
+        run: rm -rf private-source
