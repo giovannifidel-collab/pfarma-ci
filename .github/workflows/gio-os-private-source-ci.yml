@@ -41,10 +41,10 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'gio-os-source-ref.txt is not a canonical commit SHA.' >&2; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Fail closed unless private-source token is configured
+      - name: Fail closed unless gio-OS private-source token is configured
         shell: bash
         env:
-          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          SOURCE_TOKEN: ${{ secrets.GIO_OS_SOURCE_TOKEN }}
         run: test -n "$SOURCE_TOKEN"
 
       - name: Check out exact private gio-OS commit
@@ -52,7 +52,7 @@ jobs:
         with:
           repository: giovannifidel-collab/gio-OS
           ref: ${{ steps.source.outputs.sha }}
-          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          token: ${{ secrets.GIO_OS_SOURCE_TOKEN }}
           path: private-source
           fetch-depth: 1
           persist-credentials: false
