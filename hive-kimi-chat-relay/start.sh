@@ -3,6 +3,8 @@ set -euo pipefail
 
 PORT="${PORT:-8787}"
 CODESPACE_NAME="${CODESPACE_NAME:-}"
+OPENCLAW_PREFIX="$HOME/.openclaw"
+LOG="/tmp/hive-kimi-chat-relay.log"
 
 if [[ -z "$CODESPACE_NAME" ]]; then
   CODESPACE_NAME="$(hostname)"
@@ -13,19 +15,49 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 1
 fi
 
+NODE_BIN=""
+if command -v node >/dev/null 2>&1; then
+  NODE_BIN="$(command -v node)"
+else
+  for d in "$OPENCLAW_PREFIX"/tools/node-v*/bin; do
+    if [[ -x "$d/node" ]]; then
+      NODE_BIN="$d/node"
+    fi
+  done
+fi
+
+if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+  echo "Node runtime not found. OpenClaw bootstrap should have installed one." >&2
+  exit 1
+fi
+
+echo "Using Node: $NODE_BIN"
+
 # Start relay in background and persist logs in /tmp only.
-pkill -f "hive-kimi-chat-relay/server.py" >/dev/null 2>&1 || true
-nohup python3 hive-kimi-chat-relay/server.py >/tmp/hive-kimi-chat-relay.log 2>&1 &
+pkill -f "hive-kimi-chat-relay/server.mjs" >/dev/null 2>&1 || true
+: >"$LOG"
+nohup "$NODE_BIN" hive-kimi-chat-relay/server.mjs >"$LOG" 2>&1 &
 PID=$!
 
-for _ in {1..20}; do
+READY=0
+for _ in {1..30}; do
   if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+    READY=1
     break
+  fi
+  if ! kill -0 "$PID" >/dev/null 2>&1; then
+    echo "Relay process exited before becoming ready. Log:" >&2
+    cat "$LOG" >&2 || true
+    exit 1
   fi
   sleep 0.5
 done
 
-curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null
+if [[ "$READY" != "1" ]]; then
+  echo "Relay did not become healthy on port $PORT. Log:" >&2
+  cat "$LOG" >&2 || true
+  exit 1
+fi
 
 PUBLIC_OK=0
 for _ in {1..10}; do
@@ -51,4 +83,4 @@ if [[ "$PUBLIC_OK" != "1" ]]; then
 fi
 echo
 echo "Keep this Codespace running during the test."
-echo "Logs: tail -f /tmp/hive-kimi-chat-relay.log"
+echo "Logs: tail -f $LOG"
