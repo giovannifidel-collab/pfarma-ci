@@ -8,6 +8,9 @@ const HOST = '0.0.0.0';
 const PORT = Number(process.env.PORT || 8787);
 const LAB_TOKEN = 'HIVE-KIMI-CHAT-LAB-20260827-V0';
 const TASK_ID = 'HIVE-KIMI-CHAT-0001';
+const WORK_TASK_ID = 'HIVE-KIMI-WORK-0002';
+const WORK_NONCE = 'hive-kimi-work-0002-7f3c9a';
+const WORK_EXPECTED = '3973';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RESULT_LOG = path.join(__dirname, 'result.log');
 
@@ -33,6 +36,10 @@ function readRecords() {
   return records;
 }
 
+function appendRecord(record) {
+  fs.appendFileSync(RESULT_LOG, JSON.stringify(record) + '\n', 'utf8');
+}
+
 const server = http.createServer((req, res) => {
   const host = req.headers.host || `127.0.0.1:${PORT}`;
   const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
@@ -45,7 +52,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === '/health') {
-    return sendJson(res, { ok: true, service: 'hive-kimi-chat-relay', version: '0.3-node-lab' });
+    return sendJson(res, { ok: true, service: 'hive-kimi-chat-relay', version: '0.4-node-lab' });
   }
 
   if (url.pathname === '/task') {
@@ -56,7 +63,7 @@ const server = http.createServer((req, res) => {
 
     return sendJson(res, {
       hive: 'HIVE Kimi Chat Relay',
-      version: '0.3-node-lab',
+      version: '0.4-node-lab',
       task_id: TASK_ID,
       agent: 'KIMI_CHAT_FREE',
       purpose: 'Certify bidirectional HIVE communication using only Kimi Chat web_open_url.',
@@ -102,12 +109,13 @@ const server = http.createServer((req, res) => {
 
     const record = {
       at: now(),
+      kind: 'connectivity',
       task_id: taskId,
       message,
       user_agent: req.headers['user-agent'] || null,
       forwarded_for: req.headers['x-forwarded-for'] || null,
     };
-    fs.appendFileSync(RESULT_LOG, JSON.stringify(record) + '\n', 'utf8');
+    appendRecord(record);
     console.log('HIVE_KIMI_CHAT_CALLBACK_ACCEPTED ' + JSON.stringify(record));
 
     return sendJson(res, {
@@ -130,7 +138,77 @@ const server = http.createServer((req, res) => {
       task_id: TASK_ID,
       certified: accepted,
       callback_count: records.length,
-      callbacks: records.slice(-20)
+      callbacks: records.filter((record) => record.task_id === TASK_ID).slice(-20)
+    });
+  }
+
+  if (url.pathname === '/work') {
+    const submitPrefix = `${proto}://${host}/work-submit/${WORK_NONCE}/`;
+    return sendJson(res, {
+      hive: 'HIVE Kimi Chat Relay',
+      version: '0.4-node-lab',
+      task_id: WORK_TASK_ID,
+      agent: 'KIMI_CHAT_FREE',
+      purpose: 'Certify that Kimi can read a HIVE task, compute a result, and return that result to HIVE.',
+      task: 'Calculate 137 multiplied by 29. The result must be a decimal integer only.',
+      instructions: [
+        'Solve the task yourself.',
+        'Take the decimal integer answer and append it directly to submit_url_prefix with no spaces or punctuation.',
+        'Open the resulting URL exactly once with web_open_url.',
+        'Do not reveal or guess any server-side expected answer.',
+        'After the URL is opened, report the answer you submitted.'
+      ],
+      submit_url_prefix: submitPrefix,
+      example_format_only: `${submitPrefix}<DECIMAL_INTEGER_ANSWER>`,
+      security: { lab_only: true, production_data: false, secrets_required: false }
+    });
+  }
+
+  const workMatch = url.pathname.match(/^\/work-submit\/([^/]+)\/([^/]+)$/);
+  if (workMatch) {
+    const [, nonce, rawAnswer] = workMatch;
+    const answer = decodeURIComponent(rawAnswer).trim();
+    if (nonce !== WORK_NONCE) {
+      return sendJson(res, { ok: false, accepted: false, error: 'invalid work nonce' }, 403);
+    }
+
+    const correct = answer === WORK_EXPECTED;
+    const records = readRecords();
+    const existing = records.find((record) => record.task_id === WORK_TASK_ID);
+
+    if (!existing) {
+      const record = {
+        at: now(),
+        kind: 'work_result',
+        task_id: WORK_TASK_ID,
+        answer,
+        correct,
+        user_agent: req.headers['user-agent'] || null,
+        forwarded_for: req.headers['x-forwarded-for'] || null,
+      };
+      appendRecord(record);
+      console.log('HIVE_KIMI_WORK_RESULT ' + JSON.stringify(record));
+    }
+
+    return sendJson(res, {
+      ok: true,
+      accepted: true,
+      duplicate: Boolean(existing),
+      task_id: WORK_TASK_ID,
+      answer,
+      correct,
+      certified: correct || Boolean(existing?.correct)
+    });
+  }
+
+  if (url.pathname === '/work-result') {
+    const records = readRecords();
+    const record = records.find((item) => item.task_id === WORK_TASK_ID) || null;
+    return sendJson(res, {
+      ok: true,
+      task_id: WORK_TASK_ID,
+      certified: Boolean(record?.correct),
+      result: record
     });
   }
 
@@ -139,5 +217,5 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`HIVE Kimi Chat Relay listening on http://${HOST}:${PORT}`);
-  console.log('Endpoints: /health /task /submit /result');
+  console.log('Endpoints: /health /task /submit /result /work /work-submit/... /work-result');
 });
