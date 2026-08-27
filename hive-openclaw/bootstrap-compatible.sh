@@ -33,62 +33,43 @@ if [[ ! -x "$BIN" ]]; then
 fi
 
 # Kimi's pairing installer discovers dependencies with `command -v`.
-# Expose the pinned HIVE-managed OpenClaw binary on a conventional user PATH.
 ln -sfn "$BIN" "$LOCAL_BIN/openclaw"
 
-find_tool() {
-  local tool="$1"
-  local found=""
+# OpenClaw managed/user-space installs keep an embedded Node runtime under
+# ~/.openclaw/tools/node-v*/bin. Resolve that runtime explicitly instead of
+# relying on the interactive shell PATH.
+NODE_BIN_DIR=""
+if [[ -d "$PREFIX/tools" ]]; then
+  NODE_BIN_DIR="$(find "$PREFIX/tools" -mindepth 2 -maxdepth 2 -type f -path '*/bin/node' -print 2>/dev/null | sort -V | tail -n 1 | xargs -r dirname)"
+fi
 
-  found="$(command -v "$tool" 2>/dev/null || true)"
-  if [[ -n "$found" && -x "$found" ]]; then
-    printf '%s\n' "$found"
-    return 0
-  fi
+if [[ -z "$NODE_BIN_DIR" || ! -x "$NODE_BIN_DIR/node" ]]; then
+  echo "Embedded OpenClaw Node runtime was not found under $PREFIX/tools." >&2
+  echo "Diagnostic tree:" >&2
+  find "$PREFIX/tools" -maxdepth 3 -type f -o -type l 2>/dev/null | head -n 120 >&2 || true
+  exit 1
+fi
 
-  # OpenClaw installs its own Node runtime in user space. Depending on the
-  # installer revision it can live under different user directories, so find
-  # it rather than assuming one fixed path.
-  local roots=(
-    "$PREFIX"
-    "$HOME/.local"
-    "$HOME/.nvm"
-    "$HOME/.cache"
-    "$HOME/.config"
-  )
-  local root
-  for root in "${roots[@]}"; do
-    [[ -d "$root" ]] || continue
-    found="$(find "$root" \( -type f -o -type l \) -name "$tool" -executable -print -quit 2>/dev/null || true)"
-    if [[ -n "$found" ]]; then
-      printf '%s\n' "$found"
-      return 0
-    fi
-  done
+echo "Embedded Node runtime: $NODE_BIN_DIR"
 
-  return 1
-}
-
-# Make the Node toolchain visible to fresh/non-interactive shells too. This is
-# required by Kimi's official claw-install.sh, which checks node/npm via PATH.
 for tool in node npm npx; do
-  TOOL_PATH="$(find_tool "$tool" || true)"
-  if [[ -z "$TOOL_PATH" ]]; then
-    echo "Required Node tool could not be located: $tool" >&2
-    echo "Diagnostic candidates under $HOME:" >&2
-    find "$PREFIX" "$HOME/.local" -maxdepth 6 \( -name node -o -name npm -o -name npx \) -print 2>/dev/null | head -n 80 >&2 || true
+  if [[ ! -e "$NODE_BIN_DIR/$tool" ]]; then
+    echo "Embedded runtime is missing required tool: $NODE_BIN_DIR/$tool" >&2
+    ls -la "$NODE_BIN_DIR" >&2 || true
     exit 1
   fi
-  if [[ "$TOOL_PATH" != "$LOCAL_BIN/$tool" ]]; then
-    ln -sfn "$TOOL_PATH" "$LOCAL_BIN/$tool"
-  fi
+  rm -f "$LOCAL_BIN/$tool"
+  ln -s "$NODE_BIN_DIR/$tool" "$LOCAL_BIN/$tool"
 done
 
-export PATH="$LOCAL_BIN:$PREFIX/bin:$PATH"
+# Put the real runtime directory first; ~/.local/bin aliases are retained for
+# fresh shells and Kimi's installer subprocesses.
+export PATH="$NODE_BIN_DIR:$LOCAL_BIN:$PREFIX/bin:$PATH"
 hash -r
 
-if ! grep -Fq 'export PATH="$HOME/.local/bin:$HOME/.openclaw/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null; then
-  printf '\nexport PATH="$HOME/.local/bin:$HOME/.openclaw/bin:$PATH"\n' >> "$HOME/.bashrc"
+PATH_LINE='export PATH="$HOME/.local/bin:$HOME/.openclaw/bin:$PATH"'
+if ! grep -Fq "$PATH_LINE" "$HOME/.bashrc" 2>/dev/null; then
+  printf '\n%s\n' "$PATH_LINE" >> "$HOME/.bashrc"
 fi
 
 printf 'OpenClaw: '
@@ -98,12 +79,13 @@ command -v openclaw
 
 for tool in node npm npx; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    echo "Required Node tool missing after PATH normalization: $tool" >&2
+    echo "Required Node tool missing after embedded-runtime activation: $tool" >&2
     exit 1
   fi
   printf '%s path: ' "$tool"
   command -v "$tool"
-done
+  "$tool" --version | head -n 1
+ done
 
 # Minimal loopback-only gateway configuration. No model/API provider is configured here.
 openclaw config set gateway.mode local >/dev/null
@@ -111,14 +93,7 @@ openclaw config set gateway.bind loopback >/dev/null || true
 openclaw config set gateway.auth.mode token >/dev/null
 
 if ! openclaw config get gateway.auth.token >/dev/null 2>&1; then
-  if command -v node >/dev/null 2>&1; then
-    TOKEN="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
-  elif command -v openssl >/dev/null 2>&1; then
-    TOKEN="$(openssl rand -hex 32)"
-  else
-    echo "Neither node nor openssl is available to generate a secure gateway token." >&2
-    exit 1
-  fi
+  TOKEN="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
   openclaw config set gateway.auth.token "$TOKEN" >/dev/null
 fi
 
