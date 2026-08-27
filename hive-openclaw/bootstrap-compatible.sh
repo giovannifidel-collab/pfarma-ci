@@ -12,7 +12,7 @@ echo "Target OpenClaw version: $OPENCLAW_VERSION"
 echo "Install prefix: $PREFIX"
 
 mkdir -p "$LOCAL_BIN"
-export PATH="$PREFIX/bin:$LOCAL_BIN:$PATH"
+export PATH="$LOCAL_BIN:$PREFIX/bin:$PATH"
 
 CURRENT_VERSION=""
 if [[ -x "$BIN" ]]; then
@@ -36,11 +36,50 @@ fi
 # Expose the pinned HIVE-managed OpenClaw binary on a conventional user PATH.
 ln -sfn "$BIN" "$LOCAL_BIN/openclaw"
 
-# Also expose the Node toolchain already present in the Codespace. Kimi's installer
-# may execute in a fresh non-interactive shell that does not inherit the shell PATH.
+find_tool() {
+  local tool="$1"
+  local found=""
+
+  found="$(command -v "$tool" 2>/dev/null || true)"
+  if [[ -n "$found" && -x "$found" ]]; then
+    printf '%s\n' "$found"
+    return 0
+  fi
+
+  # OpenClaw installs its own Node runtime in user space. Depending on the
+  # installer revision it can live under different user directories, so find
+  # it rather than assuming one fixed path.
+  local roots=(
+    "$PREFIX"
+    "$HOME/.local"
+    "$HOME/.nvm"
+    "$HOME/.cache"
+    "$HOME/.config"
+  )
+  local root
+  for root in "${roots[@]}"; do
+    [[ -d "$root" ]] || continue
+    found="$(find "$root" \( -type f -o -type l \) -name "$tool" -executable -print -quit 2>/dev/null || true)"
+    if [[ -n "$found" ]]; then
+      printf '%s\n' "$found"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+# Make the Node toolchain visible to fresh/non-interactive shells too. This is
+# required by Kimi's official claw-install.sh, which checks node/npm via PATH.
 for tool in node npm npx; do
-  TOOL_PATH="$(command -v "$tool" 2>/dev/null || true)"
-  if [[ -n "$TOOL_PATH" ]]; then
+  TOOL_PATH="$(find_tool "$tool" || true)"
+  if [[ -z "$TOOL_PATH" ]]; then
+    echo "Required Node tool could not be located: $tool" >&2
+    echo "Diagnostic candidates under $HOME:" >&2
+    find "$PREFIX" "$HOME/.local" -maxdepth 6 \( -name node -o -name npm -o -name npx \) -print 2>/dev/null | head -n 80 >&2 || true
+    exit 1
+  fi
+  if [[ "$TOOL_PATH" != "$LOCAL_BIN/$tool" ]]; then
     ln -sfn "$TOOL_PATH" "$LOCAL_BIN/$tool"
   fi
 done
