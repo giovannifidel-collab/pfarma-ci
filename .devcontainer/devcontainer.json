@@ -1,0 +1,12 @@
+{
+  "name": "HIVE Kimi Cloud Bootstrap",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "postCreateCommand": "bash hive-kimi-cloud/install.sh",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
