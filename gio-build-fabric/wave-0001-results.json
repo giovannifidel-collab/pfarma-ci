@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "wave": "wave-0001",
+  "status": "probe-complete-kernel-build-running",
+  "measured_at": "2026-08-27T22:50:00Z",
+  "results": [
+    {"worker":"razzo-shard-0001","domain":"kernel/lavender","resolved_sha":"b7b27af5994f7afc11f69cfef194a8dc738842b4","working_set_gib":2.209,"file_count":70604,"probe_run":33123734817},
+    {"worker":"razzo-shard-0002","domain":"device/xiaomi/lavender","resolved_sha":"fd2a90e734a101fad046736970fa4dfb492d7d78","working_set_gib":0.009,"file_count":571,"probe_run":33123741158},
+    {"worker":"razzo-shard-0003","domain":"vendor/xiaomi/lavender","resolved_sha":"483e3e7ca5828c54d8b4408b87ee14069a8d027b","working_set_gib":0.663,"file_count":1560,"probe_run":33123748071},
+    {"worker":"razzo-shard-0004","domain":"frameworks/base","resolved_sha":"4fca639e0d80a1e451dc52ec63b6214ce43c9cec","working_set_gib":3.684,"file_count":52098,"probe_run":33123753807},
+    {"worker":"razzo-shard-0005","domain":"art","resolved_sha":"9037dbbb3501ce6970aaa75f34d7b6bf3b756994","working_set_gib":0.248,"file_count":9753,"probe_run":33123758978},
+    {"worker":"razzo-shard-0006","domain":"bionic","resolved_sha":"1e50ab3618271567b79b813288c77abb7babac80","working_set_gib":0.101,"file_count":3644,"probe_run":33123764655},
+    {"worker":"razzo-shard-0007","domain":"system/core","resolved_sha":"d325f066ee73ce1e4336c942fd245cf8b1236a27","working_set_gib":0.067,"file_count":1816,"probe_run":33123769731},
+    {"worker":"razzo-shard-0008","domain":"packages/apps/Settings","resolved_sha":"7cbd852332230e4a60840f5fb8d3979817582aeb","working_set_gib":0.329,"file_count":7500,"probe_run":33123775081}
+  ],
+  "observations": {
+    "largest_probe_gib": 3.684,
+    "all_measured_source_domains_fit_hosted_runner_disk_individually": true,
+    "full_build_feasibility_proven": false,
+    "remaining_hard_problem": "Soong dependency decomposition and compact artifact handoff",
+    "first_real_compile": {"worker":"razzo-shard-0001","workflow":"gio Lavender Kernel Build","run":33123981411,"status":"in_progress_at_record_time"}
+  }
+}
