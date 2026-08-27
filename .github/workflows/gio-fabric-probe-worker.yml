@@ -1,0 +1,68 @@
+name: gio Fabric Probe Worker
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out shard job contract
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate public probe job
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,re
+          j=json.load(open('job.json'))
+          assert j['schema']==1 and j['task']=='git_probe'
+          assert re.fullmatch(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?', j['repo'])
+          rev=j['revision']
+          assert isinstance(rev,str) and rev and len(rev)<=128 and not rev.startswith('-')
+          assert not any(k in j for k in ('token','secret','private_repo','signing_key'))
+          print('validated',j['id'],j['repo'],rev)
+          PY
+      - name: Probe exact public source working set
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$(python3 -c "import json;print(json.load(open('job.json'))['repo'])")"
+          rev="$(python3 -c "import json;print(json.load(open('job.json'))['revision'])")"
+          mkdir work
+          git -c protocol.version=2 clone --filter=blob:none --no-checkout "$repo" work/src
+          git -C work/src fetch --depth=1 origin "$rev"
+          git -C work/src checkout --detach FETCH_HEAD
+          git -C work/src rev-parse HEAD > work/head.txt
+          du -sk work/src | awk '{print $1}' > work/kib.txt
+          find work/src -type f | wc -l > work/files.txt
+          python3 - <<'PY'
+          import json
+          j=json.load(open('job.json'))
+          kib=int(open('work/kib.txt').read())
+          r={
+            'schema':1,
+            'job_id':j['id'],
+            'repo':j['repo'],
+            'requested_revision':j['revision'],
+            'resolved_sha':open('work/head.txt').read().strip(),
+            'working_set_kib':kib,
+            'working_set_gib':round(kib/1024/1024,3),
+            'file_count':int(open('work/files.txt').read())
+          }
+          json.dump(r,open('worker-report.json','w'),indent=2,sort_keys=True)
+          print(json.dumps(r,indent=2,sort_keys=True))
+          PY
+      - name: Upload tiny measurement report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gio-fabric-report-${{ github.repository_id }}-${{ github.run_number }}
+          path: worker-report.json
+          retention-days: 3
+          if-no-files-found: error
