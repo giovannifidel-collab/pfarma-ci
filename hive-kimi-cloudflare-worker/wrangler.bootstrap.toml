@@ -1,0 +1,4 @@
+name = "hive-kimi-relay"
+main = "src/index.js"
+compatibility_date = "2026-08-28"
+workers_dev = true
