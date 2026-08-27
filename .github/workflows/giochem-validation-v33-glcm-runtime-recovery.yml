@@ -1,0 +1,297 @@
+name: GIOCHEM V3.3 Frozen GLCM Runtime Recovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/giochem-validation-v33-glcm-runtime-recovery.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  runtime:
+    name: Rebuild exact frozen GNINA runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      lock_sha256: ${{ steps.lock.outputs.sha256 }}
+      cache_key: ${{ steps.lock.outputs.cache_key }}
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha='1e413046620c84572dcad4ada873cbc66ffb284b'
+          test "$(tr -d '\r\n' < giochem-v33-pose-floor3-ref-fixed.txt)" = "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - id: lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "FROZEN_ZERO_DATA_RUNTIME_PASS" and .scientificDataUsed == false and .ampcUsed == false and .litPcbaUsed == false and .execution.noGpu == true and .execution.cnnScoring == true and .gnina.release == "v1.3.3" and .gnina.sha256 == "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172" and (.nvidiaRuntime.wheels | length) == 8' giochem-v31-gnina-runtime-lock.json
+          lock_sha="$(sha256sum giochem-v31-gnina-runtime-lock.json | awk '{print $1}')"
+          test "$lock_sha" = 'a3838e2ec2987e2ec98f0a4f07420e27887809ba3aa64e43382f9073e9c8e54a'
+          echo "sha256=$lock_sha" >> "$GITHUB_OUTPUT"
+          echo "cache_key=giochem-v31-gnina-runtime-$lock_sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Rebuild runtime exactly from immutable lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/giochem-gnina-runtime
+          mkdir -p /tmp/giochem-gnina-runtime/wheels /tmp/giochem-gnina-runtime/site
+          jq -r '.nvidiaRuntime.packages | to_entries[] | "\(.key)==\(.value)"' giochem-v31-gnina-runtime-lock.json > /tmp/runtime-packages.txt
+          while IFS= read -r requirement; do
+            python -m pip download --disable-pip-version-check --no-deps --only-binary=:all: "$requirement" -d /tmp/giochem-gnina-runtime/wheels
+          done < /tmp/runtime-packages.txt
+
+          python - <<'PY'
+          import hashlib, json, pathlib
+          lock=json.loads(pathlib.Path('giochem-v31-gnina-runtime-lock.json').read_text())
+          root=pathlib.Path('/tmp/giochem-gnina-runtime/wheels')
+          observed={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.glob('*.whl')}
+          expected={x['file']:x['sha256'] for x in lock['nvidiaRuntime']['wheels']}
+          if observed != expected:
+              raise SystemExit(f'FAIL-CLOSED runtime wheel set mismatch\nexpected={expected}\nobserved={observed}')
+          PY
+
+          python -m pip install --disable-pip-version-check --no-index --no-deps --target /tmp/giochem-gnina-runtime/site /tmp/giochem-gnina-runtime/wheels/*.whl
+          gnina_url="$(jq -r '.gnina.url' giochem-v31-gnina-runtime-lock.json)"
+          gnina_sha="$(jq -r '.gnina.sha256' giochem-v31-gnina-runtime-lock.json)"
+          curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 -o /tmp/giochem-gnina-runtime/gnina "$gnina_url"
+          test "$(sha256sum /tmp/giochem-gnina-runtime/gnina | awk '{print $1}')" = "$gnina_sha"
+          chmod +x /tmp/giochem-gnina-runtime/gnina
+          libdirs="$(find /tmp/giochem-gnina-runtime/site -type d -name lib -path '*/nvidia/*/lib' -print | sort | paste -sd ':' -)"
+          test -n "$libdirs"
+          echo "$libdirs" > /tmp/giochem-gnina-runtime/ld-library-path.txt
+          export LD_LIBRARY_PATH="$libdirs:${LD_LIBRARY_PATH:-}"
+          ldd /tmp/giochem-gnina-runtime/gnina | tee /tmp/giochem-gnina-runtime/ldd.txt
+          ! grep -q 'not found' /tmp/giochem-gnina-runtime/ldd.txt
+          /tmp/giochem-gnina-runtime/gnina --version 2>&1 | tee /tmp/giochem-gnina-runtime/version.txt
+          /tmp/giochem-gnina-runtime/gnina --help > /tmp/giochem-gnina-runtime/help.txt 2>&1
+          grep -F 'v1.3.3' /tmp/giochem-gnina-runtime/version.txt
+          grep -qi 'cnn_scoring' /tmp/giochem-gnina-runtime/help.txt
+          grep -qi 'no_gpu' /tmp/giochem-gnina-runtime/help.txt
+
+      - name: Refresh immutable runtime cache
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/giochem-gnina-runtime
+          key: ${{ steps.lock.outputs.cache_key }}
+
+  glcm:
+    name: V3.3 recovery GLCM shard ${{ matrix.shard }}
+    needs: runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    environment: pfarma-ci-trusted
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify immutable public provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(tr -d '\r\n' < giochem-v33-pose-floor3-ref-fixed.txt)" = '${{ needs.runtime.outputs.source_sha }}'
+          test "$(sha256sum giochem-v31-gnina-runtime-lock.json | awk '{print $1}')" = '${{ needs.runtime.outputs.lock_sha256 }}'
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ needs.runtime.outputs.source_sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify unchanged frozen V3.3 protocol
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.status == "FROZEN_BEFORE_ANY_V33_INDEPENDENT_DUDE_PANEL_SCORE" and .transparency.candidateDiscoveryWasPreregistered == false and .transparency.independentPanelTargetsWereScoredBeforeThisFreeze == false and .selectedMethod.ranker == "gnina_cnn_score_pose_floor3" and .selectedMethod.candidateCountForIndependentConfirmation == 1 and .selectedMethod.reselectionOnIndependentPanelAllowed == false and .selectedMethod.alternativeRankersMayChangeQualification == false and .independentConfirmationPanel.totalScoringJobs == 80 and .independentConfirmationPanel.shardsPerTarget == 16 and .externalHoldout.consumed == false and .externalHoldout.scoringForbiddenUntilIndependentPanelPass == true and .externalHoldout.finalAcceptanceThresholdsChanged == false' validation/v3/development_protocol_v33_pose_floor3.json
+          test "$(jq -r '.runtime.runtimeLockSha256' validation/v3/development_protocol_v33_pose_floor3.json)" = '${{ needs.runtime.outputs.lock_sha256 }}'
+          test -s scripts/validation_v33_dude_panel_worker_fixed.py
+      - uses: actions/cache/restore@v4
+        with:
+          path: /tmp/giochem-gnina-runtime
+          key: ${{ needs.runtime.outputs.cache_key }}
+          fail-on-cache-miss: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact frozen scientific stack
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y autodock-vina >/dev/null
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+          python -m pip install --disable-pip-version-check --no-cache-dir 'meeko==0.7.1' 'rdkit==2025.9.6'
+          python - <<'PY'
+          import importlib.metadata
+          assert importlib.metadata.version('meeko') == '0.7.1'
+          assert importlib.metadata.version('rdkit') == '2025.9.6'
+          PY
+      - name: Bind exact hash-locked GNINA runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          libdirs="$(cat /tmp/giochem-gnina-runtime/ld-library-path.txt)"; test -n "$libdirs"
+          echo "LD_LIBRARY_PATH=$libdirs:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo 'GIOCHEM_GNINA_BIN=/tmp/giochem-gnina-runtime/gnina' >> "$GITHUB_ENV"
+          test "$(sha256sum /tmp/giochem-gnina-runtime/gnina | awk '{print $1}')" = '3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172'
+      - name: Score only previously missing frozen GLCM shard
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validation_v33_dude_panel_worker_fixed.py --target GLCM --shard-index ${{ matrix.shard }} --shard-count 16 --runtime-lock-sha256 '${{ needs.runtime.outputs.lock_sha256 }}' --source-code-sha '${{ needs.runtime.outputs.source_sha }}' --output /tmp/v33-GLCM-${{ matrix.shard }}.jsonl
+      - name: Upload sealed GLCM recovery shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v33-recovery-GLCM-shard-${{ matrix.shard }}
+          path: /tmp/v33-GLCM-${{ matrix.shard }}.jsonl
+          if-no-files-found: error
+          retention-days: 90
+      - if: always()
+        run: rm -rf private-source
+
+  aggregate:
+    name: Apply unchanged V3.3 gate to recovered 80-shard panel
+    needs: [runtime, glcm]
+    if: always() && needs.runtime.result == 'success' && needs.glcm.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: ${{ needs.runtime.outputs.source_sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Download 64 previously successful non-GLCM frozen shards
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 31850993653
+          github-token: ${{ github.token }}
+          pattern: giochem-v33-fixed-*-shard-*
+          path: /tmp/v33-panel
+          merge-multiple: true
+      - name: Assert prior panel contributes exactly four complete targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find /tmp/v33-panel -maxdepth 1 -type f -name '*.jsonl' | wc -l)" -eq 64
+          for t in BRAF CASP3 HS90A AKT2; do
+            test "$(find /tmp/v33-panel -maxdepth 1 -type f -name "v33-${t}-*.jsonl" | wc -l)" -eq 16
+          done
+          test "$(find /tmp/v33-panel -maxdepth 1 -type f -name 'v33-GLCM-*.jsonl' | wc -l)" -eq 0
+      - name: Download 16 current recovery GLCM shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: giochem-v33-recovery-GLCM-shard-*
+          path: /tmp/v33-panel
+          merge-multiple: true
+      - name: Seal exact 80-shard coverage before evaluation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find /tmp/v33-panel -maxdepth 1 -type f -name '*.jsonl' | wc -l)" -eq 80
+          for t in BRAF CASP3 GLCM HS90A AKT2; do
+            test "$(find /tmp/v33-panel -maxdepth 1 -type f -name "v33-${t}-*.jsonl" | wc -l)" -eq 16
+          done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check --no-cache-dir numpy scikit-learn
+      - name: Apply frozen independent gate exactly once
+        id: evaluate
+        working-directory: private-source
+        shell: bash
+        run: |
+          set +e
+          python scripts/validation_v33_dude_panel_aggregate.py --input-dir /tmp/v33-panel --output /tmp/giochem-v33-independent-dude-panel-recovery.json
+          code=$?
+          set -e
+          test -s /tmp/giochem-v33-independent-dude-panel-recovery.json || exit 1
+          echo "scientific_exit=$code" >> "$GITHUB_OUTPUT"
+          test "$code" -eq 0 -o "$code" -eq 5
+      - name: Enforce frozen scientific semantics and untouched external holdout
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.scientificRole == "INDEPENDENT_METHOD_DEVELOPMENT_CONFIRMATION_NOT_EXTERNAL_VALIDATION" and .ranker == "gnina_cnn_score_pose_floor3" and .candidateCount == 1 and .dataset.targets == ["BRAF","CASP3","GLCM","HS90A","AKT2"] and .dataset.totalShardFiles == 80 and .dataset.completeAcrossShards == true and .litPcbaConsumed == false' /tmp/giochem-v33-independent-dude-panel-recovery.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: giochem-v33-independent-dude-panel-report-recovery
+          path: /tmp/giochem-v33-independent-dude-panel-recovery.json
+          if-no-files-found: error
+          retention-days: 120
+      - name: Scientific summary
+        shell: bash
+        run: |
+          {
+            echo '## GIOCHEM V3.3 — recovered independent DUD-E confirmation'
+            echo "- status: $(jq -r '.status' /tmp/giochem-v33-independent-dude-panel-recovery.json)"
+            echo "- records: $(jq -r '.dataset.records' /tmp/giochem-v33-independent-dude-panel-recovery.json)"
+            echo "- macro AUC: $(jq -r '.macroMetrics.meanRocAuc' /tmp/giochem-v33-independent-dude-panel-recovery.json)"
+            echo "- macro EF1: $(jq -r '.macroMetrics.meanEf1' /tmp/giochem-v33-independent-dude-panel-recovery.json)"
+            echo "- macro EF5: $(jq -r '.macroMetrics.meanEf5' /tmp/giochem-v33-independent-dude-panel-recovery.json)"
+            echo "- macro BEDROC20: $(jq -r '.macroMetrics.meanBedrocAlpha20' /tmp/giochem-v33-independent-dude-panel-recovery.json)"
+            echo "- failures: $(jq -r '.failures.rows' /tmp/giochem-v33-independent-dude-panel-recovery.json)"
+            jq -r '.targets | to_entries[] | "- \(.key): AUC=\(.value.metrics.rocAuc), EF1=\(.value.metrics.ef1.enrichmentFactor), EF5=\(.value.metrics.ef5.enrichmentFactor), BEDROC20=\(.value.metrics.bedrocAlpha20), failures=\(.value.failures.rows)/\(.value.records)"' /tmp/giochem-v33-independent-dude-panel-recovery.json
+            echo '- LIT-PCBA consumed: NO'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Propagate scientific failure after report is sealed
+        if: steps.evaluate.outputs.scientific_exit == '5'
+        shell: bash
+        run: exit 5
+      - if: always()
+        run: rm -rf private-source /tmp/v33-panel
