@@ -87,6 +87,8 @@ echo "Tunnel PID: $TUNNEL_PID"
 echo "Health: ${PUBLIC_URL}/health"
 echo "Task URL: ${PUBLIC_URL}/task"
 echo "Result URL: ${PUBLIC_URL}/result"
+echo "Work URL: ${PUBLIC_URL}/work"
+echo "Work Result URL: ${PUBLIC_URL}/work-result"
 echo
 echo "Keep this Codespace running during the test."
 echo "Tunnel log: $TUNNEL_LOG"
