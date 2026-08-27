@@ -8,6 +8,7 @@ OPENCLAW="$HOME/.local/bin/openclaw"
 LOCAL_BIN="$HOME/.local/bin"
 OPENCLAW_PREFIX="$HOME/.openclaw"
 GATEWAY_LOG="/tmp/hive-openclaw-gateway.log"
+GATEWAY_PORT=18789
 
 mkdir -p "$SKILL_DIR" "$LOCAL_BIN"
 cp "$SKILL_SRC" "$SKILL_DIR/SKILL.md"
@@ -22,7 +23,6 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
-# Resolve the embedded Node/npm runtime used by the pinned OpenClaw install.
 NODE_BIN_DIR="$(for d in "$OPENCLAW_PREFIX"/tools/node-v*/bin; do [[ -x "$d/node" ]] && printf '%s\n' "$d"; done | sort -V | tail -n 1)"
 if [[ -z "$NODE_BIN_DIR" || ! -x "$NODE_BIN_DIR/npm" ]]; then
   echo "OpenClaw embedded Node/npm runtime not found" >&2
@@ -31,9 +31,6 @@ fi
 export PATH="$NODE_BIN_DIR:$LOCAL_BIN:$OPENCLAW_PREFIX/bin:$PATH"
 hash -r
 
-# OpenClaw 2026.4.2 has a published-package bug: dist imports grammy runtime
-# packages that are missing from the npm dependency set. Repair the package in
-# place, all in one npm transaction, so one install cannot remove another.
 OPENCLAW_PKG="$NODE_BIN_DIR/../lib/node_modules/openclaw"
 if [[ ! -d "$OPENCLAW_PKG" ]]; then
   echo "OpenClaw package root not found at $OPENCLAW_PKG" >&2
@@ -65,8 +62,6 @@ done
 
 echo "OpenClaw grammy runtime: healthy"
 
-# The custom HIVE Codespace image may not include GitHub CLI. Bootstrap it
-# inside the cloud VM when needed; nothing is installed on the user's device.
 if ! command -v gh >/dev/null 2>&1; then
   echo "GitHub CLI missing; installing it inside this Codespace..."
   if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
@@ -74,7 +69,6 @@ if ! command -v gh >/dev/null 2>&1; then
     sudo apt-get install -y gh
   else
     echo "Automatic gh installation is unavailable in this Codespace." >&2
-    echo "Install GitHub CLI in the Codespace, then rerun this script." >&2
     exit 1
   fi
 fi
@@ -93,47 +87,46 @@ if ! "$OPENCLAW" config get plugins.entries.kimi-claw >/dev/null 2>&1; then
   exit 1
 fi
 
-# IMPORTANT: the previous implementation only matched a shell command line
-# containing `openclaw gateway`, but the actual daemon process is named
-# `openclaw-gateway`. That left the old pre-repair process alive. Stop through
-# OpenClaw first, then terminate any residual daemon, verify port 18789 is free,
-# and start a completely fresh process so the repaired module graph is loaded.
 echo "Stopping any existing OpenClaw gateway..."
 "$OPENCLAW" gateway stop >/dev/null 2>&1 || true
+sleep 1
 
-for _ in {1..20}; do
-  if ! pgrep -x openclaw-gateway >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.25
-done
+# Kill any process that actually owns the gateway port, regardless of its
+# process name. This avoids stale daemons such as `openclaw-gatewa` that pgrep
+# can miss because Linux truncates the comm field.
+LISTENER_PIDS=""
+if command -v ss >/dev/null 2>&1; then
+  LISTENER_PIDS="$(ss -ltnp "( sport = :$GATEWAY_PORT )" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u | tr '\n' ' ')"
+fi
+if [[ -z "$LISTENER_PIDS" ]] && command -v fuser >/dev/null 2>&1; then
+  LISTENER_PIDS="$(fuser -n tcp "$GATEWAY_PORT" 2>/dev/null | tr '\n' ' ' || true)"
+fi
 
-if pgrep -x openclaw-gateway >/dev/null 2>&1; then
-  echo "Terminating stale openclaw-gateway process..."
-  pkill -TERM -x openclaw-gateway >/dev/null 2>&1 || true
+if [[ -n "${LISTENER_PIDS// /}" ]]; then
+  echo "Terminating listener(s) on port $GATEWAY_PORT: $LISTENER_PIDS"
+  kill -TERM $LISTENER_PIDS >/dev/null 2>&1 || true
   sleep 1
 fi
 
-if pgrep -x openclaw-gateway >/dev/null 2>&1; then
-  echo "Force-killing stale openclaw-gateway process..."
-  pkill -KILL -x openclaw-gateway >/dev/null 2>&1 || true
+LISTENER_PIDS=""
+if command -v ss >/dev/null 2>&1; then
+  LISTENER_PIDS="$(ss -ltnp "( sport = :$GATEWAY_PORT )" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u | tr '\n' ' ')"
+fi
+if [[ -n "${LISTENER_PIDS// /}" ]]; then
+  echo "Force-killing listener(s) on port $GATEWAY_PORT: $LISTENER_PIDS"
+  kill -KILL $LISTENER_PIDS >/dev/null 2>&1 || true
   sleep 1
 fi
 
-if pgrep -x openclaw-gateway >/dev/null 2>&1; then
-  echo "Unable to stop stale openclaw-gateway process" >&2
-  pgrep -a -x openclaw-gateway >&2 || true
+if command -v ss >/dev/null 2>&1 && ss -ltn "( sport = :$GATEWAY_PORT )" 2>/dev/null | grep -q ":$GATEWAY_PORT"; then
+  echo "Port $GATEWAY_PORT is still occupied after forced shutdown" >&2
+  ss -ltnp "( sport = :$GATEWAY_PORT )" >&2 || true
   exit 1
 fi
 
-if command -v ss >/dev/null 2>&1 && ss -ltn '( sport = :18789 )' 2>/dev/null | grep -q ':18789'; then
-  echo "Port 18789 is still occupied after gateway shutdown" >&2
-  ss -ltnp '( sport = :18789 )' >&2 || true
-  exit 1
-fi
-
+echo "Port $GATEWAY_PORT is free. Starting fresh gateway..."
 : >"$GATEWAY_LOG"
-nohup "$OPENCLAW" gateway --bind loopback --port 18789 >"$GATEWAY_LOG" 2>&1 &
+nohup "$OPENCLAW" gateway --bind loopback --port "$GATEWAY_PORT" >"$GATEWAY_LOG" 2>&1 &
 NEW_GATEWAY_PID=$!
 
 for _ in {1..40}; do
@@ -149,11 +142,11 @@ if ! "$OPENCLAW" gateway status >/dev/null 2>&1; then
   exit 1
 fi
 
-ACTUAL_GATEWAY_PID="$(pgrep -x openclaw-gateway | head -n 1 || true)"
-if [[ -z "$ACTUAL_GATEWAY_PID" ]]; then
-  echo "Gateway reports healthy but openclaw-gateway process is not visible" >&2
-  exit 1
+ACTUAL_GATEWAY_PID=""
+if command -v ss >/dev/null 2>&1; then
+  ACTUAL_GATEWAY_PID="$(ss -ltnp "( sport = :$GATEWAY_PORT )" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
 fi
+[[ -n "$ACTUAL_GATEWAY_PID" ]] || ACTUAL_GATEWAY_PID="$NEW_GATEWAY_PID"
 
 echo "Fresh gateway started: pid=$ACTUAL_GATEWAY_PID"
 
@@ -174,8 +167,7 @@ printf 'Branch: %s\n' "$(git branch --show-current)"
 
 if [[ "$GH_AUTH" == "needs_browser_login" ]]; then
   printf '\nACTION REQUIRED: run `gh auth login --web --git-protocol https` in this Codespace.\n'
-  printf 'Authorize GitHub in the browser, then rerun this script. Do not paste tokens in chat.\n'
   exit 2
 fi
 
-printf '\nNEXT: in the linked Kimi/OpenClaw conversation, test /ping first. If it answers, send: HIVE SYNC HIVE-KIMI-0001\n'
+printf '\nNEXT: test /ping in the linked Kimi/OpenClaw conversation. If it answers, send: HIVE SYNC HIVE-KIMI-0001\n'
