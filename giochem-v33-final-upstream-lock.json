@@ -1,0 +1,17 @@
+{
+  "status": "V33_FINAL_PREREQUISITES_PASS",
+  "litPcbaScoresProduced": false,
+  "panelRunId": 33104725607,
+  "panelArtifactName": "giochem-v33-independent-dude-panel-report-receptorfix-v6",
+  "panelReportJsonSha256": "8f433406afe7d8071b788bfb7bcdcff98f9705ba314df1f7e3a83629fd98fdcf",
+  "methodDevelopmentSourceSha": "1e413046620c84572dcad4ada873cbc66ffb284b",
+  "panelExecutionSourceSha": "f90733cac0126e6ac9fe134611982ff407911ad7",
+  "poseRunId": 31822241515,
+  "receptorRunId": 31821655647,
+  "blindRunId": 31807671790,
+  "runtimeLockSha256": "a3838e2ec2987e2ec98f0a4f07420e27887809ba3aa64e43382f9073e9c8e54a",
+  "gninaBinarySha256": "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172",
+  "privateSourceSha": "bab738c408bef194e7c9768704d4260ade192449",
+  "receptorfixV6ZeroScoreValidatedRunId": 33099721157,
+  "finalAcceptanceThresholdsChanged": false
+}
