@@ -36,24 +36,31 @@ fi
 ln -sfn "$BIN" "$LOCAL_BIN/openclaw"
 
 # OpenClaw managed/user-space installs keep an embedded Node runtime under
-# ~/.openclaw/tools/node-v*/bin. Resolve that runtime explicitly instead of
-# relying on the interactive shell PATH.
+# ~/.openclaw/tools/node-v*/bin. The `node` entry may itself be a symlink, so
+# resolve candidates via shell globbing rather than `find -type f`.
 NODE_BIN_DIR=""
-if [[ -d "$PREFIX/tools" ]]; then
-  NODE_BIN_DIR="$(find "$PREFIX/tools" -mindepth 2 -maxdepth 2 -type f -path '*/bin/node' -print 2>/dev/null | sort -V | tail -n 1 | xargs -r dirname)"
+NODE_CANDIDATES=()
+for candidate in "$PREFIX"/tools/node-v*/bin/node; do
+  [[ -e "$candidate" || -L "$candidate" ]] || continue
+  [[ -x "$candidate" ]] || continue
+  NODE_CANDIDATES+=("$(dirname "$candidate")")
+done
+
+if (( ${#NODE_CANDIDATES[@]} > 0 )); then
+  NODE_BIN_DIR="$(printf '%s\n' "${NODE_CANDIDATES[@]}" | sort -V | tail -n 1)"
 fi
 
 if [[ -z "$NODE_BIN_DIR" || ! -x "$NODE_BIN_DIR/node" ]]; then
   echo "Embedded OpenClaw Node runtime was not found under $PREFIX/tools." >&2
   echo "Diagnostic tree:" >&2
-  find "$PREFIX/tools" -maxdepth 3 -type f -o -type l 2>/dev/null | head -n 120 >&2 || true
+  find "$PREFIX/tools" -maxdepth 3 \( -type f -o -type l \) -print 2>/dev/null | head -n 120 >&2 || true
   exit 1
 fi
 
 echo "Embedded Node runtime: $NODE_BIN_DIR"
 
 for tool in node npm npx; do
-  if [[ ! -e "$NODE_BIN_DIR/$tool" ]]; then
+  if [[ ! -e "$NODE_BIN_DIR/$tool" && ! -L "$NODE_BIN_DIR/$tool" ]]; then
     echo "Embedded runtime is missing required tool: $NODE_BIN_DIR/$tool" >&2
     ls -la "$NODE_BIN_DIR" >&2 || true
     exit 1
@@ -85,7 +92,7 @@ for tool in node npm npx; do
   printf '%s path: ' "$tool"
   command -v "$tool"
   "$tool" --version | head -n 1
- done
+done
 
 # Minimal loopback-only gateway configuration. No model/API provider is configured here.
 openclaw config set gateway.mode local >/dev/null
