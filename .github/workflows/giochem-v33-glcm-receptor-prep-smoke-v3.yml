@@ -1,0 +1,45 @@
+name: GIOCHEM V3.3 GLCM Receptor Prep Smoke V3
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/giochem-v33-glcm-receptor-prep-smoke-v3.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: 3d4b5b524c0451826ef254bda94c328e23cff412
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install exact receptor preparation stack
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+          python -m pip install --disable-pip-version-check --no-cache-dir 'meeko==0.7.1' 'rdkit==2025.9.6'
+      - name: Prepare GLCM receptor only; zero ligand scores
+        working-directory: private-source
+        run: python scripts/validation_v33_glcm_receptor_prep_smoke_v3.py
