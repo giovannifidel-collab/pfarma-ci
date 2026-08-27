@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           lock=giochem-v33-final-upstream-lock.json
           test -s "$lock"
-          jq -e '.status == "V33_FINAL_PREREQUISITES_PASS" and .litPcbaScoresProduced == false and .blindRunId == 31807671790 and .poseRunId == 31822241515 and .receptorRunId == 31821655647 and .runtimeLockSha256 == "a3838e2ec2987e2ec98f0a4f07420e27887809ba3aa64e43382f9073e9c8e54a" and .gninaBinarySha256 == "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172" and .panelArtifactName == "giochem-v33-independent-dude-panel-report-fixed"' "$lock"
+          jq -e '.status == "V33_FINAL_PREREQUISITES_PASS" and .litPcbaScoresProduced == false and .blindRunId == 31807671790 and .poseRunId == 31822241515 and .receptorRunId == 31821655647 and .runtimeLockSha256 == "a3838e2ec2987e2ec98f0a4f07420e27887809ba3aa64e43382f9073e9c8e54a" and .gninaBinarySha256 == "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172" and .panelArtifactName == "giochem-v33-independent-dude-panel-report-receptorfix-v6"' "$lock"
           source_ref="$(tr -d '\r\n' < giochem-v33-final-source-ref.txt)"
           test "$(jq -r '.privateSourceSha' "$lock")" = "$source_ref"
           for key in panelRunId poseRunId receptorRunId blindRunId; do
@@ -74,7 +74,7 @@ jobs:
         with:
           run-id: ${{ steps.lock.outputs.panel_run }}
           github-token: ${{ github.token }}
-          name: giochem-v33-independent-dude-panel-report-fixed
+          name: giochem-v33-independent-dude-panel-report-receptorfix-v6
           path: /tmp/panel
       - name: Download frozen V3.2 pose-generation PASS report
         uses: actions/download-artifact@v4
@@ -108,7 +108,8 @@ jobs:
           test -n "$panel" -a -n "$pose" -a -n "$receptor" -a -n "$blind"
           test "$(sha256sum "$panel" | awk '{print $1}')" = "$(jq -r '.panelReportJsonSha256' giochem-v33-final-upstream-lock.json)"
           jq -e '.status == "V33_INDEPENDENT_DUDE_PANEL_PASS" and .scientificRole == "INDEPENDENT_METHOD_DEVELOPMENT_CONFIRMATION_NOT_EXTERNAL_VALIDATION" and .ranker == "gnina_cnn_score_pose_floor3" and .candidateCount == 1 and .independentExitGate.pass == true and ([.independentExitGate.checks[]] | all) and .litPcbaConsumed == false' "$panel"
-          test "$(jq -r '.sourceCodeSha' "$panel")" = "$(jq -r '.methodDevelopmentSourceSha' giochem-v33-final-upstream-lock.json)"
+          test "$(jq -r '.sourceCodeSha' "$panel")" = "$(jq -r '.panelExecutionSourceSha' giochem-v33-final-upstream-lock.json)"
+          test "$(jq -r '.methodDevelopmentSourceSha' giochem-v33-final-upstream-lock.json)" = "1e413046620c84572dcad4ada873cbc66ffb284b"
           jq -e '.status == "V32_POSE_GATE_PASS" and .pass == true and .method == "gnina_cnn_score" and .panelSize == 4 and .litPcbaConsumed == false and ([.checks[]] | all)' "$pose"
           jq -e '.status == "FROZEN_GNINA_RECEPTOR_PACKAGE_READY_NO_HOLDOUT_SCORES" and .receptorCount == 6 and .screeningLigandsRead == false and .screeningLabelsRead == false and .screeningScoresProduced == false and .litPcbaPartitionVFilesRead == false' "$receptor"
           jq -e '.status == "BLIND_HOLDOUT_SEALED_NO_SCORES" and .holdoutScoresProduced == false and .totals.records == 2497 and .totals.actives == 47 and .totals.inactives == 2450' "$blind"
