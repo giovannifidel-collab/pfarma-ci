@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "name": "gio-build-fabric",
+  "purpose": "distributed full-source gio-OS build exploration on public GitHub workers",
+  "canonical_private_source": "giovannifidel-collab/gio-OS",
+  "coordinator": "giovannifidel-collab/pfarma-ci",
+  "policy": {
+    "public_workers_may_process_only_public_upstream_source": true,
+    "private_gio_source_in_workers": false,
+    "signing_keys_in_workers": false,
+    "generated_binary_storage_in_git": false,
+    "max_wave_concurrency": 8,
+    "fail_closed": true
+  },
+  "wave": {
+    "id": "wave-0001",
+    "goal": "measure real checkout working sets and prove isolated GitHub-hosted worker execution before build partitioning",
+    "workers": [
+      "razzo-shard-0001",
+      "razzo-shard-0002",
+      "razzo-shard-0003",
+      "razzo-shard-0004",
+      "razzo-shard-0005",
+      "razzo-shard-0006",
+      "razzo-shard-0007",
+      "razzo-shard-0008"
+    ]
+  }
+}
