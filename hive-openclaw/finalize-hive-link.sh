@@ -7,6 +7,7 @@ SKILL_DIR="$HOME/.openclaw/workspace/skills/hive-agent"
 OPENCLAW="$HOME/.local/bin/openclaw"
 LOCAL_BIN="$HOME/.local/bin"
 OPENCLAW_PREFIX="$HOME/.openclaw"
+GATEWAY_LOG="/tmp/hive-openclaw-gateway.log"
 
 mkdir -p "$SKILL_DIR" "$LOCAL_BIN"
 cp "$SKILL_SRC" "$SKILL_DIR/SKILL.md"
@@ -78,8 +79,6 @@ if ! command -v gh >/dev/null 2>&1; then
   fi
 fi
 
-# Codespaces can expose GITHUB_TOKEN to the environment. gh natively honors
-# GH_TOKEN, so map it without printing the value. No token is written to disk.
 if [[ -z "${GH_TOKEN:-}" && -n "${GITHUB_TOKEN:-}" ]]; then
   export GH_TOKEN="$GITHUB_TOKEN"
 fi
@@ -89,26 +88,74 @@ if ! gh auth status >/dev/null 2>&1; then
   GH_AUTH="needs_browser_login"
 fi
 
-PLUGIN_OK=0
-if "$OPENCLAW" config get plugins.entries.kimi-claw >/dev/null 2>&1; then
-  PLUGIN_OK=1
-fi
-
-if [[ "$PLUGIN_OK" -ne 1 ]]; then
+if ! "$OPENCLAW" config get plugins.entries.kimi-claw >/dev/null 2>&1; then
   echo "kimi-claw plugin configuration not found" >&2
   exit 1
 fi
 
-# Restart after runtime repair so the linked Kimi bridge reloads a clean module graph.
-pkill -f 'openclaw gateway' >/dev/null 2>&1 || true
-nohup "$OPENCLAW" gateway --bind loopback --port 18789 >/tmp/hive-openclaw-gateway.log 2>&1 &
-sleep 3
+# IMPORTANT: the previous implementation only matched a shell command line
+# containing `openclaw gateway`, but the actual daemon process is named
+# `openclaw-gateway`. That left the old pre-repair process alive. Stop through
+# OpenClaw first, then terminate any residual daemon, verify port 18789 is free,
+# and start a completely fresh process so the repaired module graph is loaded.
+echo "Stopping any existing OpenClaw gateway..."
+"$OPENCLAW" gateway stop >/dev/null 2>&1 || true
 
-if ! "$OPENCLAW" gateway status >/dev/null 2>&1; then
-  echo "OpenClaw gateway is not healthy after runtime repair" >&2
-  tail -n 80 /tmp/hive-openclaw-gateway.log >&2 || true
+for _ in {1..20}; do
+  if ! pgrep -x openclaw-gateway >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.25
+done
+
+if pgrep -x openclaw-gateway >/dev/null 2>&1; then
+  echo "Terminating stale openclaw-gateway process..."
+  pkill -TERM -x openclaw-gateway >/dev/null 2>&1 || true
+  sleep 1
+fi
+
+if pgrep -x openclaw-gateway >/dev/null 2>&1; then
+  echo "Force-killing stale openclaw-gateway process..."
+  pkill -KILL -x openclaw-gateway >/dev/null 2>&1 || true
+  sleep 1
+fi
+
+if pgrep -x openclaw-gateway >/dev/null 2>&1; then
+  echo "Unable to stop stale openclaw-gateway process" >&2
+  pgrep -a -x openclaw-gateway >&2 || true
   exit 1
 fi
+
+if command -v ss >/dev/null 2>&1 && ss -ltn '( sport = :18789 )' 2>/dev/null | grep -q ':18789'; then
+  echo "Port 18789 is still occupied after gateway shutdown" >&2
+  ss -ltnp '( sport = :18789 )' >&2 || true
+  exit 1
+fi
+
+: >"$GATEWAY_LOG"
+nohup "$OPENCLAW" gateway --bind loopback --port 18789 >"$GATEWAY_LOG" 2>&1 &
+NEW_GATEWAY_PID=$!
+
+for _ in {1..40}; do
+  if "$OPENCLAW" gateway status >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.5
+done
+
+if ! "$OPENCLAW" gateway status >/dev/null 2>&1; then
+  echo "OpenClaw gateway is not healthy after clean restart" >&2
+  tail -n 120 "$GATEWAY_LOG" >&2 || true
+  exit 1
+fi
+
+ACTUAL_GATEWAY_PID="$(pgrep -x openclaw-gateway | head -n 1 || true)"
+if [[ -z "$ACTUAL_GATEWAY_PID" ]]; then
+  echo "Gateway reports healthy but openclaw-gateway process is not visible" >&2
+  exit 1
+fi
+
+echo "Fresh gateway started: pid=$ACTUAL_GATEWAY_PID"
 
 printf '\nHIVE OPENCLAW LINK READY\n'
 printf 'OpenClaw: '
@@ -120,7 +167,7 @@ gh --version | head -n 1
 printf 'GitHub auth: %s\n' "$GH_AUTH"
 printf 'HIVE Skill: %s\n' "$SKILL_DIR/SKILL.md"
 printf 'Kimi plugin: configured\n'
-printf 'Gateway: healthy\n'
+printf 'Gateway: healthy (pid=%s)\n' "$ACTUAL_GATEWAY_PID"
 printf 'Runtime deps: grammy healthy\n'
 printf 'Repository: %s\n' "$(git remote get-url origin 2>/dev/null || echo unknown)"
 printf 'Branch: %s\n' "$(git branch --show-current)"
