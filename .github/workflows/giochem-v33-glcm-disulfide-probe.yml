@@ -1,0 +1,33 @@
+name: GIOCHEM V3.3 GLCM Disulfide Zero-Score Probe
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/giochem-v33-glcm-disulfide-probe.yml']
+permissions: {contents: read}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Resolve private source token
+        shell: bash
+        env:
+          GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"; echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: bad685b1b7b312b7eabc8e0eab5e2f344a5010af
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - working-directory: private-source
+        run: python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt
+      - working-directory: private-source
+        run: python scripts/validation_v33_glcm_disulfide_probe.py
