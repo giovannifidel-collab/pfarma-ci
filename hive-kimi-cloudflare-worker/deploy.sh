@@ -8,8 +8,16 @@ WRANGLER=(npx --yes wrangler@latest)
 CONFIG="$ROOT/wrangler.toml"
 BOOTSTRAP="$ROOT/wrangler.bootstrap.toml"
 TEMPLATE="$ROOT/wrangler.toml.template"
+WHOAMI_OUT="/tmp/hive-kimi-cf-whoami.out"
+WHOAMI_ERR="/tmp/hive-kimi-cf-whoami.err"
 
-if ! "${WRANGLER[@]}" whoami --config "$BOOTSTRAP" >/tmp/hive-kimi-cf-whoami.out 2>/tmp/hive-kimi-cf-whoami.err; then
+set +e
+"${WRANGLER[@]}" whoami --config "$BOOTSTRAP" >"$WHOAMI_OUT" 2>"$WHOAMI_ERR"
+WHOAMI_RC=$?
+set -e
+WHOAMI_TEXT="$(cat "$WHOAMI_OUT" "$WHOAMI_ERR" 2>/dev/null || true)"
+
+if [[ "$WHOAMI_RC" -ne 0 ]] || printf '%s' "$WHOAMI_TEXT" | grep -Eqi 'not authenticated|please run.*wrangler login|login required'; then
   echo "CLOUDFLARE_LOGIN_REQUIRED"
   echo "Run this once in the Codespace:"
   echo "  npx --yes wrangler@latest login --device --browser=false"
@@ -18,7 +26,7 @@ if ! "${WRANGLER[@]}" whoami --config "$BOOTSTRAP" >/tmp/hive-kimi-cf-whoami.out
   exit 2
 fi
 
-cat /tmp/hive-kimi-cf-whoami.out
+printf '%s\n' "$WHOAMI_TEXT"
 
 if [[ ! -f "$CONFIG" ]] || grep -q '__KV_NAMESPACE_ID__' "$CONFIG"; then
   echo "Creating dedicated Workers KV namespace for HIVE Kimi certification..."
