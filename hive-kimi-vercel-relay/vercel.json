@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs22.x"
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    }
+  ]
+}
