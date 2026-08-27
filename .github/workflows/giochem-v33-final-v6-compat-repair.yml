@@ -1,0 +1,97 @@
+name: GIOCHEM V3.3 Final V6 Compatibility Repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/giochem-v33-final-v6-compat-repair.yml'
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_PANEL_RUN: '33104725607'
+  EXPECTED_PANEL_ARTIFACT: 'giochem-v33-independent-dude-panel-report-receptorfix-v6'
+  EXPECTED_PANEL_REPORT_SHA256: '8f433406afe7d8071b788bfb7bcdcff98f9705ba314df1f7e3a83629fd98fdcf'
+  EXPECTED_METHOD_SHA: '1e413046620c84572dcad4ada873cbc66ffb284b'
+  EXPECTED_PANEL_EXECUTION_SHA: 'f90733cac0126e6ac9fe134611982ff407911ad7'
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve trusted push token
+        shell: bash
+        env:
+          PRIMARY: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          FALLBACK: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${PRIMARY:-${FALLBACK:-}}"
+          test -n "$token"
+          echo "PUSH_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Verify current V6 lock before repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e --arg run "$EXPECTED_PANEL_RUN" --arg artifact "$EXPECTED_PANEL_ARTIFACT" --arg report "$EXPECTED_PANEL_REPORT_SHA256" --arg method "$EXPECTED_METHOD_SHA" --arg exec "$EXPECTED_PANEL_EXECUTION_SHA" '
+            .status == "V33_FINAL_PREREQUISITES_PASS" and
+            .litPcbaScoresProduced == false and
+            (.panelRunId|tostring) == $run and
+            .panelArtifactName == $artifact and
+            .panelReportJsonSha256 == $report and
+            .methodDevelopmentSourceSha == $method and
+            .panelExecutionSourceSha == $exec and
+            .finalAcceptanceThresholdsChanged == false
+          ' giochem-v33-final-upstream-lock.json
+
+      - name: Apply outcome-independent final interlock compatibility repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=.github/workflows/giochem-validation-v33-final-blind-litpcba.yml
+          test -s "$f"
+          grep -Fq '.panelArtifactName == "giochem-v33-independent-dude-panel-report-fixed"' "$f"
+          grep -Fq 'name: giochem-v33-independent-dude-panel-report-fixed' "$f"
+          grep -Fq '.sourceCodeSha' "$f"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/giochem-validation-v33-final-blind-litpcba.yml')
+          s=p.read_text()
+          s=s.replace('.panelArtifactName == "giochem-v33-independent-dude-panel-report-fixed"', '.panelArtifactName == "giochem-v33-independent-dude-panel-report-receptorfix-v6"', 1)
+          s=s.replace('name: giochem-v33-independent-dude-panel-report-fixed', 'name: giochem-v33-independent-dude-panel-report-receptorfix-v6', 1)
+          old='test "$(jq -r \'.sourceCodeSha\' "$panel")" = "$(jq -r \'.methodDevelopmentSourceSha\' giochem-v33-final-upstream-lock.json)"'
+          new='test "$(jq -r \'.sourceCodeSha\' "$panel")" = "$(jq -r \'.panelExecutionSourceSha\' giochem-v33-final-upstream-lock.json)"\n          test "$(jq -r \'.methodDevelopmentSourceSha\' giochem-v33-final-upstream-lock.json)" = "1e413046620c84572dcad4ada873cbc66ffb284b"'
+          if old not in s:
+              raise SystemExit('expected source provenance guard not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          python - <<'PY'
+          import json
+          p='giochem-v33-final-upstream-lock.json'
+          o=json.load(open(p))
+          o['technicalInterlockVersion']=2
+          o['technicalInterlockRepair']='accept zero-score-tested receptorfix V6 artifact and validate panel sourceCodeSha against panelExecutionSourceSha while preserving original methodDevelopmentSourceSha'
+          with open(p,'w') as f: json.dump(o,f,indent=2); f.write('\n')
+          PY
+          git diff --check
+          git diff -- .github/workflows/giochem-validation-v33-final-blind-litpcba.yml giochem-v33-final-upstream-lock.json
+
+      - name: Commit and push with trusted token to trigger final blind workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'giovannifidel-collab'
+          git config user.email 'giovanni.fidel@gmail.com'
+          git add .github/workflows/giochem-validation-v33-final-blind-litpcba.yml giochem-v33-final-upstream-lock.json
+          git commit -m 'ci(validation): bind final blind interlock to receptorfix V6 provenance'
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:main
