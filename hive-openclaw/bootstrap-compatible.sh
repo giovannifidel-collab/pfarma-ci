@@ -32,9 +32,19 @@ if [[ ! -x "$BIN" ]]; then
   exit 1
 fi
 
-# Kimi's pairing installer discovers OpenClaw with `command -v openclaw`.
-# Expose the pinned HIVE-managed binary on a conventional user PATH too.
+# Kimi's pairing installer discovers dependencies with `command -v`.
+# Expose the pinned HIVE-managed OpenClaw binary on a conventional user PATH.
 ln -sfn "$BIN" "$LOCAL_BIN/openclaw"
+
+# Also expose the Node toolchain already present in the Codespace. Kimi's installer
+# may execute in a fresh non-interactive shell that does not inherit the shell PATH.
+for tool in node npm npx; do
+  TOOL_PATH="$(command -v "$tool" 2>/dev/null || true)"
+  if [[ -n "$TOOL_PATH" ]]; then
+    ln -sfn "$TOOL_PATH" "$LOCAL_BIN/$tool"
+  fi
+done
+
 export PATH="$LOCAL_BIN:$PREFIX/bin:$PATH"
 hash -r
 
@@ -46,6 +56,15 @@ printf 'OpenClaw: '
 openclaw --version
 printf 'OpenClaw path: '
 command -v openclaw
+
+for tool in node npm npx; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "Required Node tool missing after PATH normalization: $tool" >&2
+    exit 1
+  fi
+  printf '%s path: ' "$tool"
+  command -v "$tool"
+done
 
 # Minimal loopback-only gateway configuration. No model/API provider is configured here.
 openclaw config set gateway.mode local >/dev/null
