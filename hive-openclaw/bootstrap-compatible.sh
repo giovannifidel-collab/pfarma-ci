@@ -10,11 +10,21 @@ echo "=== HIVE OPENCLAW CLOUD BOOTSTRAP ==="
 echo "Target OpenClaw version: $OPENCLAW_VERSION"
 echo "Install prefix: $PREFIX"
 
-echo "Installing a Kimi-compatible OpenClaw release in the GitHub Codespace..."
-curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | \
-  bash -s -- --prefix "$PREFIX" --version "$OPENCLAW_VERSION"
-
 export PATH="$PREFIX/bin:$PATH"
+
+CURRENT_VERSION=""
+if [[ -x "$BIN" ]]; then
+  CURRENT_VERSION="$($BIN --version 2>/dev/null || true)"
+fi
+
+if [[ "$CURRENT_VERSION" != *"$OPENCLAW_VERSION"* ]]; then
+  echo "Installing a Kimi-compatible OpenClaw release in the GitHub Codespace..."
+  curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh | \
+    bash -s -- --prefix "$PREFIX" --version "$OPENCLAW_VERSION"
+else
+  echo "OpenClaw $OPENCLAW_VERSION already installed; skipping reinstall."
+fi
+
 if ! grep -Fq 'export PATH="$HOME/.openclaw/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null; then
   printf '\nexport PATH="$HOME/.openclaw/bin:$PATH"\n' >> "$HOME/.bashrc"
 fi
@@ -33,11 +43,14 @@ printf 'OpenClaw: '
 "$BIN" config set gateway.auth.mode token >/dev/null
 
 if ! "$BIN" config get gateway.auth.token >/dev/null 2>&1; then
-  TOKEN="$(python3 - <<'PY'
-import secrets
-print(secrets.token_hex(32))
-PY
-)"
+  if command -v node >/dev/null 2>&1; then
+    TOKEN="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+  elif command -v openssl >/dev/null 2>&1; then
+    TOKEN="$(openssl rand -hex 32)"
+  else
+    echo "Neither node nor openssl is available to generate a secure gateway token." >&2
+    exit 1
+  fi
   "$BIN" config set gateway.auth.token "$TOKEN" >/dev/null
 fi
 
