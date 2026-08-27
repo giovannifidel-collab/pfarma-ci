@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "wave": "wave-0002",
+  "worker_contract_sha": "cbbcd025952b19de070d1adb21470faf36cc5e11",
+  "purpose": "measure Android 14 build-graph/toolchain/security/network domains before defining compile capsules",
+  "jobs": [
+    {"worker":"razzo-shard-0009","domain":"build/make","repo":"crdroidandroid/android_build","revision":"14.0"},
+    {"worker":"razzo-shard-0010","domain":"build/soong","repo":"crdroidandroid/android_build_soong","revision":"14.0"},
+    {"worker":"razzo-shard-0011","domain":"system/sepolicy","repo":"crdroidandroid/android_system_sepolicy","revision":"14.0"},
+    {"worker":"razzo-shard-0012","domain":"frameworks/native","repo":"crdroidandroid/android_frameworks_native","revision":"14.0"},
+    {"worker":"razzo-shard-0013","domain":"frameworks/av","repo":"crdroidandroid/android_frameworks_av","revision":"14.0"},
+    {"worker":"razzo-shard-0014","domain":"packages/modules/adb","repo":"crdroidandroid/android_packages_modules_adb","revision":"14.0"},
+    {"worker":"razzo-shard-0015","domain":"frameworks/opt/net/wifi","repo":"crdroidandroid/android_frameworks_opt_net_wifi","revision":"14.0"},
+    {"worker":"razzo-shard-0016","domain":"packages/modules/Wifi","repo":"crdroidandroid/android_packages_modules_Wifi","revision":"14.0"}
+  ],
+  "security": {
+    "private_gio_source": false,
+    "signing_keys": false,
+    "worker_permissions": "contents:read",
+    "reusable_worker_pinned_by_sha": true
+  },
+  "kernel_compile": {
+    "worker": "razzo-shard-0001",
+    "attempt_1_run": 33123981411,
+    "attempt_1_result": "failed-toolchain-mismatch",
+    "attempt_1_reason": "GCC 4.9 does not support kernel's cortex-a73.cortex-a53 mtune; kernel Makefile explicitly selects a clang-safe cortex-a53 tune when CONFIG_CC_IS_CLANG",
+    "fix": "switch to Android 14 default clang-r510928 from android-14.0.0_r67 and LLVM=1/LLVM_IAS=1",
+    "attempt_2_run": 33124436301,
+    "attempt_2_status_at_registration": "queued-or-running"
+  }
+}
