@@ -1,0 +1,88 @@
+name: HIVE Cloud Computer PR Self-Test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-cloud-computer-pr-selftest.yml'
+      - '.github/workflows/hive-cloud-computer.yml'
+      - 'hive-cloud-computer/**'
+      - 'hive-agent-skill/**'
+
+permissions:
+  contents: read
+
+jobs:
+  private-workspace-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout public transport repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fail closed unless trusted private-source credential exists
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+
+      - name: Materialize exact private Family Cloud checkpoint
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: 237f1985c08db57405be69c7dfbc91bfb3960468
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: workspace
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prove ephemeral cloud computer
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='237f1985c08db57405be69c7dfbc91bfb3960468'
+          actual="$(git -C workspace rev-parse HEAD)"
+          test "$actual" = "$expected"
+          test -f workspace/package.json
+          printf 'runner=%s\nos=%s\narch=%s\nprivate_sha=%s\n' "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH" "$actual" | tee hive-cloud-computer-selftest.txt
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies safely
+        working-directory: workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f package-lock.json; then
+            npm ci --ignore-scripts --no-audit --no-fund
+          else
+            npm install --ignore-scripts --no-audit --no-fund
+          fi
+
+      - name: Typecheck
+        working-directory: workspace
+        run: npm run typecheck --if-present
+
+      - name: Tests
+        working-directory: workspace
+        run: npm test --if-present
+
+      - name: Upload proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-cloud-computer-pr-selftest
+          path: hive-cloud-computer-selftest.txt
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Destroy private workspace
+        if: always()
+        shell: bash
+        run: rm -rf workspace
