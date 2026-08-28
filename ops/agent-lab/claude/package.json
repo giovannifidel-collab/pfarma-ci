@@ -1,0 +1,13 @@
+{
+  "name": "hive-agent-lab-claude",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Standalone zero-cost Claude.ai connectivity and certification lab for HIVE.",
+  "dependencies": {
+    "playwright-core": "^1.55.0"
+  },
+  "scripts": {
+    "certify": "node certify.mjs"
+  }
+}
