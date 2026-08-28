@@ -63,14 +63,12 @@ fi
 echo "CLAUDE LAB BROWSER=$BROWSER"
 
 # One shared graphical browser host for every standalone agent (Claude, Kimi, Gemini, ...).
-# It is idempotent: existing Xvfb/noVNC processes are reused instead of duplicated.
-if [[ ! -S "/tmp/.X11-unix/X1" ]]; then
-  if [[ ! -f "$SHARED_HOST" ]]; then
-    echo "ERROR: shared Agent Lab browser host script missing: $SHARED_HOST"
-    exit 3
-  fi
-  bash "$SHARED_HOST"
+# The host script is idempotent and repairs missing Xvfb/VNC/noVNC pieces without duplicating live processes.
+if [[ ! -f "$SHARED_HOST" ]]; then
+  echo "ERROR: shared Agent Lab browser host script missing: $SHARED_HOST"
+  exit 3
 fi
+bash "$SHARED_HOST"
 export DISPLAY=":1"
 
 # Preserve authentication/session state but remove disposable Chromium caches.
