@@ -11,6 +11,15 @@ MEDIA_CACHE_BYTES="${GROK_LAB_MEDIA_CACHE_BYTES:-33554432}"
 SHARED_HOST="$ROOT/../browser-host/ensure-desktop.sh"
 mkdir -p "$PROFILE"
 
+# Always validate the shared graphical bridge first. This is intentionally idempotent:
+# if Xvfb/x11vnc/noVNC are healthy they are reused; if one layer died it is repaired.
+if [[ ! -f "$SHARED_HOST" ]]; then
+  echo "ERROR: shared Agent Lab browser host script missing: $SHARED_HOST"
+  exit 3
+fi
+bash "$SHARED_HOST"
+export DISPLAY=":1"
+
 playwright_browser(){
   [[ -d node_modules/playwright ]] || return 1
   local candidate
@@ -41,6 +50,10 @@ if curl -fsS "http://127.0.0.1:${PORT}/json/version" >/dev/null 2>&1; then
   echo "GROK LAB BROWSER READY"
   echo "CDP=http://127.0.0.1:${PORT}"
   echo "PROFILE=$PROFILE"
+  if [[ -n "${CODESPACE_NAME:-}" && -n "${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-}" ]]; then
+    echo "Open this authenticated Codespaces URL:"
+    echo "https://${CODESPACE_NAME}-6080.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}/vnc.html?autoconnect=true&resize=scale"
+  fi
   exit 0
 fi
 
@@ -61,15 +74,6 @@ if [[ -z "$BROWSER" ]]; then
 fi
 
 echo "GROK LAB BROWSER=$BROWSER"
-
-if [[ ! -S "/tmp/.X11-unix/X1" ]]; then
-  if [[ ! -f "$SHARED_HOST" ]]; then
-    echo "ERROR: shared Agent Lab browser host script missing: $SHARED_HOST"
-    exit 3
-  fi
-  bash "$SHARED_HOST"
-fi
-export DISPLAY=":1"
 
 rm -rf \
   "$PROFILE/Default/Cache" \
