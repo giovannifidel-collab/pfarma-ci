@@ -1,0 +1,8 @@
+{
+  "task_id": "HIVE-KIMI-AUTO-0006",
+  "task_url": "https://r.jina.ai/https://hive-kimi-relay.project-giovanni.workers.dev/auto/HIVE-KIMI-AUTO-0006",
+  "result_url": "https://hive-kimi-relay.project-giovanni.workers.dev/auto-result/HIVE-KIMI-AUTO-0006",
+  "max_attempts": 6,
+  "issued_by": "HIVE",
+  "human_kimi_intervention_required": false
+}
