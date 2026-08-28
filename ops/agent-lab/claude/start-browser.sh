@@ -8,6 +8,7 @@ PROFILE="${CLAUDE_LAB_PROFILE_DIR:-$HOME/.hive-agent-lab/claude-profile}"
 PORT="${CLAUDE_LAB_CDP_PORT:-9224}"
 DISK_CACHE_BYTES="${CLAUDE_LAB_DISK_CACHE_BYTES:-134217728}"
 MEDIA_CACHE_BYTES="${CLAUDE_LAB_MEDIA_CACHE_BYTES:-33554432}"
+SHARED_HOST="$ROOT/../browser-host/ensure-desktop.sh"
 mkdir -p "$PROFILE"
 
 playwright_browser(){
@@ -26,14 +27,12 @@ find_browser(){
     printf '%s\n' "$CLAUDE_LAB_BROWSER_BIN"
     return 0
   fi
-
   for bin in google-chrome-stable google-chrome chromium chromium-browser; do
     if command -v "$bin" >/dev/null 2>&1; then
       command -v "$bin"
       return 0
     fi
   done
-
   playwright_browser && return 0
   return 1
 }
@@ -56,27 +55,25 @@ if [[ -z "$BROWSER" ]]; then
   npx playwright install chromium
   BROWSER="$(find_browser || true)"
 fi
-
 if [[ -z "$BROWSER" ]]; then
   echo "ERROR: Chromium non disponibile anche dopo il bootstrap Playwright."
-  echo "Prova: npx playwright install --with-deps chromium"
   exit 1
 fi
 
 echo "CLAUDE LAB BROWSER=$BROWSER"
 
-export DISPLAY="${DISPLAY:-:1}"
-DISPLAY_NUM="${DISPLAY#:}"
-DISPLAY_NUM="${DISPLAY_NUM%%.*}"
-if [[ "$DISPLAY" == :* && ! -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ]]; then
-  echo "ERROR: display grafico $DISPLAY non attivo nel Codespace."
-  echo "Chromium e' installato correttamente; manca solo la sessione X/noVNC."
-  echo "DISPLAY=$DISPLAY"
-  exit 3
+# One shared graphical browser host for every standalone agent (Claude, Kimi, Gemini, ...).
+# It is idempotent: existing Xvfb/noVNC processes are reused instead of duplicated.
+if [[ ! -S "/tmp/.X11-unix/X1" ]]; then
+  if [[ ! -f "$SHARED_HOST" ]]; then
+    echo "ERROR: shared Agent Lab browser host script missing: $SHARED_HOST"
+    exit 3
+  fi
+  bash "$SHARED_HOST"
 fi
+export DISPLAY=":1"
 
-# Preserve authentication/session state, but remove disposable Chromium caches.
-# This keeps the Claude login while preventing cache directories from growing indefinitely.
+# Preserve authentication/session state but remove disposable Chromium caches.
 rm -rf \
   "$PROFILE/Default/Cache" \
   "$PROFILE/Default/Code Cache" \
@@ -105,7 +102,11 @@ for _ in $(seq 1 75); do
     echo "CDP=http://127.0.0.1:${PORT}"
     echo "PROFILE=$PROFILE"
     echo "CACHE_CAP=$((DISK_CACHE_BYTES/1024/1024))MiB disk + $((MEDIA_CACHE_BYTES/1024/1024))MiB media"
-    echo "Accedi a Claude.ai dalla finestra Chromium del noVNC; le credenziali restano nel browser."
+    if [[ -n "${CODESPACE_NAME:-}" && -n "${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-}" ]]; then
+      echo "Open this authenticated Codespaces URL:"
+      echo "https://${CODESPACE_NAME}-6080.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}/vnc.html?autoconnect=true&resize=scale"
+    fi
+    echo "Accedi a Claude.ai una sola volta; il profilo browser resta persistente."
     exit 0
   fi
   sleep 0.4
