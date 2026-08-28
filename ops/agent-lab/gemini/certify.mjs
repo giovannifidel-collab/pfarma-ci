@@ -34,23 +34,14 @@ async function composer(page){
   return null;
 }
 
-async function bodyText(page){
-  return page.locator('body').innerText().catch(()=> '');
-}
-
-function literalCount(text,token){
-  if(!token)return 0;
-  return text.split(token).length-1;
-}
+async function bodyText(page){ return page.locator('body').innerText().catch(()=> ''); }
+function literalCount(text,token){ return token ? text.split(token).length-1 : 0; }
 
 async function assistantText(page){
   const selectors=[
-    'message-content',
-    'model-response',
-    '.model-response-text',
+    'message-content','model-response','.model-response-text',
     '[data-test-id*="model-response" i]',
-    '[data-message-author-role="model"]',
-    '[data-message-author-role="assistant"]'
+    '[data-message-author-role="model"]','[data-message-author-role="assistant"]'
   ];
   const chunks=[];
   for(const sel of selectors){
@@ -84,16 +75,9 @@ async function waitForAssistantExact(page,expected,beforeAssistant,beforeBody,ti
   const started=Date.now();
   while(Date.now()-started<timeout){
     const a=await assistantText(page);
-    if(a && literalCount(a,expected)>beforeAssistant){
-      await sleep(1000);
-      return 'assistant-container';
-    }
+    if(a && literalCount(a,expected)>beforeAssistant){ await sleep(1000); return 'assistant-container'; }
     const b=await bodyText(page);
-    // The user prompt contains the expected echo once; the response must add a second occurrence.
-    if(literalCount(b,expected)>=beforeBody+2){
-      await sleep(1000);
-      return 'body-occurrence-fallback';
-    }
+    if(literalCount(b,expected)>=beforeBody+2){ await sleep(1000); return 'body-occurrence-fallback'; }
     await sleep(900);
   }
   throw new Error(`TIMEOUT_WAITING_FOR_EXACT_GEMINI_RESPONSE_${expected}`);
@@ -108,16 +92,19 @@ async function stage(page,label,prompt,expectedEcho){
   log('PASS',label,validation,'exact-data-echo');
 }
 
-async function waitFinal(page,expectedToken,timeout=120000){
+async function waitFinal(page,timeout=120000){
   const started=Date.now();
+  const regex=new RegExp(`GEMINI_CERT_RESULT:${nonce}:(\\d+):(\\d+):(\\d+):(\\d+)`);
   while(Date.now()-started<timeout){
     const a=await assistantText(page);
-    if(a.includes(expectedToken))return {validation:'assistant-container'};
+    let m=regex.exec(a);
+    if(m)return {validation:'assistant-container',sums:{A:Number(m[1]),B:Number(m[2]),C:Number(m[3])},checksum:Number(m[4])};
     const b=await bodyText(page);
-    if(b.includes(expectedToken))return {validation:'body-fallback'};
+    m=regex.exec(b);
+    if(m)return {validation:'body-fallback',sums:{A:Number(m[1]),B:Number(m[2]),C:Number(m[3])},checksum:Number(m[4])};
     await sleep(1000);
   }
-  throw new Error(`TIMEOUT_WAITING_FOR_${expectedToken}`);
+  throw new Error(`TIMEOUT_WAITING_FOR_GEMINI_CERT_RESULT_${nonce}`);
 }
 
 async function main(){
@@ -130,7 +117,6 @@ async function main(){
   const page=await context.newPage();
   await page.goto('https://gemini.google.com/app',{waitUntil:'domcontentloaded',timeout:60000});
   await page.waitForTimeout(2500);
-
   if(!await composer(page))throw new Error('GEMINI_NOT_AUTHENTICATED_OR_COMPOSER_NOT_FOUND');
 
   const masterEcho=`ACK_MASTER:${nonce}:${MASTER.salt}:${MASTER.coeff.join(',')}`;
@@ -145,25 +131,13 @@ async function main(){
   ].join('\n'),masterEcho);
 
   const echoA=`ACK_A:${nonce}:${SHARDS.A.join(',')}`;
-  await stage(page,'SHARD_A',[
-    `${TEST_ID} / ${nonce}`,
-    `SHARD_A=${SHARDS.A.join(',')}`,
-    `Memorizzalo esattamente e rispondi ESATTAMENTE: ${echoA}`
-  ].join('\n'),echoA);
+  await stage(page,'SHARD_A',[`${TEST_ID} / ${nonce}`,`SHARD_A=${SHARDS.A.join(',')}`,`Memorizzalo esattamente e rispondi ESATTAMENTE: ${echoA}`].join('\n'),echoA);
 
   const echoB=`ACK_B:${nonce}:${SHARDS.B.join(',')}`;
-  await stage(page,'SHARD_B',[
-    `${TEST_ID} / ${nonce}`,
-    `SHARD_B=${SHARDS.B.join(',')}`,
-    `Memorizzalo esattamente e rispondi ESATTAMENTE: ${echoB}`
-  ].join('\n'),echoB);
+  await stage(page,'SHARD_B',[`${TEST_ID} / ${nonce}`,`SHARD_B=${SHARDS.B.join(',')}`,`Memorizzalo esattamente e rispondi ESATTAMENTE: ${echoB}`].join('\n'),echoB);
 
   const echoC=`ACK_C:${nonce}:${SHARDS.C.join(',')}`;
-  await stage(page,'SHARD_C',[
-    `${TEST_ID} / ${nonce}`,
-    `SHARD_C=${SHARDS.C.join(',')}`,
-    `Memorizzalo esattamente e rispondi ESATTAMENTE: ${echoC}`
-  ].join('\n'),echoC);
+  await stage(page,'SHARD_C',[`${TEST_ID} / ${nonce}`,`SHARD_C=${SHARDS.C.join(',')}`,`Memorizzalo esattamente e rispondi ESATTAMENTE: ${echoC}`].join('\n'),echoC);
 
   log('SEND FINAL');
   await send(page,[
@@ -174,37 +148,28 @@ async function main(){
     `Rispondi ESATTAMENTE nel formato: GEMINI_CERT_RESULT:${nonce}:<SUM_A>:<SUM_B>:<SUM_C>:<CHECKSUM>`
   ].join('\n'));
 
-  const expectedFinal=`GEMINI_CERT_RESULT:${nonce}:${SUMS.A}:${SUMS.B}:${SUMS.C}:${EXPECTED}`;
-  const final=await waitFinal(page,expectedFinal);
-  const passed=true;
+  const final=await waitFinal(page);
+  const passed=final.sums.A===SUMS.A && final.sums.B===SUMS.B && final.sums.C===SUMS.C && final.checksum===EXPECTED;
   const cert={
-    test_id:TEST_ID,
-    nonce,
-    provider:'gemini.google.com',
-    transport:'persistent-browser-session',
-    api_required:false,
-    zero_cost_api_path:true,
-    started_at:startedAt,
-    completed_at:new Date().toISOString(),
-    expected_sums:SUMS,
-    expected_checksum:EXPECTED,
-    actual_checksum:EXPECTED,
+    test_id:TEST_ID,nonce,provider:'gemini.google.com',transport:'persistent-browser-session',
+    api_required:false,zero_cost_api_path:true,started_at:startedAt,completed_at:new Date().toISOString(),
+    expected_sums:SUMS,actual_sums:final.sums,expected_checksum:EXPECTED,actual_checksum:final.checksum,
     stages:{master:true,shard_a:true,shard_b:true,shard_c:true,final:true},
-    response_validation:final.validation,
-    stage_validation:'exact-data-echo',
-    certified:passed
+    response_validation:final.validation,stage_validation:'exact-data-echo',certified:passed
   };
   const file=path.join(OUT_DIR,`${TEST_ID}-${nonce}.json`);
   fs.writeFileSync(file,JSON.stringify(cert,null,2));
 
   console.log('');
-  console.log('GEMINI_CERTIFIED=true');
+  console.log(`GEMINI_CERTIFIED=${passed?'true':'false'}`);
   console.log(`TEST_ID=${TEST_ID}`);
   console.log(`NONCE=${nonce}`);
   console.log(`EXPECTED_SUMS=${SUMS.A},${SUMS.B},${SUMS.C}`);
+  console.log(`ACTUAL_SUMS=${final.sums.A},${final.sums.B},${final.sums.C}`);
   console.log(`EXPECTED_CHECKSUM=${EXPECTED}`);
-  console.log(`ACTUAL_CHECKSUM=${EXPECTED}`);
+  console.log(`ACTUAL_CHECKSUM=${final.checksum}`);
   console.log(`CERTIFICATE=${file}`);
+  if(!passed)process.exitCode=2;
 
   await page.close().catch(()=>{});
   await browser.close().catch(()=>{});
