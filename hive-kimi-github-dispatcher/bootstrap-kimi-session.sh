@@ -77,23 +77,22 @@ import { chromium } from 'playwright';
 const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
 const contexts = browser.contexts();
 if (!contexts.length) throw new Error('No Chromium context found');
-await contexts[0].storageState({ path: process.env.STATE_PATH });
+await contexts[0].storageState({ path: process.env.STATE_PATH, indexedDB: true });
 await browser.close();
 JS
 
 STATE_PATH="$STATE" node "$ROOT/node/export-state.mjs"
-
 [[ -s "$STATE" ]] || { echo "Failed to export Kimi browser state" >&2; exit 1; }
 
-ENCODED_SIZE="$(base64 -w0 "$STATE" | wc -c)"
+ENCODED_SIZE="$(gzip -c "$STATE" | base64 -w0 | wc -c)"
 if (( ENCODED_SIZE > 48000 )); then
-  echo "Kimi storage state is too large for a GitHub Actions secret ($ENCODED_SIZE bytes)." >&2
+  echo "Compressed Kimi storage state is too large for a GitHub Actions secret ($ENCODED_SIZE bytes)." >&2
   exit 1
 fi
 
-base64 -w0 "$STATE" | gh secret set KIMI_STORAGE_STATE_B64 --repo "$TARGET_REPO"
+gzip -c "$STATE" | base64 -w0 | gh secret set KIMI_STORAGE_STATE_GZ_B64 --repo "$TARGET_REPO"
 
 echo
 echo "HIVE KIMI SESSION BOOTSTRAP READY"
-echo "Secret KIMI_STORAGE_STATE_B64 stored in $TARGET_REPO."
+echo "Secret KIMI_STORAGE_STATE_GZ_B64 stored in $TARGET_REPO."
 echo "No Kimi session data was committed to GitHub."
