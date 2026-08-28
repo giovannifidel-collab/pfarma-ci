@@ -11,9 +11,9 @@
   "blindRunId": 31807671790,
   "runtimeLockSha256": "a3838e2ec2987e2ec98f0a4f07420e27887809ba3aa64e43382f9073e9c8e54a",
   "gninaBinarySha256": "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172",
-  "privateSourceSha": "bab738c408bef194e7c9768704d4260ade192449",
+  "privateSourceSha": "62e2af230bc83a2639cb4d120136b13029561b83",
   "receptorfixV6ZeroScoreValidatedRunId": 33099721157,
   "finalAcceptanceThresholdsChanged": false,
-  "technicalInterlockVersion": 2,
-  "technicalInterlockRepair": "accept zero-score-tested receptorfix V6 artifact and validate panel sourceCodeSha against panelExecutionSourceSha while preserving original methodDevelopmentSourceSha"
+  "technicalInterlockVersion": 3,
+  "technicalInterlockRepair": "schema-only blind worker compatibility patch: read frozen runtime keys runtime.meeko and runtime.rdkit; no method, thresholds, receptors, sampling, scoring, or holdout truth changes"
 }
