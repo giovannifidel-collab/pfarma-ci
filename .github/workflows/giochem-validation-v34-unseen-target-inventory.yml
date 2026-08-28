@@ -4,10 +4,11 @@ name: GIOCHEM Validation V3.4 Unseen Target Inventory
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - '.github/workflows/giochem-validation-v34-unseen-target-inventory.yml'
-      - 'giochem-v34-inventory-source-ref.txt'
+      - .github/workflows/giochem-validation-v34-unseen-target-inventory.yml
+      - giochem-v34-inventory-source-ref.txt
 
 permissions:
   contents: read
@@ -18,22 +19,34 @@ jobs:
     timeout-minutes: 25
     environment: pfarma-ci-trusted
     steps:
-      - uses: actions/checkout@v4
-        with: {persist-credentials: false, fetch-depth: 1}
-      - id: source
+      - name: Checkout CI bridge
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve exact private source SHA
+        id: source
         shell: bash
         run: |
           set -euo pipefail
-          sha="$(tr -d '\r\n' < giochem-v34-inventory-source-ref.txt)"; [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          sha="$(tr -d '\r\n' < giochem-v34-inventory-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - name: Resolve private source token
         shell: bash
         env:
           GIOCHEM_TOKEN: ${{ secrets.GIOCHEM_SOURCE_TOKEN }}
           FALLBACK_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: |
-          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"; test -n "$token"; echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v4
+          set -euo pipefail
+          token="${GIOCHEM_TOKEN:-${FALLBACK_TOKEN:-}}"
+          test -n "$token"
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Checkout exact GIOCHEM source
+        uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/giochem
           ref: ${{ steps.source.outputs.sha }}
@@ -41,21 +54,35 @@ jobs:
           path: private-source
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Select unseen targets from metadata only
         working-directory: private-source
-        run: python scripts/validation_v34_inventory_unseen_targets.py --output /tmp/giochem-v34-unseen-target-inventory.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validation_v34_inventory_unseen_targets.py \
+            --output /tmp/giochem-v34-unseen-target-inventory.json
+
       - name: Enforce pre-score guardrails
         shell: bash
         run: |
           set -euo pipefail
-          jq -e '.status == "V34_UNSEEN_TARGETS_SELECTED_METADATA_ONLY_BEFORE_ANY_V34_EXTERNAL_SCORE" and .giochemScoresRead == false and .perCompoundTruthRead == false and (.selectedTargets|length)==3 and ([.selectedTargets[].eligible]|all)' /tmp/giochem-v34-unseen-target-inventory.json
-      - uses: actions/upload-artifact@v4
+          jq -e '.status == "V34_UNSEEN_TARGETS_SELECTED_METADATA_ONLY_BEFORE_ANY_V34_EXTERNAL_SCORE" and .giochemScoresRead == false and .perCompoundTruthRead == false and (.selectedTargets | length) == 3 and ([.selectedTargets[].eligible] | all)' /tmp/giochem-v34-unseen-target-inventory.json
+
+      - name: Upload immutable unseen-target inventory
+        uses: actions/upload-artifact@v4
         with:
           name: giochem-v34-unseen-target-inventory
           path: /tmp/giochem-v34-unseen-target-inventory.json
           if-no-files-found: error
           retention-days: 90
+
       - name: Summary
-        run: jq -r '.selectedTargets[] | "selected unseen target: \(.archiveTargetName), V records=\(.validationRecords), templates=\(.pairedTemplateCount)"' /tmp/giochem-v34-unseen-target-inventory.json >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
+        run: |
+          jq -r '.selectedTargets[] | "selected unseen target: \(.archiveTargetName), V records=\(.validationRecords), templates=\(.pairedTemplateCount)"' /tmp/giochem-v34-unseen-target-inventory.json >> "$GITHUB_STEP_SUMMARY"
