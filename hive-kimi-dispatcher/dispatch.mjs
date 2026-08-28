@@ -10,6 +10,7 @@ const taskId = trigger.task_id || 'unknown';
 const maxAttempts = Number(trigger.max_attempts || 6);
 const sessionEndpoint = 'https://hive-kimi-relay.project-giovanni.workers.dev/dispatcher/session';
 const oidcAudience = 'hive-kimi-dispatcher';
+const kimiTargets = ['https://www.kimi.com/en', 'https://kimi.ai/'];
 
 if (!taskUrl) throw new Error('trigger.task_url is required');
 if (!resultUrl) throw new Error('trigger.result_url is required');
@@ -49,6 +50,8 @@ async function leaseKimiStorageState() {
 
 const storageState = await leaseKimiStorageState();
 console.log('HIVE_KIMI_SESSION_LEASED_VIA_GITHUB_OIDC');
+console.log(`HIVE_SESSION_ORIGINS=${(storageState.origins || []).map(item => item.origin).join(',') || 'none'}`);
+console.log(`HIVE_SESSION_COOKIE_DOMAINS=${[...new Set((storageState.cookies || []).map(item => item.domain))].join(',') || 'none'}`);
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ storageState, viewport: { width: 1440, height: 1000 } });
@@ -71,24 +74,38 @@ async function bodyText() {
   try { return await page.locator('body').innerText(); } catch { return ''; }
 }
 
+function hasLoginGate(text) {
+  return /微信扫码登录|手机号登录|登录以同步历史|Log in to sync chat history|Sign in to sync chat history|Google login users|谷歌登录用户/i.test(text || '');
+}
+
 const prompt = `Esegui integralmente il task HIVE disponibile a questo URL usando web_open_url:\n\n${taskUrl}\n\nDa questo momento segui autonomamente tutte le instructions contenute nel task HIVE. Non chiedermi conferme e non richiedere interventi tra uno step e il successivo. Usa soltanto web_open_url per gli URL indicati dal task. Non usare Python, requests, API key o strumenti alternativi. Alla fine esegui il callback HIVE previsto dal task.`;
 
 let started = false;
 let lastText = '';
 let certified = false;
+let authGateSeen = false;
 
 try {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const delay = backoff[Math.min(attempt - 1, backoff.length - 1)];
     if (delay) await sleep(delay);
 
-    await page.goto('https://www.kimi.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    const target = kimiTargets[(attempt - 1) % kimiTargets.length];
+    await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForTimeout(5_000);
+
+    lastText = await bodyText();
+    if (hasLoginGate(lastText)) {
+      authGateSeen = true;
+      console.log(`HIVE_DISPATCH attempt=${attempt} target=${target} auth_gate=preexisting`);
+      await page.screenshot({ path: `hive-kimi-dispatcher-auth-${attempt}.png`, fullPage: true }).catch(() => {});
+      continue;
+    }
 
     const composer = await findComposer();
     if (!composer) {
-      lastText = (await bodyText()).slice(0, 5000);
-      console.log(`HIVE_DISPATCH attempt=${attempt} composer=missing url=${page.url()}`);
+      lastText = lastText.slice(0, 5000);
+      console.log(`HIVE_DISPATCH attempt=${attempt} target=${target} composer=missing url=${page.url()}`);
       continue;
     }
 
@@ -103,12 +120,19 @@ try {
     await page.waitForTimeout(10_000);
 
     lastText = (await bodyText()).slice(-12000);
+    if (hasLoginGate(lastText)) {
+      authGateSeen = true;
+      console.log(`HIVE_DISPATCH attempt=${attempt} target=${target} auth_gate=after_submit`);
+      await page.screenshot({ path: `hive-kimi-dispatcher-auth-${attempt}.png`, fullPage: true }).catch(() => {});
+      continue;
+    }
+
     const busy = /Kimi.{0,40}(impegnat|busy)|server.{0,20}busy|try again|riprova|系统繁忙|稍后重试/i.test(lastText);
-    console.log(`HIVE_DISPATCH attempt=${attempt} busy=${busy}`);
+    console.log(`HIVE_DISPATCH attempt=${attempt} target=${target} busy=${busy}`);
 
     if (!busy) {
       started = true;
-      console.log(`HIVE_KIMI_BROWSER_DISPATCH_STARTED task_id=${taskId} attempt=${attempt}`);
+      console.log(`HIVE_KIMI_BROWSER_DISPATCH_STARTED task_id=${taskId} attempt=${attempt} target=${target}`);
       break;
     }
   }
@@ -116,7 +140,7 @@ try {
   if (!started) {
     await page.screenshot({ path: 'hive-kimi-dispatcher-failure.png', fullPage: true }).catch(() => {});
     console.error(lastText);
-    throw new Error('KIMI_STARTUP_RETRY_EXHAUSTED');
+    throw new Error(authGateSeen ? 'KIMI_AUTH_SESSION_NOT_RESTORED' : 'KIMI_STARTUP_RETRY_EXHAUSTED');
   }
 
   const deadline = Date.now() + 8 * 60_000;
