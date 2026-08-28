@@ -35,7 +35,7 @@ jobs:
       - name: Run deterministic contracts
         run: |
           python -m py_compile razzo/v7/deterministic_discovery.py razzo/v7/free_executor.py razzo/v7/scaled_runtime.py
-          python -m unittest razzo.v7.test_actionability razzo.v7.test_product_discovery razzo.v7.test_contract_materializer razzo.v7.test_dispatcher_pool razzo.v7.test_trial_runtime -v
+          python -m unittest razzo.v7.test_actionability razzo.v7.test_product_discovery razzo.v7.test_contract_materializer razzo.v7.test_dispatcher_pool razzo.v7.test_trial_runtime razzo.v7.test_free_executor -v
       - id: plan
         env:
           PFARMA_SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
