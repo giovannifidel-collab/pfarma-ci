@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: gio-os-private-source-${{ github.ref }}
@@ -29,7 +29,7 @@ jobs:
       - name: Check out public CI control repository
         uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Validate requested gio-OS SHA
         id: source
@@ -63,6 +63,43 @@ jobs:
           set -euo pipefail
           actual="$(git -C private-source rev-parse HEAD)"
           test "$actual" = '${{ steps.source.outputs.sha }}'
+
+      - name: Publish sanitized authoritative HIVE state
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          root = pathlib.Path('private-source')
+          progress = json.loads((root / 'project/progress.json').read_text())
+          msg = subprocess.check_output(['git','-C',str(root),'log','-1','--pretty=%s'], text=True).strip()
+          state = {
+            'schema_version': 1,
+            'project_slug': 'gio-os',
+            'authoritative_repo': 'giovannifidel-collab/gio-OS',
+            'source_sha': os.environ['SOURCE_SHA'],
+            'source_commit_message': msg,
+            'target': progress.get('target'),
+            'phase': progress.get('phase'),
+            'overall_percent': progress.get('overall_percent'),
+            'software_implementation_percent': progress.get('software_implementation_percent'),
+            'release_eligible': progress.get('release_eligible'),
+            'remaining_to_stable': progress.get('remaining_to_stable', []),
+            'physical_certification': next((w for w in progress.get('workstreams', []) if w.get('id') == 'hardware_certification'), None),
+            'provenance': 'PRIVATE_SOURCE_SANITIZED_SNAPSHOT'
+          }
+          pathlib.Path('gio-os-state.json').write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n')
+          PY
+          git config user.name 'hive-state-bot'
+          git config user.email 'hive-state-bot@users.noreply.github.com'
+          git add gio-os-state.json
+          if ! git diff --cached --quiet; then
+            git commit -m "state(gio-os): sync ${SOURCE_SHA:0:12}"
+            git push origin HEAD:main
+          fi
 
       - name: Run complete host-only Prototype 0 gates
         working-directory: private-source
