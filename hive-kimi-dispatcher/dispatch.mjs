@@ -8,15 +8,47 @@ const taskUrl = trigger.task_url;
 const resultUrl = trigger.result_url;
 const taskId = trigger.task_id || 'unknown';
 const maxAttempts = Number(trigger.max_attempts || 6);
-const secret = process.env.KIMI_STORAGE_STATE_GZ_B64 || '';
+const sessionEndpoint = 'https://hive-kimi-relay.project-giovanni.workers.dev/dispatcher/session';
+const oidcAudience = 'hive-kimi-dispatcher';
 
 if (!taskUrl) throw new Error('trigger.task_url is required');
 if (!resultUrl) throw new Error('trigger.result_url is required');
-if (!secret) throw new Error('KIMI_STORAGE_STATE_GZ_B64 secret is required');
 
-const storageState = JSON.parse(gunzipSync(Buffer.from(secret, 'base64')).toString('utf8'));
-const backoff = [0, 15_000, 30_000, 60_000, 90_000, 120_000];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const backoff = [0, 15_000, 30_000, 60_000, 90_000, 120_000];
+
+async function getGithubOidcToken() {
+  const requestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL || '';
+  const requestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN || '';
+  if (!requestUrl || !requestToken) throw new Error('GITHUB_OIDC_ENV_MISSING');
+
+  const separator = requestUrl.includes('?') ? '&' : '?';
+  const response = await fetch(`${requestUrl}${separator}audience=${encodeURIComponent(oidcAudience)}`, {
+    headers: { Authorization: `bearer ${requestToken}` },
+  });
+  if (!response.ok) throw new Error(`GITHUB_OIDC_TOKEN_FAILED_${response.status}`);
+  const payload = await response.json();
+  if (!payload?.value) throw new Error('GITHUB_OIDC_TOKEN_EMPTY');
+  return payload.value;
+}
+
+async function leaseKimiStorageState() {
+  const oidcToken = await getGithubOidcToken();
+  const response = await fetch(sessionEndpoint, {
+    headers: {
+      Authorization: `Bearer ${oidcToken}`,
+      'cache-control': 'no-cache',
+    },
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`HIVE_SESSION_LEASE_FAILED_${response.status}:${text.slice(0, 500)}`);
+  const payload = JSON.parse(text);
+  if (!payload?.ok || !payload?.session) throw new Error('HIVE_SESSION_LEASE_EMPTY');
+  return JSON.parse(gunzipSync(Buffer.from(payload.session, 'base64')).toString('utf8'));
+}
+
+const storageState = await leaseKimiStorageState();
+console.log('HIVE_KIMI_SESSION_LEASED_VIA_GITHUB_OIDC');
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ storageState, viewport: { width: 1440, height: 1000 } });
@@ -43,6 +75,7 @@ const prompt = `Esegui integralmente il task HIVE disponibile a questo URL usand
 
 let started = false;
 let lastText = '';
+let certified = false;
 
 try {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -93,9 +126,9 @@ try {
       const data = await response.json();
       console.log(`HIVE_RESULT_POLL task_id=${taskId} certified=${data?.certified === true}`);
       if (data?.certified === true) {
+        certified = true;
         console.log('HIVE_KIMI_AUTONOMOUS_ROUNDTRIP_CERTIFIED');
         console.log(JSON.stringify(data));
-        process.exitCode = 0;
         break;
       }
     } catch (error) {
@@ -104,7 +137,7 @@ try {
     await sleep(10_000);
   }
 
-  if (process.exitCode !== 0) {
+  if (!certified) {
     await page.screenshot({ path: 'hive-kimi-dispatcher-timeout.png', fullPage: true }).catch(() => {});
     throw new Error('HIVE_RESULT_CERTIFICATION_TIMEOUT');
   }
