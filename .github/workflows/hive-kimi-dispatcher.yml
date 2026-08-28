@@ -1,0 +1,41 @@
+name: HIVE Kimi Dispatcher
+
+on:
+  push:
+    branches:
+      - hive-kimi-dispatcher-v0
+    paths:
+      - hive-kimi-dispatcher/trigger.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-kimi-dispatcher-v0
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KIMI_STORAGE_STATE_GZ_B64: ${{ secrets.KIMI_STORAGE_STATE_GZ_B64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright
+        working-directory: hive-kimi-dispatcher
+        run: |
+          npm install --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Dispatch Kimi
+        run: node hive-kimi-dispatcher/dispatch.mjs
+      - name: Upload diagnostic screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-kimi-dispatcher-diagnostic
+          path: hive-kimi-dispatcher-*.png
+          if-no-files-found: ignore
