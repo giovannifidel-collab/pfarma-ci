@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-28T15:36:46.203Z",
+  "policy": "authoritative-source-first",
+  "privacy": "sanitized allowlist; no source files, credentials or user data",
+  "cadence_minutes": 15,
+  "coverage": {
+    "source_backed_projects": 7,
+    "source_available": 6,
+    "runtime_checks": 6,
+    "runtimes_reachable": 6
+  },
+  "projects": {
+    "hive": {
+      "source": {
+        "kind": "github-private",
+        "repo": "giovannifidel-collab/hive-alveare",
+        "ref": "main",
+        "available": false,
+        "sha": null,
+        "observed_at": "2026-08-28T15:36:46.203Z",
+        "version": null,
+        "progress": null,
+        "provenance": "SOURCE_UNAVAILABLE"
+      },
+      "runtime": [
+        {
+          "url": "https://hive-alveare.pages.dev",
+          "role": "primary",
+          "reachable": true,
+          "http_status": 302,
+          "latency_ms": 158,
+          "summary": null,
+          "observed_at": "2026-08-28T15:36:46.203Z"
+        }
+      ],
+      "sync_depth": "source+runtime+control-state"
+    },
+    "giochem": {
+      "source": {
+        "kind": "github-private",
+        "repo": "giovannifidel-collab/giochem",
+        "ref": "main",
+        "available": true,
+        "sha": "8d8922171bfdc3554cb7786d08b3594ec681f59a",
+        "observed_at": "2026-08-28T15:36:46.203Z",
+        "version": "1.7.0",
+        "progress": null,
+        "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
+      },
+      "runtime": [
+        {
+          "url": "https://giochem-cloud.project-giovanni.workers.dev/api/health",
+          "role": "primary",
+          "reachable": true,
+          "http_status": 200,
+          "latency_ms": 1546,
+          "summary": {
+            "status": "ok",
+            "version": "1.7.0-cloudflare-hive"
+          },
+          "observed_at": "2026-08-28T15:36:46.203Z"
+        }
+      ],
+      "sync_depth": "source+runtime+scientific-control-state"
+    },
+    "pfarma": {
+      "source": {
+        "kind": "github-private",
+        "repo": "giovannifidel-collab/pfarma-cloud",
+        "ref": "main",
+        "available": true,
+        "sha": "c839ef2f5488ac91682b9753fcd86b9c059d379e",
+        "observed_at": "2026-08-28T15:36:46.203Z",
+        "version": null,
+        "progress": null,
+        "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
+      },
+      "runtime": [
+        {
+          "url": "https://pfarma-cloud.vercel.app",
+          "role": "primary",
+          "reachable": true,
+          "http_status": 303,
+          "latency_ms": 784,
+          "summary": null,
+          "observed_at": "2026-08-28T15:36:46.203Z"
+        }
+      ],
+      "sync_depth": "source+runtime+business-control-state"
+    },
+    "gio-os": {
+      "source": {
+        "kind": "github-private",
+        "repo": "giovannifidel-collab/gio-OS",
+        "ref": "main",
+        "available": true,
+        "sha": "7d49e51bfd80df9d7a80dbb2d014d88d16ebfba7",
+        "observed_at": "2026-08-28T15:36:46.203Z",
+        "version": null,
+        "progress": {
+          "phase": "software-complete-release-candidate",
+          "overall_percent": 93,
+          "software_implementation_percent": 100,
+          "release_eligible": false
+        },
+        "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
+      },
+      "runtime": [
+        {
+          "kind": "physical-device",
+          "role": "target",
+          "reachable": null,
+          "status": "human-gated",
+          "target": "Xiaomi Redmi Note 7 lavender",
+          "observed_at": "2026-08-28T15:36:46.203Z"
+        }
+      ],
+      "sync_depth": "source+build-state+certification-state"
+    },
+    "family-cloud": {
+      "source": {
+        "kind": "github-private",
+        "repo": "giovannifidel-collab/family-cloud",
+        "ref": "agent/bootstrap-family-cloud",
+        "available": true,
+        "sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
+        "observed_at": "2026-08-28T15:36:46.203Z",
+        "version": "1.1.4",
+        "progress": null,
+        "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
+      },
+      "runtime": [
+        {
+          "url": "https://family-cloud-seven.vercel.app",
+          "role": "primary",
+          "reachable": true,
+          "http_status": 200,
+          "latency_ms": 387,
+          "summary": null,
+          "observed_at": "2026-08-28T15:36:46.203Z"
+        }
+      ],
+      "sync_depth": "source+runtime+storage-control-state"
+    },
+    "project-giovanni-training": {
+      "source": {
+        "kind": "github-private",
+        "repo": "giovannifidel-collab/project-giovanni",
+        "ref": "main",
+        "available": true,
+        "sha": "582e104357080cd7d0ce7e235366b8dac16a9755",
+        "observed_at": "2026-08-28T15:36:46.203Z",
+        "version": "1.0.0",
+        "progress": null,
+        "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
+      },
+      "runtime": [
+        {
+          "url": "https://project-giovanni.vercel.app",
+          "role": "primary",
+          "reachable": true,
+          "http_status": 307,
+          "latency_ms": 1153,
+          "summary": null,
+          "observed_at": "2026-08-28T15:36:46.203Z"
+        },
+        {
+          "url": "https://project-giovanni.project-giovanni.workers.dev",
+          "role": "standby",
+          "reachable": true,
+          "http_status": 307,
+          "latency_ms": 851,
+          "summary": null,
+          "observed_at": "2026-08-28T15:36:46.203Z"
+        }
+      ],
+      "sync_depth": "source+runtime+application-control-state"
+    },
+    "save-the-world": {
+      "source": {
+        "kind": "hive-strategic-state",
+        "available": true,
+        "sha": null,
+        "observed_at": "2026-08-28T15:36:46.203Z",
+        "provenance": "HIVE_CONTROL_PLANE"
+      },
+      "runtime": [],
+      "sync_depth": "control-state"
+    },
+    "razzo": {
+      "source": {
+        "kind": "github-public-fabric",
+        "repo": "giovannifidel-collab/pfarma-ci",
+        "ref": "main",
+        "available": true,
+        "sha": "d663f0bf96185291b6f30b43f92f733ece9621ef",
+        "observed_at": "2026-08-28T15:36:46.203Z",
+        "provenance": "PUBLIC_CI_FABRIC"
+      },
+      "runtime": [],
+      "sync_depth": "fabric+ci+resource-state"
+    },
+    "fondi-engine": {
+      "source": {
+        "kind": "hive-strategic-state",
+        "available": true,
+        "sha": null,
+        "observed_at": "2026-08-28T15:36:46.203Z",
+        "provenance": "HIVE_CONTROL_PLANE"
+      },
+      "runtime": [],
+      "sync_depth": "control-state"
+    }
+  }
+}
