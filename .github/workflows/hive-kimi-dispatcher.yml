@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: hive-kimi-dispatcher-v0
@@ -18,8 +19,6 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      KIMI_STORAGE_STATE_GZ_B64: ${{ secrets.KIMI_STORAGE_STATE_GZ_B64 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
