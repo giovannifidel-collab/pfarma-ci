@@ -116,9 +116,9 @@ jobs:
           const cp=require('child_process');
 
           const generatedAt=new Date().toISOString();
-          const git=(dir,args)=>{try{return cp.execFileSync('git',['-C',dir,...args],{encoding:'utf8'}).trim()}catch{return null}};
+          const git=(dir,args)=>{try{return cp.execFileSync('git',['-C',dir,...args],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim()}catch{return null}};
           const readJson=(file)=>{try{return JSON.parse(fs.readFileSync(file,'utf8'))}catch{return null}};
-          const exists=(dir)=>fs.existsSync(dir)&&fs.existsSync(`${dir}/.git`);
+          const isRepo=(dir)=>fs.existsSync(dir)&&git(dir,['rev-parse','--is-inside-work-tree'])==='true'&&!!git(dir,['rev-parse','HEAD']);
           const packageVersion=(dir)=>readJson(`${dir}/package.json`)?.version||null;
           const progress=(dir)=>{
             const p=readJson(`${dir}/project/progress.json`)||readJson(`${dir}/progress.json`);
@@ -132,7 +132,7 @@ jobs:
           };
           const source=(slug,repo,ref,outcome)=>{
             const dir=`_sources/${slug}`;
-            const ok=outcome==='success'&&exists(dir);
+            const ok=outcome==='success'&&isRepo(dir);
             return {
               kind:'github-private',repo,ref,
               available:ok,
