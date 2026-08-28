@@ -1,5 +1,5 @@
 name = "hive-kimi-relay"
-main = "src/index.js"
+main = "src/entry.js"
 compatibility_date = "2026-08-28"
 workers_dev = true
 account_id = "6f6de52331e398c395d3de97c83011cd"
