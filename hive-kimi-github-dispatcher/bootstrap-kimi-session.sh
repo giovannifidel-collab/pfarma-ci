@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TARGET_REPO="giovannifidel-collab/hive-kimi-dispatcher"
+TARGET_REPO="giovannifidel-collab/pfarma-ci"
 ROOT="$(mktemp -d)"
 STATE="$ROOT/kimi-storage-state.json"
 PROFILE="$ROOT/chrome-profile"
@@ -22,7 +22,7 @@ trap cleanup EXIT
 
 command -v gh >/dev/null || { echo "gh CLI required" >&2; exit 2; }
 gh auth status >/dev/null
-gh repo view "$TARGET_REPO" >/dev/null || { echo "Create $TARGET_REPO first" >&2; exit 2; }
+gh repo view "$TARGET_REPO" >/dev/null || { echo "Cannot access $TARGET_REPO" >&2; exit 2; }
 
 sudo apt-get update -qq
 sudo apt-get install -y -qq xvfb x11vnc novnc websockify >/dev/null
