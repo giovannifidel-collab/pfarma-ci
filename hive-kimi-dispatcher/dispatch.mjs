@@ -12,7 +12,7 @@ const taskId = trigger.task_id || 'unknown';
 const maxAttempts = Number(trigger.max_attempts || 6);
 const sessionEndpoint = 'https://hive-kimi-relay.project-giovanni.workers.dev/dispatcher/session';
 const oidcAudience = 'hive-kimi-dispatcher';
-const kimiTargets = ['https://www.kimi.com/en', 'https://kimi.ai/'];
+const kimiTargets = ['https://kimi.ai/', 'https://www.kimi.com/en'];
 
 if (!taskUrl) throw new Error('trigger.task_url is required');
 if (!resultUrl) throw new Error('trigger.result_url is required');
