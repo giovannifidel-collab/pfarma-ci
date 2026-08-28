@@ -1,0 +1,255 @@
+name: HIVE Queen Global World Sync
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-world-sync.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hive-queen-global-world-sync
+  cancel-in-progress: true
+
+jobs:
+  synchronize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: pfarma-ci-trusted
+    env:
+      GIOCHEM_ACCESS_TOKEN: ${{ secrets.GIOCHEM_ACCESS_TOKEN || secrets.PFARMA_GIOCHEM_ACCESS_TOKEN }}
+    steps:
+      - name: Check out public HIVE relay
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Check out HIVE authoritative source
+        id: hive_source
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: main
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: _sources/hive
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out GIOCHEM authoritative source
+        id: giochem_source
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: main
+          token: ${{ secrets.GIOCHEM_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
+          path: _sources/giochem
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out PFarma authoritative source
+        id: pfarma_source
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-cloud
+          ref: main
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: _sources/pfarma
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out GIO OS authoritative source
+        id: gio_os_source
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/gio-OS
+          ref: main
+          token: ${{ secrets.GIO_OS_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
+          path: _sources/gio-os
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out Family Cloud canonical source
+        id: family_cloud_source
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: agent/bootstrap-family-cloud
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: _sources/family-cloud
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out Project Giovanni authoritative source
+        id: project_giovanni_source
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: main
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: _sources/project-giovanni-training
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Build sanitized authoritative world snapshot
+        shell: bash
+        env:
+          OUTCOME_HIVE: ${{ steps.hive_source.outcome }}
+          OUTCOME_GIOCHEM: ${{ steps.giochem_source.outcome }}
+          OUTCOME_PFARMA: ${{ steps.pfarma_source.outcome }}
+          OUTCOME_GIO_OS: ${{ steps.gio_os_source.outcome }}
+          OUTCOME_FAMILY_CLOUD: ${{ steps.family_cloud_source.outcome }}
+          OUTCOME_PROJECT_GIOVANNI: ${{ steps.project_giovanni_source.outcome }}
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const cp=require('child_process');
+
+          const generatedAt=new Date().toISOString();
+          const git=(dir,args)=>{try{return cp.execFileSync('git',['-C',dir,...args],{encoding:'utf8'}).trim()}catch{return null}};
+          const readJson=(file)=>{try{return JSON.parse(fs.readFileSync(file,'utf8'))}catch{return null}};
+          const exists=(dir)=>fs.existsSync(dir)&&fs.existsSync(`${dir}/.git`);
+          const packageVersion=(dir)=>readJson(`${dir}/package.json`)?.version||null;
+          const progress=(dir)=>{
+            const p=readJson(`${dir}/project/progress.json`)||readJson(`${dir}/progress.json`);
+            if(!p)return null;
+            return {
+              phase:p.phase??null,
+              overall_percent:Number.isFinite(Number(p.overall_percent))?Number(p.overall_percent):null,
+              software_implementation_percent:Number.isFinite(Number(p.software_implementation_percent))?Number(p.software_implementation_percent):null,
+              release_eligible:typeof p.release_eligible==='boolean'?p.release_eligible:null
+            };
+          };
+          const source=(slug,repo,ref,outcome)=>{
+            const dir=`_sources/${slug}`;
+            const ok=outcome==='success'&&exists(dir);
+            return {
+              kind:'github-private',repo,ref,
+              available:ok,
+              sha:ok?git(dir,['rev-parse','HEAD']):null,
+              observed_at:generatedAt,
+              version:ok?packageVersion(dir):null,
+              progress:ok?progress(dir):null,
+              provenance:ok?'AUTHENTICATED_PRIVATE_CHECKOUT':'SOURCE_UNAVAILABLE'
+            };
+          };
+          async function probe(url,{token=null,role='primary',parseJson=false}={}){
+            const started=Date.now();
+            try{
+              const headers={'user-agent':'HIVE-Queen-World-Sync'};
+              if(token)headers.authorization=`Bearer ${token}`;
+              const r=await fetch(url,{headers,redirect:'manual',signal:AbortSignal.timeout(9000)});
+              let summary=null;
+              if(parseJson&&r.ok){
+                try{
+                  const j=await r.json();
+                  summary={status:j.status??null,version:j.version??null};
+                }catch{}
+              }else{try{await r.body?.cancel()}catch{}}
+              return {url,role,reachable:r.status<500,http_status:r.status,latency_ms:Date.now()-started,summary,observed_at:generatedAt};
+            }catch(error){
+              return {url,role,reachable:false,http_status:null,latency_ms:Date.now()-started,error:String(error?.message||error).slice(0,160),observed_at:generatedAt};
+            }
+          }
+
+          (async()=>{
+            const projects={
+              hive:{
+                source:source('hive','giovannifidel-collab/hive-alveare','main',process.env.OUTCOME_HIVE),
+                runtime:[await probe('https://hive-alveare.pages.dev',{role:'primary'})],
+                sync_depth:'source+runtime+control-state'
+              },
+              giochem:{
+                source:source('giochem','giovannifidel-collab/giochem','main',process.env.OUTCOME_GIOCHEM),
+                runtime:[await probe('https://giochem-cloud.project-giovanni.workers.dev/api/health',{role:'primary',token:process.env.GIOCHEM_ACCESS_TOKEN||null,parseJson:true})],
+                sync_depth:'source+runtime+scientific-control-state'
+              },
+              pfarma:{
+                source:source('pfarma','giovannifidel-collab/pfarma-cloud','main',process.env.OUTCOME_PFARMA),
+                runtime:[await probe('https://pfarma-cloud.vercel.app',{role:'primary'})],
+                sync_depth:'source+runtime+business-control-state'
+              },
+              'gio-os':{
+                source:source('gio-os','giovannifidel-collab/gio-OS','main',process.env.OUTCOME_GIO_OS),
+                runtime:[{kind:'physical-device',role:'target',reachable:null,status:'human-gated',target:'Xiaomi Redmi Note 7 lavender',observed_at:generatedAt}],
+                sync_depth:'source+build-state+certification-state'
+              },
+              'family-cloud':{
+                source:source('family-cloud','giovannifidel-collab/family-cloud','agent/bootstrap-family-cloud',process.env.OUTCOME_FAMILY_CLOUD),
+                runtime:[await probe('https://family-cloud-seven.vercel.app',{role:'primary'})],
+                sync_depth:'source+runtime+storage-control-state'
+              },
+              'project-giovanni-training':{
+                source:source('project-giovanni-training','giovannifidel-collab/project-giovanni','main',process.env.OUTCOME_PROJECT_GIOVANNI),
+                runtime:[
+                  await probe('https://project-giovanni.vercel.app',{role:'primary'}),
+                  await probe('https://project-giovanni.project-giovanni.workers.dev',{role:'standby'})
+                ],
+                sync_depth:'source+runtime+application-control-state'
+              },
+              'save-the-world':{
+                source:{kind:'hive-strategic-state',available:true,sha:null,observed_at:generatedAt,provenance:'HIVE_CONTROL_PLANE'},
+                runtime:[],sync_depth:'control-state'
+              },
+              razzo:{
+                source:{kind:'github-public-fabric',repo:'giovannifidel-collab/pfarma-ci',ref:'main',available:true,sha:git('.',['rev-parse','HEAD']),observed_at:generatedAt,provenance:'PUBLIC_CI_FABRIC'},
+                runtime:[],sync_depth:'fabric+ci+resource-state'
+              },
+              'fondi-engine':{
+                source:{kind:'hive-strategic-state',available:true,sha:null,observed_at:generatedAt,provenance:'HIVE_CONTROL_PLANE'},
+                runtime:[],sync_depth:'control-state'
+              }
+            };
+            const values=Object.values(projects);
+            const sourceBacked=values.filter(x=>x.source?.kind?.startsWith('github')).length;
+            const sourceAvailable=values.filter(x=>x.source?.kind?.startsWith('github')&&x.source.available).length;
+            const runtimeChecks=values.flatMap(x=>x.runtime||[]).filter(x=>typeof x.reachable==='boolean');
+            const world={
+              schema_version:1,
+              generated_at:generatedAt,
+              policy:'authoritative-source-first',
+              privacy:'sanitized allowlist; no source files, credentials or user data',
+              cadence_minutes:15,
+              coverage:{source_backed_projects:sourceBacked,source_available:sourceAvailable,runtime_checks:runtimeChecks.length,runtimes_reachable:runtimeChecks.filter(x=>x.reachable).length},
+              projects
+            };
+            fs.writeFileSync('hive-world-state.json',JSON.stringify(world,null,2)+'\n');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+      - name: Remove all private source checkouts
+        if: always()
+        shell: bash
+        run: rm -rf _sources
+
+      - name: Publish world snapshot only when changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'HIVE Queen World Sync'
+          git config user.email 'hive-queen@users.noreply.github.com'
+          git add hive-world-state.json
+          if git diff --cached --quiet; then
+            echo 'World snapshot unchanged.'
+            exit 0
+          fi
+          git commit -m 'state(hive): synchronize global world model'
+          git push
+
+      - name: Queen sync summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f hive-world-state.json ]; then
+            node -e "const s=require('./hive-world-state.json'); console.log('source coverage',s.coverage); console.log('generated',s.generated_at)"
+          fi
