@@ -1,6 +1,6 @@
 {
   "status": "V34_FINAL_EXTERNAL_PREREQUISITES_FROZEN",
-  "privateSourceSha": "f74a68b7aa3524016edd9d2325f3a4c5f9a758ec",
+  "privateSourceSha": "02d78ecff8862eba1a0716d57955e07389ffaa1c",
   "developmentRunId": 33196183857,
   "developmentArtifactName": "giochem-v34-development-report",
   "developmentSelectedRanker": "rank_consensus_all3",
@@ -19,6 +19,9 @@
   "totalRecords": 2458,
   "totalShards": 80,
   "maxParallel": 20,
+  "technicalInterlockVersion": 2,
+  "schemaOnlyRepair": true,
+  "schemaOnlyRepairNote": "Corrected code/workflow accessors to the already-frozen policy schema: development.selectedRanker, externalTargetSelection.targets, acceptance.thresholdsChanged. No scientific method, target, sampling, receptor, docking, runtime, ranker or gate changed; no V3.4 external score had been produced.",
   "truthMayBeMaterializedOnlyAfterPreUnblindSeal": true,
   "acceptanceThresholdsChanged": false,
   "litPcbaExternalScoresProducedAtFreeze": false
