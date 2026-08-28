@@ -4,7 +4,7 @@ const OIDC_AUDIENCE = "hive-kimi-dispatcher";
 const ALLOWED_REPOSITORY = "giovannifidel-collab/pfarma-ci";
 const ALLOWED_REF = "refs/heads/hive-kimi-dispatcher-v0";
 const ALLOWED_WORKFLOW_REF = "giovannifidel-collab/pfarma-ci/.github/workflows/hive-kimi-dispatcher.yml@refs/heads/hive-kimi-dispatcher-v0";
-export const KIMI_SESSION_KEY = "session:kimi:storage-state-gz-b64";
+export const KIMI_SESSION_KEY = "session:kimi:chromium-profile-tgz-b64";
 
 function b64urlToBytes(value) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -32,9 +32,7 @@ export async function verifyGithubActionsOidc(jwt) {
 
   if (header.alg !== "RS256" || !header.kid) throw new Error("unsupported_jwt_header");
 
-  const jwksResponse = await fetch(OIDC_JWKS_URL, {
-    headers: { "cache-control": "max-age=300" },
-  });
+  const jwksResponse = await fetch(OIDC_JWKS_URL, { headers: { "cache-control": "max-age=300" } });
   if (!jwksResponse.ok) throw new Error(`jwks_fetch_failed_${jwksResponse.status}`);
   const jwks = await jwksResponse.json();
   const jwk = Array.isArray(jwks.keys) ? jwks.keys.find(k => k.kid === header.kid) : null;
@@ -50,12 +48,7 @@ export async function verifyGithubActionsOidc(jwt) {
 
   const signed = new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`);
   const signature = b64urlToBytes(encodedSignature);
-  const valid = await crypto.subtle.verify(
-    { name: "RSASSA-PKCS1-v1_5" },
-    key,
-    signature,
-    signed,
-  );
+  const valid = await crypto.subtle.verify({ name: "RSASSA-PKCS1-v1_5" }, key, signature, signed);
   if (!valid) throw new Error("invalid_jwt_signature");
 
   const now = Math.floor(Date.now() / 1000);
@@ -91,7 +84,7 @@ export async function serveKimiSessionToDispatcher(request, env) {
     const claims = await verifyGithubActionsOidc(match[1]);
     const session = await env.HIVE_KIMI_RESULTS.get(KIMI_SESSION_KEY);
     if (!session) {
-      return new Response(JSON.stringify({ ok: false, error: "kimi_session_not_bootstrapped" }), {
+      return new Response(JSON.stringify({ ok: false, error: "kimi_full_profile_not_bootstrapped" }), {
         status: 503,
         headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
       });
@@ -99,7 +92,7 @@ export async function serveKimiSessionToDispatcher(request, env) {
 
     return new Response(JSON.stringify({
       ok: true,
-      format: "gzip-base64-playwright-storage-state",
+      format: "tar-gzip-base64-chromium-user-data-dir",
       session,
       repository: claims.repository,
       ref: claims.ref,
