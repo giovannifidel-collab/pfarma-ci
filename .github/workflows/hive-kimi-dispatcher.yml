@@ -12,12 +12,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: hive-kimi-dispatcher-v0
+  group: hive-kimi-dispatcher-v0-windows
   cancel-in-progress: false
 
 jobs:
   dispatch:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -28,13 +28,13 @@ jobs:
         working-directory: hive-kimi-dispatcher
         run: |
           npm install --ignore-scripts
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Dispatch Kimi
         run: node hive-kimi-dispatcher/dispatch.mjs
       - name: Upload diagnostic screenshot
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: hive-kimi-dispatcher-diagnostic
+          name: hive-kimi-dispatcher-diagnostic-windows
           path: hive-kimi-dispatcher-*.png
           if-no-files-found: ignore
