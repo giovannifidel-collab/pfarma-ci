@@ -8,16 +8,19 @@ WRANGLER=(npx --yes wrangler@latest)
 CONFIG="$ROOT/wrangler.toml"
 BOOTSTRAP="$ROOT/wrangler.bootstrap.toml"
 TEMPLATE="$ROOT/wrangler.toml.template"
-WHOAMI_OUT="/tmp/hive-kimi-cf-whoami.out"
-WHOAMI_ERR="/tmp/hive-kimi-cf-whoami.err"
+WHOAMI_LOG="/tmp/hive-kimi-cf-whoami.log"
+KV_LOG="/tmp/hive-kimi-cf-kv.log"
+DEPLOY_LOG="/tmp/hive-kimi-cf-deploy.log"
 
+# Wrangler v4 can print "not authenticated" while still exiting 0, so inspect output too.
 set +e
-"${WRANGLER[@]}" whoami --config "$BOOTSTRAP" >"$WHOAMI_OUT" 2>"$WHOAMI_ERR"
-WHOAMI_RC=$?
+"${WRANGLER[@]}" whoami --config "$BOOTSTRAP" >"$WHOAMI_LOG" 2>&1
+WHOAMI_STATUS=$?
 set -e
-WHOAMI_TEXT="$(cat "$WHOAMI_OUT" "$WHOAMI_ERR" 2>/dev/null || true)"
+cat "$WHOAMI_LOG"
 
-if [[ "$WHOAMI_RC" -ne 0 ]] || printf '%s' "$WHOAMI_TEXT" | grep -Eqi 'not authenticated|please run.*wrangler login|login required'; then
+if [[ "$WHOAMI_STATUS" -ne 0 ]] || grep -qiE 'not authenticated|please run .*wrangler login|login required' "$WHOAMI_LOG"; then
+  echo
   echo "CLOUDFLARE_LOGIN_REQUIRED"
   echo "Run this once in the Codespace:"
   echo "  npx --yes wrangler@latest login --device --browser=false"
@@ -26,30 +29,53 @@ if [[ "$WHOAMI_RC" -ne 0 ]] || printf '%s' "$WHOAMI_TEXT" | grep -Eqi 'not authe
   exit 2
 fi
 
-printf '%s\n' "$WHOAMI_TEXT"
-
 if [[ ! -f "$CONFIG" ]] || grep -q '__KV_NAMESPACE_ID__' "$CONFIG"; then
   echo "Creating dedicated Workers KV namespace for HIVE Kimi certification..."
-  KV_OUT="$("${WRANGLER[@]}" kv namespace create HIVE_KIMI_RESULTS --config "$BOOTSTRAP" 2>&1 | tee /tmp/hive-kimi-cf-kv.log)"
-  KV_ID="$(printf '%s\n' "$KV_OUT" | grep -Eo '[a-f0-9]{32}' | tail -n 1 || true)"
+  : >"$KV_LOG"
+  set +e
+  "${WRANGLER[@]}" kv namespace create HIVE_KIMI_RESULTS --config "$BOOTSTRAP" >"$KV_LOG" 2>&1
+  KV_STATUS=$?
+  set -e
+  cat "$KV_LOG"
+
+  if [[ "$KV_STATUS" -ne 0 ]]; then
+    echo
+    echo "CLOUDFLARE_KV_CREATE_FAILED"
+    echo "The exact Wrangler error is shown above."
+    echo "No Worker deployment was attempted."
+    exit "$KV_STATUS"
+  fi
+
+  KV_ID="$(grep -Eo '[a-f0-9]{32}' "$KV_LOG" | tail -n 1 || true)"
   if [[ -z "$KV_ID" ]]; then
-    echo "Could not determine KV namespace ID." >&2
-    cat /tmp/hive-kimi-cf-kv.log >&2 || true
+    echo "Could not determine KV namespace ID from Wrangler output." >&2
     exit 1
   fi
+
   sed "s/__KV_NAMESPACE_ID__/${KV_ID}/g" "$TEMPLATE" > "$CONFIG"
-  echo "KV namespace configured."
+  echo "KV namespace configured: ${KV_ID}"
 else
   echo "Using existing local Cloudflare KV binding."
 fi
 
 echo "Deploying stable HIVE Kimi Worker..."
-DEPLOY_OUT="$("${WRANGLER[@]}" deploy --config "$CONFIG" 2>&1 | tee /tmp/hive-kimi-cf-deploy.log)"
-PUBLIC_URL="$(printf '%s\n' "$DEPLOY_OUT" | grep -Eo 'https://[a-zA-Z0-9.-]+\.workers\.dev' | tail -n 1 || true)"
+: >"$DEPLOY_LOG"
+set +e
+"${WRANGLER[@]}" deploy --config "$CONFIG" >"$DEPLOY_LOG" 2>&1
+DEPLOY_STATUS=$?
+set -e
+cat "$DEPLOY_LOG"
+
+if [[ "$DEPLOY_STATUS" -ne 0 ]]; then
+  echo
+  echo "CLOUDFLARE_WORKER_DEPLOY_FAILED"
+  exit "$DEPLOY_STATUS"
+fi
+
+PUBLIC_URL="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.workers\.dev' "$DEPLOY_LOG" | tail -n 1 || true)"
 
 if [[ -z "$PUBLIC_URL" ]]; then
   echo "Could not determine workers.dev URL from deployment output." >&2
-  cat /tmp/hive-kimi-cf-deploy.log >&2 || true
   exit 1
 fi
 
