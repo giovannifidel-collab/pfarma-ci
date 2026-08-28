@@ -5,61 +5,38 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 PROJECT="hive-kimi-relay-pages"
-CONFIG="$ROOT/wrangler.toml"
 DIST="$ROOT/dist"
 WRANGLER=(npx --yes wrangler@latest)
 ACCOUNT_ID="6f6de52331e398c395d3de97c83011cd"
 export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
-PROJECTS_LOG="/tmp/hive-kimi-pages-projects.json"
 CREATE_LOG="/tmp/hive-kimi-pages-create.log"
 DEPLOY_LOG="/tmp/hive-kimi-pages-deploy.log"
 HEALTH_BODY="/tmp/hive-kimi-pages-health.body"
 HEALTH_HEADERS="/tmp/hive-kimi-pages-health.headers"
 
 echo "Cloudflare account pinned for Pages: $CLOUDFLARE_ACCOUNT_ID"
-"${WRANGLER[@]}" whoami --config "$CONFIG"
+"${WRANGLER[@]}" whoami
 
-# Pages commands do not support a custom --config path. Because this script
-# already cd's into the project directory, Wrangler automatically discovers
-# ./wrangler.toml. The account is pinned through CLOUDFLARE_ACCOUNT_ID above.
+# Idempotent project setup: attempt creation every time and tolerate the
+# documented 'already exists' response. This avoids relying on Pages project
+# list output/JSON behavior, which varies across Wrangler versions.
+echo "Ensuring Cloudflare Pages project exists: $PROJECT"
 set +e
-"${WRANGLER[@]}" pages project list --json >"$PROJECTS_LOG" 2>/tmp/hive-kimi-pages-projects.err
-LIST_STATUS=$?
+"${WRANGLER[@]}" pages project create "$PROJECT" --production-branch main >"$CREATE_LOG" 2>&1
+CREATE_STATUS=$?
 set -e
-if [[ "$LIST_STATUS" -ne 0 ]]; then
-  cat /tmp/hive-kimi-pages-projects.err >&2 || true
-  echo "CLOUDFLARE_PAGES_PROJECT_LIST_FAILED" >&2
-  exit "$LIST_STATUS"
+cat "$CREATE_LOG"
+if [[ "$CREATE_STATUS" -ne 0 ]] && ! grep -qiE 'already exists|already been taken|code:[[:space:]]*8000002' "$CREATE_LOG"; then
+  echo "CLOUDFLARE_PAGES_PROJECT_CREATE_FAILED" >&2
+  exit "$CREATE_STATUS"
 fi
-
-PROJECT_EXISTS="$(node - "$PROJECTS_LOG" "$PROJECT" <<'NODE'
-const fs = require('fs');
-const [file, name] = process.argv.slice(2);
-try {
-  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const rows = Array.isArray(data) ? data : (data.result || data.projects || []);
-  process.stdout.write(rows.some((x) => x && (x.name === name || x.project_name === name)) ? '1' : '0');
-} catch {
-  process.stdout.write('0');
-}
-NODE
-)"
-
-if [[ "$PROJECT_EXISTS" != "1" ]]; then
-  echo "Creating Cloudflare Pages project: $PROJECT"
-  set +e
-  "${WRANGLER[@]}" pages project create "$PROJECT" --production-branch main >"$CREATE_LOG" 2>&1
-  CREATE_STATUS=$?
-  set -e
-  cat "$CREATE_LOG"
-  if [[ "$CREATE_STATUS" -ne 0 ]] && ! grep -qiE 'already exists|already been taken' "$CREATE_LOG"; then
-    echo "CLOUDFLARE_PAGES_PROJECT_CREATE_FAILED" >&2
-    exit "$CREATE_STATUS"
-  fi
-else
+if [[ "$CREATE_STATUS" -ne 0 ]]; then
   echo "Using existing Cloudflare Pages project: $PROJECT"
 fi
 
+# Pages rejects custom config paths. We run from the project directory and let
+# Wrangler discover ./wrangler.toml automatically. account selection comes from
+# CLOUDFLARE_ACCOUNT_ID, not from wrangler.toml (Pages does not support account_id there).
 echo "Deploying HIVE Kimi relay to Cloudflare Pages..."
 set +e
 "${WRANGLER[@]}" pages deploy "$DIST" --project-name "$PROJECT" --branch main >"$DEPLOY_LOG" 2>&1
