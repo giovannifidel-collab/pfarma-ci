@@ -1,10 +1,9 @@
 {
-  "task_id": "HIVE-KIMI-AUTO-0006",
-  "task_url": "https://r.jina.ai/https://hive-kimi-relay.project-giovanni.workers.dev/auto/HIVE-KIMI-AUTO-0006",
-  "result_url": "https://hive-kimi-relay.project-giovanni.workers.dev/auto-result/HIVE-KIMI-AUTO-0006",
-  "max_attempts": 6,
+  "task_id": "HIVE-KIMI-AUTO-0007",
+  "inline_prompt": "HIVE fresh execution certification AUTO-0007. Compute exactly: (9137 * 23) - 18456 + (77 * 64). Reply with exactly this format and nothing else: HIVE-AUTO-0007-<ANSWER>",
+  "inline_expected": "HIVE-AUTO-0007-196623",
+  "max_attempts": 4,
   "issued_by": "HIVE",
   "human_kimi_intervention_required": false,
-  "runner_probe": "kimi-ai-primary-route-v1",
-  "triggered_at": "2026-08-28T12:25:00Z"
+  "runner_probe": "fresh-inline-execution-v1"
 }
