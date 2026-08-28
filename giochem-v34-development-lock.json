@@ -1,0 +1,13 @@
+{
+  "status": "V34_DEVELOPMENT_AUTHORIZED_AFTER_V33_TERMINAL_FAIL",
+  "developmentOnly": true,
+  "externalValidationClaimAllowed": false,
+  "v33TargetsPermanentlyConsumed": ["ESR_antago", "PPARG", "TP53"],
+  "privateSourceSha": "42210cf2c6f0170d0e0b217a48c04f2b7b10298a",
+  "blindRunId": 31807671790,
+  "receptorRunId": 31821655647,
+  "runtimeLockSha256": "a3838e2ec2987e2ec98f0a4f07420e27887809ba3aa64e43382f9073e9c8e54a",
+  "gninaBinarySha256": "3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172",
+  "v33TerminalVerdict": "FAIL",
+  "methodChangeAuthorized": "outcome-aware development on already consumed targets only; future external validation must use never-scored targets"
+}
