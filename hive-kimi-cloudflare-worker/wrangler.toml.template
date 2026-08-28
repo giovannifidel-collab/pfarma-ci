@@ -2,6 +2,7 @@ name = "hive-kimi-relay"
 main = "src/index.js"
 compatibility_date = "2026-08-28"
 workers_dev = true
+account_id = "6f6de52331e398c395d3de97c83011cd"
 
 [[kv_namespaces]]
 binding = "HIVE_KIMI_RESULTS"
