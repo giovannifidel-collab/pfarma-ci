@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "project_slug": "gio-os",
+  "authoritative_repo": "giovannifidel-collab/gio-OS",
+  "source_sha": "7d49e51bfd80df9d7a80dbb2d014d88d16ebfba7",
+  "source_commit_message": "build(fabric): gate software checks on closure locks",
+  "target": "gio-OS 1.0 Stable",
+  "phase": "software-complete-release-candidate",
+  "overall_percent": 93,
+  "software_implementation_percent": 100,
+  "release_eligible": false,
+  "remaining_to_stable": [
+    "compile the exact RC on a provisioned Linux Android build host",
+    "flash and boot the physical Device Pack target",
+    "collect all mandatory hardware evidence",
+    "run CTS/VTS and gio certification suite",
+    "validate OTA/recovery/rollback on device",
+    "promote release_eligible only after all physical gates pass"
+  ],
+  "physical_certification": {
+    "id": "hardware_certification",
+    "weight": 70,
+    "completed": 0,
+    "state": "blocked-on-physical-target",
+    "evidence": []
+  },
+  "provenance": "PRIVATE_SOURCE_SANITIZED_SNAPSHOT"
+}
