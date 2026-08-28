@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TARGET_REPO="giovannifidel-collab/pfarma-ci"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_ROOT/.." && pwd)"
+CF_CONFIG="$REPO_ROOT/hive-kimi-cloudflare-worker/wrangler.toml"
+SESSION_KEY="session:kimi:storage-state-gz-b64"
 ROOT="$(mktemp -d)"
 STATE="$ROOT/kimi-storage-state.json"
+PAYLOAD="$ROOT/kimi-storage-state.json.gz.b64"
 PROFILE="$ROOT/chrome-profile"
 DISPLAY_NUM=99
 DISPLAY=":$DISPLAY_NUM"
@@ -16,13 +20,29 @@ cleanup() {
   [[ -n "${NOVNC_PID:-}" ]] && kill "$NOVNC_PID" 2>/dev/null
   [[ -n "${VNC_PID:-}" ]] && kill "$VNC_PID" 2>/dev/null
   [[ -n "${XVFB_PID:-}" ]] && kill "$XVFB_PID" 2>/dev/null
-  rm -rf "$ROOT"
+  sleep 1
+  rm -rf "$ROOT" 2>/dev/null || true
 }
 trap cleanup EXIT
 
-command -v gh >/dev/null || { echo "gh CLI required" >&2; exit 2; }
-gh auth status >/dev/null
-gh repo view "$TARGET_REPO" >/dev/null || { echo "Cannot access $TARGET_REPO" >&2; exit 2; }
+if [[ ! -f "$CF_CONFIG" ]]; then
+  echo "Cloudflare Worker config not found: $CF_CONFIG" >&2
+  echo "Run: bash hive-kimi-cloudflare-worker/deploy.sh" >&2
+  exit 2
+fi
+
+WRANGLER=(npx --yes wrangler@latest)
+WHOAMI_LOG="$ROOT/wrangler-whoami.log"
+set +e
+"${WRANGLER[@]}" whoami --config "$CF_CONFIG" >"$WHOAMI_LOG" 2>&1
+WHOAMI_STATUS=$?
+set -e
+if [[ "$WHOAMI_STATUS" -ne 0 ]] || grep -qiE 'not authenticated|please run .*wrangler login|login required' "$WHOAMI_LOG"; then
+  cat "$WHOAMI_LOG"
+  echo "Cloudflare Wrangler login required." >&2
+  echo "Run: npx --yes wrangler@latest login --device --browser=false" >&2
+  exit 2
+fi
 
 sudo apt-get update -qq
 sudo apt-get install -y -qq xvfb x11vnc novnc websockify >/dev/null
@@ -35,14 +55,14 @@ npx playwright install --with-deps chromium >/dev/null
 
 CHROME="$(node -e "const {chromium}=require('playwright'); process.stdout.write(chromium.executablePath())")"
 
-Xvfb "$DISPLAY" -screen 0 1440x1000x24 -ac >/tmp/hive-kimi-xvfb.log 2>&1 &
+Xvfb "$DISPLAY" -screen 0 1440x1000x24 -ac >"$ROOT/xvfb.log" 2>&1 &
 XVFB_PID=$!
 export DISPLAY
 sleep 1
 
-x11vnc -display "$DISPLAY" -nopw -forever -shared -rfbport 5900 >/tmp/hive-kimi-x11vnc.log 2>&1 &
+x11vnc -display "$DISPLAY" -nopw -forever -shared -rfbport 5900 >"$ROOT/x11vnc.log" 2>&1 &
 VNC_PID=$!
-websockify --web=/usr/share/novnc/ "$NOVNC_PORT" localhost:5900 >/tmp/hive-kimi-novnc.log 2>&1 &
+websockify --web=/usr/share/novnc/ "$NOVNC_PORT" localhost:5900 >"$ROOT/novnc.log" 2>&1 &
 NOVNC_PID=$!
 
 mkdir -p "$PROFILE"
@@ -53,7 +73,7 @@ mkdir -p "$PROFILE"
   --remote-debugging-port="$CDP_PORT" \
   --user-data-dir="$PROFILE" \
   --window-size=1400,950 \
-  'https://www.kimi.com/' >/tmp/hive-kimi-chrome.log 2>&1 &
+  'https://www.kimi.com/' >"$ROOT/chrome.log" 2>&1 &
 CHROME_PID=$!
 
 sleep 3
@@ -84,15 +104,20 @@ JS
 STATE_PATH="$STATE" node "$ROOT/node/export-state.mjs"
 [[ -s "$STATE" ]] || { echo "Failed to export Kimi browser state" >&2; exit 1; }
 
-ENCODED_SIZE="$(gzip -c "$STATE" | base64 -w0 | wc -c)"
-if (( ENCODED_SIZE > 48000 )); then
-  echo "Compressed Kimi storage state is too large for a GitHub Actions secret ($ENCODED_SIZE bytes)." >&2
-  exit 1
-fi
+gzip -c "$STATE" | base64 -w0 > "$PAYLOAD"
+[[ -s "$PAYLOAD" ]] || { echo "Failed to encode Kimi browser state" >&2; exit 1; }
 
-gzip -c "$STATE" | base64 -w0 | gh secret set KIMI_STORAGE_STATE_GZ_B64 --repo "$TARGET_REPO"
+# Store the authenticated browser state directly in the existing private
+# Cloudflare KV namespace. GitHub Actions never needs a repository secret:
+# it will lease this state from the Worker using GitHub OIDC at runtime.
+"${WRANGLER[@]}" kv key put "$SESSION_KEY" \
+  --path "$PAYLOAD" \
+  --binding HIVE_KIMI_RESULTS \
+  --remote \
+  --config "$CF_CONFIG" >/dev/null
 
 echo
 echo "HIVE KIMI SESSION BOOTSTRAP READY"
-echo "Secret KIMI_STORAGE_STATE_GZ_B64 stored in $TARGET_REPO."
-echo "No Kimi session data was committed to GitHub."
+echo "Kimi browser state stored privately in HIVE Cloudflare KV."
+echo "GitHub Actions secret required: NO"
+echo "Kimi credentials/session data committed to GitHub: NO"
