@@ -65,17 +65,8 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Check out GIO OS authoritative source
-        id: gio_os_source
-        continue-on-error: true
-        uses: actions/checkout@v4
-        with:
-          repository: giovannifidel-collab/gio-OS
-          ref: main
-          token: ${{ secrets.GIO_OS_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
-          path: _sources/gio-os
-          fetch-depth: 1
-          persist-credentials: false
+      # gio-OS is deliberately NOT checked out here. The global HIVE worker
+      # consumes only the sanitized state emitted by the dedicated gio-OS relay.
 
       - name: Check out Family Cloud canonical source
         id: family_cloud_source
@@ -107,7 +98,6 @@ jobs:
           OUTCOME_HIVE: ${{ steps.hive_source.outcome }}
           OUTCOME_GIOCHEM: ${{ steps.giochem_source.outcome }}
           OUTCOME_PFARMA: ${{ steps.pfarma_source.outcome }}
-          OUTCOME_GIO_OS: ${{ steps.gio_os_source.outcome }}
           OUTCOME_FAMILY_CLOUD: ${{ steps.family_cloud_source.outcome }}
           OUTCOME_PROJECT_GIOVANNI: ${{ steps.project_giovanni_source.outcome }}
         run: |
@@ -141,6 +131,25 @@ jobs:
               version:ok?packageVersion(dir):null,
               progress:ok?progress(dir):null,
               provenance:ok?'AUTHENTICATED_PRIVATE_CHECKOUT':'SOURCE_UNAVAILABLE'
+            };
+          };
+          const relaySource=(file,repo,ref)=>{
+            const state=readJson(file);
+            const sha=state?.source_sha;
+            const ok=state?.schema_version===1 && state?.authoritative_repo===repo && /^[0-9a-f]{40}$/.test(String(sha||''));
+            return {
+              kind:'sanitized-private-state',repo,ref,
+              available:ok,
+              sha:ok?sha:null,
+              observed_at:generatedAt,
+              version:null,
+              progress:ok?{
+                phase:state.phase??null,
+                overall_percent:Number.isFinite(Number(state.overall_percent))?Number(state.overall_percent):null,
+                software_implementation_percent:Number.isFinite(Number(state.software_implementation_percent))?Number(state.software_implementation_percent):null,
+                release_eligible:typeof state.release_eligible==='boolean'?state.release_eligible:null
+              }:null,
+              provenance:ok?'PRIVATE_SOURCE_SANITIZED_SNAPSHOT':'SANITIZED_STATE_UNAVAILABLE'
             };
           };
           async function probe(url,{token=null,role='primary',parseJson=false}={}){
@@ -180,9 +189,9 @@ jobs:
                 sync_depth:'source+runtime+business-control-state'
               },
               'gio-os':{
-                source:source('gio-os','giovannifidel-collab/gio-OS','main',process.env.OUTCOME_GIO_OS),
+                source:relaySource('gio-os-state.json','giovannifidel-collab/gio-OS','main'),
                 runtime:[{kind:'physical-device',role:'target',reachable:null,status:'human-gated',target:'Xiaomi Redmi Note 7 lavender',observed_at:generatedAt}],
-                sync_depth:'source+build-state+certification-state'
+                sync_depth:'sanitized-source-state+build-state+certification-state'
               },
               'family-cloud':{
                 source:source('family-cloud','giovannifidel-collab/family-cloud','agent/bootstrap-family-cloud',process.env.OUTCOME_FAMILY_CLOUD),
@@ -211,14 +220,14 @@ jobs:
               }
             };
             const values=Object.values(projects);
-            const sourceBacked=values.filter(x=>x.source?.kind?.startsWith('github')).length;
-            const sourceAvailable=values.filter(x=>x.source?.kind?.startsWith('github')&&x.source.available).length;
+            const sourceBacked=values.filter(x=>!!x.source?.repo).length;
+            const sourceAvailable=values.filter(x=>!!x.source?.repo&&x.source.available).length;
             const runtimeChecks=values.flatMap(x=>x.runtime||[]).filter(x=>typeof x.reachable==='boolean');
             const world={
               schema_version:1,
               generated_at:generatedAt,
               policy:'authoritative-source-first',
-              privacy:'sanitized allowlist; no source files, credentials or user data',
+              privacy:'sanitized allowlist; gio-OS private source never materialized in global HIVE sync; no credentials or user data published',
               cadence_minutes:15,
               coverage:{source_backed_projects:sourceBacked,source_available:sourceAvailable,runtime_checks:runtimeChecks.length,runtimes_reachable:runtimeChecks.filter(x=>x.reachable).length},
               projects
