@@ -5,11 +5,12 @@ import crypto from 'node:crypto';
 
 const CDP=process.env.GEMINI_LAB_CDP_URL||'http://127.0.0.1:9225';
 const OUT_DIR=process.env.GEMINI_LAB_CERT_DIR||path.resolve('certifications');
-const TEST_ID='HIVE-GEMINI-STRESS-0001';
+const TEST_ID='HIVE-GEMINI-STRESS-0002';
 const nonce=crypto.randomBytes(4).toString('hex').toUpperCase();
 const MASTER={salt:7919,coeff:[17,29,43]};
 const SHARDS={A:[311,7,19,23,5],B:[41,53,67,71,73],C:[79,83,89,97,101]};
-const EXPECTED=MASTER.salt+MASTER.coeff[0]*SHARDS.A.reduce((a,b)=>a+b,0)+MASTER.coeff[1]*SHARDS.B.reduce((a,b)=>a+b,0)+MASTER.coeff[2]*SHARDS.C.reduce((a,b)=>a+b,0);
+const SUMS={A:SHARDS.A.reduce((a,b)=>a+b,0),B:SHARDS.B.reduce((a,b)=>a+b,0),C:SHARDS.C.reduce((a,b)=>a+b,0)};
+const EXPECTED=MASTER.salt+MASTER.coeff[0]*SUMS.A+MASTER.coeff[1]*SUMS.B+MASTER.coeff[2]*SUMS.C;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const log=(...x)=>console.log(new Date().toISOString(),...x);
 
@@ -79,52 +80,50 @@ async function send(page,text){
   await c.press('Enter');
 }
 
-async function waitForAssistantToken(page,token,beforeAssistant,beforeBody,timeout=90000){
+async function waitForAssistantExact(page,expected,beforeAssistant,beforeBody,timeout=90000){
   const started=Date.now();
   while(Date.now()-started<timeout){
     const a=await assistantText(page);
-    if(a && literalCount(a,token)>beforeAssistant){
-      await sleep(1200);
+    if(a && literalCount(a,expected)>beforeAssistant){
+      await sleep(1000);
       return 'assistant-container';
     }
     const b=await bodyText(page);
-    // Fallback: user prompt adds one occurrence, Gemini answer adds another.
-    if(literalCount(b,token)>=beforeBody+2){
-      await sleep(1200);
+    // The user prompt contains the expected echo once; the response must add a second occurrence.
+    if(literalCount(b,expected)>=beforeBody+2){
+      await sleep(1000);
       return 'body-occurrence-fallback';
     }
-    await sleep(1000);
+    await sleep(900);
   }
-  throw new Error(`TIMEOUT_WAITING_FOR_GEMINI_ASSISTANT_TOKEN_${token}`);
+  throw new Error(`TIMEOUT_WAITING_FOR_EXACT_GEMINI_RESPONSE_${expected}`);
 }
 
-async function stage(page,label,prompt,ackToken){
-  const beforeAssistant=literalCount(await assistantText(page),ackToken);
-  const beforeBody=literalCount(await bodyText(page),ackToken);
+async function stage(page,label,prompt,expectedEcho){
+  const beforeAssistant=literalCount(await assistantText(page),expectedEcho);
+  const beforeBody=literalCount(await bodyText(page),expectedEcho);
   log('SEND',label);
   await send(page,prompt);
-  const validation=await waitForAssistantToken(page,ackToken,beforeAssistant,beforeBody);
-  log('PASS',label,validation);
+  const validation=await waitForAssistantExact(page,expectedEcho,beforeAssistant,beforeBody);
+  log('PASS',label,validation,'exact-data-echo');
 }
 
-async function waitFinal(page,regex,timeout=120000){
+async function waitFinal(page,expectedToken,timeout=120000){
   const started=Date.now();
   while(Date.now()-started<timeout){
     const a=await assistantText(page);
-    let m=regex.exec(a);
-    if(m)return {match:m,validation:'assistant-container'};
+    if(a.includes(expectedToken))return {validation:'assistant-container'};
     const b=await bodyText(page);
-    m=regex.exec(b);
-    if(m)return {match:m,validation:'body-fallback'};
+    if(b.includes(expectedToken))return {validation:'body-fallback'};
     await sleep(1000);
   }
-  throw new Error(`TIMEOUT_WAITING_FOR_${regex}`);
+  throw new Error(`TIMEOUT_WAITING_FOR_${expectedToken}`);
 }
 
 async function main(){
   fs.mkdirSync(OUT_DIR,{recursive:true});
   const startedAt=new Date().toISOString();
-  log(`START ${TEST_ID} nonce=${nonce} expected=${EXPECTED}`);
+  log(`START ${TEST_ID} nonce=${nonce} expected=${EXPECTED} sums=${SUMS.A},${SUMS.B},${SUMS.C}`);
 
   const browser=await chromium.connectOverCDP(CDP);
   const context=browser.contexts()[0]||await browser.newContext();
@@ -134,38 +133,50 @@ async function main(){
 
   if(!await composer(page))throw new Error('GEMINI_NOT_AUTHENTICATED_OR_COMPOSER_NOT_FOUND');
 
-  const masterAck=`ACK_MASTER:${nonce}`;
+  const masterEcho=`ACK_MASTER:${nonce}:${MASTER.salt}:${MASTER.coeff.join(',')}`;
   await stage(page,'MASTER',[
     `${TEST_ID} / ${nonce}`,
-    'Memorizza questo MASTER per un test multi-turn. Non calcolare ancora il risultato finale.',
+    'Memorizza esattamente questo MASTER per un test multi-turn. Non calcolare ancora il risultato finale.',
     `SALT=${MASTER.salt}`,
     `COEFF_A=${MASTER.coeff[0]}`,
     `COEFF_B=${MASTER.coeff[1]}`,
     `COEFF_C=${MASTER.coeff[2]}`,
-    `Quando hai memorizzato, rispondi ESATTAMENTE: ${masterAck}`
-  ].join('\n'),masterAck);
+    `Per confermare i dati ricevuti, rispondi ESATTAMENTE: ${masterEcho}`
+  ].join('\n'),masterEcho);
 
-  const ackA=`ACK_A:${nonce}`;
-  await stage(page,'SHARD_A',[`${TEST_ID} / ${nonce}`,`SHARD_A=${SHARDS.A.join(',')}`,`Memorizzalo e rispondi ESATTAMENTE: ${ackA}`].join('\n'),ackA);
+  const echoA=`ACK_A:${nonce}:${SHARDS.A.join(',')}`;
+  await stage(page,'SHARD_A',[
+    `${TEST_ID} / ${nonce}`,
+    `SHARD_A=${SHARDS.A.join(',')}`,
+    `Memorizzalo esattamente e rispondi ESATTAMENTE: ${echoA}`
+  ].join('\n'),echoA);
 
-  const ackB=`ACK_B:${nonce}`;
-  await stage(page,'SHARD_B',[`${TEST_ID} / ${nonce}`,`SHARD_B=${SHARDS.B.join(',')}`,`Memorizzalo e rispondi ESATTAMENTE: ${ackB}`].join('\n'),ackB);
+  const echoB=`ACK_B:${nonce}:${SHARDS.B.join(',')}`;
+  await stage(page,'SHARD_B',[
+    `${TEST_ID} / ${nonce}`,
+    `SHARD_B=${SHARDS.B.join(',')}`,
+    `Memorizzalo esattamente e rispondi ESATTAMENTE: ${echoB}`
+  ].join('\n'),echoB);
 
-  const ackC=`ACK_C:${nonce}`;
-  await stage(page,'SHARD_C',[`${TEST_ID} / ${nonce}`,`SHARD_C=${SHARDS.C.join(',')}`,`Memorizzalo e rispondi ESATTAMENTE: ${ackC}`].join('\n'),ackC);
+  const echoC=`ACK_C:${nonce}:${SHARDS.C.join(',')}`;
+  await stage(page,'SHARD_C',[
+    `${TEST_ID} / ${nonce}`,
+    `SHARD_C=${SHARDS.C.join(',')}`,
+    `Memorizzalo esattamente e rispondi ESATTAMENTE: ${echoC}`
+  ].join('\n'),echoC);
 
   log('SEND FINAL');
   await send(page,[
     `${TEST_ID} / ${nonce}`,
-    'Ora usa SOLO il MASTER e i tre shard ricevuti nei messaggi precedenti.',
-    'Calcola: CHECKSUM = SALT + COEFF_A*SUM(SHARD_A) + COEFF_B*SUM(SHARD_B) + COEFF_C*SUM(SHARD_C).',
+    'Ora usa SOLO il MASTER e i tre shard memorizzati nei messaggi precedenti.',
+    'Calcola separatamente SUM_A, SUM_B, SUM_C e poi CHECKSUM = SALT + COEFF_A*SUM_A + COEFF_B*SUM_B + COEFF_C*SUM_C.',
     'Non aggiungere spiegazioni.',
-    `Rispondi ESATTAMENTE nel formato: GEMINI_CERT_RESULT:${nonce}:<CHECKSUM>`
+    `Rispondi ESATTAMENTE nel formato: GEMINI_CERT_RESULT:${nonce}:<SUM_A>:<SUM_B>:<SUM_C>:<CHECKSUM>`
   ].join('\n'));
 
-  const final=await waitFinal(page,new RegExp(`GEMINI_CERT_RESULT:${nonce}:(\\d+)`));
-  const actual=Number(final.match[1]);
-  const passed=actual===EXPECTED;
+  const expectedFinal=`GEMINI_CERT_RESULT:${nonce}:${SUMS.A}:${SUMS.B}:${SUMS.C}:${EXPECTED}`;
+  const final=await waitFinal(page,expectedFinal);
+  const passed=true;
   const cert={
     test_id:TEST_ID,
     nonce,
@@ -175,24 +186,26 @@ async function main(){
     zero_cost_api_path:true,
     started_at:startedAt,
     completed_at:new Date().toISOString(),
+    expected_sums:SUMS,
     expected_checksum:EXPECTED,
-    actual_checksum:actual,
+    actual_checksum:EXPECTED,
     stages:{master:true,shard_a:true,shard_b:true,shard_c:true,final:true},
     response_validation:final.validation,
+    stage_validation:'exact-data-echo',
     certified:passed
   };
   const file=path.join(OUT_DIR,`${TEST_ID}-${nonce}.json`);
   fs.writeFileSync(file,JSON.stringify(cert,null,2));
 
   console.log('');
-  console.log(`GEMINI_CERTIFIED=${passed?'true':'false'}`);
+  console.log('GEMINI_CERTIFIED=true');
   console.log(`TEST_ID=${TEST_ID}`);
   console.log(`NONCE=${nonce}`);
+  console.log(`EXPECTED_SUMS=${SUMS.A},${SUMS.B},${SUMS.C}`);
   console.log(`EXPECTED_CHECKSUM=${EXPECTED}`);
-  console.log(`ACTUAL_CHECKSUM=${actual}`);
+  console.log(`ACTUAL_CHECKSUM=${EXPECTED}`);
   console.log(`CERTIFICATE=${file}`);
 
-  if(!passed)process.exitCode=2;
   await page.close().catch(()=>{});
   await browser.close().catch(()=>{});
 }
