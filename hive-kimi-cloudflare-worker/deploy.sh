@@ -60,6 +60,10 @@ else
   echo "Using existing local Cloudflare KV binding."
 fi
 
+# Existing local configs were generated before the dispatcher OIDC wrapper
+# existed. Migrate only the Worker entrypoint; preserve the existing KV id.
+sed -i 's|^main = "src/index.js"$|main = "src/entry.js"|' "$CONFIG"
+
 echo "Deploying stable HIVE Kimi Worker..."
 : >"$DEPLOY_LOG"
 set +e
@@ -131,5 +135,6 @@ echo "Base URL: $PUBLIC_URL"
 echo "Health: $PUBLIC_URL/health"
 echo "Work URL: $PUBLIC_URL/work"
 echo "Work Result URL: $PUBLIC_URL/work-result"
+echo "Dispatcher session lease: $PUBLIC_URL/dispatcher/session (GitHub OIDC only)"
 echo
 echo "This is a stable workers.dev endpoint, not a Quick Tunnel."
