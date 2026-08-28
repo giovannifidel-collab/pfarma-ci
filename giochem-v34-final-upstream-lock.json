@@ -1,6 +1,6 @@
 {
   "status": "V34_FINAL_EXTERNAL_PREREQUISITES_FROZEN",
-  "privateSourceSha": "02d78ecff8862eba1a0716d57955e07389ffaa1c",
+  "privateSourceSha": "53445632b854cb4970dcf0484f53b248bd9f3813",
   "developmentRunId": 33196183857,
   "developmentArtifactName": "giochem-v34-development-report",
   "developmentSelectedRanker": "rank_consensus_all3",
@@ -19,9 +19,11 @@
   "totalRecords": 2458,
   "totalShards": 80,
   "maxParallel": 20,
-  "technicalInterlockVersion": 2,
+  "technicalInterlockVersion": 3,
   "schemaOnlyRepair": true,
-  "schemaOnlyRepairNote": "Corrected code/workflow accessors to the already-frozen policy schema: development.selectedRanker, externalTargetSelection.targets, acceptance.thresholdsChanged. No scientific method, target, sampling, receptor, docking, runtime, ranker or gate changed; no V3.4 external score had been produced.",
+  "schemaOnlyRepairNote": "All changes remain outcome-independent and precede every V3.4 external score: corrected frozen-policy accessors; preserved deposited CSO modified protein residue identity/atom set/coordinates instead of deleting or remapping it; omitted truth-file/digest metadata from the pre-score blind manifest. No scientific method, target, sampling, receptor selection, docking, runtime, ranker, threshold or gate changed.",
+  "modifiedProteinResiduePolicy": "CSO preserved as deposited with no atom or coordinate deletion",
+  "blindManifestTruthDigestExposedBeforeScoring": false,
   "truthMayBeMaterializedOnlyAfterPreUnblindSeal": true,
   "acceptanceThresholdsChanged": false,
   "litPcbaExternalScoresProducedAtFreeze": false
