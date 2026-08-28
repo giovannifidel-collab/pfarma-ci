@@ -8,6 +8,10 @@ WEB_PORT="${HIVE_AGENTLAB_WEB_PORT:-6080}"
 ROOT="${HIVE_AGENTLAB_HOST_DIR:-$HOME/.hive-agent-lab/browser-host}"
 mkdir -p "$ROOT"
 
+port_open(){
+  timeout 1 bash -c ">/dev/tcp/127.0.0.1/$1" >/dev/null 2>&1
+}
+
 need_install=0
 for cmd in Xvfb openbox x11vnc websockify; do
   command -v "$cmd" >/dev/null 2>&1 || need_install=1
@@ -40,39 +44,51 @@ fi
 export DISPLAY="$DISPLAY_VALUE"
 
 if ! pgrep -af "openbox.*${DISPLAY_VALUE}|openbox" >/dev/null 2>&1; then
+  echo "AGENT LAB HOST: avvio openbox..."
   nohup dbus-launch --exit-with-session openbox-session \
     >"$ROOT/openbox.log" 2>&1 &
   echo $! >"$ROOT/openbox.pid"
 fi
 
-if ! pgrep -af "x11vnc.*-rfbport ${VNC_PORT}" >/dev/null 2>&1; then
-  echo "AGENT LAB HOST: avvio x11vnc su localhost:${VNC_PORT}..."
+# A stale X11 socket does not prove that the VNC bridge is healthy.
+# Validate the actual TCP listener; if stale processes exist, recycle only that layer.
+if ! port_open "$VNC_PORT"; then
+  pkill -f "x11vnc.*-rfbport ${VNC_PORT}" 2>/dev/null || true
+  echo "AGENT LAB HOST: avvio/ripristino x11vnc su localhost:${VNC_PORT}..."
   nohup x11vnc -display "$DISPLAY_VALUE" -forever -shared -nopw \
     -listen 127.0.0.1 -rfbport "$VNC_PORT" -noxdamage \
     >"$ROOT/x11vnc.log" 2>&1 &
   echo $! >"$ROOT/x11vnc.pid"
+  for _ in $(seq 1 50); do
+    port_open "$VNC_PORT" && break
+    sleep 0.2
+  done
+fi
+
+if ! port_open "$VNC_PORT"; then
+  echo "ERROR: x11vnc non raggiungibile su localhost:${VNC_PORT}"
+  tail -n 40 "$ROOT/x11vnc.log" 2>/dev/null || true
+  exit 1
 fi
 
 NOVNC_WEB="/usr/share/novnc"
-if [[ ! -d "$NOVNC_WEB" ]]; then
-  NOVNC_WEB="/usr/share/novnc/"
-fi
 
-if ! pgrep -af "websockify.*${WEB_PORT}.*${VNC_PORT}" >/dev/null 2>&1; then
-  echo "AGENT LAB HOST: avvio noVNC/websockify su porta ${WEB_PORT}..."
+if ! port_open "$WEB_PORT" || ! curl -fsS "http://127.0.0.1:${WEB_PORT}/vnc.html" >/dev/null 2>&1; then
+  pkill -f "websockify.*${WEB_PORT}.*${VNC_PORT}" 2>/dev/null || true
+  echo "AGENT LAB HOST: avvio/ripristino noVNC/websockify su porta ${WEB_PORT}..."
   nohup websockify --web="$NOVNC_WEB" "0.0.0.0:${WEB_PORT}" "127.0.0.1:${VNC_PORT}" \
     >"$ROOT/websockify.log" 2>&1 &
   echo $! >"$ROOT/websockify.pid"
 fi
 
 for _ in $(seq 1 50); do
-  if curl -fsS "http://127.0.0.1:${WEB_PORT}/vnc.html" >/dev/null 2>&1; then
+  if port_open "$WEB_PORT" && curl -fsS "http://127.0.0.1:${WEB_PORT}/vnc.html" >/dev/null 2>&1; then
     break
   fi
   sleep 0.2
 done
 
-if ! curl -fsS "http://127.0.0.1:${WEB_PORT}/vnc.html" >/dev/null 2>&1; then
+if ! port_open "$WEB_PORT" || ! curl -fsS "http://127.0.0.1:${WEB_PORT}/vnc.html" >/dev/null 2>&1; then
   echo "ERROR: noVNC non raggiungibile sulla porta ${WEB_PORT}"
   tail -n 40 "$ROOT/websockify.log" 2>/dev/null || true
   exit 1
@@ -89,6 +105,8 @@ AGENT LAB DESKTOP READY
 DISPLAY=${DISPLAY_VALUE}
 VNC_PORT=${VNC_PORT}
 WEB_PORT=${WEB_PORT}
+VNC_HEALTH=OK
+NOVNC_HEALTH=OK
 Open this browser URL:
 ${URL}
 EOF
