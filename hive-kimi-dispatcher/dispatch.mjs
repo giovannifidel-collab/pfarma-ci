@@ -1,6 +1,8 @@
 import { chromium } from 'playwright';
-import { gunzipSync } from 'node:zlib';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const triggerPath = process.env.HIVE_TRIGGER_FILE || 'hive-kimi-dispatcher/trigger.json';
 const trigger = JSON.parse(readFileSync(triggerPath, 'utf8'));
@@ -33,7 +35,7 @@ async function getGithubOidcToken() {
   return payload.value;
 }
 
-async function leaseKimiStorageState() {
+async function leaseKimiProfile() {
   const oidcToken = await getGithubOidcToken();
   const response = await fetch(sessionEndpoint, {
     headers: {
@@ -42,20 +44,37 @@ async function leaseKimiStorageState() {
     },
   });
   const text = await response.text();
-  if (!response.ok) throw new Error(`HIVE_SESSION_LEASE_FAILED_${response.status}:${text.slice(0, 500)}`);
+  if (!response.ok) throw new Error(`HIVE_PROFILE_LEASE_FAILED_${response.status}:${text.slice(0, 500)}`);
   const payload = JSON.parse(text);
-  if (!payload?.ok || !payload?.session) throw new Error('HIVE_SESSION_LEASE_EMPTY');
-  return JSON.parse(gunzipSync(Buffer.from(payload.session, 'base64')).toString('utf8'));
+  if (!payload?.ok || !payload?.session) throw new Error('HIVE_PROFILE_LEASE_EMPTY');
+  if (payload.format !== 'tar-gzip-base64-chromium-user-data-dir') {
+    throw new Error(`HIVE_PROFILE_FORMAT_UNEXPECTED:${payload.format || 'missing'}`);
+  }
+  return Buffer.from(payload.session, 'base64');
 }
 
-const storageState = await leaseKimiStorageState();
-console.log('HIVE_KIMI_SESSION_LEASED_VIA_GITHUB_OIDC');
-console.log(`HIVE_SESSION_ORIGINS=${(storageState.origins || []).map(item => item.origin).join(',') || 'none'}`);
-console.log(`HIVE_SESSION_COOKIE_DOMAINS=${[...new Set((storageState.cookies || []).map(item => item.domain))].join(',') || 'none'}`);
+const tempRoot = mkdtempSync(join(tmpdir(), 'hive-kimi-profile-'));
+const archivePath = join(tempRoot, 'profile.tar.gz');
+const profileDir = join(tempRoot, 'profile');
+mkdirSync(profileDir, { recursive: true });
 
-const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ storageState, viewport: { width: 1440, height: 1000 } });
-const page = await context.newPage();
+const profileArchive = await leaseKimiProfile();
+writeFileSync(archivePath, profileArchive);
+console.log(`HIVE_KIMI_FULL_PROFILE_LEASED_VIA_GITHUB_OIDC bytes=${profileArchive.length}`);
+execFileSync('tar', ['-xzf', archivePath, '-C', profileDir], { stdio: 'inherit' });
+console.log('HIVE_KIMI_FULL_PROFILE_RESTORED');
+
+const context = await chromium.launchPersistentContext(profileDir, {
+  headless: true,
+  viewport: { width: 1440, height: 1000 },
+  args: [
+    '--password-store=basic',
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
+  ],
+});
+const pages = context.pages();
+const page = pages[0] || await context.newPage();
 
 async function findComposer() {
   const selectors = [
@@ -92,7 +111,7 @@ try {
 
     const target = kimiTargets[(attempt - 1) % kimiTargets.length];
     await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    await page.waitForTimeout(5_000);
+    await page.waitForTimeout(6_000);
 
     lastText = await bodyText();
     if (hasLoginGate(lastText)) {
@@ -117,7 +136,7 @@ try {
       await composer.pressSequentially(prompt, { delay: 1 });
     }
     await composer.press('Enter');
-    await page.waitForTimeout(10_000);
+    await page.waitForTimeout(12_000);
 
     lastText = (await bodyText()).slice(-12000);
     if (hasLoginGate(lastText)) {
@@ -140,7 +159,7 @@ try {
   if (!started) {
     await page.screenshot({ path: 'hive-kimi-dispatcher-failure.png', fullPage: true }).catch(() => {});
     console.error(lastText);
-    throw new Error(authGateSeen ? 'KIMI_AUTH_SESSION_NOT_RESTORED' : 'KIMI_STARTUP_RETRY_EXHAUSTED');
+    throw new Error(authGateSeen ? 'KIMI_AUTH_FULL_PROFILE_NOT_RESTORED' : 'KIMI_STARTUP_RETRY_EXHAUSTED');
   }
 
   const deadline = Date.now() + 8 * 60_000;
@@ -166,5 +185,6 @@ try {
     throw new Error('HIVE_RESULT_CERTIFICATION_TIMEOUT');
   }
 } finally {
-  await browser.close();
+  await context.close().catch(() => {});
+  rmSync(tempRoot, { recursive: true, force: true });
 }
