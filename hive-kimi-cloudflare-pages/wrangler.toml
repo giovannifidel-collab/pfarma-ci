@@ -1,5 +1,4 @@
 name = "hive-kimi-relay-pages"
-account_id = "6f6de52331e398c395d3de97c83011cd"
 compatibility_date = "2026-08-28"
 pages_build_output_dir = "./dist"
 
