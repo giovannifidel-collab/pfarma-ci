@@ -1,5 +1,6 @@
 name: GIOCHEM Validation V3.4 Unseen Target Inventory
 
+# Metadata-only target selection; no GIOCHEM score is read here.
 on:
   workflow_dispatch:
   push:
