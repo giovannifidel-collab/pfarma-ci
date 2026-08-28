@@ -5,6 +5,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 PROJECT="hive-kimi-relay-pages"
+ACCOUNT_ID="6f6de52331e398c395d3de97c83011cd"
+export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
+
 CONFIG="$ROOT/wrangler.toml"
 DIST="$ROOT/dist"
 WRANGLER=(npx --yes wrangler@latest)
@@ -15,6 +18,7 @@ HEALTH_BODY="/tmp/hive-kimi-pages-health.body"
 HEALTH_HEADERS="/tmp/hive-kimi-pages-health.headers"
 
 "${WRANGLER[@]}" whoami --config "$CONFIG"
+echo "Cloudflare account pinned for Pages: $CLOUDFLARE_ACCOUNT_ID"
 
 set +e
 "${WRANGLER[@]}" pages project list --json --config "$CONFIG" >"$PROJECTS_LOG" 2>/tmp/hive-kimi-pages-projects.err
