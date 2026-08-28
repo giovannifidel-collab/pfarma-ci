@@ -2,6 +2,12 @@ const TASK_ID = "HIVE-KIMI-WORK-0004";
 const LAB_NONCE = "HIVE-KIMI-CF-JINA-20260828-V2";
 const EXPECTED_ANSWER = "21246";
 const RESULT_KEY = `result:${TASK_ID}`;
+
+const STRESS_ID = "HIVE-KIMI-STRESS-0005";
+const STRESS_NONCE = "HIVE-KIMI-STRESS-JINA-20260828-V1";
+const STRESS_EXPECTED = "138460";
+const STRESS_RESULT_KEY = `result:${STRESS_ID}`;
+
 const JINA_READER_PREFIX = "https://r.jina.ai/";
 
 function json(data, status = 200) {
@@ -75,10 +81,88 @@ async function acceptAnswer(request, env, taskId, nonce, answer) {
   });
 }
 
+async function acceptStressAnswer(request, env, taskId, nonce, answer) {
+  const normalizedAnswer = String(answer || "").trim();
+
+  if (taskId !== STRESS_ID || nonce !== STRESS_NONCE) {
+    return json({ ok: false, accepted: false, certified: false, error: "invalid_stress_task_or_nonce" }, 400);
+  }
+
+  if (normalizedAnswer !== STRESS_EXPECTED) {
+    return json({
+      ok: true,
+      accepted: false,
+      certified: false,
+      task_id: STRESS_ID,
+      answer: normalizedAnswer,
+      error: "wrong_stress_checksum",
+    });
+  }
+
+  const existing = await env.HIVE_KIMI_RESULTS.get(STRESS_RESULT_KEY, "json");
+  if (existing?.certified === true) {
+    return json({
+      ok: true,
+      accepted: true,
+      certified: true,
+      duplicate: true,
+      task_id: STRESS_ID,
+      answer: STRESS_EXPECTED,
+      bridge: "jina-reader",
+      test: "multi-shard",
+      message: "HIVE KIMI MULTI-SHARD STRESS READY",
+    });
+  }
+
+  const record = {
+    certified: true,
+    task_id: STRESS_ID,
+    answer: STRESS_EXPECTED,
+    bridge: "jina-reader",
+    test: "multi-shard",
+    shard_count: 3,
+    received_at: new Date().toISOString(),
+    user_agent: request.headers.get("user-agent"),
+    cf_ray: request.headers.get("cf-ray"),
+  };
+
+  await env.HIVE_KIMI_RESULTS.put(STRESS_RESULT_KEY, JSON.stringify(record));
+
+  return json({
+    ok: true,
+    accepted: true,
+    certified: true,
+    duplicate: false,
+    task_id: STRESS_ID,
+    answer: STRESS_EXPECTED,
+    bridge: "jina-reader",
+    test: "multi-shard",
+    message: "HIVE KIMI MULTI-SHARD STRESS READY",
+  });
+}
+
+const STRESS_SHARDS = {
+  alpha: {
+    shard_id: "alpha",
+    expression: "(731 * 29) + 47",
+    instruction: "Compute the integer value of expression and retain it as alpha.",
+  },
+  beta: {
+    shard_id: "beta",
+    expression: "(1257 * 43) - 918",
+    instruction: "Compute the integer value of expression and retain it as beta.",
+  },
+  gamma: {
+    shard_id: "gamma",
+    expression: "(98765 - 43210) + (144 * 17)",
+    instruction: "Compute the integer value of expression and retain it as gamma.",
+  },
+};
+
 export default {
   async fetch(request, env) {
     if (request.method === "GET" && request.url.endsWith("/health")) {
-      return new Response('{"ok":true,"service":"hive-kimi-cloudflare-worker","version":"1.2","transport":"cloudflare-workers","jina_bridge":true}', {
+      return new Response('{"ok":true,"service":"hive-kimi-cloudflare-worker","version":"1.3","transport":"cloudflare-workers","jina_bridge":true,"stress_test":"HIVE-KIMI-STRESS-0005"}', {
         status: 200,
         headers: {
           "content-type": "application/json; charset=utf-8",
@@ -102,7 +186,7 @@ export default {
 
         return json({
           hive: "HIVE Kimi Stable Relay",
-          version: "1.2",
+          version: "1.3",
           task_id: TASK_ID,
           agent: "KIMI_CHAT_FREE",
           transport: {
@@ -140,14 +224,81 @@ export default {
         });
       }
 
-      // Preferred path-based callback. This avoids query-string ambiguity when
-      // Jina Reader fetches the Cloudflare origin URL.
+      const stressMasterPath = `/stress/${STRESS_ID}`;
+      if (url.pathname === "/stress" || url.pathname === stressMasterPath) {
+        const shardUrls = Object.keys(STRESS_SHARDS).map((shardId) => ({
+          shard_id: shardId,
+          url: readerUrl(`${url.origin}/stress/${encodeURIComponent(STRESS_ID)}/shard/${encodeURIComponent(shardId)}`),
+        }));
+        const originCallbackTemplate = `${url.origin}/stress-submit/${encodeURIComponent(STRESS_ID)}/${encodeURIComponent(STRESS_NONCE)}/<ANSWER>`;
+        const originResultUrl = `${url.origin}/stress-result/${encodeURIComponent(STRESS_ID)}`;
+
+        return json({
+          hive: "HIVE Kimi Multi-Shard Stress Relay",
+          version: "1.0",
+          task_id: STRESS_ID,
+          agent: "KIMI_CHAT_FREE",
+          test_kind: "multi-fetch-single-callback",
+          purpose: "Test whether one started Kimi execution can perform several consecutive HIVE reads, maintain intermediate state, compute a final checksum, and return one certified callback without human intervention between steps.",
+          shard_urls: shardUrls,
+          combine: {
+            formula: "alpha + beta + gamma + 6078",
+            output: "Use the resulting integer as <ANSWER> in callback_template.",
+          },
+          instructions: [
+            "Open each shard URL exactly once with web_open_url, in the order alpha, beta, gamma.",
+            "For each shard, compute the integer expression and retain the value under its shard_id.",
+            "After all three shards are complete, compute final checksum using combine.formula.",
+            "Replace only <ANSWER> in callback_template with that final integer checksum.",
+            "Open the resulting callback URL exactly once with web_open_url.",
+            "Do not ask the user for help between shard reads.",
+            "Do not use Python, requests, GitHub, Kimi Code, MCP, API keys, localhost, or paid tools.",
+            "If a shard fetch or callback fails, do not repeat it; report the exact failing step and error.",
+            "At the end report alpha, beta, gamma, final checksum, callback URL, accepted, certified, duplicate, and complete callback response.",
+          ],
+          callback_template: readerUrl(originCallbackTemplate),
+          origin_callback_template: originCallbackTemplate,
+          result_url: originResultUrl,
+          reader_result_url: readerUrl(originResultUrl),
+          security: {
+            lab_only: true,
+            production_data: false,
+            secrets_required: false,
+            nonce_is_correlation_only: true,
+            idempotent: true,
+          },
+        });
+      }
+
+      const stressShardPrefix = `/stress/${STRESS_ID}/shard/`;
+      if (url.pathname.startsWith(stressShardPrefix)) {
+        const shardId = decodeURIComponent(url.pathname.slice(stressShardPrefix.length));
+        const shard = STRESS_SHARDS[shardId];
+        if (!shard) {
+          return json({ ok: false, error: "stress_shard_not_found", shard_id: shardId }, 404);
+        }
+        return json({
+          ok: true,
+          task_id: STRESS_ID,
+          ...shard,
+        });
+      }
+
+      // Preferred path-based callback for certified task 0004.
       const parts = url.pathname.split("/").filter(Boolean);
       if (parts[0] === "work-submit" && parts.length === 4) {
         const taskId = decodeURIComponent(parts[1]);
         const nonce = decodeURIComponent(parts[2]);
         const answer = decodeURIComponent(parts[3]);
         return await acceptAnswer(request, env, taskId, nonce, answer);
+      }
+
+      // Stress-test path callback.
+      if (parts[0] === "stress-submit" && parts.length === 4) {
+        const taskId = decodeURIComponent(parts[1]);
+        const nonce = decodeURIComponent(parts[2]);
+        const answer = decodeURIComponent(parts[3]);
+        return await acceptStressAnswer(request, env, taskId, nonce, answer);
       }
 
       // Legacy query callback retained only for compatibility with earlier lab runs.
@@ -168,6 +319,18 @@ export default {
           task_id: TASK_ID,
           certified: record?.certified === true,
           bridge: "jina-reader",
+          result: record || null,
+        });
+      }
+
+      if (url.pathname === "/stress-result" || url.pathname === `/stress-result/${STRESS_ID}`) {
+        const record = await env.HIVE_KIMI_RESULTS.get(STRESS_RESULT_KEY, "json");
+        return json({
+          ok: true,
+          task_id: STRESS_ID,
+          certified: record?.certified === true,
+          bridge: "jina-reader",
+          test: "multi-shard",
           result: record || null,
         });
       }
