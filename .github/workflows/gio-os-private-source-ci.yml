@@ -5,33 +5,53 @@ on:
     branches: [main]
     paths:
       - 'gio-os-source-ref.txt'
+      - 'gio-build-fabric/**'
       - '.github/workflows/gio-os-private-source-ci.yml'
+      - '.github/workflows/hive-world-sync.yml'
   pull_request:
     branches: [main]
     paths:
       - 'gio-os-source-ref.txt'
+      - 'gio-build-fabric/**'
       - '.github/workflows/gio-os-private-source-ci.yml'
+      - '.github/workflows/hive-world-sync.yml'
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 concurrency:
   group: gio-os-private-source-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  host-only-gates:
+  static-safety:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: pfarma-ci-trusted
+    timeout-minutes: 3
+    permissions:
+      contents: read
     steps:
       - name: Check out public CI control repository
         uses: actions/checkout@v4
         with:
-          persist-credentials: true
+          persist-credentials: false
+
+      - name: Enforce gio-OS Safety Gate v1
+        shell: bash
+        run: python3 gio-build-fabric/validate-safety-gate-v1.py
+
+  validate-private-source:
+    if: github.event_name != 'pull_request'
+    needs: static-safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    permissions:
+      contents: read
+    steps:
+      - name: Check out public CI control repository without write credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Fail closed unless gio-OS private-source token is configured
         shell: bash
@@ -58,15 +78,14 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid canonical gio-OS SHA.' >&2; exit 1; }
           test "$(git -C private-source branch --show-current)" = 'main'
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          printf '%s\n' "$sha" > gio-os-source-ref.txt
 
-      - name: Publish sanitized authoritative HIVE state
-        if: github.event_name != 'pull_request'
+      - name: Prepare sanitized authoritative HIVE state
         shell: bash
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
+          mkdir -p relay-state
           python3 - <<'PY'
           import json, os, pathlib, subprocess
           root = pathlib.Path('private-source')
@@ -87,15 +106,9 @@ jobs:
             'physical_certification': next((w for w in progress.get('workstreams', []) if w.get('id') == 'hardware_certification'), None),
             'provenance': 'PRIVATE_SOURCE_SANITIZED_SNAPSHOT'
           }
-          pathlib.Path('gio-os-state.json').write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n')
+          pathlib.Path('relay-state/gio-os-state.json').write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n')
+          pathlib.Path('relay-state/gio-os-source-ref.txt').write_text(os.environ['SOURCE_SHA'] + '\n')
           PY
-          git config user.name 'hive-state-bot'
-          git config user.email 'hive-state-bot@users.noreply.github.com'
-          git add gio-os-source-ref.txt gio-os-state.json
-          if ! git diff --cached --quiet; then
-            git commit -m "state(gio-os): sync ${SOURCE_SHA:0:12}"
-            git push origin HEAD:main
-          fi
 
       - name: Run complete host-only Prototype 0 gates
         working-directory: private-source
@@ -123,3 +136,66 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf private-source
+
+      - name: Transfer sanitized state only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gio-os-sanitized-state-${{ github.run_id }}
+          path: relay-state/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-sanitized-state:
+    if: github.event_name != 'pull_request'
+    needs: validate-private-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - name: Check out public CI control repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Download validated sanitized state
+        uses: actions/download-artifact@v4
+        with:
+          name: gio-os-sanitized-state-${{ github.run_id }}
+          path: relay-state
+
+      - name: Validate relay payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f relay-state/gio-os-source-ref.txt
+          test -f relay-state/gio-os-state.json
+          sha="$(tr -d '\r\n' < relay-state/gio-os-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          python3 - <<'PY'
+          import json, pathlib, re
+          state=json.loads(pathlib.Path('relay-state/gio-os-state.json').read_text())
+          assert state.get('schema_version') == 1
+          assert state.get('project_slug') == 'gio-os'
+          assert state.get('authoritative_repo') == 'giovannifidel-collab/gio-OS'
+          assert re.fullmatch(r'[0-9a-f]{40}', str(state.get('source_sha','')))
+          assert state.get('provenance') == 'PRIVATE_SOURCE_SANITIZED_SNAPSHOT'
+          ref=pathlib.Path('relay-state/gio-os-source-ref.txt').read_text().strip()
+          assert state['source_sha'] == ref
+          PY
+
+      - name: Publish sanitized authoritative HIVE state
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp relay-state/gio-os-source-ref.txt gio-os-source-ref.txt
+          cp relay-state/gio-os-state.json gio-os-state.json
+          SOURCE_SHA="$(tr -d '\r\n' < gio-os-source-ref.txt)"
+          git config user.name 'hive-state-bot'
+          git config user.email 'hive-state-bot@users.noreply.github.com'
+          git add gio-os-source-ref.txt gio-os-state.json
+          if ! git diff --cached --quiet; then
+            git commit -m "state(gio-os): sync ${SOURCE_SHA:0:12}"
+            git push origin HEAD:main
+          fi
