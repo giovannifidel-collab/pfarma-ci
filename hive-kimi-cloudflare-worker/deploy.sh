@@ -11,6 +11,8 @@ TEMPLATE="$ROOT/wrangler.toml.template"
 WHOAMI_LOG="/tmp/hive-kimi-cf-whoami.log"
 KV_LOG="/tmp/hive-kimi-cf-kv.log"
 DEPLOY_LOG="/tmp/hive-kimi-cf-deploy.log"
+HEALTH_BODY="/tmp/hive-kimi-cf-health.body"
+HEALTH_HEADERS="/tmp/hive-kimi-cf-health.headers"
 
 # Wrangler v4 can print "not authenticated" while still exiting 0, so inspect output too.
 set +e
@@ -81,7 +83,14 @@ fi
 
 PUBLIC_OK=0
 for _ in {1..20}; do
-  if curl -fsS --max-time 10 "$PUBLIC_URL/health" >/tmp/hive-kimi-cf-health.json 2>/dev/null; then
+  : >"$HEALTH_BODY"
+  : >"$HEALTH_HEADERS"
+  set +e
+  curl -sS --max-time 10 -D "$HEALTH_HEADERS" -o "$HEALTH_BODY" "$PUBLIC_URL/health"
+  CURL_STATUS=$?
+  set -e
+  HTTP_STATUS="$(awk 'toupper($1) ~ /^HTTP\// {code=$2} END {print code}' "$HEALTH_HEADERS")"
+  if [[ "$CURL_STATUS" -eq 0 && "$HTTP_STATUS" == "200" ]]; then
     PUBLIC_OK=1
     break
   fi
@@ -89,12 +98,32 @@ for _ in {1..20}; do
 done
 
 if [[ "$PUBLIC_OK" != "1" ]]; then
-  echo "Worker deployed but public /health is not reachable yet." >&2
-  echo "URL: $PUBLIC_URL" >&2
+  echo
+  echo "CLOUDFLARE_WORKER_HEALTH_FAILED"
+  echo "URL: $PUBLIC_URL/health"
+  echo "curl_status: ${CURL_STATUS:-unknown}"
+  echo "http_status: ${HTTP_STATUS:-unknown}"
+  echo "--- response headers ---"
+  cat "$HEALTH_HEADERS" || true
+  echo "--- response body ---"
+  cat "$HEALTH_BODY" || true
+  echo
+  echo "Worker deployment succeeded, but public execution failed."
   exit 1
 fi
 
-curl -fsS --max-time 10 "$PUBLIC_URL/work" >/tmp/hive-kimi-cf-work.json
+set +e
+curl -sS --max-time 10 -D /tmp/hive-kimi-cf-work.headers -o /tmp/hive-kimi-cf-work.json "$PUBLIC_URL/work"
+WORK_CURL_STATUS=$?
+set -e
+WORK_HTTP_STATUS="$(awk 'toupper($1) ~ /^HTTP\// {code=$2} END {print code}' /tmp/hive-kimi-cf-work.headers)"
+if [[ "$WORK_CURL_STATUS" -ne 0 || "$WORK_HTTP_STATUS" != "200" ]]; then
+  echo
+  echo "CLOUDFLARE_WORKER_WORK_FAILED"
+  echo "http_status: ${WORK_HTTP_STATUS:-unknown}"
+  cat /tmp/hive-kimi-cf-work.json || true
+  exit 1
+fi
 
 echo
 echo "HIVE KIMI CLOUDFLARE WORKER READY"
