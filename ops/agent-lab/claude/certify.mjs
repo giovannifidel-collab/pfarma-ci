@@ -21,6 +21,15 @@ async function composer(page){
   return null;
 }
 
+async function bodyText(page){
+  return page.locator('body').innerText().catch(()=> '');
+}
+
+function literalCount(text,token){
+  if(!token)return 0;
+  return text.split(token).length-1;
+}
+
 async function send(page,text){
   const c=await composer(page);
   if(!c)throw new Error('CLAUDE_NOT_AUTHENTICATED_OR_COMPOSER_NOT_FOUND');
@@ -34,49 +43,119 @@ async function send(page,text){
   await c.press('Enter');
 }
 
-async function waitBodyMatch(page,regex,timeout=90000){
+async function waitForNewAssistantToken(page,token,beforeCount,timeout=90000){
+  const started=Date.now();
+  // The token appears once in our user prompt and once again only if Claude answers with it.
+  const target=beforeCount+2;
+  while(Date.now()-started<timeout){
+    const body=await bodyText(page);
+    if(literalCount(body,token)>=target){
+      await sleep(1500);
+      return body;
+    }
+    await sleep(1000);
+  }
+  throw new Error(`TIMEOUT_WAITING_FOR_ASSISTANT_TOKEN_${token}`);
+}
+
+async function waitBodyMatch(page,regex,timeout=120000){
   const started=Date.now();
   while(Date.now()-started<timeout){
-    const body=await page.locator('body').innerText().catch(()=> '');
+    const body=await bodyText(page);
     const m=regex.exec(body);
     if(m)return {match:m,body};
-    await sleep(1200);
+    await sleep(1000);
   }
   throw new Error(`TIMEOUT_WAITING_FOR_${regex}`);
 }
 
-async function stage(page,label,prompt,expectedRegex){
+async function stage(page,label,prompt,ackToken){
+  const before=literalCount(await bodyText(page),ackToken);
   log('SEND',label);
   await send(page,prompt);
-  const result=await waitBodyMatch(page,expectedRegex);
-  log('PASS',label);
-  return result;
+  await waitForNewAssistantToken(page,ackToken,before);
+  log('PASS',label,'assistant-response-verified');
 }
 
 async function main(){
   fs.mkdirSync(OUT_DIR,{recursive:true});
   const startedAt=new Date().toISOString();
   log(`START ${TEST_ID} nonce=${nonce} expected=${EXPECTED}`);
+
   const browser=await chromium.connectOverCDP(CDP);
   const context=browser.contexts()[0]||await browser.newContext();
   const page=await context.newPage();
   await page.goto('https://claude.ai/new',{waitUntil:'domcontentloaded',timeout:60000});
-  await page.waitForTimeout(1500);
-  if(!await composer(page))throw new Error('CLAUDE_NOT_AUTHENTICATED_OR_COMPOSER_NOT_FOUND');
+  await page.waitForTimeout(2000);
 
-  await stage(page,'MASTER',[`${TEST_ID} / ${nonce}`,'Memorizza questo MASTER per un test multi-turn. Non calcolare ancora il risultato finale.',`SALT=${MASTER.salt}`,`COEFF_A=${MASTER.coeff[0]}`,`COEFF_B=${MASTER.coeff[1]}`,`COEFF_C=${MASTER.coeff[2]}`,`Quando hai memorizzato, rispondi ESATTAMENTE: ACK_MASTER:${nonce}`].join('\n'),new RegExp(`ACK_MASTER:${nonce}`));
-  await stage(page,'SHARD_A',[`${TEST_ID} / ${nonce}`,`SHARD_A=${SHARDS.A.join(',')}`,`Memorizzalo e rispondi ESATTAMENTE: ACK_A:${nonce}`].join('\n'),new RegExp(`ACK_A:${nonce}`));
-  await stage(page,'SHARD_B',[`${TEST_ID} / ${nonce}`,`SHARD_B=${SHARDS.B.join(',')}`,`Memorizzalo e rispondi ESATTAMENTE: ACK_B:${nonce}`].join('\n'),new RegExp(`ACK_B:${nonce}`));
-  await stage(page,'SHARD_C',[`${TEST_ID} / ${nonce}`,`SHARD_C=${SHARDS.C.join(',')}`,`Memorizzalo e rispondi ESATTAMENTE: ACK_C:${nonce}`].join('\n'),new RegExp(`ACK_C:${nonce}`));
+  if(!await composer(page)){
+    throw new Error('CLAUDE_NOT_AUTHENTICATED_OR_COMPOSER_NOT_FOUND');
+  }
+
+  const masterAck=`ACK_MASTER:${nonce}`;
+  await stage(page,'MASTER',[
+    `${TEST_ID} / ${nonce}`,
+    'Memorizza questo MASTER per un test multi-turn. Non calcolare ancora il risultato finale.',
+    `SALT=${MASTER.salt}`,
+    `COEFF_A=${MASTER.coeff[0]}`,
+    `COEFF_B=${MASTER.coeff[1]}`,
+    `COEFF_C=${MASTER.coeff[2]}`,
+    `Quando hai memorizzato, rispondi ESATTAMENTE: ${masterAck}`
+  ].join('\n'),masterAck);
+
+  const ackA=`ACK_A:${nonce}`;
+  await stage(page,'SHARD_A',[
+    `${TEST_ID} / ${nonce}`,
+    `SHARD_A=${SHARDS.A.join(',')}`,
+    `Memorizzalo e rispondi ESATTAMENTE: ${ackA}`
+  ].join('\n'),ackA);
+
+  const ackB=`ACK_B:${nonce}`;
+  await stage(page,'SHARD_B',[
+    `${TEST_ID} / ${nonce}`,
+    `SHARD_B=${SHARDS.B.join(',')}`,
+    `Memorizzalo e rispondi ESATTAMENTE: ${ackB}`
+  ].join('\n'),ackB);
+
+  const ackC=`ACK_C:${nonce}`;
+  await stage(page,'SHARD_C',[
+    `${TEST_ID} / ${nonce}`,
+    `SHARD_C=${SHARDS.C.join(',')}`,
+    `Memorizzalo e rispondi ESATTAMENTE: ${ackC}`
+  ].join('\n'),ackC);
 
   log('SEND FINAL');
-  await send(page,[`${TEST_ID} / ${nonce}`,'Ora usa SOLO il MASTER e i tre shard ricevuti nei messaggi precedenti.','Calcola: CHECKSUM = SALT + COEFF_A*SUM(SHARD_A) + COEFF_B*SUM(SHARD_B) + COEFF_C*SUM(SHARD_C).','Non aggiungere spiegazioni.',`Rispondi ESATTAMENTE nel formato: CLAUDE_CERT_RESULT:${nonce}:<CHECKSUM>`].join('\n'));
+  await send(page,[
+    `${TEST_ID} / ${nonce}`,
+    'Ora usa SOLO il MASTER e i tre shard ricevuti nei messaggi precedenti.',
+    'Calcola: CHECKSUM = SALT + COEFF_A*SUM(SHARD_A) + COEFF_B*SUM(SHARD_B) + COEFF_C*SUM(SHARD_C).',
+    'Non aggiungere spiegazioni.',
+    `Rispondi ESATTAMENTE nel formato: CLAUDE_CERT_RESULT:${nonce}:<CHECKSUM>`
+  ].join('\n'));
+
   const final=await waitBodyMatch(page,new RegExp(`CLAUDE_CERT_RESULT:${nonce}:(\\d+)`),120000);
   const actual=Number(final.match[1]);
   const passed=actual===EXPECTED;
-  const cert={test_id:TEST_ID,nonce,provider:'claude.ai',transport:'persistent-browser-session',api_required:false,zero_cost_api_path:true,started_at:startedAt,completed_at:new Date().toISOString(),expected_checksum:EXPECTED,actual_checksum:actual,stages:{master:true,shard_a:true,shard_b:true,shard_c:true,final:true},certified:passed};
+
+  const cert={
+    test_id:TEST_ID,
+    nonce,
+    provider:'claude.ai',
+    transport:'persistent-browser-session',
+    api_required:false,
+    zero_cost_api_path:true,
+    started_at:startedAt,
+    completed_at:new Date().toISOString(),
+    expected_checksum:EXPECTED,
+    actual_checksum:actual,
+    stages:{master:true,shard_a:true,shard_b:true,shard_c:true,final:true},
+    response_validation:'assistant-token-occurrence',
+    certified:passed
+  };
+
   const file=path.join(OUT_DIR,`${TEST_ID}-${nonce}.json`);
   fs.writeFileSync(file,JSON.stringify(cert,null,2));
+
   console.log('');
   console.log(`CLAUDE_CERTIFIED=${passed?'true':'false'}`);
   console.log(`TEST_ID=${TEST_ID}`);
@@ -84,9 +163,14 @@ async function main(){
   console.log(`EXPECTED_CHECKSUM=${EXPECTED}`);
   console.log(`ACTUAL_CHECKSUM=${actual}`);
   console.log(`CERTIFICATE=${file}`);
+
   if(!passed)process.exitCode=2;
   await page.close().catch(()=>{});
   await browser.close().catch(()=>{});
 }
 
-main().catch(err=>{console.error('CLAUDE_CERTIFIED=false');console.error(`ERROR=${err.message}`);process.exit(1);});
+main().catch(err=>{
+  console.error('CLAUDE_CERTIFIED=false');
+  console.error(`ERROR=${err.message}`);
+  process.exit(1);
+});
