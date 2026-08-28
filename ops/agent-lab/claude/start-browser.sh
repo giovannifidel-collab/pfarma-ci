@@ -6,6 +6,8 @@ cd "$ROOT"
 
 PROFILE="${CLAUDE_LAB_PROFILE_DIR:-$HOME/.hive-agent-lab/claude-profile}"
 PORT="${CLAUDE_LAB_CDP_PORT:-9224}"
+DISK_CACHE_BYTES="${CLAUDE_LAB_DISK_CACHE_BYTES:-134217728}"
+MEDIA_CACHE_BYTES="${CLAUDE_LAB_MEDIA_CACHE_BYTES:-33554432}"
 mkdir -p "$PROFILE"
 
 playwright_browser(){
@@ -73,10 +75,22 @@ if [[ "$DISPLAY" == :* && ! -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ]]; then
   exit 3
 fi
 
+# Preserve authentication/session state, but remove disposable Chromium caches.
+# This keeps the Claude login while preventing cache directories from growing indefinitely.
+rm -rf \
+  "$PROFILE/Default/Cache" \
+  "$PROFILE/Default/Code Cache" \
+  "$PROFILE/Default/GPUCache" \
+  "$PROFILE/ShaderCache" \
+  "$PROFILE/GrShaderCache" \
+  2>/dev/null || true
+
 nohup "$BROWSER" \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port="$PORT" \
   --user-data-dir="$PROFILE" \
+  --disk-cache-size="$DISK_CACHE_BYTES" \
+  --media-cache-size="$MEDIA_CACHE_BYTES" \
   --no-first-run \
   --no-default-browser-check \
   --disable-dev-shm-usage \
@@ -90,6 +104,7 @@ for _ in $(seq 1 75); do
     echo "CLAUDE LAB BROWSER READY"
     echo "CDP=http://127.0.0.1:${PORT}"
     echo "PROFILE=$PROFILE"
+    echo "CACHE_CAP=$((DISK_CACHE_BYTES/1024/1024))MiB disk + $((MEDIA_CACHE_BYTES/1024/1024))MiB media"
     echo "Accedi a Claude.ai dalla finestra Chromium del noVNC; le credenziali restano nel browser."
     exit 0
   fi
