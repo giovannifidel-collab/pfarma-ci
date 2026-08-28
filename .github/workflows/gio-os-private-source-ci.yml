@@ -39,34 +39,26 @@ jobs:
           SOURCE_TOKEN: ${{ secrets.GIO_OS_SOURCE_TOKEN }}
         run: test -n "$SOURCE_TOKEN"
 
-      - name: Resolve authoritative gio-OS main SHA
-        id: source
-        shell: bash
-        env:
-          SOURCE_TOKEN: ${{ secrets.GIO_OS_SOURCE_TOKEN }}
-        run: |
-          set -euo pipefail
-          sha="$(git ls-remote "https://x-access-token:${SOURCE_TOKEN}@github.com/giovannifidel-collab/gio-OS.git" refs/heads/main | awk '{print $1}')"
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Unable to resolve canonical gio-OS main SHA.' >&2; exit 1; }
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          printf '%s\n' "$sha" > gio-os-source-ref.txt
-
-      - name: Check out exact private gio-OS commit
+      - name: Check out authoritative private gio-OS main
         uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/gio-OS
-          ref: ${{ steps.source.outputs.sha }}
+          ref: main
           token: ${{ secrets.GIO_OS_SOURCE_TOKEN }}
           path: private-source
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify exact private commit
+      - name: Resolve and verify exact private commit
+        id: source
         shell: bash
         run: |
           set -euo pipefail
-          actual="$(git -C private-source rev-parse HEAD)"
-          test "$actual" = '${{ steps.source.outputs.sha }}'
+          sha="$(git -C private-source rev-parse HEAD)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid canonical gio-OS SHA.' >&2; exit 1; }
+          test "$(git -C private-source branch --show-current)" = 'main'
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$sha" > gio-os-source-ref.txt
 
       - name: Publish sanitized authoritative HIVE state
         if: github.event_name != 'pull_request'
