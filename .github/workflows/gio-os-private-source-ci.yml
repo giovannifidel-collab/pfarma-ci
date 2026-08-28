@@ -11,6 +11,8 @@ on:
     paths:
       - 'gio-os-source-ref.txt'
       - '.github/workflows/gio-os-private-source-ci.yml'
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -31,21 +33,23 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Validate requested gio-OS SHA
-        id: source
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f gio-os-source-ref.txt
-          sha="$(tr -d '\r\n' < gio-os-source-ref.txt)"
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'gio-os-source-ref.txt is not a canonical commit SHA.' >&2; exit 1; }
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
       - name: Fail closed unless gio-OS private-source token is configured
         shell: bash
         env:
           SOURCE_TOKEN: ${{ secrets.GIO_OS_SOURCE_TOKEN }}
         run: test -n "$SOURCE_TOKEN"
+
+      - name: Resolve authoritative gio-OS main SHA
+        id: source
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.GIO_OS_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="$(git ls-remote "https://x-access-token:${SOURCE_TOKEN}@github.com/giovannifidel-collab/gio-OS.git" refs/heads/main | awk '{print $1}')"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Unable to resolve canonical gio-OS main SHA.' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$sha" > gio-os-source-ref.txt
 
       - name: Check out exact private gio-OS commit
         uses: actions/checkout@v4
@@ -95,7 +99,7 @@ jobs:
           PY
           git config user.name 'hive-state-bot'
           git config user.email 'hive-state-bot@users.noreply.github.com'
-          git add gio-os-state.json
+          git add gio-os-source-ref.txt gio-os-state.json
           if ! git diff --cached --quiet; then
             git commit -m "state(gio-os): sync ${SOURCE_SHA:0:12}"
             git push origin HEAD:main
