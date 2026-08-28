@@ -5,12 +5,13 @@ import crypto from 'node:crypto';
 
 const CDP=process.env.GEMINI_LAB_CDP_URL||'http://127.0.0.1:9225';
 const OUT_DIR=process.env.GEMINI_LAB_CERT_DIR||path.resolve('certifications');
-const TEST_ID='HIVE-GEMINI-STRESS-0002';
+const TEST_ID='HIVE-GEMINI-STRESS-0003';
 const nonce=crypto.randomBytes(4).toString('hex').toUpperCase();
 const MASTER={salt:7919,coeff:[17,29,43]};
 const SHARDS={A:[311,7,19,23,5],B:[41,53,67,71,73],C:[79,83,89,97,101]};
 const SUMS={A:SHARDS.A.reduce((a,b)=>a+b,0),B:SHARDS.B.reduce((a,b)=>a+b,0),C:SHARDS.C.reduce((a,b)=>a+b,0)};
-const EXPECTED=MASTER.salt+MASTER.coeff[0]*SUMS.A+MASTER.coeff[1]*SUMS.B+MASTER.coeff[2]*SUMS.C;
+const TERMS={A:MASTER.coeff[0]*SUMS.A,B:MASTER.coeff[1]*SUMS.B,C:MASTER.coeff[2]*SUMS.C};
+const EXPECTED=MASTER.salt+TERMS.A+TERMS.B+TERMS.C;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const log=(...x)=>console.log(new Date().toISOString(),...x);
 
@@ -94,23 +95,34 @@ async function stage(page,label,prompt,expectedEcho){
 
 async function waitFinal(page,timeout=120000){
   const started=Date.now();
-  const regex=new RegExp(`GEMINI_CERT_RESULT:${nonce}:(\\d+):(\\d+):(\\d+):(\\d+)`);
+  const regex=new RegExp(`GEMINI_CERT_RESULT:${nonce}:(\\d+):(\\d+):(\\d+):(\\d+):(\\d+):(\\d+):(\\d+):(\\d+):(\\d+):(\\d+):(\\d+)`);
   while(Date.now()-started<timeout){
     const a=await assistantText(page);
     let m=regex.exec(a);
-    if(m)return {validation:'assistant-container',sums:{A:Number(m[1]),B:Number(m[2]),C:Number(m[3])},checksum:Number(m[4])};
+    if(m)return parseFinal(m,'assistant-container');
     const b=await bodyText(page);
     m=regex.exec(b);
-    if(m)return {validation:'body-fallback',sums:{A:Number(m[1]),B:Number(m[2]),C:Number(m[3])},checksum:Number(m[4])};
+    if(m)return parseFinal(m,'body-fallback');
     await sleep(1000);
   }
   throw new Error(`TIMEOUT_WAITING_FOR_GEMINI_CERT_RESULT_${nonce}`);
 }
 
+function parseFinal(m,validation){
+  return {
+    validation,
+    salt:Number(m[1]),
+    coeff:[Number(m[2]),Number(m[3]),Number(m[4])],
+    sums:{A:Number(m[5]),B:Number(m[6]),C:Number(m[7])},
+    terms:{A:Number(m[8]),B:Number(m[9]),C:Number(m[10])},
+    checksum:Number(m[11])
+  };
+}
+
 async function main(){
   fs.mkdirSync(OUT_DIR,{recursive:true});
   const startedAt=new Date().toISOString();
-  log(`START ${TEST_ID} nonce=${nonce} expected=${EXPECTED} sums=${SUMS.A},${SUMS.B},${SUMS.C}`);
+  log(`START ${TEST_ID} nonce=${nonce} expected=${EXPECTED} sums=${SUMS.A},${SUMS.B},${SUMS.C} terms=${TERMS.A},${TERMS.B},${TERMS.C}`);
 
   const browser=await chromium.connectOverCDP(CDP);
   const context=browser.contexts()[0]||await browser.newContext();
@@ -143,17 +155,24 @@ async function main(){
   await send(page,[
     `${TEST_ID} / ${nonce}`,
     'Ora usa SOLO il MASTER e i tre shard memorizzati nei messaggi precedenti.',
-    'Calcola separatamente SUM_A, SUM_B, SUM_C e poi CHECKSUM = SALT + COEFF_A*SUM_A + COEFF_B*SUM_B + COEFF_C*SUM_C.',
+    'Prima recupera SALT e i tre coefficienti. Poi calcola SUM_A, SUM_B, SUM_C. Poi calcola TERM_A=COEFF_A*SUM_A, TERM_B=COEFF_B*SUM_B, TERM_C=COEFF_C*SUM_C. Infine CHECKSUM=SALT+TERM_A+TERM_B+TERM_C.',
     'Non aggiungere spiegazioni.',
-    `Rispondi ESATTAMENTE nel formato: GEMINI_CERT_RESULT:${nonce}:<SUM_A>:<SUM_B>:<SUM_C>:<CHECKSUM>`
+    `Rispondi ESATTAMENTE nel formato: GEMINI_CERT_RESULT:${nonce}:<SALT>:<COEFF_A>:<COEFF_B>:<COEFF_C>:<SUM_A>:<SUM_B>:<SUM_C>:<TERM_A>:<TERM_B>:<TERM_C>:<CHECKSUM>`
   ].join('\n'));
 
   const final=await waitFinal(page);
-  const passed=final.sums.A===SUMS.A && final.sums.B===SUMS.B && final.sums.C===SUMS.C && final.checksum===EXPECTED;
+  const passed=
+    final.salt===MASTER.salt &&
+    final.coeff[0]===MASTER.coeff[0] && final.coeff[1]===MASTER.coeff[1] && final.coeff[2]===MASTER.coeff[2] &&
+    final.sums.A===SUMS.A && final.sums.B===SUMS.B && final.sums.C===SUMS.C &&
+    final.terms.A===TERMS.A && final.terms.B===TERMS.B && final.terms.C===TERMS.C &&
+    final.checksum===EXPECTED;
+
   const cert={
     test_id:TEST_ID,nonce,provider:'gemini.google.com',transport:'persistent-browser-session',
     api_required:false,zero_cost_api_path:true,started_at:startedAt,completed_at:new Date().toISOString(),
-    expected_sums:SUMS,actual_sums:final.sums,expected_checksum:EXPECTED,actual_checksum:final.checksum,
+    expected:{master:MASTER,sums:SUMS,terms:TERMS,checksum:EXPECTED},
+    actual:{salt:final.salt,coeff:final.coeff,sums:final.sums,terms:final.terms,checksum:final.checksum},
     stages:{master:true,shard_a:true,shard_b:true,shard_c:true,final:true},
     response_validation:final.validation,stage_validation:'exact-data-echo',certified:passed
   };
@@ -164,8 +183,12 @@ async function main(){
   console.log(`GEMINI_CERTIFIED=${passed?'true':'false'}`);
   console.log(`TEST_ID=${TEST_ID}`);
   console.log(`NONCE=${nonce}`);
+  console.log(`EXPECTED_MASTER=${MASTER.salt}:${MASTER.coeff.join(',')}`);
+  console.log(`ACTUAL_MASTER=${final.salt}:${final.coeff.join(',')}`);
   console.log(`EXPECTED_SUMS=${SUMS.A},${SUMS.B},${SUMS.C}`);
   console.log(`ACTUAL_SUMS=${final.sums.A},${final.sums.B},${final.sums.C}`);
+  console.log(`EXPECTED_TERMS=${TERMS.A},${TERMS.B},${TERMS.C}`);
+  console.log(`ACTUAL_TERMS=${final.terms.A},${final.terms.B},${final.terms.C}`);
   console.log(`EXPECTED_CHECKSUM=${EXPECTED}`);
   console.log(`ACTUAL_CHECKSUM=${final.checksum}`);
   console.log(`CERTIFICATE=${file}`);
