@@ -63,20 +63,43 @@ def execute_family_cloud(contract: dict[str, Any], root: Path) -> list[str]:
     web = root / "web"
     web.mkdir(parents=True, exist_ok=True)
     index = web / "index.html"
-    text = index.read_text(encoding="utf-8")
-    original = text
+    if not index.exists():
+        raise ValueError("Family Cloud canonical home not found")
+    index_text = index.read_text(encoding="utf-8")
+    original_index = index_text
+
     if "installable" in objective or "offline" in objective or "application-shell" in objective:
-        (web / "manifest.webmanifest").write_text(json.dumps({"name":"Family Cloud Local Alpha","short_name":"Family Cloud","start_url":"/","display":"standalone","background_color":"#ffffff","theme_color":"#ffffff","icons":[]}, indent=2) + "\n", encoding="utf-8")
-        (web / "sw.js").write_text("const CACHE='family-cloud-shell-v1';\nconst SHELL=['/','/index.html','/app.js','/styles.css','/manifest.webmanifest'];\nself.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL))));\nself.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));\nself.addEventListener('fetch',e=>{if(e.request.method!=='GET'||new URL(e.request.url).origin!==self.location.origin)return;e.respondWith(fetch(e.request).catch(()=>caches.match(e.request).then(hit=>hit||(e.request.mode==='navigate'?caches.match('/index.html'):Response.error()))));});\n", encoding="utf-8")
-        text = ensure_before(text, "</head>", '  <link rel="manifest" href="/manifest.webmanifest">')
-        text = ensure_before(text, "</body>", "  <script>if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));</script>")
-        changed += ["web/manifest.webmanifest", "web/sw.js"]
+        manifest = web / "manifest.webmanifest"
+        service_worker = web / "sw.js"
+        manifest_content = json.dumps({"name":"Family Cloud Local Alpha","short_name":"Family Cloud","start_url":"/","display":"standalone","background_color":"#ffffff","theme_color":"#ffffff","icons":[]}, indent=2) + "\n"
+        service_worker_content = "const CACHE='family-cloud-shell-v1';\nconst SHELL=['/','/index.html','/app.js','/styles.css','/manifest.webmanifest'];\nself.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL))));\nself.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));\nself.addEventListener('fetch',e=>{if(e.request.method!=='GET'||new URL(e.request.url).origin!==self.location.origin)return;e.respondWith(fetch(e.request).catch(()=>caches.match(e.request).then(hit=>hit||(e.request.mode==='navigate'?caches.match('/index.html'):Response.error()))));});\n"
+        if not manifest.exists() or manifest.read_text(encoding="utf-8") != manifest_content:
+            manifest.write_text(manifest_content, encoding="utf-8")
+            changed.append("web/manifest.webmanifest")
+        if not service_worker.exists() or service_worker.read_text(encoding="utf-8") != service_worker_content:
+            service_worker.write_text(service_worker_content, encoding="utf-8")
+            changed.append("web/sw.js")
+        index_text = ensure_before(index_text, "</head>", '  <link rel="manifest" href="/manifest.webmanifest">')
+        index_text = ensure_before(index_text, "</body>", "  <script>if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));</script>")
+
     if "vault identity" in objective or "demo vault" in objective:
-        (web / "vault-identity.js").write_text("(()=>{const KEY='family-cloud.demo-vault-id';const VALID=/^fcv_[a-z0-9]{16,64}$/;let value=localStorage.getItem(KEY)||'';if(!VALID.test(value)){const bytes=new Uint8Array(12);crypto.getRandomValues(bytes);value='fcv_'+Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');localStorage.setItem(KEY,value);}document.documentElement.dataset.vaultId=value;window.familyCloudVaultId=value;})();\n", encoding="utf-8")
-        text = ensure_before(text, "</body>", '  <script src="/vault-identity.js"></script>')
-        changed.append("web/vault-identity.js")
-    if text != original:
-        index.write_text(text, encoding="utf-8")
+        alpha = web / "alpha.html"
+        if not alpha.exists():
+            raise ValueError("Family Cloud legacy alpha surface not found")
+        alpha_text = alpha.read_text(encoding="utf-8")
+        original_alpha = alpha_text
+        vault = web / "vault-identity.js"
+        vault_content = "(()=>{const KEY='family-cloud.demo-vault-id';const VALID=/^fcv_[a-z0-9]{16,64}$/;let value=localStorage.getItem(KEY)||'';if(!VALID.test(value)){const bytes=new Uint8Array(12);crypto.getRandomValues(bytes);value='fcv_'+Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');localStorage.setItem(KEY,value);}document.documentElement.dataset.vaultId=value;window.familyCloudVaultId=value;})();\n"
+        if not vault.exists() or vault.read_text(encoding="utf-8") != vault_content:
+            vault.write_text(vault_content, encoding="utf-8")
+            changed.append("web/vault-identity.js")
+        alpha_text = ensure_before(alpha_text, "</body>", '  <script src="/vault-identity.js"></script>')
+        if alpha_text != original_alpha:
+            alpha.write_text(alpha_text, encoding="utf-8")
+            changed.append("web/alpha.html")
+
+    if index_text != original_index:
+        index.write_text(index_text, encoding="utf-8")
         changed.append("web/index.html")
     return sorted(set(changed))
 
