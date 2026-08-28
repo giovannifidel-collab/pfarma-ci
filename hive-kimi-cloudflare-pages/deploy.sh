@@ -5,23 +5,25 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 PROJECT="hive-kimi-relay-pages"
-ACCOUNT_ID="6f6de52331e398c395d3de97c83011cd"
-export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
-
 CONFIG="$ROOT/wrangler.toml"
 DIST="$ROOT/dist"
 WRANGLER=(npx --yes wrangler@latest)
+ACCOUNT_ID="6f6de52331e398c395d3de97c83011cd"
+export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
 PROJECTS_LOG="/tmp/hive-kimi-pages-projects.json"
 CREATE_LOG="/tmp/hive-kimi-pages-create.log"
 DEPLOY_LOG="/tmp/hive-kimi-pages-deploy.log"
 HEALTH_BODY="/tmp/hive-kimi-pages-health.body"
 HEALTH_HEADERS="/tmp/hive-kimi-pages-health.headers"
 
-"${WRANGLER[@]}" whoami --config "$CONFIG"
 echo "Cloudflare account pinned for Pages: $CLOUDFLARE_ACCOUNT_ID"
+"${WRANGLER[@]}" whoami --config "$CONFIG"
 
+# Pages commands do not support a custom --config path. Because this script
+# already cd's into the project directory, Wrangler automatically discovers
+# ./wrangler.toml. The account is pinned through CLOUDFLARE_ACCOUNT_ID above.
 set +e
-"${WRANGLER[@]}" pages project list --json --config "$CONFIG" >"$PROJECTS_LOG" 2>/tmp/hive-kimi-pages-projects.err
+"${WRANGLER[@]}" pages project list --json >"$PROJECTS_LOG" 2>/tmp/hive-kimi-pages-projects.err
 LIST_STATUS=$?
 set -e
 if [[ "$LIST_STATUS" -ne 0 ]]; then
@@ -46,7 +48,7 @@ NODE
 if [[ "$PROJECT_EXISTS" != "1" ]]; then
   echo "Creating Cloudflare Pages project: $PROJECT"
   set +e
-  "${WRANGLER[@]}" pages project create "$PROJECT" --production-branch main --config "$CONFIG" >"$CREATE_LOG" 2>&1
+  "${WRANGLER[@]}" pages project create "$PROJECT" --production-branch main >"$CREATE_LOG" 2>&1
   CREATE_STATUS=$?
   set -e
   cat "$CREATE_LOG"
@@ -60,7 +62,7 @@ fi
 
 echo "Deploying HIVE Kimi relay to Cloudflare Pages..."
 set +e
-"${WRANGLER[@]}" pages deploy "$DIST" --project-name "$PROJECT" --branch main --config "$CONFIG" >"$DEPLOY_LOG" 2>&1
+"${WRANGLER[@]}" pages deploy "$DIST" --project-name "$PROJECT" --branch main >"$DEPLOY_LOG" 2>&1
 DEPLOY_STATUS=$?
 set -e
 cat "$DEPLOY_LOG"
