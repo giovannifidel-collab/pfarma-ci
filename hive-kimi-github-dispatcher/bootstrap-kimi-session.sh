@@ -4,11 +4,11 @@ set -euo pipefail
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_ROOT/.." && pwd)"
 CF_CONFIG="$REPO_ROOT/hive-kimi-cloudflare-worker/wrangler.toml"
-SESSION_KEY="session:kimi:storage-state-gz-b64"
+PROFILE_KEY="session:kimi:chromium-profile-tgz-b64"
 ROOT="$(mktemp -d)"
-STATE="$ROOT/kimi-storage-state.json"
-PAYLOAD="$ROOT/kimi-storage-state.json.gz.b64"
 PROFILE="$ROOT/chrome-profile"
+ARCHIVE="$ROOT/kimi-chromium-profile.tar.gz"
+PAYLOAD="$ROOT/kimi-chromium-profile.tar.gz.b64"
 DISPLAY_NUM=99
 DISPLAY=":$DISPLAY_NUM"
 NOVNC_PORT=6080
@@ -16,10 +16,10 @@ CDP_PORT=9222
 
 cleanup() {
   set +e
-  [[ -n "${CHROME_PID:-}" ]] && kill "$CHROME_PID" 2>/dev/null
-  [[ -n "${NOVNC_PID:-}" ]] && kill "$NOVNC_PID" 2>/dev/null
-  [[ -n "${VNC_PID:-}" ]] && kill "$VNC_PID" 2>/dev/null
-  [[ -n "${XVFB_PID:-}" ]] && kill "$XVFB_PID" 2>/dev/null
+  [[ -n "${CHROME_PID:-}" ]] && kill "$CHROME_PID" 2>/dev/null || true
+  [[ -n "${NOVNC_PID:-}" ]] && kill "$NOVNC_PID" 2>/dev/null || true
+  [[ -n "${VNC_PID:-}" ]] && kill "$VNC_PID" 2>/dev/null || true
+  [[ -n "${XVFB_PID:-}" ]] && kill "$XVFB_PID" 2>/dev/null || true
   sleep 1
   rm -rf "$ROOT" 2>/dev/null || true
 }
@@ -69,18 +69,19 @@ mkdir -p "$PROFILE"
 "$CHROME" \
   --no-sandbox \
   --disable-dev-shm-usage \
+  --password-store=basic \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port="$CDP_PORT" \
   --user-data-dir="$PROFILE" \
   --window-size=1400,950 \
-  'https://www.kimi.com/' >"$ROOT/chrome.log" 2>&1 &
+  'https://www.kimi.com/en' >"$ROOT/chrome.log" 2>&1 &
 CHROME_PID=$!
 
 sleep 3
 
 if [[ -n "${CODESPACE_NAME:-}" ]]; then
   echo
-  echo "KIMI LOGIN WINDOW READY"
+  echo "KIMI FULL PROFILE LOGIN WINDOW READY"
   echo "Open this authenticated Codespaces URL in your normal browser:"
   echo "https://${CODESPACE_NAME}-${NOVNC_PORT}.app.github.dev/vnc.html?autoconnect=true&resize=scale"
 else
@@ -88,36 +89,56 @@ else
 fi
 
 echo
-echo "Log in to Kimi in that cloud browser."
+echo "Log in to Kimi in that cloud browser and verify that the chat UI is authenticated."
 echo "Do NOT paste credentials into this terminal."
-read -r -p "When Kimi is fully logged in and the chat UI is visible, press ENTER here... " _
+read -r -p "When Kimi is fully logged in, press ENTER here... " _
 
-cat > "$ROOT/node/export-state.mjs" <<'JS'
-import { chromium } from 'playwright';
-const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
-const contexts = browser.contexts();
-if (!contexts.length) throw new Error('No Chromium context found');
-await contexts[0].storageState({ path: process.env.STATE_PATH, indexedDB: true });
-await browser.close();
-JS
+# Stop Chromium cleanly before archiving its user-data-dir.
+kill "$CHROME_PID" 2>/dev/null || true
+for _ in {1..20}; do
+  if ! kill -0 "$CHROME_PID" 2>/dev/null; then break; fi
+  sleep 0.5
+done
+kill -9 "$CHROME_PID" 2>/dev/null || true
+unset CHROME_PID
+sleep 1
 
-STATE_PATH="$STATE" node "$ROOT/node/export-state.mjs"
-[[ -s "$STATE" ]] || { echo "Failed to export Kimi browser state" >&2; exit 1; }
+# Remove process locks and disposable caches, but retain authentication databases,
+# IndexedDB, Local Storage, Service Workers and browser metadata.
+find "$PROFILE" -maxdepth 2 -type f \( -name 'SingletonLock' -o -name 'SingletonCookie' -o -name 'SingletonSocket' \) -delete 2>/dev/null || true
+find "$PROFILE" -type d \( \
+  -name 'Cache' -o -name 'Code Cache' -o -name 'GPUCache' -o -name 'DawnCache' -o \
+  -name 'ShaderCache' -o -name 'GrShaderCache' -o -name 'GraphiteDawnCache' -o \
+  -name 'Crashpad' -o -name 'BrowserMetrics' -o -name 'component_crx_cache' \
+\) -prune -exec rm -rf {} + 2>/dev/null || true
 
-gzip -c "$STATE" | base64 -w0 > "$PAYLOAD"
-[[ -s "$PAYLOAD" ]] || { echo "Failed to encode Kimi browser state" >&2; exit 1; }
+# Archive the complete persistent profile. Paths are relative so the runner can
+# restore it into a fresh Linux workspace.
+tar -C "$PROFILE" -czf "$ARCHIVE" .
+[[ -s "$ARCHIVE" ]] || { echo "Failed to archive Chromium profile" >&2; exit 1; }
+base64 -w0 "$ARCHIVE" > "$PAYLOAD"
+[[ -s "$PAYLOAD" ]] || { echo "Failed to encode Chromium profile" >&2; exit 1; }
 
-# Store the authenticated browser state directly in the existing private
-# Cloudflare KV namespace. GitHub Actions never needs a repository secret:
-# it will lease this state from the Worker using GitHub OIDC at runtime.
-"${WRANGLER[@]}" kv key put "$SESSION_KEY" \
+ARCHIVE_BYTES="$(wc -c < "$ARCHIVE")"
+PAYLOAD_BYTES="$(wc -c < "$PAYLOAD")"
+echo "HIVE_KIMI_PROFILE_ARCHIVE_BYTES=$ARCHIVE_BYTES"
+echo "HIVE_KIMI_PROFILE_PAYLOAD_BYTES=$PAYLOAD_BYTES"
+
+# Workers KV values are capped at 25 MiB. Keep safety headroom for the base64 value.
+if (( PAYLOAD_BYTES > 24000000 )); then
+  echo "Kimi Chromium profile payload is too large for the current KV transport ($PAYLOAD_BYTES bytes)." >&2
+  echo "Profile was not uploaded. We will need chunked/R2 storage instead." >&2
+  exit 1
+fi
+
+"${WRANGLER[@]}" kv key put "$PROFILE_KEY" \
   --path "$PAYLOAD" \
   --binding HIVE_KIMI_RESULTS \
   --remote \
   --config "$CF_CONFIG" >/dev/null
 
 echo
-echo "HIVE KIMI SESSION BOOTSTRAP READY"
-echo "Kimi browser state stored privately in HIVE Cloudflare KV."
+echo "HIVE KIMI FULL PROFILE BOOTSTRAP READY"
+echo "Complete Chromium profile stored privately in HIVE Cloudflare KV."
 echo "GitHub Actions secret required: NO"
 echo "Kimi credentials/session data committed to GitHub: NO"
