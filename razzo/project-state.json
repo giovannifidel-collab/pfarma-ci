@@ -1,9 +1,9 @@
 {
   "version": 7,
   "sourceOfTruth": "current-public-exact-refs-and-perfection-v1-closure-ledger",
-  "rediscoveryEpoch": "2026-08-11T08:23:00Z",
+  "rediscoveryEpoch": "2026-08-28T07:23:43Z",
   "factoryAllocationPaused": false,
-  "resumeReason": "Perfection P01 closures consumed; rediscover next safe product work from current exact refs.",
+  "resumeReason": "Explicit RAZZO V7 continuous-discovery queue anchors restored for every enabled product.",
   "projects": [
     {
       "id": "project-giovanni",
@@ -12,7 +12,7 @@
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "perfection=PG-P01-complete; action=rediscover-next-safe-work",
+      "queueHint": "issue=#1125; action=continuous-discovery; queue=active",
       "collisionDomain": "product/project-giovanni-perfection-next-discovery"
     },
     {
@@ -22,7 +22,7 @@
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "perfection=PF-P01-complete; action=rediscover-next-safe-work",
+      "queueHint": "issue=#2268; action=continuous-discovery; queue=active",
       "collisionDomain": "product/pfarma-perfection-next-discovery"
     },
     {
@@ -32,7 +32,7 @@
       "backpressure": false,
       "humanGate": false,
       "blocker": null,
-      "queueHint": "perfection=FC-P01-complete; action=rediscover-next-safe-work",
+      "queueHint": "issue=#872; action=continuous-discovery; queue=active",
       "collisionDomain": "product/family-cloud-perfection-next-discovery"
     }
   ]
