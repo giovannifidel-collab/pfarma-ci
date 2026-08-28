@@ -93,13 +93,16 @@ def discover_pfarma_cloud(root: Path) -> list[dict[str, Any]]:
 
 
 def discover_family_cloud(root: Path) -> list[dict[str, Any]]:
-    index = root / "web" / "index.html"
-    text = index.read_text(encoding="utf-8") if index.exists() else ""
+    web = root / "web"
+    index = web / "index.html"
+    alpha = web / "alpha.html"
+    index_text = index.read_text(encoding="utf-8") if index.exists() else ""
+    alpha_text = alpha.read_text(encoding="utf-8") if alpha.exists() else ""
     items: list[dict[str, Any]] = []
-    if not (root / "web" / "manifest.webmanifest").exists() or not (root / "web" / "sw.js").exists() or "manifest.webmanifest" not in text or "serviceWorker" not in text:
+    if not (web / "manifest.webmanifest").exists() or not (web / "sw.js").exists() or "manifest.webmanifest" not in index_text or "serviceWorker" not in index_text:
         items.append(candidate(candidate_id="free-local-pwa", product_objective="Make the local Family Cloud shell installable and reopenable offline with a bounded same-origin application-shell cache.", user_impact="After one online load, the alpha can reopen without connectivity.", rationale="The exact checkout lacks one or more local PWA elements.", acceptance_criteria=["The page links a local manifest and registers a same-origin service worker.", "Only the local application shell is cached."], definition_of_done="Manifest, service worker, registration and focused tests are present.", target_surfaces=["web/index.html", "web"], expected_product_effect="Family Cloud behaves as a bounded local-first PWA.", collision_domain="product/local-pwa-offline-reopen", evidence_required=["focused local PWA test", "non-empty diff"]))
-    if not (root / "web" / "vault-identity.js").exists() or "vault-identity.js" not in text:
-        items.append(candidate(candidate_id="free-local-vault-identity", product_objective="Give the signed-in local alpha a stable browser-local demo vault identity that survives reloads without a remote account service.", user_impact="A user reuses the same local vault identity across reloads.", rationale="The exact checkout has no dedicated local vault identity module linked from the served page.", acceptance_criteria=["A stable non-secret identifier is stored locally.", "Malformed identifiers are replaced without touching media data."], definition_of_done="A browser-local identity module and focused tests are present.", target_surfaces=["web/index.html", "web"], expected_product_effect="The local alpha has a durable demo-vault identity without production writes.", collision_domain="product/local-vault-identity", evidence_required=["focused vault identity test", "non-empty diff"]))
+    if not (web / "vault-identity.js").exists() or "vault-identity.js" not in alpha_text:
+        items.append(candidate(candidate_id="free-local-vault-identity", product_objective="Give the signed-in local alpha a stable browser-local demo vault identity that survives reloads without a remote account service.", user_impact="A user reuses the same local vault identity across reloads.", rationale="The exact checkout has no dedicated local vault identity module linked from the legacy alpha surface.", acceptance_criteria=["A stable non-secret identifier is stored locally.", "Malformed identifiers are replaced without touching media data.", "The durable canonical home does not load the legacy local-alpha identity runtime."], definition_of_done="A browser-local identity module is linked only from the legacy alpha surface and registry-controlled suites pass.", target_surfaces=["web/alpha.html", "web"], expected_product_effect="The local alpha has a durable demo-vault identity without production writes or canonical-home coupling.", collision_domain="product/local-vault-identity", evidence_required=["focused vault identity test", "canonical-home isolation", "non-empty diff"]))
     return items
 
 
