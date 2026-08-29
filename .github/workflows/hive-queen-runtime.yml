@@ -1,0 +1,86 @@
+name: HIVE Queen Runtime Relay
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '8,23,38,53 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-queen-runtime.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-queen-runtime-relay
+  cancel-in-progress: false
+
+jobs:
+  queen-cycle:
+    name: Queen autonomous cycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: pfarma-ci-trusted
+    env:
+      HIVE_BASE_URL: https://hive-alveare.pages.dev
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      QUEEN_RUNTIME_CONFIG: _hive/ops/queen/runtime/config.json
+      QUEEN_AGENT_REGISTRY: _hive/ops/queen/runtime/AGENT_REGISTRY.json
+      QUEEN_MANUAL_LOCKS: _hive/ops/queen/runtime/MANUAL_LOCKS.json
+      QUEEN_RUNTIME_STATE_DIR: .queen-runtime
+    steps:
+      - name: Check out public relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Check out HIVE Queen runtime read-only
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: main
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: _hive
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Restore Queen runtime memory
+        uses: actions/cache/restore@v4
+        with:
+          path: .queen-runtime
+          key: queen-runtime-relay-${{ github.run_id }}
+          restore-keys: |
+            queen-runtime-relay-
+
+      - name: Validate runtime syntax
+        run: node --check _hive/ops/queen/runtime/queen-runtime.mjs
+
+      - name: Run deterministic safety self-test
+        run: node _hive/ops/queen/runtime/queen-runtime.mjs --self-test
+
+      - name: WAKE → observe → plan → dispatch → verify → SLEEP
+        run: node _hive/ops/queen/runtime/queen-runtime.mjs
+
+      - name: Remove private HIVE checkout
+        if: always()
+        run: rm -rf _hive
+
+      - name: Persist Queen runtime memory
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .queen-runtime
+          key: queen-runtime-relay-${{ github.run_id }}
+
+      - name: Publish cycle audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-runtime-${{ github.run_id }}
+          path: .queen-runtime/
+          if-no-files-found: warn
+          retention-days: 14
