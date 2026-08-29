@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 
 const CDP=process.env.GROK_LAB_CDP_URL||'http://127.0.0.1:9226';
 const OUT=path.resolve('certifications');
-const TEST='HIVE-GROK-STRESS-0006R1';
+const TEST='HIVE-GROK-STRESS-0006R2';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const log=(...x)=>console.log(new Date().toISOString(),...x);
 
@@ -16,60 +16,124 @@ const DATASETS=[
 ];
 
 async function visible(page,sels){
- for(const s of sels){const a=page.locator(s),n=await a.count().catch(()=>0);for(let i=n-1;i>=0;i--){const x=a.nth(i);if(await x.isVisible().catch(()=>false))return x;}}
+ for(const s of sels){
+   const a=page.locator(s),n=await a.count().catch(()=>0);
+   for(let i=n-1;i>=0;i--){
+     const x=a.nth(i);
+     if(await x.isVisible().catch(()=>false)) return x;
+   }
+ }
  return null;
 }
+
 async function visibleEnabled(page,sels){
- for(const s of sels){const a=page.locator(s),n=await a.count().catch(()=>0);for(let i=n-1;i>=0;i--){const x=a.nth(i);if(await x.isVisible().catch(()=>false) && await x.isEnabled().catch(()=>false))return x;}}
+ for(const s of sels){
+   const a=page.locator(s),n=await a.count().catch(()=>0);
+   for(let i=n-1;i>=0;i--){
+     const x=a.nth(i);
+     if(await x.isVisible().catch(()=>false) && await x.isEnabled().catch(()=>false)) return x;
+   }
+ }
  return null;
 }
-async function composer(page){return visible(page,['[data-testid="grokInput"]','textarea[data-testid="grok-compose-input"]','textarea[aria-label*="Ask" i]','textarea[placeholder*="Ask" i]','div[contenteditable="true"][data-lexical-editor="true"]','div[contenteditable="true"]','textarea']);}
+
+async function composer(page){
+ return visible(page,[
+   '[data-testid="grokInput"]',
+   'textarea[data-testid="grok-compose-input"]',
+   'textarea[aria-label*="Ask" i]',
+   'textarea[placeholder*="Ask" i]',
+   'div[contenteditable="true"][data-lexical-editor="true"]',
+   'div[contenteditable="true"]',
+   'textarea'
+ ]);
+}
+
 async function body(page){return page.locator('body').innerText().catch(()=> '');}
-async function textOf(c){const tag=await c.evaluate(e=>e.tagName.toLowerCase()).catch(()=> 'div');return ['textarea','input'].includes(tag)?c.inputValue().catch(()=> ''):c.innerText().catch(()=> '');}
+async function textOf(c){
+ const tag=await c.evaluate(e=>e.tagName.toLowerCase()).catch(()=> 'div');
+ return ['textarea','input'].includes(tag)?c.inputValue().catch(()=> ''):c.innerText().catch(()=> '');
+}
 const literalCount=(txt,tok)=>tok?txt.split(tok).length-1:0;
-const SEND_SELECTORS=['button[aria-label="Submit"]','button[aria-label*="Send" i]','button[aria-label*="Submit" i]','button[data-testid="chat-submit"]','button[data-testid*="send" i]','button[data-testid*="submit" i]','button[type="submit"]'];
+
+const SEND_SELECTORS=[
+ 'button[aria-label="Submit"]',
+ 'button[aria-label*="Send" i]',
+ 'button[aria-label*="Submit" i]',
+ 'button[data-testid="chat-submit"]',
+ 'button[data-testid*="send" i]',
+ 'button[data-testid*="submit" i]',
+ 'button[type="submit"]'
+];
+
+async function settle(page,quietMs=1800,maxMs=15000){
+ let last=await body(page);
+ let changed=Date.now();
+ const start=Date.now();
+ while(Date.now()-start<maxMs){
+   await sleep(300);
+   const now=await body(page);
+   if(now!==last){last=now;changed=Date.now();}
+   if(Date.now()-changed>=quietMs) return;
+ }
+}
 
 async function send(page,text){
- const c=await composer(page); if(!c)throw new Error('GROK_COMPOSER_NOT_FOUND');
+ const c=await composer(page);
+ if(!c) throw new Error('GROK_COMPOSER_NOT_FOUND');
+
  await c.click();
  const tag=await c.evaluate(e=>e.tagName.toLowerCase()).catch(()=> 'div');
- if(['textarea','input'].includes(tag)) await c.fill(text);
- else await c.fill(text).catch(async()=>c.evaluate((e,t)=>{e.focus();e.textContent=t;e.dispatchEvent(new InputEvent('input',{bubbles:true,composed:true,inputType:'insertText',data:t}));},text));
+ if(['textarea','input'].includes(tag)) {
+   await c.fill(text);
+ } else {
+   await c.fill(text).catch(async()=>c.evaluate((e,t)=>{
+     e.focus();
+     e.textContent=t;
+     e.dispatchEvent(new InputEvent('input',{bubbles:true,composed:true,inputType:'insertText',data:t}));
+   },text));
+ }
 
  const inserted=(await textOf(c).catch(()=> '')).trim();
  if(inserted.length<5) throw new Error('GROK_TEXT_NOT_INSERTED');
 
  let btn=null;
  const readyStart=Date.now();
- while(Date.now()-readyStart<7000){
+ while(Date.now()-readyStart<30000){
    btn=await visibleEnabled(page,SEND_SELECTORS);
-   if(btn)break;
-   await sleep(200);
+   if(btn) break;
+   const current=(await textOf(c).catch(()=> '')).trim();
+   if(current.length<5) throw new Error('GROK_COMPOSER_CLEARED_BEFORE_SUBMIT');
+   await sleep(250);
  }
 
- if(btn){
-   await btn.click({timeout:5000});
-   log('SUBMIT button-enabled');
- }else{
-   await c.press('Enter');
-   log('SUBMIT enter-fallback');
+ if(!btn){
+   const anyBtn=await visible(page,SEND_SELECTORS);
+   const disabled=anyBtn ? !(await anyBtn.isEnabled().catch(()=>false)) : null;
+   throw new Error(`GROK_SUBMIT_NOT_READY disabled=${disabled}`);
  }
+
+ await btn.click({timeout:5000});
+ log('SUBMIT button-enabled');
 
  const st=Date.now();
- while(Date.now()-st<10000){
+ while(Date.now()-st<15000){
    const current=await textOf(c).catch(()=> '');
-   if(current.trim().length<5)return;
+   if(current.trim().length<5) return;
    await sleep(250);
  }
  throw new Error('GROK_PROMPT_NOT_SUBMITTED');
 }
 
 async function freshPage(context){
- for(const p of context.pages())if(p.url().includes('grok.com'))await p.close().catch(()=>{});
+ for(const p of context.pages()) if(p.url().includes('grok.com')) await p.close().catch(()=>{});
  const p=await context.newPage();
  await p.goto('https://grok.com/',{waitUntil:'domcontentloaded',timeout:60000});
  const st=Date.now();
- while(Date.now()-st<30000){if(await composer(p).catch(()=>null))return p;await sleep(1000);}
+ while(Date.now()-st<30000){
+   if(await composer(p).catch(()=>null)) return p;
+   await sleep(1000);
+ }
  throw new Error(`GROK_FRESH_CHAT_NOT_READY url=${p.url()}`);
 }
 
@@ -80,7 +144,11 @@ async function echoStage(page,label,prompt,echo){
  const st=Date.now();
  while(Date.now()-st<90000){
    const now=literalCount(await body(page),echo);
-   if(now>=before+2){log('PASS',label,'assistant-echo-verified');return;}
+   if(now>=before+2){
+     await settle(page);
+     log('PASS',label,'assistant-echo-verified');
+     return;
+   }
    await sleep(700);
  }
  throw new Error(`TIMEOUT_${label}_ASSISTANT_ECHO`);
@@ -90,16 +158,39 @@ async function askNumber(page,nonce,label,instruction,recheck=false){
  const marker=`GROK_${recheck?'RECHECK_':''}${label}:${nonce}:`;
  log('SEND',recheck?`RECHECK_${label}`:label);
  const extra=recheck?'Il valore precedente non supera un controllo di coerenza. Ricontrolla da zero usando i dati originali. Non ti fornisco il valore atteso.':'';
- await send(page,[`${TEST} / ${nonce}`,instruction,extra,'Nessuna spiegazione.',`Rispondi ESATTAMENTE: ${marker}<numero>`].filter(Boolean).join('\n'));
+ await send(page,[
+   `${TEST} / ${nonce}`,
+   instruction,
+   extra,
+   'Nessuna spiegazione.',
+   `Rispondi ESATTAMENTE: ${marker}<numero>`
+ ].filter(Boolean).join('\n'));
  const re=new RegExp(`${marker}(\\d+)`),st=Date.now();
- while(Date.now()-st<90000){const m=re.exec(await body(page));if(m){const v=Number(m[1]);log('RESULT',recheck?`RECHECK_${label}`:label,v);return v;}await sleep(700);}
+ while(Date.now()-st<90000){
+   const m=re.exec(await body(page));
+   if(m){
+     const v=Number(m[1]);
+     await settle(page);
+     log('RESULT',recheck?`RECHECK_${label}`:label,v);
+     return v;
+   }
+   await sleep(700);
+ }
  throw new Error(`TIMEOUT_${label}`);
 }
 
-function expected(d){const sums={},terms={};for(const k of ['A','B','C']){sums[k]=d.shards[k].reduce((a,b)=>a+b,0);terms[k]=d.coeff[k]*sums[k];}return {sums,terms,checksum:d.salt+terms.A+terms.B+terms.C};}
+function expected(d){
+ const sums={},terms={};
+ for(const k of ['A','B','C']){
+   sums[k]=d.shards[k].reduce((a,b)=>a+b,0);
+   terms[k]=d.coeff[k]*sums[k];
+ }
+ return {sums,terms,checksum:d.salt+terms.A+terms.B+terms.C};
+}
+
 async function checkedNumber(page,nonce,label,instruction,want){
  const first=await askNumber(page,nonce,label,instruction,false);
- if(first===want)return {first,final:first,rechecked:false,ok:true};
+ if(first===want) return {first,final:first,rechecked:false,ok:true};
  const second=await askNumber(page,nonce,label,instruction,true);
  return {first,final:second,rechecked:true,ok:second===want};
 }
@@ -111,15 +202,27 @@ async function trial(context,index,d){
  log('TRIAL_START',index,`nonce=${nonce}`,`expected=${exp.checksum}`);
 
  const master=`ACK_MASTER:${nonce}:${d.salt}:${d.coeff.A},${d.coeff.B},${d.coeff.C}`;
- await echoStage(page,'MASTER',[`${TEST} / ${nonce}`,`SALT=${d.salt}`,`COEFF_A=${d.coeff.A}`,`COEFF_B=${d.coeff.B}`,`COEFF_C=${d.coeff.C}`,`Memorizza e rispondi ESATTAMENTE: ${master}`].join('\n'),master);
+ await echoStage(page,'MASTER',[
+   `${TEST} / ${nonce}`,
+   `SALT=${d.salt}`,
+   `COEFF_A=${d.coeff.A}`,
+   `COEFF_B=${d.coeff.B}`,
+   `COEFF_C=${d.coeff.C}`,
+   `Memorizza e rispondi ESATTAMENTE: ${master}`
+ ].join('\n'),master);
+
  for(const k of ['A','B','C']){
    const e=`ACK_${k}:${nonce}:${d.shards[k].join(',')}`;
-   await echoStage(page,`SHARD_${k}`,[`${TEST} / ${nonce}`,`SHARD_${k}=${d.shards[k].join(',')}`,`Memorizza e rispondi ESATTAMENTE: ${e}`].join('\n'),e);
+   await echoStage(page,`SHARD_${k}`,[
+     `${TEST} / ${nonce}`,
+     `SHARD_${k}=${d.shards[k].join(',')}`,
+     `Memorizza e rispondi ESATTAMENTE: ${e}`
+   ].join('\n'),e);
  }
 
  const results={sums:{},terms:{}};
- for(const k of ['A','B','C'])results.sums[k]=await checkedNumber(page,nonce,`SUM_${k}`,`Ricalcola la somma di tutti gli elementi di SHARD_${k} memorizzato.`,exp.sums[k]);
- for(const k of ['A','B','C'])results.terms[k]=await checkedNumber(page,nonce,`TERM_${k}`,`Ricalcola da zero SUM_${k} dal relativo shard, poi calcola COEFF_${k} * SUM_${k}.`,exp.terms[k]);
+ for(const k of ['A','B','C']) results.sums[k]=await checkedNumber(page,nonce,`SUM_${k}`,`Ricalcola la somma di tutti gli elementi di SHARD_${k} memorizzato.`,exp.sums[k]);
+ for(const k of ['A','B','C']) results.terms[k]=await checkedNumber(page,nonce,`TERM_${k}`,`Ricalcola da zero SUM_${k} dal relativo shard, poi calcola COEFF_${k} * SUM_${k}.`,exp.terms[k]);
  results.checksum=await checkedNumber(page,nonce,'CHECKSUM','Ricalcola da zero le tre somme e i tre prodotti dai dati originali, poi calcola SALT + TERM_A + TERM_B + TERM_C.',exp.checksum);
 
  const fields=[...Object.values(results.sums),...Object.values(results.terms),results.checksum];
@@ -135,13 +238,22 @@ async function main(){
  const browser=await chromium.connectOverCDP(CDP);
  const context=browser.contexts()[0]||await browser.newContext();
  const trials=[];
- for(let i=0;i<DATASETS.length;i++)trials.push(await trial(context,i+1,DATASETS[i]));
+ for(let i=0;i<DATASETS.length;i++) trials.push(await trial(context,i+1,DATASETS[i]));
+
  const raw=trials.every(t=>t.raw_pass);
  const verified=trials.every(t=>t.verified_pass);
  const certified=verified;
  const mode=raw?'RAW_CERTIFIED':verified?'VERIFIER_CERTIFIED':'NOT_CERTIFIED';
  const file=path.join(OUT,`${TEST}-${Date.now()}.json`);
- fs.writeFileSync(file,JSON.stringify({test_id:TEST,trials,raw_pass:raw,verified_pass:verified,certification_mode:mode,certified},null,2));
+ fs.writeFileSync(file,JSON.stringify({
+   test_id:TEST,
+   trials,
+   raw_pass:raw,
+   verified_pass:verified,
+   certification_mode:mode,
+   certified
+ },null,2));
+
  console.log(`GROK_CERTIFIED=${certified}`);
  console.log(`TEST_ID=${TEST}`);
  console.log(`TRIALS=${trials.length}`);
@@ -149,7 +261,12 @@ async function main(){
  console.log(`VERIFIED_PASS=${verified}`);
  console.log(`CERTIFICATION_MODE=${mode}`);
  console.log(`CERTIFICATE=${file}`);
- if(!certified)process.exitCode=2;
+ if(!certified) process.exitCode=2;
  await browser.close().catch(()=>{});
 }
-main().catch(e=>{console.error('GROK_CERTIFIED=false');console.error(`ERROR=${e.message}`);process.exit(1);});
+
+main().catch(e=>{
+ console.error('GROK_CERTIFIED=false');
+ console.error(`ERROR=${e.message}`);
+ process.exit(1);
+});
