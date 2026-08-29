@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 
 const CDP=process.env.GROK_LAB_CDP_URL||'http://127.0.0.1:9226';
 const OUT=path.resolve('certifications');
-const TEST='HIVE-GROK-STRESS-0006R2';
+const TEST='HIVE-GROK-STRESS-0006R3';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const log=(...x)=>console.log(new Date().toISOString(),...x);
 
@@ -65,52 +65,100 @@ const SEND_SELECTORS=[
  'button[data-testid*="submit" i]',
  'button[type="submit"]'
 ];
+const STOP_SELECTORS=[
+ 'button[aria-label*="Stop" i]',
+ 'button[data-testid*="stop" i]',
+ 'button[title*="Stop" i]'
+];
 
-async function settle(page,quietMs=1800,maxMs=15000){
- let last=await body(page);
- let changed=Date.now();
- const start=Date.now();
+async function isGenerating(page){return !!(await visible(page,STOP_SELECTORS));}
+
+async function settle(page,quietMs=2200,maxMs=20000){
+ let last=await body(page), changed=Date.now(), start=Date.now();
  while(Date.now()-start<maxMs){
-   await sleep(300);
+   await sleep(350);
    const now=await body(page);
    if(now!==last){last=now;changed=Date.now();}
    if(Date.now()-changed>=quietMs) return;
  }
 }
 
-async function send(page,text){
- const c=await composer(page);
- if(!c) throw new Error('GROK_COMPOSER_NOT_FOUND');
+async function waitGenerationDone(page,maxMs=120000){
+ const start=Date.now();
+ let sawGenerating=false;
+ while(Date.now()-start<maxMs){
+   const generating=await isGenerating(page);
+   if(generating) sawGenerating=true;
+   if(!generating){
+     const c=await composer(page).catch(()=>null);
+     if(c){
+       await settle(page,1200,5000);
+       return;
+     }
+   }
+   await sleep(500);
+ }
+ throw new Error(`GROK_GENERATION_NOT_FINISHED saw_generating=${sawGenerating}`);
+}
 
+async function putText(page,c,text,mode='fill'){
  await c.click();
  const tag=await c.evaluate(e=>e.tagName.toLowerCase()).catch(()=> 'div');
- if(['textarea','input'].includes(tag)) {
+ if(mode==='keyboard'){
+   await c.press('ControlOrMeta+A').catch(()=>{});
+   await c.press('Backspace').catch(()=>{});
+   await page.keyboard.insertText(text);
+   return;
+ }
+ if(['textarea','input'].includes(tag)){
    await c.fill(text);
- } else {
+ }else{
    await c.fill(text).catch(async()=>c.evaluate((e,t)=>{
      e.focus();
      e.textContent=t;
      e.dispatchEvent(new InputEvent('input',{bubbles:true,composed:true,inputType:'insertText',data:t}));
    },text));
  }
+}
 
- const inserted=(await textOf(c).catch(()=> '')).trim();
+async function waitEnabledSubmit(page,maxMs){
+ const start=Date.now();
+ while(Date.now()-start<maxMs){
+   const btn=await visibleEnabled(page,SEND_SELECTORS);
+   if(btn) return btn;
+   await sleep(300);
+ }
+ return null;
+}
+
+async function send(page,text){
+ await waitGenerationDone(page);
+ let c=await composer(page);
+ if(!c) throw new Error('GROK_COMPOSER_NOT_FOUND');
+
+ await putText(page,c,text,'fill');
+ let inserted=(await textOf(c).catch(()=> '')).trim();
  if(inserted.length<5) throw new Error('GROK_TEXT_NOT_INSERTED');
 
- let btn=null;
- const readyStart=Date.now();
- while(Date.now()-readyStart<30000){
-   btn=await visibleEnabled(page,SEND_SELECTORS);
-   if(btn) break;
-   const current=(await textOf(c).catch(()=> '')).trim();
-   if(current.length<5) throw new Error('GROK_COMPOSER_CLEARED_BEFORE_SUBMIT');
-   await sleep(250);
+ let btn=await waitEnabledSubmit(page,45000);
+ if(!btn){
+   const generating=await isGenerating(page);
+   log('COMPOSER_REARM',`generating=${generating}`,`text_len=${inserted.length}`);
+   if(generating) await waitGenerationDone(page,90000);
+
+   c=await composer(page);
+   if(!c) throw new Error('GROK_COMPOSER_LOST_BEFORE_REARM');
+   await putText(page,c,text,'keyboard');
+   inserted=(await textOf(c).catch(()=> '')).trim();
+   if(inserted.length<5) throw new Error('GROK_TEXT_NOT_INSERTED_AFTER_REARM');
+   btn=await waitEnabledSubmit(page,15000);
  }
 
  if(!btn){
    const anyBtn=await visible(page,SEND_SELECTORS);
    const disabled=anyBtn ? !(await anyBtn.isEnabled().catch(()=>false)) : null;
-   throw new Error(`GROK_SUBMIT_NOT_READY disabled=${disabled}`);
+   const generating=await isGenerating(page);
+   throw new Error(`GROK_SUBMIT_NOT_READY disabled=${disabled} generating=${generating} text_len=${inserted.length}`);
  }
 
  await btn.click({timeout:5000});
@@ -126,12 +174,15 @@ async function send(page,text){
 }
 
 async function freshPage(context){
- for(const p of context.pages()) if(p.url().includes('grok.com')) await p.close().catch(()=>{});
+ const old=context.pages().filter(p=>p.url().includes('grok.com'));
  const p=await context.newPage();
  await p.goto('https://grok.com/',{waitUntil:'domcontentloaded',timeout:60000});
  const st=Date.now();
  while(Date.now()-st<30000){
-   if(await composer(p).catch(()=>null)) return p;
+   if(await composer(p).catch(()=>null)){
+     for(const x of old) await x.close().catch(()=>{});
+     return p;
+   }
    await sleep(1000);
  }
  throw new Error(`GROK_FRESH_CHAT_NOT_READY url=${p.url()}`);
@@ -145,7 +196,7 @@ async function echoStage(page,label,prompt,echo){
  while(Date.now()-st<90000){
    const now=literalCount(await body(page),echo);
    if(now>=before+2){
-     await settle(page);
+     await waitGenerationDone(page);
      log('PASS',label,'assistant-echo-verified');
      return;
    }
@@ -170,7 +221,7 @@ async function askNumber(page,nonce,label,instruction,recheck=false){
    const m=re.exec(await body(page));
    if(m){
      const v=Number(m[1]);
-     await settle(page);
+     await waitGenerationDone(page);
      log('RESULT',recheck?`RECHECK_${label}`:label,v);
      return v;
    }
@@ -245,14 +296,7 @@ async function main(){
  const certified=verified;
  const mode=raw?'RAW_CERTIFIED':verified?'VERIFIER_CERTIFIED':'NOT_CERTIFIED';
  const file=path.join(OUT,`${TEST}-${Date.now()}.json`);
- fs.writeFileSync(file,JSON.stringify({
-   test_id:TEST,
-   trials,
-   raw_pass:raw,
-   verified_pass:verified,
-   certification_mode:mode,
-   certified
- },null,2));
+ fs.writeFileSync(file,JSON.stringify({test_id:TEST,trials,raw_pass:raw,verified_pass:verified,certification_mode:mode,certified},null,2));
 
  console.log(`GROK_CERTIFIED=${certified}`);
  console.log(`TEST_ID=${TEST}`);
