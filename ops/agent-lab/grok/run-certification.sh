@@ -21,8 +21,7 @@ const context=browser.contexts()[0]||await browser.newContext();
 const keeper=await context.newPage();
 await keeper.goto('about:blank');
 console.log('GROK KEEPER PAGE READY');
-// Exit the local helper without browser.close(), so the remote Chromium stays alive.
 process.exit(0);
 JS
 
-node certify-v6.mjs
+node certify-v7.mjs
