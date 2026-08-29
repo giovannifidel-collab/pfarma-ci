@@ -15,8 +15,6 @@ on:
         type: choice
         options: [proof, product]
         default: proof
-  schedule:
-    - cron: '0 * * * *'
 
 permissions:
   contents: read
@@ -45,8 +43,6 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "value=proof" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
-            echo "value=product" >> "$GITHUB_OUTPUT"
           else
             echo "value=${{ inputs.mode || 'proof' }}" >> "$GITHUB_OUTPUT"
           fi
