@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: hive-queen-runtime-relay
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   queen-cycle:
