@@ -10,4 +10,4 @@ fi
 bash ./start-browser.sh
 
 export GROK_LAB_CDP_URL="${GROK_LAB_CDP_URL:-http://127.0.0.1:9226}"
-node certify-v4.mjs
+node certify-v5.mjs
