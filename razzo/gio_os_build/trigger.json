@@ -1,0 +1,10 @@
+{
+  "schema": "gio.os.distributed-build-trigger.v1",
+  "target": "lavender",
+  "release": "gio-OS-1.0.0-rc0",
+  "gioSourceSha": "e1004f7b88e9bcaf8a6773d21837d8d72ad8bbf9",
+  "mode": "public-source-working-set-wave",
+  "publicInputsOnly": true,
+  "privateSourceOnPublicWorkers": false,
+  "signingKeysOnPublicWorkers": false
+}
