@@ -32,5 +32,6 @@ export class KimiHybridAgent{
     }
     return this.browser.run(task,options);
   }
+  async recover(reason='unknown'){return this.browser.recover(reason);}
   close(){this.browser.close();}
 }
