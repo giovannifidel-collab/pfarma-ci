@@ -9,6 +9,9 @@ export class QwenBrowserAgent extends KeyboardBrowserAgent {
     if (!expectedText) return super.run(task, options);
 
     const started = now();
+    let baselineExpectedCount = 0;
+    let lastCount = 0;
+    let lastBody = '';
     try {
       await this.connect();
       const hs = await this.waitComposer(30000);
@@ -23,7 +26,7 @@ export class QwenBrowserAgent extends KeyboardBrowserAgent {
       const fresh = options.fresh ?? this.fresh;
       const freshOpened = fresh ? await this.freshChat() : false;
       const before = await this.bodyText();
-      const baselineExpectedCount = before.split(expectedText).length - 1;
+      baselineExpectedCount = before.split(expectedText).length - 1;
 
       if (!await this.waitIdle(30000)) throw new Error('QWEN_NOT_IDLE_BEFORE_SEND');
       await this.setComposer(String(task));
@@ -37,6 +40,8 @@ export class QwenBrowserAgent extends KeyboardBrowserAgent {
         if (s.blockedBy) throw new Error(`BLOCKED:${s.blockedBy}`);
         const body = await this.bodyText();
         const count = body.split(expectedText).length - 1;
+        lastBody = body;
+        lastCount = count;
         // One new occurrence is the submitted user prompt; the second is the
         // provider response. This mirrors Qwen's already-certified direct CDP
         // smoke/certification path and avoids the generic response envelope.
@@ -62,13 +67,51 @@ export class QwenBrowserAgent extends KeyboardBrowserAgent {
         }
         await sleep(600);
       }
-      throw new Error('QWEN_EXACT_RESPONSE_TIMEOUT');
+
+      const diagnostic = await this.eval(`(()=>{
+        const token=${JSON.stringify(expectedText)};
+        const visible=e=>{try{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}catch{return false}};
+        const all=[...document.querySelectorAll('body *')];
+        const matches=[];
+        for(const e of all){
+          const own=String(e.innerText||e.textContent||'');
+          if(!own.includes(token))continue;
+          const childHas=[...e.children].some(c=>String(c.innerText||c.textContent||'').includes(token));
+          if(childHas)continue;
+          matches.push({
+            tag:e.tagName?.toLowerCase()||null,
+            role:e.getAttribute?.('role')||null,
+            aria:e.getAttribute?.('aria-label')||null,
+            cls:String(e.className||'').slice(0,180),
+            visible:visible(e),
+            text:own.slice(0,500)
+          });
+          if(matches.length>=12)break;
+        }
+        const buttons=[...document.querySelectorAll('button,[role="button"]')].filter(visible).map(e=>String(e.getAttribute('aria-label')||e.innerText||'').trim()).filter(Boolean).slice(-30);
+        return {href:String(location.href||''),title:document.title,matches,buttons};
+      })()`).catch(()=>({href:null,title:null,matches:[],buttons:[]}));
+
+      const state = await this.uiState().catch(()=>({stop:null,composer:null,composerText:''}));
+      const diag = {
+        baseline:baselineExpectedCount,
+        count:lastCount,
+        delta:lastCount-baselineExpectedCount,
+        stop:state.stop,
+        composer:state.composer,
+        composer_text:String(state.composerText||'').slice(0,240),
+        href:diagnostic.href,
+        matches:diagnostic.matches,
+        buttons:diagnostic.buttons,
+        tail:lastBody.slice(-2200)
+      };
+      throw new Error(`QWEN_EXACT_RESPONSE_TIMEOUT_DIAG:${JSON.stringify(diag)}`);
     } catch (e) {
       const blocked = /^BLOCKED:/.test(e.message);
       return {
         status:blocked?'blocked':'error',
         text:e.message,
-        metadata:{agent_id:this.id,provider:this.config.product,port:this.port,transport:'browser-cdp',zero_cost_path:true,latency_ms:now()-started}
+        metadata:{agent_id:this.id,provider:this.config.product,port:this.port,transport:'browser-cdp',zero_cost_path:true,latency_ms:now()-started,baseline_expected_count:baselineExpectedCount,last_expected_count:lastCount}
       };
     }
   }
