@@ -9,14 +9,16 @@ mkdir -p "$PROFILE"
 ensure_kimi_target(){
   local list
   list="$(curl -fsS "http://127.0.0.1:${PORT}/json/list" 2>/dev/null || true)"
-  if printf '%s' "$list" | grep -Eiq 'https?://[^" ]*(kimi\.com|kimi\.ai|moonshot)'; then
+  # Prefer the international Kimi site. The mainland kimi.com UI can expose
+  # a login-only surface outside China and leave the send control disabled.
+  if printf '%s' "$list" | grep -Eiq 'https?://[^" ]*kimi\.ai'; then
     return 0
   fi
-  curl -fsS -X PUT "http://127.0.0.1:${PORT}/json/new?https%3A%2F%2Fwww.kimi.com%2F" >/dev/null 2>&1 || true
-  for _ in $(seq 1 20); do
+  curl -fsS -X PUT "http://127.0.0.1:${PORT}/json/new?https%3A%2F%2Fwww.kimi.ai%2F" >/dev/null 2>&1 || true
+  for _ in $(seq 1 30); do
     sleep .25
     list="$(curl -fsS "http://127.0.0.1:${PORT}/json/list" 2>/dev/null || true)"
-    if printf '%s' "$list" | grep -Eiq 'https?://[^" ]*(kimi\.com|kimi\.ai|moonshot)'; then
+    if printf '%s' "$list" | grep -Eiq 'https?://[^" ]*kimi\.ai'; then
       return 0
     fi
   done
@@ -48,7 +50,7 @@ nohup "$BROWSER" \
   --remote-debugging-address=127.0.0.1 --remote-debugging-port="$PORT" \
   --user-data-dir="$PROFILE" --disk-cache-size=134217728 --media-cache-size=33554432 \
   --no-first-run --no-default-browser-check --disable-dev-shm-usage --no-sandbox \
-  "https://www.kimi.com/" >"$PROFILE/chrome.log" 2>&1 &
+  "https://www.kimi.ai/" >"$PROFILE/chrome.log" 2>&1 &
 echo $! >"$PROFILE/chrome.pid"
 
 for _ in $(seq 1 75); do
