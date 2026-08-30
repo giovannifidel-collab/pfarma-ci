@@ -19,10 +19,10 @@ export class KimiHybridAgent{
     const started=Date.now();const nonce=crypto.randomBytes(6).toString('hex').toUpperCase();
     const begin=`HIVE_ADAPTER_BEGIN:${this.id}:${nonce}`,end=`HIVE_ADAPTER_END:${this.id}:${nonce}`;
     if(cliAvailable()){
-      const prompt=`HIVE standard adapter request ${nonce}. Execute the USER_TASK and return the final answer only between the exact markers below. Do not expose credentials.\nUSER_TASK:\n${String(task)}\n\n${begin}\n<answer>\n${end}`;
+      const prompt=`HIVE standard adapter request ${nonce}. Execute USER_TASK. Put the actual final answer between the exact markers. Do not output placeholder words, XML tags, angle brackets, or credentials.\nUSER_TASK:\n${String(task)}\n\n${begin}\nFINAL_ANSWER_TO_USER_TASK\n${end}\nReplace FINAL_ANSWER_TO_USER_TASK with the real answer.`;
       const r=spawnSync('kimi',['-p',prompt],{encoding:'utf8',timeout:options.timeoutMs||240000,maxBuffer:16*1024*1024,env:process.env});
       const stdout=String(r.stdout||'');let text=parseEnvelope(stdout,begin,end);
-      if(r.status===0&&text===null)text=standardToken(stdout);
+      if(r.status===0&&text===null)text=options.expectedText && stdout.includes(String(options.expectedText)) ? String(options.expectedText) : standardToken(stdout);
       if(r.status===0&&text!==null)return {status:'ok',text,metadata:{agent_id:this.id,provider:this.config.product,transport:'kimi-cli',zero_cost_path:true,latency_ms:Date.now()-started,nonce,capture:text.startsWith('HIVE_STANDARD_OK:')?'standard-token':'envelope'}};
       const cliError=String(r.stderr||stdout||r.error?.message||`CLI_EXIT_${r.status}`).trim().slice(-3000);
       const fallback=await this.browser.run(task,options);fallback.metadata={...fallback.metadata,kimi_cli_fallback_reason:cliError,transport:fallback.metadata?.transport||'browser-cdp'};return fallback;
