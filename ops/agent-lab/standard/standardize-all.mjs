@@ -86,7 +86,16 @@ for (const id of selected) {
     console.log(`EXPECTED=${expected}`);
     console.log(`ACTUAL=${row.actual}`);
     console.log(`PASS=${row.pass?'true':'false'}`);
-    if (!row.pass) row.error = out.status === 'ok' ? 'STANDARD_OUTPUT_MISMATCH' : out.text;
+    if (!row.pass) {
+      row.error = out.status === 'ok' ? 'STANDARD_OUTPUT_MISMATCH' : out.text;
+      const detail = {
+        transport: out.metadata?.transport || null,
+        fallback_reason: out.metadata?.kimi_cli_fallback_reason || null,
+        port: out.metadata?.port || null,
+        url: out.metadata?.url || null
+      };
+      console.log(`DETAIL=${JSON.stringify(detail)}`);
+    }
   } catch (e) {
     row.error = e.message;
     row.latency_ms = Date.now() - t0;
