@@ -42,7 +42,8 @@ async function attach(target){
     return r.result?.value;
   };
   await call('Runtime.enable');
-  return {ws,evalJs};
+  await call('Page.enable').catch(()=>{});
+  return {ws,call,evalJs};
 }
 
 if(!fs.existsSync(STATE_FILE)) throw new Error(`NO_CHECKPOINT ${STATE_FILE}`);
@@ -61,7 +62,24 @@ console.log(`CHECKPOINT_URL=${cur.url}`);
 const target=await createTarget(cur.url||'https://grok.com/');
 const cdp=await attach(target);
 try{
-  await sleep(3000);
+  const started=Date.now();
+  let reloaded=false;
+  let restored=false;
+  let lastBody='';
+  while(Date.now()-started<45000){
+    lastBody=await cdp.evalJs(`document.body?.innerText||''`).catch(()=> '');
+    if(lastBody.includes(${JSON.stringify(cur.nonce)})){
+      restored=true;
+      break;
+    }
+    if(!reloaded && Date.now()-started>15000){
+      console.log('CHECKPOINT_RELOAD=true');
+      await cdp.call('Page.reload',{ignoreCache:false}).catch(()=>{});
+      reloaded=true;
+    }
+    await sleep(1000);
+  }
+
   const info=await cdp.evalJs(`(()=>{
     const body=document.body?.innerText||'';
     const lines=body.split('\\n').map(s=>s.trim()).filter(Boolean);
@@ -79,10 +97,13 @@ try{
       ariaDisabled:b.getAttribute('aria-disabled')
     })).filter(x=>x.aria||x.testid||x.text).slice(-80);
     const candidates=lines.filter(s=>s.includes('GROK_')||s.includes(nonce)).slice(-80);
-    return {href:location.href,ready:document.readyState,interesting,candidates,buttons,tail:body.slice(-12000)};
+    return {href:location.href,ready:document.readyState,interesting,candidates,buttons,tail:body.slice(-12000),title:document.title};
   })()`);
   console.log(`URL=${info.href}`);
+  console.log(`TITLE=${info.title}`);
   console.log(`READY_STATE=${info.ready}`);
+  console.log(`CONTEXT_RESTORED=${restored}`);
+  console.log(`WAITED_MS=${Date.now()-started}`);
   console.log(`CANDIDATE_LINES=${JSON.stringify(info.candidates,null,2)}`);
   console.log(`INTERESTING_LINES=${JSON.stringify(info.interesting,null,2)}`);
   console.log(`BUTTONS=${JSON.stringify(info.buttons,null,2)}`);
