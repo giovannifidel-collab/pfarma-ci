@@ -104,12 +104,11 @@ export class BrowserAgent {
   }
 
   async bodyText() { return this.eval(`String(document.body?.innerText||'')`).catch(() => ''); }
-
   patternsJs(list = []) { return JSON.stringify(list.map(String)); }
 
   async uiState() {
     const cfg = this.config;
-    const x = await this.eval(`(()=>{
+    return this.eval(`(()=>{
       const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};
       const norm=e=>String(e?.getAttribute?.('aria-label')||e?.getAttribute?.('placeholder')||e?.innerText||e?.textContent||'').trim();
       const matches=(text,pats)=>pats.some(p=>{try{return new RegExp(p,'i').test(text)}catch{return false}});
@@ -129,7 +128,6 @@ export class BrowserAgent {
       const text=composer?String(composer.value||composer.innerText||composer.textContent||''):'';
       return {href:String(location.href||''),title:document.title,ready:document.readyState,composer:!!composer,composerTag:composer?.tagName?.toLowerCase()||null,composerText:text,submit:!!submit,submitText:submit?norm(submit):'',submitType:submit?.getAttribute('type')||null,stop:!!stop,blockedBy:block,bodyLength:body.length};
     })()`);
-    return x;
   }
 
   async waitComposer(timeout = 45000) {
@@ -191,18 +189,23 @@ export class BrowserAgent {
     return this.eval(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const pats=${this.patternsJs(this.config.submitPatterns)};const norm=e=>String(e?.getAttribute?.('aria-label')||e?.innerText||e?.value||'').trim();const match=t=>pats.some(p=>{try{return new RegExp(p,'i').test(t)}catch{return false}});const all=[...document.querySelectorAll('button,[role="button"],input[type="submit"]')].filter(visible);const e=all.find(x=>match(norm(x))&&!x.disabled&&x.getAttribute('aria-disabled')!=='true')||all.find(x=>x.getAttribute('type')==='submit'&&!x.disabled&&x.getAttribute('aria-disabled')!=='true');if(!e)return false;e.click();return true;})()`);
   }
 
+  async submitNearestForm() {
+    return this.eval(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const pats=${this.patternsJs(this.config.composerPatterns)};const norm=e=>String(e?.getAttribute?.('aria-label')||e?.getAttribute?.('placeholder')||e?.innerText||e?.textContent||'').trim();const match=t=>pats.some(p=>{try{return new RegExp(p,'i').test(t)}catch{return false}});const all=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].filter(visible);const e=all.find(x=>match(norm(x)))||all.find(x=>x.tagName==='TEXTAREA')||all.find(x=>x.getAttribute('contenteditable')==='true')||all.find(x=>x.getAttribute('role')==='textbox')||null;if(!e)return false;const f=e.closest('form');if(!f)return false;try{if(typeof f.requestSubmit==='function')f.requestSubmit();else f.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));return true}catch{return false}})()`);
+  }
+
   async pressEnter() {
     const info = await this.findComposerInfo(); if (!info) return false;
-    await this.call('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13 });
-    await this.call('Input.dispatchKeyEvent', { type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13 });
+    await this.call('Input.dispatchKeyEvent', { type:'keyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, nativeVirtualKeyCode:13 });
+    await this.call('Input.dispatchKeyEvent', { type:'char', text:'\r', unmodifiedText:'\r', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, nativeVirtualKeyCode:13 }).catch(()=>{});
+    await this.call('Input.dispatchKeyEvent', { type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, nativeVirtualKeyCode:13 });
     return true;
   }
 
-  async verifySubmitted(requestMarker, timeout = 15000) {
+  async verifySubmitted(requestMarker, timeout = 10000) {
     const deadline = now() + timeout;
     while (now() < deadline) {
       const s = await this.uiState(); const b = await this.bodyText();
-      if (!s.composerText.includes(requestMarker) && b.includes(requestMarker)) return true;
+      if (!s.composerText.includes(requestMarker) && (b.includes(requestMarker) || s.stop || s.composerText.trim()==='')) return true;
       await sleep(250);
     }
     return false;
@@ -211,13 +214,21 @@ export class BrowserAgent {
   async submitPrompt(prompt, requestMarker) {
     if (!await this.waitIdle()) throw new Error('NOT_IDLE_BEFORE_SEND');
     await this.setComposer(prompt);
-    let method = null;
-    const ready = await this.waitSubmitReady(this.config.submitWaitMs || 12000);
-    if (ready && await this.clickSubmit()) method = 'button';
-    if (!method && this.config.enterSubmit !== false && await this.pressEnter()) method = 'enter';
-    if (!method) throw new Error('NO_SUBMIT_METHOD');
-    if (!await this.verifySubmitted(requestMarker)) throw new Error(`PROMPT_NOT_SUBMITTED:${method}`);
-    return method;
+    const attempts=[];
+    const ready = await this.waitSubmitReady(this.config.submitWaitMs || 8000);
+    if (ready && await this.clickSubmit()) {
+      attempts.push('button');
+      if (await this.verifySubmitted(requestMarker,7000)) return 'button';
+    }
+    if (this.config.enterSubmit !== false && await this.pressEnter()) {
+      attempts.push('enter');
+      if (await this.verifySubmitted(requestMarker,7000)) return 'enter';
+    }
+    if (await this.submitNearestForm()) {
+      attempts.push('form');
+      if (await this.verifySubmitted(requestMarker,7000)) return 'form';
+    }
+    throw new Error(`PROMPT_NOT_SUBMITTED:${attempts.join('+')||'none'}`);
   }
 
   async freshChat() {
@@ -239,7 +250,7 @@ export class BrowserAgent {
     }
   }
 
-  async waitEnvelope(begin, end, timeout = 180000) {
+  async waitEnvelope(begin, end, timeout = 180000, expectedText = null, baselineExpectedCount = 0) {
     const deadline = now() + timeout; let last = ''; let stable = 0;
     while (now() < deadline) {
       const s = await this.uiState();
@@ -251,10 +262,17 @@ export class BrowserAgent {
         if (j > i) {
           const value = b.slice(i + begin.length, j).trim();
           if (value === last) stable++; else { last = value; stable = 1; }
-          if (stable >= 3 && await this.waitIdle(30000)) return value;
+          if (stable >= 2 && await this.waitIdle(20000)) return value;
         }
       }
-      await sleep(650);
+      if (expectedText) {
+        const count=b.split(expectedText).length-1;
+        if(count>baselineExpectedCount && !s.stop) {
+          await sleep(700);
+          return expectedText;
+        }
+      }
+      await sleep(500);
     }
     throw new Error('RESPONSE_ENVELOPE_TIMEOUT');
   }
@@ -271,9 +289,12 @@ export class BrowserAgent {
       if (hs.blockedBy) return { status:'blocked', text:`blocked:${hs.blockedBy}`, metadata:{agent_id:this.id,port:this.port,url:hs.href} };
       const fresh = options.fresh ?? this.fresh;
       const freshOpened = fresh ? await this.freshChat() : false;
-      const prompt = `${requestMarker}\nUSER_TASK:\n${String(task)}\n\nOUTPUT_PROTOCOL:\nReturn the final answer only between these exact markers. Do not repeat the request marker.\n${begin}\n<answer>\n${end}`;
+      const expectedText = options.expectedText ? String(options.expectedText) : null;
+      const before = await this.bodyText();
+      const baselineExpectedCount = expectedText ? before.split(expectedText).length - 1 : 0;
+      const prompt = `${requestMarker}\nUSER_TASK:\n${String(task)}\n\nOUTPUT_PROTOCOL:\nExecute USER_TASK. Put the actual final answer between the two exact markers below. Do not output placeholder words, XML tags, angle brackets, or the request marker.\n${begin}\nFINAL_ANSWER_TO_USER_TASK\n${end}\nReplace FINAL_ANSWER_TO_USER_TASK with the real answer.`;
       const submitMethod = await this.submitPrompt(prompt, requestMarker);
-      const text = await this.waitEnvelope(begin, end, options.timeoutMs || this.config.timeoutMs || 180000);
+      const text = await this.waitEnvelope(begin, end, options.timeoutMs || this.config.timeoutMs || 180000, expectedText, baselineExpectedCount);
       const s = await this.uiState();
       return { status:'ok', text, metadata:{ agent_id:this.id, provider:this.config.product, port:this.port, url:s.href, fresh_chat:freshOpened, submit_method:submitMethod, transport:'browser-cdp', zero_cost_path:true, latency_ms:now()-started, nonce } };
     } catch (e) {
