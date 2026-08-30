@@ -1,0 +1,46 @@
+name: GIO OS Distributed Source Probe
+
+on:
+  push:
+    branches: [gio-os-distributed-build]
+    paths:
+      - 'razzo/gio_os_build/trigger.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gio-os-distributed-source-probe
+  cancel-in-progress: true
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify public shard contract
+        run: python3 razzo/gio_os_build/shard_task.py self-test
+
+      - name: Dispatch public source probes
+        env:
+          RAZZO_FABRIC_TOKEN: ${{ secrets.RAZZO_FABRIC_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          python3 razzo/gio_os_build/dispatch_probe_wave.py \
+            --source-sha "$source_sha" \
+            --output gio-build-dispatch
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gio-os-source-probe-dispatch-${{ github.sha }}
+          path: gio-build-dispatch/
+          retention-days: 3
+          if-no-files-found: error
