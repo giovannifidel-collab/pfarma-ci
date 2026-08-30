@@ -12,6 +12,37 @@ function qwenProviderBlock(text) {
 }
 
 export class QwenBrowserAgent extends KeyboardBrowserAgent {
+  async recycleQwenTarget() {
+    const port = this.config.port || this.port || 9228;
+    const base = `http://127.0.0.1:${port}`;
+    try {
+      const listResponse = await fetch(`${base}/json/list`, { signal:AbortSignal.timeout(4000) });
+      if (!listResponse.ok) throw new Error(`HTTP_${listResponse.status}_QWEN_JSON_LIST`);
+      const targets = await listResponse.json();
+      const qwenPages = targets.filter(t => t?.type === 'page' && this.config.targetPattern.test(String(t.url || '')));
+
+      for (const target of qwenPages) {
+        if (!target?.id) continue;
+        await fetch(`${base}/json/close/${encodeURIComponent(target.id)}`, { signal:AbortSignal.timeout(4000) }).catch(() => null);
+      }
+
+      await sleep(700);
+      const opened = await fetch(`${base}/json/new?${encodeURIComponent('https://chat.qwen.ai/')}`, {
+        method:'PUT',
+        signal:AbortSignal.timeout(6000)
+      });
+      if (!opened.ok) throw new Error(`HTTP_${opened.status}_QWEN_JSON_NEW`);
+      const target = await opened.json();
+      if (target?.id) {
+        await fetch(`${base}/json/activate/${encodeURIComponent(target.id)}`, { signal:AbortSignal.timeout(4000) }).catch(() => null);
+      }
+      await sleep(1800);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async connect() {
     let lastError = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -22,7 +53,8 @@ export class QwenBrowserAgent extends KeyboardBrowserAgent {
         const retryable = /^(CDP_TIMEOUT_Runtime\.enable|CDP_CONNECT_TIMEOUT|CDP_CONNECT_ERROR|PAGE_WEBSOCKET_NOT_FOUND)$/.test(String(e.message || ''));
         if (!retryable || attempt === 3) throw e;
         this.close();
-        await sleep(700 * attempt);
+        await this.recycleQwenTarget();
+        await sleep(900 * attempt);
       }
     }
     throw lastError || new Error('QWEN_CDP_CONNECT_FAILED');
