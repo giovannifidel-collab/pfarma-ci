@@ -3,6 +3,14 @@ import { KeyboardBrowserAgent } from './keyboard-browser-agent.mjs';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const now = () => Date.now();
 
+function qwenProviderBlock(text) {
+  const s = String(text || '');
+  if (/you have reached the daily usage limit/i.test(s)) return 'qwen_daily_usage_limit';
+  if (/daily usage limit/i.test(s) && /wait\s+\d+\s+hours?/i.test(s)) return 'qwen_daily_usage_limit';
+  if (/issue connecting to qwen/i.test(s) && /usage limit/i.test(s)) return 'qwen_daily_usage_limit';
+  return null;
+}
+
 export class QwenBrowserAgent extends KeyboardBrowserAgent {
   async run(task, options = {}) {
     const expectedText = options.expectedText ? String(options.expectedText) : null;
@@ -26,6 +34,14 @@ export class QwenBrowserAgent extends KeyboardBrowserAgent {
       const fresh = options.fresh ?? this.fresh;
       const freshOpened = fresh ? await this.freshChat() : false;
       const before = await this.bodyText();
+      const preBlock = qwenProviderBlock(before);
+      if (preBlock) {
+        return {
+          status:'blocked',
+          text:`blocked:${preBlock}`,
+          metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:hs.href,fresh_chat:freshOpened,transport:'browser-cdp',zero_cost_path:true,provider_block:preBlock,latency_ms:now()-started}
+        };
+      }
       baselineExpectedCount = before.split(expectedText).length - 1;
 
       if (!await this.waitIdle(30000)) throw new Error('QWEN_NOT_IDLE_BEFORE_SEND');
@@ -39,6 +55,14 @@ export class QwenBrowserAgent extends KeyboardBrowserAgent {
         const s = await this.uiState();
         if (s.blockedBy) throw new Error(`BLOCKED:${s.blockedBy}`);
         const body = await this.bodyText();
+        const providerBlock = qwenProviderBlock(body);
+        if (providerBlock) {
+          return {
+            status:'blocked',
+            text:`blocked:${providerBlock}`,
+            metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:s.href,fresh_chat:freshOpened,transport:'browser-cdp',zero_cost_path:true,provider_block:providerBlock,latency_ms:now()-started}
+          };
+        }
         const count = body.split(expectedText).length - 1;
         lastBody = body;
         lastCount = count;
