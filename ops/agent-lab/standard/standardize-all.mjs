@@ -44,6 +44,13 @@ console.log(`MODE=${healthOnly?'health':'standardization'}`);
 console.log(`AGENTS=${selected.join(',')}`);
 console.log('');
 
+function normalizeProbeOutput(v){
+  let s=String(v||'').trim();
+  s=s.replace(/^<answer>\s*/i,'').replace(/\s*<\/answer>$/i,'').trim();
+  s=s.replace(/^['"`]+|['"`]+$/g,'').trim();
+  return s;
+}
+
 for (const id of selected) {
   const agent = getAgent(id);
   const row = { id, pass:false };
@@ -68,10 +75,11 @@ for (const id of selected) {
     const nonce = crypto.randomBytes(4).toString('hex').toUpperCase();
     const expected = `HIVE_STANDARD_OK:${id}:${nonce}`;
     const task = `Standardization probe. Return exactly this token and nothing else: ${expected}`;
-    const out = await agent.run(task, { fresh: !noFresh });
+    const out = await agent.run(task, { fresh: !noFresh, expectedText: expected });
     row.output = out;
     row.expected = expected;
-    row.actual = String(out.text || '').trim();
+    row.raw_actual = String(out.text || '').trim();
+    row.actual = normalizeProbeOutput(out.text);
     row.pass = out.status === 'ok' && row.actual === expected;
     row.latency_ms = Date.now() - t0;
     console.log(`RUN_STATUS=${out.status}`);
@@ -85,7 +93,7 @@ for (const id of selected) {
     console.log(`PASS=false ERROR=${JSON.stringify(e.message)}`);
   } finally {
     agent.close();
-    results.push(...(results.includes(row) ? [] : [row]));
+    results.push(...(results.includes(row) ? [] : [row]);
     console.log('');
   }
 }
