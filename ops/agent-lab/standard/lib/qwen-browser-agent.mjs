@@ -12,6 +12,22 @@ function qwenProviderBlock(text) {
 }
 
 export class QwenBrowserAgent extends KeyboardBrowserAgent {
+  async connect() {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await super.connect();
+      } catch (e) {
+        lastError = e;
+        const retryable = /^(CDP_TIMEOUT_Runtime\.enable|CDP_CONNECT_TIMEOUT|CDP_CONNECT_ERROR|PAGE_WEBSOCKET_NOT_FOUND)$/.test(String(e.message || ''));
+        if (!retryable || attempt === 3) throw e;
+        this.close();
+        await sleep(700 * attempt);
+      }
+    }
+    throw lastError || new Error('QWEN_CDP_CONNECT_FAILED');
+  }
+
   async run(task, options = {}) {
     const expectedText = options.expectedText ? String(options.expectedText) : null;
     if (!expectedText) return super.run(task, options);
