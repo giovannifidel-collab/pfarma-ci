@@ -5,11 +5,12 @@ import { KimiHybridAgent } from './lib/kimi-hybrid-agent.mjs';
 import { DuckBrowserAgent } from './lib/duck-browser-agent.mjs';
 import { MetaBrowserAgent } from './lib/meta-browser-agent.mjs';
 import { QwenBrowserAgent } from './lib/qwen-browser-agent.mjs';
+import { GeminiBrowserAgent } from './lib/gemini-browser-agent.mjs';
 
 export const AGENT_CONFIGS = [
   {id:'kimi',product:'Kimi Web / Kimi Code',port:9223,scanPorts:[9223],startScript:'kimi/start-browser.sh',targetPattern:/kimi\.(com|ai)|moonshot/i,composerPatterns:['ask.*kimi','message.*kimi','chat with kimi','send a message','^message$'],submitPatterns:['^send$','send message','submit'],inputMode:'keyboard',blockPatterns:['log in to kimi','sign in to kimi','continue with.*(google|apple|phone)'],freshChat:true},
   {id:'claude',product:'Claude Web',port:9224,startScript:'claude/start-browser.sh',targetPattern:/claude\.ai/i,composerPatterns:['message claude','ask claude','send a message','^message$'],submitPatterns:['send message','^send$'],inputMode:'keyboard',blockPatterns:['log in to claude','sign in to claude'],freshChat:true},
-  {id:'gemini',product:'Gemini Web',port:9225,startScript:'gemini/start-browser.sh',targetPattern:/gemini\.google\.com/i,composerPatterns:['enter a prompt','ask gemini','message gemini','prompt'],submitPatterns:['send message','^send$'],inputMode:'keyboard',blockPatterns:['sign in to gemini','log in to gemini'],freshChat:true},
+  {id:'gemini',product:'Gemini Web',port:9225,startScript:'gemini/start-browser.sh',targetPattern:/gemini\.google\.com/i,composerPatterns:['enter a prompt','ask gemini','message gemini','prompt'],submitPatterns:['send message','^send$'],inputMode:'gemini',blockPatterns:['sign in to gemini','log in to gemini'],freshChat:true,timeoutMs:150000},
   {id:'deepseek',product:'DeepSeek Web',port:9227,startScript:'deepseek/start-browser.sh',targetPattern:/chat\.deepseek\.com|deepseek\.com/i,composerPatterns:['message deepseek','ask deepseek','send a message','^message$'],submitPatterns:['^send$','send message'],inputMode:'keyboard',blockPatterns:['phone number / email address','/sign_in'],freshChat:true},
   {id:'qwen',product:'Qwen Web',port:9228,startScript:'qwen/start-browser.sh',targetPattern:/chat\.qwen\.ai/i,composerPatterns:['ask qwen','message qwen','send a message'],submitPatterns:['^send$','send message','submit'],inputMode:'qwen',blockPatterns:[],freshChat:true,timeoutMs:150000},
   {id:'mistral',product:'Mistral Vibe Web / Fast',port:9229,startScript:'mistral/start-browser.sh',targetPattern:/chat\.mistral\.ai/i,composerPatterns:['ask.*mistral','message.*mistral','send a message','^message$'],submitPatterns:['^send$','send message'],inputMode:'keyboard',blockPatterns:['log in to mistral','sign in to mistral'],freshChat:true},
@@ -23,6 +24,7 @@ export function buildAgents({rootDir,fresh=true}={}){
   return new Map(AGENT_CONFIGS.map(c=>{
     const opts={rootDir,fresh};
     if(c.id==='kimi')return [c.id,new KimiHybridAgent(c,opts)];
+    if(c.inputMode==='gemini')return [c.id,new GeminiBrowserAgent(c,opts)];
     if(c.inputMode==='qwen')return [c.id,new QwenBrowserAgent(c,opts)];
     if(c.inputMode==='meta')return [c.id,new MetaBrowserAgent(c,opts)];
     if(c.inputMode==='duck')return [c.id,new DuckBrowserAgent(c,opts)];
