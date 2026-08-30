@@ -5,6 +5,7 @@ on:
     branches: [hive-cloud-computer-v0]
     paths:
       - 'ops/agent-lab/standard/**'
+      - 'ops/agent-lab/integration/**'
       - 'ops/agent-lab/kimi/**'
       - '.github/workflows/hive-agent-standard-static.yml'
   workflow_dispatch:
@@ -24,15 +25,26 @@ jobs:
       - name: Syntax check
         run: |
           node --check ops/agent-lab/standard/lib/browser-agent.mjs
+          node --check ops/agent-lab/standard/lib/keyboard-browser-agent.mjs
+          node --check ops/agent-lab/standard/lib/marker-browser-agent.mjs
+          node --check ops/agent-lab/standard/lib/kimi-browser-agent.mjs
           node --check ops/agent-lab/standard/lib/kimi-hybrid-agent.mjs
+          node --check ops/agent-lab/standard/lib/gemini-browser-agent.mjs
+          node --check ops/agent-lab/standard/lib/qwen-browser-agent.mjs
+          node --check ops/agent-lab/standard/lib/meta-browser-agent.mjs
+          node --check ops/agent-lab/standard/lib/duck-browser-agent.mjs
           node --check ops/agent-lab/standard/agents.mjs
           node --check ops/agent-lab/standard/index.mjs
           node --check ops/agent-lab/standard/standardize-all.mjs
           node --check ops/agent-lab/standard/run-one.mjs
           node --check ops/agent-lab/standard/validate-static.mjs
+          node --check ops/agent-lab/integration/queen-router.mjs
+          node --check ops/agent-lab/integration/promote-registry.mjs
+          node --check ops/agent-lab/integration/integration-test.mjs
       - name: Contract and registry check
         run: node ops/agent-lab/standard/validate-static.mjs
       - name: Shell syntax
         run: |
           bash -n ops/agent-lab/standard/standardize-all.sh
+          bash -n ops/agent-lab/integration/finalize-hive.sh
           bash -n ops/agent-lab/kimi/start-browser.sh
