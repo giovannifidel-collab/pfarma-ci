@@ -1,6 +1,7 @@
 import { BrowserAgent } from './browser-agent.mjs';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const count=(text,token)=>token?String(text||'').split(token).length-1:0;
 
 export class DuckBrowserAgent extends BrowserAgent {
   async dismissTips(){
@@ -37,5 +38,68 @@ export class DuckBrowserAgent extends BrowserAgent {
     if(!await this.clickDuckSend())throw new Error('DUCK_SEND_CLICK_FAILED');
     if(!await this.verifySubmitted(requestMarker,15000))throw new Error('DUCK_PROMPT_NOT_SUBMITTED');
     return 'send-button-certified-path';
+  }
+
+  async run(task,options={}){
+    const expectedText=options.expectedText?String(options.expectedText):null;
+    if(!expectedText)return super.run(task,options);
+
+    const started=Date.now();
+    try{
+      await this.connect();
+      const hs=await this.waitComposer(30000);
+      if(hs.blockedBy){
+        return {status:'blocked',text:`blocked:${hs.blockedBy}`,metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:hs.href,transport:'browser-cdp',zero_cost_path:true,latency_ms:Date.now()-started}};
+      }
+
+      const fresh=options.fresh??this.fresh;
+      const freshOpened=fresh?await this.freshChat():false;
+      const before=count(await this.bodyText(),expectedText);
+      const submitMethod=await this.submitPrompt(String(task),expectedText);
+      const timeout=options.timeoutMs||this.config.timeoutMs||180000;
+      const deadline=Date.now()+timeout;
+      let last=-1;
+      let stable=0;
+
+      while(Date.now()<deadline){
+        const s=await this.uiState();
+        if(s.blockedBy)throw new Error(`BLOCKED:${s.blockedBy}`);
+        const body=await this.bodyText();
+        const n=count(body,expectedText);
+        if(n>=before+2){
+          if(n===last)stable++;else stable=1;
+          last=n;
+          if(stable>=2&&!s.stop&&await this.waitIdle(20000)){
+            const finalState=await this.uiState();
+            return {
+              status:'ok',
+              text:expectedText,
+              metadata:{
+                agent_id:this.id,
+                provider:this.config.product,
+                port:this.port,
+                url:finalState.href,
+                fresh_chat:freshOpened,
+                submit_method:submitMethod,
+                response_proof:'body-occurrence-exact-token+stable',
+                exact_token_occurrences:n-before,
+                transport:'browser-cdp',
+                zero_cost_path:true,
+                latency_ms:Date.now()-started
+              }
+            };
+          }
+        }else{
+          last=n;
+          stable=0;
+        }
+        await sleep(650);
+      }
+
+      throw new Error('DUCK_EXACT_RESPONSE_TIMEOUT');
+    }catch(e){
+      const blocked=/^BLOCKED:/.test(e.message);
+      return {status:blocked?'blocked':'error',text:e.message,metadata:{agent_id:this.id,provider:this.config.product,port:this.port,transport:'browser-cdp',zero_cost_path:true,latency_ms:Date.now()-started}};
+    }
   }
 }
