@@ -44,11 +44,15 @@ async function readJson(req){
 async function withAgentLock(id,fn){
   const prior=locks.get(id)||Promise.resolve();
   let release;
-  const next=new Promise(r=>{release=r});
-  locks.set(id,prior.then(()=>next));
+  const gate=new Promise(r=>{release=r});
+  const chain=prior.then(()=>gate);
+  locks.set(id,chain);
   await prior;
   try{return await fn();}
-  finally{release();if(locks.get(id)===next)locks.delete(id);}
+  finally{
+    release();
+    if(locks.get(id)===chain)locks.delete(id);
+  }
 }
 
 async function invoke(id,task,{fresh=true,timeoutMs=null}={}){
