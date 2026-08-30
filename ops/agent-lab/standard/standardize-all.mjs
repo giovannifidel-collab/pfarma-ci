@@ -93,7 +93,7 @@ for (const id of selected) {
     console.log(`PASS=false ERROR=${JSON.stringify(e.message)}`);
   } finally {
     agent.close();
-    results.push(...(results.includes(row) ? [] : [row]);
+    results.push(...(results.includes(row) ? [] : [row]));
     console.log('');
   }
 }
