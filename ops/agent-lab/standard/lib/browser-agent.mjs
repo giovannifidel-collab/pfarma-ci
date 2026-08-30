@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const now = () => Date.now();
 const safe = v => String(v ?? '');
+const countToken = (text, token) => token ? safe(text).split(token).length - 1 : 0;
 
 async function fetchJson(url, opts = {}) {
   const r = await fetch(url, opts);
@@ -105,6 +106,27 @@ export class BrowserAgent {
 
   async bodyText() { return this.eval(`String(document.body?.innerText||'')`).catch(() => ''); }
   patternsJs(list = []) { return JSON.stringify(list.map(String)); }
+
+  async assistantText() {
+    return this.eval(`(()=>{
+      const selectors=[
+        '[data-message-author-role="assistant"]',
+        '[data-message-author-role="model"]',
+        '[data-testid*="assistant" i]',
+        '[data-test-id*="assistant" i]',
+        '[data-testid*="model-response" i]',
+        '[data-test-id*="model-response" i]'
+      ];
+      const chunks=[];
+      for(const sel of selectors){
+        for(const e of document.querySelectorAll(sel)){
+          const t=String(e.innerText||e.textContent||'').trim();
+          if(t)chunks.push(t);
+        }
+      }
+      return [...new Set(chunks)].join('\\n');
+    })()`).catch(() => '');
+  }
 
   async uiState() {
     const cfg = this.config;
@@ -238,6 +260,45 @@ export class BrowserAgent {
     return clicked;
   }
 
+  async recycleTarget() {
+    const port = this.port || this.config.port;
+    const base = `http://127.0.0.1:${port}`;
+    this.close();
+    try {
+      const response = await fetch(`${base}/json/list`, { signal:AbortSignal.timeout(4000) });
+      if (!response.ok) return false;
+      const targets = await response.json();
+      const matching = targets.filter(t => t?.type === 'page' && this.config.targetPattern.test(safe(t.url)));
+      const fallbackUrl = this.config.homeUrl || matching[0]?.url || null;
+      if (!fallbackUrl) return false;
+      for (const target of matching) {
+        if (!target?.id) continue;
+        await fetch(`${base}/json/close/${encodeURIComponent(target.id)}`, { signal:AbortSignal.timeout(4000) }).catch(() => null);
+      }
+      await sleep(500);
+      const opened = await fetch(`${base}/json/new?${encodeURIComponent(fallbackUrl)}`, { method:'PUT', signal:AbortSignal.timeout(6000) });
+      if (!opened.ok) return false;
+      const target = await opened.json();
+      if (target?.id) await fetch(`${base}/json/activate/${encodeURIComponent(target.id)}`, { signal:AbortSignal.timeout(4000) }).catch(() => null);
+      await sleep(1500);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async recover(reason = 'unknown') {
+    const recycled = await this.recycleTarget().catch(() => false);
+    if (recycled) return { recovered:true, method:'recycle-target', reason };
+    this.close();
+    try {
+      await this.ensureBrowser();
+      return { recovered:true, method:'ensure-browser', reason };
+    } catch (e) {
+      return { recovered:false, method:'ensure-browser', reason, error:e.message };
+    }
+  }
+
   async health() {
     const started = now();
     try {
@@ -267,8 +328,6 @@ export class BrowserAgent {
       }
       if (expectedText) {
         const count=b.split(expectedText).length-1;
-        // The submitted user prompt introduces one occurrence of expectedText.
-        // Require one additional occurrence so PASS proves provider-side output.
         if(count>baselineExpectedCount+1 && !s.stop) {
           await sleep(700);
           return expectedText;
@@ -279,7 +338,49 @@ export class BrowserAgent {
     throw new Error('RESPONSE_ENVELOPE_TIMEOUT');
   }
 
+  async runExactProbe(task, expectedText, options = {}) {
+    const started = now();
+    try {
+      await this.connect();
+      const hs = await this.waitComposer(30000);
+      if (hs.blockedBy) return { status:'blocked', text:`blocked:${hs.blockedBy}`, metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:hs.href,transport:'browser-cdp',zero_cost_path:true,latency_ms:now()-started} };
+      const fresh = options.fresh ?? this.fresh;
+      const freshOpened = fresh ? await this.freshChat() : false;
+      const beforeBody = countToken(await this.bodyText(), expectedText);
+      const beforeAssistant = countToken(await this.assistantText(), expectedText);
+      const submitMethod = await this.submitPrompt(String(task), expectedText);
+      const deadline = now() + (options.timeoutMs || this.config.timeoutMs || 180000);
+      let proof = null;
+      while (now() < deadline) {
+        const s = await this.uiState();
+        if (s.blockedBy) throw new Error(`BLOCKED:${s.blockedBy}`);
+        const assistant = await this.assistantText();
+        if (countToken(assistant, expectedText) > beforeAssistant) {
+          proof = 'assistant-container-exact-token';
+        } else {
+          const body = await this.bodyText();
+          if (countToken(body, expectedText) > beforeBody + 1) proof = 'body-occurrence-exact-token';
+        }
+        if (proof && !s.stop) {
+          await sleep(700);
+          if (await this.waitIdle(20000)) {
+            const finalState = await this.uiState();
+            return { status:'ok', text:expectedText, metadata:{ agent_id:this.id, provider:this.config.product, port:this.port, url:finalState.href, fresh_chat:freshOpened, submit_method:submitMethod, response_proof:proof, transport:'browser-cdp', zero_cost_path:true, latency_ms:now()-started } };
+          }
+        }
+        await sleep(500);
+      }
+      throw new Error('EXACT_RESPONSE_TIMEOUT');
+    } catch (e) {
+      const blocked = /^BLOCKED:/.test(e.message);
+      return { status:blocked?'blocked':'error', text:e.message, metadata:{ agent_id:this.id, provider:this.config.product, port:this.port, transport:'browser-cdp', zero_cost_path:true, latency_ms:now()-started } };
+    }
+  }
+
   async run(task, options = {}) {
+    const expectedText = options.expectedText ? String(options.expectedText) : null;
+    if (expectedText) return this.runExactProbe(task, expectedText, options);
+
     const started = now();
     const nonce = crypto.randomBytes(6).toString('hex').toUpperCase();
     const requestMarker = `HIVE_ADAPTER_REQUEST:${this.id}:${nonce}`;
@@ -291,9 +392,8 @@ export class BrowserAgent {
       if (hs.blockedBy) return { status:'blocked', text:`blocked:${hs.blockedBy}`, metadata:{agent_id:this.id,port:this.port,url:hs.href} };
       const fresh = options.fresh ?? this.fresh;
       const freshOpened = fresh ? await this.freshChat() : false;
-      const expectedText = options.expectedText ? String(options.expectedText) : null;
       const before = await this.bodyText();
-      const baselineExpectedCount = expectedText ? before.split(expectedText).length - 1 : 0;
+      const baselineExpectedCount = 0;
       const prompt = `${requestMarker}\
 USER_TASK:\
 ${String(task)}\
@@ -305,14 +405,19 @@ FINAL_ANSWER_TO_USER_TASK\
 ${end}\
 Replace FINAL_ANSWER_TO_USER_TASK with the real answer.`;
       const submitMethod = await this.submitPrompt(prompt, requestMarker);
-      const text = await this.waitEnvelope(begin, end, options.timeoutMs || this.config.timeoutMs || 180000, expectedText, baselineExpectedCount);
+      const text = await this.waitEnvelope(begin, end, options.timeoutMs || this.config.timeoutMs || 180000, null, baselineExpectedCount);
       const s = await this.uiState();
-      return { status:'ok', text, metadata:{ agent_id:this.id, provider:this.config.product, port:this.port, url:s.href, fresh_chat:freshOpened, submit_method:submitMethod, transport:'browser-cdp', zero_cost_path:true, latency_ms:now()-started, nonce } };
+      return { status:'ok', text, metadata:{ agent_id:this.id, provider:this.config.product, port:this.port, url:s.href, fresh_chat:freshOpened, submit_method:submitMethod, transport:'browser-cdp', zero_cost_path:true, latency_ms:now()-started, nonce, baseline_body_length:before.length } };
     } catch (e) {
       const blocked = /^BLOCKED:/.test(e.message);
       return { status:blocked?'blocked':'error', text:e.message, metadata:{ agent_id:this.id, provider:this.config.product, port:this.port, transport:'browser-cdp', zero_cost_path:true, latency_ms:now()-started, nonce } };
     }
   }
 
-  close() { try { this.ws?.close(); } catch {} this.ws = null; }
+  close() {
+    try { this.ws?.close(); } catch {}
+    for (const p of this.pending.values()) clearTimeout(p.timer);
+    this.pending.clear();
+    this.ws = null;
+  }
 }
