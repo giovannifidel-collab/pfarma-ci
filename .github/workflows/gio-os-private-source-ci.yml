@@ -1,4 +1,5 @@
 name: gio-OS Private Source CI
+# Phase-4 verification request: authoritative gio-OS/main is resolved inside the trusted job.
 
 on:
   push:
