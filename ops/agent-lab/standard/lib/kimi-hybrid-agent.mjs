@@ -4,7 +4,11 @@ import { KimiBrowserAgent } from './kimi-browser-agent.mjs';
 
 function cliAvailable(){const r=spawnSync('bash',['-lc','command -v kimi >/dev/null 2>&1'],{stdio:'ignore'});return r.status===0;}
 function parseEnvelope(stdout,begin,end){const s=String(stdout||'');const i=s.lastIndexOf(begin);if(i<0)return null;const j=s.indexOf(end,i+begin.length);if(j<0)return null;return s.slice(i+begin.length,j).trim();}
-function standardToken(stdout){return String(stdout||'').match(/HIVE_STANDARD_OK:kimi:[A-F0-9]+/)?.[0]||null;}
+function exactStandardTokenLine(stdout,expected){
+  if(!expected)return null;
+  const lines=String(stdout||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  return lines.includes(expected)?expected:null;
+}
 
 export class KimiHybridAgent{
   constructor(config,opts={}){this.config=config;this.id=config.id;this.browser=new KimiBrowserAgent(config,opts);}
@@ -24,9 +28,9 @@ export class KimiHybridAgent{
         ? `Return exactly this token and nothing else: ${expectedText}`
         : `HIVE standard adapter request ${nonce}. Execute USER_TASK and place only the real final answer between these exact markers.\nUSER_TASK:\n${String(task)}\n\n${begin}\n${end}`;
       const r=spawnSync('kimi',['-p',prompt],{encoding:'utf8',timeout:options.timeoutMs||240000,maxBuffer:16*1024*1024,env:process.env});
-      const stdout=String(r.stdout||'');let text=parseEnvelope(stdout,begin,end);
-      if(r.status===0&&text===null)text=expectedText&&stdout.includes(expectedText)?expectedText:standardToken(stdout);
-      if(r.status===0&&text!==null)return {status:'ok',text,metadata:{agent_id:this.id,provider:this.config.product,transport:'kimi-cli',zero_cost_path:true,latency_ms:Date.now()-started,nonce,capture:text.startsWith('HIVE_STANDARD_OK:')?'standard-token':'envelope'}};
+      const stdout=String(r.stdout||'');
+      let text=expectedText?exactStandardTokenLine(stdout,expectedText):parseEnvelope(stdout,begin,end);
+      if(r.status===0&&text!==null)return {status:'ok',text,metadata:{agent_id:this.id,provider:this.config.product,transport:'kimi-cli',zero_cost_path:true,latency_ms:Date.now()-started,nonce,capture:expectedText?'exact-token-line':'envelope'}};
       const cliError=String(r.stderr||stdout||r.error?.message||`CLI_EXIT_${r.status}`).trim().slice(-3000);
       const fallback=await this.browser.run(task,options);fallback.metadata={...fallback.metadata,kimi_cli_fallback_reason:cliError,transport:fallback.metadata?.transport||'browser-cdp'};return fallback;
     }
