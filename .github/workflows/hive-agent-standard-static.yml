@@ -24,6 +24,7 @@ jobs:
       - name: Syntax check
         run: |
           node --check ops/agent-lab/standard/lib/browser-agent.mjs
+          node --check ops/agent-lab/standard/lib/kimi-hybrid-agent.mjs
           node --check ops/agent-lab/standard/agents.mjs
           node --check ops/agent-lab/standard/index.mjs
           node --check ops/agent-lab/standard/standardize-all.mjs
