@@ -6,6 +6,6 @@ bash ./start-browser.sh
 
 export GROK_LAB_CDP_URL="${GROK_LAB_CDP_URL:-http://127.0.0.1:9226}"
 
-# Grok certification uses page-level Chrome DevTools Protocol directly and
-# persists checkpoints so free-tier quota interruptions can resume cleanly.
-node certify-v9-resumable.mjs
+# Atomic certification: every trial contains all required data in one prompt.
+# State is resumable so free-tier quota interruptions do not waste completed work.
+node certify-v10-atomic.mjs
