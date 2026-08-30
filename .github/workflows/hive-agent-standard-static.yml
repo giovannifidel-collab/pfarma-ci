@@ -1,0 +1,37 @@
+name: HIVE Agent Standard Static Gate
+
+on:
+  push:
+    branches: [hive-cloud-computer-v0]
+    paths:
+      - 'ops/agent-lab/standard/**'
+      - 'ops/agent-lab/kimi/**'
+      - '.github/workflows/hive-agent-standard-static.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Syntax check
+        run: |
+          node --check ops/agent-lab/standard/lib/browser-agent.mjs
+          node --check ops/agent-lab/standard/agents.mjs
+          node --check ops/agent-lab/standard/index.mjs
+          node --check ops/agent-lab/standard/standardize-all.mjs
+          node --check ops/agent-lab/standard/run-one.mjs
+          node --check ops/agent-lab/standard/validate-static.mjs
+      - name: Contract and registry check
+        run: node ops/agent-lab/standard/validate-static.mjs
+      - name: Shell syntax
+        run: |
+          bash -n ops/agent-lab/standard/standardize-all.sh
+          bash -n ops/agent-lab/kimi/start-browser.sh
