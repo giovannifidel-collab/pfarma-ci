@@ -1,4 +1,5 @@
 import { BrowserAgent } from './lib/browser-agent.mjs';
+import { KeyboardBrowserAgent } from './lib/keyboard-browser-agent.mjs';
 import { KimiHybridAgent } from './lib/kimi-hybrid-agent.mjs';
 
 export const AGENT_CONFIGS = [
@@ -15,5 +16,9 @@ export const AGENT_CONFIGS = [
 ];
 
 export function buildAgents({rootDir,fresh=true}={}){
-  return new Map(AGENT_CONFIGS.map(c=>[c.id,c.id==='kimi'?new KimiHybridAgent(c,{rootDir,fresh}):new BrowserAgent(c,{rootDir,fresh})]));
+  return new Map(AGENT_CONFIGS.map(c=>{
+    const opts={rootDir,fresh};
+    if(c.id==='kimi')return [c.id,new KimiHybridAgent(c,opts)];
+    return [c.id,c.inputMode==='native'?new BrowserAgent(c,opts):new KeyboardBrowserAgent(c,opts)];
+  }));
 }
