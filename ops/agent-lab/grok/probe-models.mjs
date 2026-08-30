@@ -1,15 +1,23 @@
 const CDP=process.env.GROK_LAB_CDP_URL||'http://127.0.0.1:9226';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-async function json(url){
-  const r=await fetch(url);
+async function json(url,opts={}){
+  const r=await fetch(url,opts);
   if(!r.ok) throw new Error(`HTTP_${r.status}_${url}`);
   return r.json();
 }
 
-const targets=await json(`${CDP}/json/list`);
-const target=targets.find(t=>t.type==='page' && /grok\.com/i.test(t.url||''));
-if(!target) throw new Error(`NO_GROK_PAGE targets=${targets.map(t=>`${t.type}:${t.url}`).join(' | ')}`);
+let targets=await json(`${CDP}/json/list`);
+let target=targets.find(t=>t.type==='page' && /grok\.com/i.test(t.url||''));
+
+if(!target){
+  console.log('GROK_PAGE_MISSING=true');
+  console.log('GROK_PAGE_CREATE=true');
+  target=await json(`${CDP}/json/new?${encodeURIComponent('https://grok.com/')}`,{method:'PUT'});
+  if(!target?.webSocketDebuggerUrl) throw new Error(`GROK_PAGE_CREATE_FAILED ${JSON.stringify(target)}`);
+  await sleep(2500);
+}
+
 if(!target.webSocketDebuggerUrl) throw new Error('NO_GROK_PAGE_WEBSOCKET');
 
 const ws=new WebSocket(target.webSocketDebuggerUrl);
@@ -45,18 +53,42 @@ async function evalJs(expression){
 }
 
 await call('Runtime.enable');
-console.log('=== GROK MODEL PROBE ===');
-console.log(`URL=${target.url}`);
+await call('Page.enable').catch(()=>{});
 
-const found=await evalJs(`(()=>{
-  const visible=e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0};
-  const b=[...document.querySelectorAll('button')].find(x=>x.getAttribute('aria-label')==='Model select'&&visible(x));
-  if(!b)return false;
-  b.click();
-  return true;
-})()`);
+const readyStart=Date.now();
+let state={href:'',ready:''};
+while(Date.now()-readyStart<45000){
+  state=await evalJs(`({href:location.href,ready:document.readyState})`).catch(()=>({href:'',ready:''}));
+  if(/grok\.com/i.test(state.href||'') && state.ready!=='loading') break;
+  await sleep(500);
+}
+
+console.log('=== GROK MODEL PROBE ===');
+console.log(`URL=${state.href||target.url||''}`);
+console.log(`READY_STATE=${state.ready||''}`);
+
+const modelStart=Date.now();
+let found=false;
+while(Date.now()-modelStart<30000){
+  found=await evalJs(`(()=>{
+    const visible=e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0};
+    const b=[...document.querySelectorAll('button')].find(x=>x.getAttribute('aria-label')==='Model select'&&visible(x));
+    if(!b)return false;
+    b.click();
+    return true;
+  })()`).catch(()=>false);
+  if(found) break;
+  await sleep(600);
+}
+
 console.log(`MODEL_SELECT_FOUND=${found}`);
-if(!found){ws.close();process.exit(2);}
+if(!found){
+  const body=await evalJs(`document.body?.innerText||''`).catch(()=> '');
+  console.log(`BODY_TAIL=${JSON.stringify(String(body).slice(-5000))}`);
+  ws.close();
+  process.exit(2);
+}
+
 await sleep(1200);
 
 const result=await evalJs(`(()=>{
