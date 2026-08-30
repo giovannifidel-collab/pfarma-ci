@@ -20,17 +20,20 @@ function call(method,params={}){const id=++seq;return new Promise((resolve,rejec
 async function evalJs(expression){const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw new Error(`EVAL_EXCEPTION_${r.exceptionDetails.text||'unknown'}`);return r.result?.value;}
 await call('Runtime.enable');await call('Page.enable').catch(()=>{});
 
+const composerSelectorExpr=`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const all=[...document.querySelectorAll('input,textarea,[contenteditable="true"],[role="textbox"]')].filter(visible);return all.find(e=>/ask meta ai/i.test(String(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'')))||all.find(e=>e.getAttribute('contenteditable')==='true'&&e.getAttribute('role')==='textbox')||all.find(e=>e.getAttribute('contenteditable')==='true')||null;})()`;
+
 const start=Date.now();let state={};
 while(Date.now()-start<45000){
-  state=await evalJs(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const input=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')].filter(visible).find(e=>/ask meta ai/i.test(String(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'')));const send=[...document.querySelectorAll('button,[role="button"]')].filter(visible).find(e=>/^send$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));return {href:String(location.href||''),ready:document.readyState,input:!!input,send:!!send,body:String(document.body?.innerText||'')};})()`);
+  state=await evalJs(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const all=[...document.querySelectorAll('input,textarea,[contenteditable="true"],[role="textbox"]')].filter(visible);const input=all.find(e=>/ask meta ai/i.test(String(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'')))||all.find(e=>e.getAttribute('contenteditable')==='true'&&e.getAttribute('role')==='textbox')||all.find(e=>e.getAttribute('contenteditable')==='true')||null;const send=[...document.querySelectorAll('button,[role="button"]')].filter(visible).find(e=>/^send$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));return {href:String(location.href||''),ready:document.readyState,input:!!input,inputTag:input?.tagName?.toLowerCase()||null,inputRole:input?.getAttribute('role')||null,inputEditable:input?.getAttribute('contenteditable')||null,send:!!send,body:String(document.body?.innerText||'')};})()`);
   if(state.input&&state.ready!=='loading')break;
   await sleep(500);
 }
 if(!state.input)throw new Error(`META_COMPOSER_NOT_READY href=${state.href||''}`);
+console.log(`META_COMPOSER=${state.inputTag||'unknown'} role=${state.inputRole||'null'} contenteditable=${state.inputEditable||'null'}`);
 
 const count=(s,t)=>t?s.split(t).length-1:0;
 const before=count(state.body,expected);
-const focused=await evalJs(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const e=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')].filter(visible).find(x=>/ask meta ai/i.test(String(x.getAttribute('aria-label')||x.getAttribute('placeholder')||'')));if(!e)return false;e.focus();return true;})()`);
+const focused=await evalJs(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const all=[...document.querySelectorAll('input,textarea,[contenteditable="true"],[role="textbox"]')].filter(visible);const e=all.find(x=>/ask meta ai/i.test(String(x.getAttribute('aria-label')||x.getAttribute('placeholder')||'')))||all.find(x=>x.getAttribute('contenteditable')==='true'&&x.getAttribute('role')==='textbox')||all.find(x=>x.getAttribute('contenteditable')==='true')||null;if(!e)return false;e.focus();return true;})()`);
 if(!focused)throw new Error('META_COMPOSER_NOT_FOUND');
 await call('Input.dispatchKeyEvent',{type:'rawKeyDown',modifiers:2,key:'a',code:'KeyA',windowsVirtualKeyCode:65});
 await call('Input.dispatchKeyEvent',{type:'keyUp',modifiers:2,key:'a',code:'KeyA',windowsVirtualKeyCode:65});
@@ -38,7 +41,7 @@ await call('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Backspace',code:'Bac
 await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
 await call('Input.insertText',{text:prompt});
 await sleep(500);
-const inserted=await evalJs(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const e=[...document.querySelectorAll('input,textarea,[contenteditable="true"]')].filter(visible).find(x=>/ask meta ai/i.test(String(x.getAttribute('aria-label')||x.getAttribute('placeholder')||'')));return e?String(e.value||e.innerText||e.textContent||''):'';})()`);
+const inserted=await evalJs(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const all=[...document.querySelectorAll('input,textarea,[contenteditable="true"],[role="textbox"]')].filter(visible);const e=all.find(x=>/ask meta ai/i.test(String(x.getAttribute('aria-label')||x.getAttribute('placeholder')||'')))||all.find(x=>x.getAttribute('contenteditable')==='true'&&x.getAttribute('role')==='textbox')||all.find(x=>x.getAttribute('contenteditable')==='true')||null;return e?String(e.value||e.innerText||e.textContent||''):'';})()`);
 if(!inserted.includes(nonce))throw new Error('META_TEXT_NOT_INSERTED');
 
 const sendReady=await evalJs(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const e=[...document.querySelectorAll('button,[role="button"]')].filter(visible).find(x=>/^send$/i.test(String(x.getAttribute('aria-label')||x.innerText||'').trim()));return !!e&&!e.disabled;})()`);
@@ -60,7 +63,7 @@ while(Date.now()-waitStart<120000){
   body=await evalJs(`String(document.body?.innerText||'')`).catch(()=> '');
   const n=count(body,expected);
   if(n>=before+2){if(n===last)stable++;else stable=0;last=n;if(stable>=2){captured=true;actual=expected;break;}}
-  const gate=await evalJs(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const dialogs=[...document.querySelectorAll('[role="dialog"],[aria-modal="true"]')].filter(visible).map(e=>String(e.innerText||''));return dialogs.some(t=>/log in|sign up|continue with facebook|continue with instagram|continue with email/i.test(t));})()`).catch(()=>false);
+  const gate=await evalJs(`(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const dialogs=[...document.querySelectorAll('[role="dialog"],[aria-modal="true"]')].filter(visible).map(e=>String(e.innerText||''));return dialogs.some(t=>/log in to meta ai|continue with facebook|continue with instagram|continue with email/i.test(t));})()`).catch(()=>false);
   if(gate){console.log('META_SMOKE_BLOCKED_BY_LOGIN=true');console.log(`BODY_TAIL=${JSON.stringify(body.slice(-5000))}`);ws.close();process.exit(3);}
   await sleep(750);
 }
