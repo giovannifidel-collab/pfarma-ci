@@ -1,5 +1,4 @@
 const CDP=process.env.DUCK_LAB_CDP_URL||'http://127.0.0.1:9233';
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function json(url){const r=await fetch(url);if(!r.ok)throw new Error(`HTTP_${r.status}_${url}`);return r.json();}
 const targets=await json(`${CDP}/json/list`);
 const target=targets.find(t=>t.type==='page'&&/duck\.ai/i.test(t.url||''));
@@ -12,7 +11,9 @@ function call(method,params={}){const id=++seq;return new Promise((resolve,rejec
 async function evalJs(expression){const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.text||'EVAL_EXCEPTION');return r.result?.value;}
 await call('Runtime.enable');
 const marker='HIVE_DUCK_SUBMIT_PROBE_'+Date.now().toString(16).toUpperCase();
+const markerLit=JSON.stringify(marker);
 const info=await evalJs(`(()=>{
+  const marker=${markerLit};
   const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};
   const controls=[...document.querySelectorAll('textarea,input,[contenteditable="true"],[role="textbox"]')].filter(visible);
   const composer=controls.find(e=>/ask anything privately/i.test(String(e.getAttribute('placeholder')||e.getAttribute('aria-label')||'')))||controls.find(e=>e.tagName==='TEXTAREA')||null;
@@ -20,16 +21,17 @@ const info=await evalJs(`(()=>{
   composer.focus();
   const proto=Object.getPrototypeOf(composer);
   const desc=Object.getOwnPropertyDescriptor(proto,'value');
-  if(desc?.set) desc.set.call(composer,'${'${marker}'}'); else composer.value='${'${marker}'}';
-  composer.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'${'${marker}'}'}));
+  if(desc?.set) desc.set.call(composer,marker); else composer.value=marker;
+  composer.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:marker}));
   composer.dispatchEvent(new Event('change',{bubbles:true}));
   const form=composer.closest('form');
   const buttons=[...document.querySelectorAll('button,[role="button"],input[type="submit"]')].filter(visible).map((e,i)=>({i,tag:e.tagName.toLowerCase(),type:e.getAttribute('type'),text:String(e.innerText||e.value||'').trim().slice(0,120),aria:e.getAttribute('aria-label'),title:e.getAttribute('title'),disabled:!!e.disabled,ariaDisabled:e.getAttribute('aria-disabled'),formAction:e.getAttribute('formaction'),classes:String(e.className||'').slice(0,180)}));
   const formButtons=form?[...form.querySelectorAll('button,[role="button"],input[type="submit"]')].map((e,i)=>({i,tag:e.tagName.toLowerCase(),type:e.getAttribute('type'),text:String(e.innerText||e.value||'').trim().slice(0,120),aria:e.getAttribute('aria-label'),disabled:!!e.disabled,ariaDisabled:e.getAttribute('aria-disabled')})):[];
   const parentHTML=composer.parentElement?.parentElement?.outerHTML?.slice(0,8000)||'';
-  return {href:location.href,marker:'${'${marker}'}',composerTag:composer.tagName.toLowerCase(),composerValue:String(composer.value||composer.innerText||composer.textContent||''),formPresent:!!form,formAction:form?.getAttribute('action')||null,formMethod:form?.getAttribute('method')||null,buttons,formButtons,parentHTML};
+  return {href:location.href,marker,composerTag:composer.tagName.toLowerCase(),composerValue:String(composer.value||composer.innerText||composer.textContent||''),formPresent:!!form,formAction:form?.getAttribute('action')||null,formMethod:form?.getAttribute('method')||null,buttons,formButtons,parentHTML};
 })()`);
 console.log('=== DUCK SUBMIT STATE PROBE ===');
+if(info.error)console.log(`ERROR=${info.error}`);
 console.log(`URL=${info.href||''}`);
 console.log(`MARKER=${info.marker||marker}`);
 console.log(`COMPOSER_TAG=${info.composerTag||''}`);
