@@ -5,6 +5,7 @@ on:
     branches: [hive-cloud-computer-v0]
     paths:
       - 'ops/agent-lab/standard/**'
+      - 'ops/agent-lab/bridge/**'
       - 'ops/agent-lab/kimi/**'
       - '.github/workflows/hive-agent-standard-static.yml'
   workflow_dispatch:
@@ -37,9 +38,11 @@ jobs:
           node --check ops/agent-lab/standard/standardize-all.mjs
           node --check ops/agent-lab/standard/run-one.mjs
           node --check ops/agent-lab/standard/validate-static.mjs
+          node --check ops/agent-lab/bridge/server.mjs
       - name: Contract and registry check
         run: node ops/agent-lab/standard/validate-static.mjs
       - name: Shell syntax
         run: |
           bash -n ops/agent-lab/standard/standardize-all.sh
+          bash -n ops/agent-lab/bridge/start-secure-tunnel.sh
           bash -n ops/agent-lab/kimi/start-browser.sh
