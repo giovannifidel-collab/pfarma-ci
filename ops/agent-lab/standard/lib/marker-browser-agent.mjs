@@ -5,6 +5,12 @@ const now=()=>Date.now();
 
 export class MarkerBrowserAgent extends KeyboardBrowserAgent {
   async run(task, options={}) {
+    // Exact-output probes (used by HIVE runtime standardization) must use the
+    // same strict envelope implementation as the shared BrowserAgent.  The
+    // older Copilot-specific numbered protocol could be echoed verbatim by
+    // Copilot, making the transport parser read protocol text as the answer.
+    if (options.expectedText) return super.run(task, options);
+
     const started=now();
     const nonce=crypto.randomBytes(6).toString('hex').toUpperCase();
     const requestMarker=`HIVE_ADAPTER_REQUEST:${this.id}:${nonce}`;
@@ -16,9 +22,7 @@ export class MarkerBrowserAgent extends KeyboardBrowserAgent {
       if(hs.blockedBy) return {status:'blocked',text:`blocked:${hs.blockedBy}`,metadata:{agent_id:this.id,port:this.port,url:hs.href}};
       const fresh=options.fresh ?? this.fresh;
       const freshOpened=fresh ? await this.freshChat() : false;
-      const expectedText=options.expectedText ? String(options.expectedText) : null;
       const before=await this.bodyText();
-      const baselineExpectedCount=expectedText ? before.split(expectedText).length-1 : 0;
       const prompt=[
         requestMarker,
         'USER_TASK:',
@@ -32,7 +36,7 @@ export class MarkerBrowserAgent extends KeyboardBrowserAgent {
         'Do not repeat the request marker.'
       ].join('\n');
       const submitMethod=await this.submitPrompt(prompt,requestMarker);
-      const text=await this.waitEnvelope(begin,end,options.timeoutMs||this.config.timeoutMs||180000,expectedText,baselineExpectedCount);
+      const text=await this.waitEnvelope(begin,end,options.timeoutMs||this.config.timeoutMs||180000,null,0);
       const s=await this.uiState();
       return {status:'ok',text,metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:s.href,fresh_chat:freshOpened,submit_method:submitMethod,transport:'browser-cdp',zero_cost_path:true,latency_ms:now()-started,nonce}};
     } catch(e) {
