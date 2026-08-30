@@ -21,8 +21,14 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
         const s=await this.uiState();
         if(s.blockedBy)throw new Error(`BLOCKED:${s.blockedBy}`);
         const body=await this.bodyText();
-        if(body.split(expectedText).length-1>baseline&&!s.stop){
-          return {status:'ok',text:expectedText,metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:s.href,fresh_chat:freshOpened,submit_method:submitMethod,transport:'browser-cdp',zero_cost_path:true,latency_ms:Date.now()-started,capture:'exact-token'}};
+        const count=body.split(expectedText).length-1;
+        // The submitted prompt contributes one occurrence. Require a second
+        // provider-side occurrence; a prompt echo alone can never certify Meta.
+        if(count>=baseline+2&&!s.stop){
+          await new Promise(r=>setTimeout(r,600));
+          if(await this.waitIdle(20000)){
+            return {status:'ok',text:expectedText,metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:s.href,fresh_chat:freshOpened,submit_method:submitMethod,transport:'browser-cdp',zero_cost_path:true,latency_ms:Date.now()-started,capture:'provider-token-occurrence',exact_token_occurrences:count-baseline}};
+          }
         }
         await new Promise(r=>setTimeout(r,500));
       }
