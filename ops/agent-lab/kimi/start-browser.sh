@@ -6,7 +6,25 @@ PORT="${KIMI_LAB_CDP_PORT:-9223}"
 SHARED_HOST="$ROOT/../browser-host/ensure-desktop.sh"
 mkdir -p "$PROFILE"
 
+ensure_kimi_target(){
+  local list
+  list="$(curl -fsS "http://127.0.0.1:${PORT}/json/list" 2>/dev/null || true)"
+  if printf '%s' "$list" | grep -Eiq 'https?://[^" ]*(kimi\.com|kimi\.ai|moonshot)'; then
+    return 0
+  fi
+  curl -fsS -X PUT "http://127.0.0.1:${PORT}/json/new?https%3A%2F%2Fwww.kimi.com%2F" >/dev/null 2>&1 || true
+  for _ in $(seq 1 20); do
+    sleep .25
+    list="$(curl -fsS "http://127.0.0.1:${PORT}/json/list" 2>/dev/null || true)"
+    if printf '%s' "$list" | grep -Eiq 'https?://[^" ]*(kimi\.com|kimi\.ai|moonshot)'; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 if curl -fsS "http://127.0.0.1:${PORT}/json/version" >/dev/null 2>&1; then
+  ensure_kimi_target || true
   echo "KIMI LAB BROWSER READY"
   echo "CDP=http://127.0.0.1:${PORT}"
   echo "PROFILE=$PROFILE"
@@ -35,6 +53,7 @@ echo $! >"$PROFILE/chrome.pid"
 
 for _ in $(seq 1 75); do
   if curl -fsS "http://127.0.0.1:${PORT}/json/version" >/dev/null 2>&1; then
+    ensure_kimi_target || true
     echo "KIMI LAB BROWSER READY"
     echo "CDP=http://127.0.0.1:${PORT}"
     echo "PROFILE=$PROFILE"
