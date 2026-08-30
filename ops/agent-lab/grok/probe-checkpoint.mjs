@@ -68,7 +68,7 @@ try{
   let lastBody='';
   while(Date.now()-started<45000){
     lastBody=await cdp.evalJs(`document.body?.innerText||''`).catch(()=> '');
-    if(lastBody.includes(${JSON.stringify(cur.nonce)})){
+    if(lastBody.includes(cur.nonce)){
       restored=true;
       break;
     }
