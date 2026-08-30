@@ -3,4 +3,4 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 bash ./start-browser.sh
-node ./certify-fast-fresh-v2.mjs
+node ./certify-fast-fresh-v3.mjs
