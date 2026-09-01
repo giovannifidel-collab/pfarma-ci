@@ -3,10 +3,14 @@ import crypto from 'node:crypto';
 import { KimiBrowserAgent } from './kimi-browser-agent.mjs';
 
 function cliAvailable(){const r=spawnSync('bash',['-lc','command -v kimi >/dev/null 2>&1'],{stdio:'ignore'});return r.status===0;}
-function parseEnvelope(stdout,begin,end){const s=String(stdout||'');const i=s.lastIndexOf(begin);if(i<0)return null;const j=s.indexOf(end,i+begin.length);if(j<0)return null;return s.slice(i+begin.length,j).trim();}
+function stripAnsi(v){return String(v||'').replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g,'');}
+function parseEnvelope(stdout,begin,end){const s=stripAnsi(stdout);const i=s.lastIndexOf(begin);if(i<0)return null;const j=s.indexOf(end,i+begin.length);if(j<0)return null;return s.slice(i+begin.length,j).trim();}
 function exactStandardTokenLine(stdout,expected){
   if(!expected)return null;
-  const lines=String(stdout||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const clean=stripAnsi(stdout);
+  const lines=clean.split(/\r?\n/)
+    .map(x=>x.trim().replace(/^```(?:text)?\s*/i,'').replace(/\s*```$/,'').replace(/^['"`]+|['"`]+$/g,'').trim())
+    .filter(Boolean);
   return lines.includes(expected)?expected:null;
 }
 
@@ -15,7 +19,7 @@ export class KimiHybridAgent{
   async health(){
     if(cliAvailable()){
       const v=spawnSync('kimi',['--version'],{encoding:'utf8',timeout:15000});
-      if(v.status===0)return {status:'ok',text:'Kimi CLI available',metadata:{agent_id:this.id,transport:'kimi-cli',version:String(v.stdout||v.stderr||'').trim(),zero_cost_path:true}};
+      if(v.status===0)return {status:'ok',text:'Kimi CLI available',metadata:{agent_id:this.id,transport:'kimi-cli',version:stripAnsi(v.stdout||v.stderr||'').trim(),zero_cost_path:true}};
     }
     const h=await this.browser.health();if(h.status==='ok')h.metadata={...h.metadata,transport:'browser-cdp-fallback'};return h;
   }
@@ -29,9 +33,9 @@ export class KimiHybridAgent{
         : `HIVE standard adapter request ${nonce}. Execute USER_TASK and place only the real final answer between these exact markers.\nUSER_TASK:\n${String(task)}\n\n${begin}\n${end}`;
       const r=spawnSync('kimi',['-p',prompt],{encoding:'utf8',timeout:options.timeoutMs||240000,maxBuffer:16*1024*1024,env:process.env});
       const stdout=String(r.stdout||'');
-      let text=expectedText?exactStandardTokenLine(stdout,expectedText):parseEnvelope(stdout,begin,end);
-      if(r.status===0&&text!==null)return {status:'ok',text,metadata:{agent_id:this.id,provider:this.config.product,transport:'kimi-cli',zero_cost_path:true,latency_ms:Date.now()-started,nonce,capture:expectedText?'exact-token-line':'envelope'}};
-      const cliError=String(r.stderr||stdout||r.error?.message||`CLI_EXIT_${r.status}`).trim().slice(-3000);
+      const text=expectedText?exactStandardTokenLine(stdout,expectedText):parseEnvelope(stdout,begin,end);
+      if(r.status===0&&text!==null)return {status:'ok',text,metadata:{agent_id:this.id,provider:this.config.product,transport:'kimi-cli',zero_cost_path:true,latency_ms:Date.now()-started,nonce,capture:expectedText?'exact-token-line-normalized':'envelope'}};
+      const cliError=stripAnsi(r.stderr||stdout||r.error?.message||`CLI_EXIT_${r.status}`).trim().slice(-3000);
       const fallback=await this.browser.run(task,options);fallback.metadata={...fallback.metadata,kimi_cli_fallback_reason:cliError,transport:fallback.metadata?.transport||'browser-cdp'};return fallback;
     }
     return this.browser.run(task,options);
