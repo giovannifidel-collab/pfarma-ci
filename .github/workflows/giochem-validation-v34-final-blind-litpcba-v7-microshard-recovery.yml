@@ -37,26 +37,30 @@ jobs:
           echo pose_run=$(jq -r .poseRunId "$L") >> "$GITHUB_OUTPUT"
           echo pose_artifact=$(jq -r .poseArtifactName "$L") >> "$GITHUB_OUTPUT"
           echo base_run=33219905221 >> "$GITHUB_OUTPUT"
-      - name: Verify immutable V4 prepared inputs exist
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with: {run-id: '33219905221', github-token: '${{ github.token }}', name: giochem-v34-v4-blind-manifest, path: /tmp/bmanifest}
-      - name: Verify prepared manifest remains label-free
+      - name: Verify immutable label-free prepared inputs
         run: |
           M=$(find /tmp/bmanifest -type f -name '*.json' -print -quit); test -n "$M"
           jq -e '.status=="V34_BLIND_INPUTS_SEALED_TRUTH_NOT_MATERIALIZED" and .scoreWorkerTruthAvailable==false and .totals.records==2458 and ([.targets[]|has("truthSha256")]|any)==false and ([.targets[]|has("truthFile")]|any)==false' "$M"
 
-  score_aldh1:
+  micro_score:
     needs: setup
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 350
     environment: pfarma-ci-trusted
     strategy:
       fail-fast: false
-      max-parallel: 7
+      max-parallel: 20
       matrix:
-        logical: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
-        micro: [0,1,2,3]
-    name: V7 blind ALDH1 logical ${{ matrix.logical }} micro ${{ matrix.micro }}
+        target: [ALDH1, MTORC1, IDH1]
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
+        micro: [0,1,2]
+        exclude:
+          - {target: IDH1, shard: 26, micro: 0}
+          - {target: IDH1, shard: 26, micro: 1}
+          - {target: IDH1, shard: 26, micro: 2}
+    name: V7 blind ${{ matrix.target }} logical ${{ matrix.shard }} micro ${{ matrix.micro }}
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false, fetch-depth: 1}
@@ -87,124 +91,31 @@ jobs:
           echo "LD_LIBRARY_PATH=$(cat /tmp/giochem-gnina-runtime/ld-library-path.txt):${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
           echo GIOCHEM_GNINA_BIN=/tmp/giochem-gnina-runtime/gnina >> "$GITHUB_ENV"
           test "$(sha256sum /tmp/giochem-gnina-runtime/gnina|awk '{print $1}')" = '${{ needs.setup.outputs.gnina }}'
-      - name: score deterministic execution micro-shard without truth
+      - name: score deterministic execution microshard without truth
         shell: bash
         run: |
           set -euo pipefail
           ! find /tmp -type f -name '*.truth.jsonl' -print -quit 2>/dev/null | grep -q .
-          B=$(find /tmp/blind -type f -name 'ALDH1.blind.jsonl' -print -quit); M=$(find /tmp/rmanifest -type f -name '*.json' -print -quit)
-          python scripts/giochem_v34_v7_micro_score.py --source-root src --target ALDH1 --blind-input "$B" --receptor-dir /tmp/receptors --receptor-manifest "$M" --runtime-lock-sha256 '${{ needs.setup.outputs.runtime }}' --source-code-sha '${{ needs.setup.outputs.source }}' --logical-shard-index '${{ matrix.logical }}' --logical-shard-count 27 --micro-index '${{ matrix.micro }}' --micro-count 4 --output /tmp/ALDH1-${{ matrix.logical }}-${{ matrix.micro }}.jsonl
+          B=$(find /tmp/blind -type f -name '${{ matrix.target }}.blind.jsonl' -print -quit); M=$(find /tmp/rmanifest -type f -name '*.json' -print -quit)
+          N=27; [ '${{ matrix.target }}' = IDH1 ] && N=26
+          python scripts/giochem_v34_v7_microshard.py score --source-root src --target '${{ matrix.target }}' --blind-input "$B" --receptor-dir /tmp/receptors --receptor-manifest "$M" --runtime-lock-sha256 '${{ needs.setup.outputs.runtime }}' --source-code-sha '${{ needs.setup.outputs.source }}' --logical-shard '${{ matrix.shard }}' --logical-count "$N" --micro-index '${{ matrix.micro }}' --micro-count 3 --output /tmp/${{ matrix.target }}-${{ matrix.shard }}-micro-${{ matrix.micro }}.jsonl
+          ! grep -E '"(label|active|inactive|truth|smiles|experimentalOutcome|originalCompoundId|sourceFile)"' /tmp/${{ matrix.target }}-${{ matrix.shard }}-micro-${{ matrix.micro }}.jsonl
       - uses: actions/upload-artifact@v4
-        with: {name: 'giochem-v34-v7-micro-ALDH1-${{ matrix.logical }}-${{ matrix.micro }}', path: '/tmp/ALDH1-${{ matrix.logical }}-${{ matrix.micro }}.jsonl', if-no-files-found: error, retention-days: 90}
-
-  score_mtorc1:
-    needs: setup
-    runs-on: ubuntu-latest
-    timeout-minutes: 330
-    environment: pfarma-ci-trusted
-    strategy:
-      fail-fast: false
-      max-parallel: 7
-      matrix:
-        logical: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
-        micro: [0,1,2,3]
-    name: V7 blind MTORC1 logical ${{ matrix.logical }} micro ${{ matrix.micro }}
-    steps:
-      - uses: actions/checkout@v4
-        with: {persist-credentials: false, fetch-depth: 1}
-      - name: token
-        shell: bash
-        env: {A: '${{ secrets.GIOCHEM_SOURCE_TOKEN }}', B: '${{ secrets.PFARMA_SOURCE_TOKEN }}'}
-        run: 'T="${A:-${B:-}}"; test -n "$T"; echo PRIVATE_SOURCE_TOKEN=$T >> "$GITHUB_ENV"'
-      - uses: actions/checkout@v4
-        with: {repository: giovannifidel-collab/giochem, ref: '${{ needs.setup.outputs.source }}', token: '${{ env.PRIVATE_SOURCE_TOKEN }}', path: src, fetch-depth: 1, persist-credentials: false}
-      - uses: actions/download-artifact@v4
-        with: {run-id: '${{ needs.setup.outputs.base_run }}', github-token: '${{ github.token }}', name: giochem-v34-v4-blind, path: /tmp/blind}
-      - uses: actions/download-artifact@v4
-        with: {run-id: '${{ needs.setup.outputs.base_run }}', github-token: '${{ github.token }}', name: giochem-v34-v4-receptors, path: /tmp/receptors}
-      - uses: actions/download-artifact@v4
-        with: {run-id: '${{ needs.setup.outputs.base_run }}', github-token: '${{ github.token }}', name: giochem-v34-v4-receptor-manifest, path: /tmp/rmanifest}
-      - uses: actions/cache/restore@v4
-        with: {path: /tmp/giochem-gnina-runtime, key: '${{ needs.setup.outputs.cache }}', fail-on-cache-miss: true}
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - name: install
-        working-directory: src
-        run: |
-          sudo apt-get update -y >/dev/null && sudo apt-get install -y autodock-vina >/dev/null
-          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt >/dev/null
-          python -m pip install --disable-pip-version-check --no-cache-dir 'meeko==0.7.1' 'rdkit==2025.9.6' >/dev/null
-      - name: runtime
-        run: |
-          echo "LD_LIBRARY_PATH=$(cat /tmp/giochem-gnina-runtime/ld-library-path.txt):${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
-          echo GIOCHEM_GNINA_BIN=/tmp/giochem-gnina-runtime/gnina >> "$GITHUB_ENV"
-          test "$(sha256sum /tmp/giochem-gnina-runtime/gnina|awk '{print $1}')" = '${{ needs.setup.outputs.gnina }}'
-      - name: score deterministic execution micro-shard without truth
-        shell: bash
-        run: |
-          set -euo pipefail
-          ! find /tmp -type f -name '*.truth.jsonl' -print -quit 2>/dev/null | grep -q .
-          B=$(find /tmp/blind -type f -name 'MTORC1.blind.jsonl' -print -quit); M=$(find /tmp/rmanifest -type f -name '*.json' -print -quit)
-          python scripts/giochem_v34_v7_micro_score.py --source-root src --target MTORC1 --blind-input "$B" --receptor-dir /tmp/receptors --receptor-manifest "$M" --runtime-lock-sha256 '${{ needs.setup.outputs.runtime }}' --source-code-sha '${{ needs.setup.outputs.source }}' --logical-shard-index '${{ matrix.logical }}' --logical-shard-count 27 --micro-index '${{ matrix.micro }}' --micro-count 4 --output /tmp/MTORC1-${{ matrix.logical }}-${{ matrix.micro }}.jsonl
-      - uses: actions/upload-artifact@v4
-        with: {name: 'giochem-v34-v7-micro-MTORC1-${{ matrix.logical }}-${{ matrix.micro }}', path: '/tmp/MTORC1-${{ matrix.logical }}-${{ matrix.micro }}.jsonl', if-no-files-found: error, retention-days: 90}
-
-  score_idh1:
-    needs: setup
-    runs-on: ubuntu-latest
-    timeout-minutes: 330
-    environment: pfarma-ci-trusted
-    strategy:
-      fail-fast: false
-      max-parallel: 6
-      matrix:
-        logical: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25]
-        micro: [0,1,2,3]
-    name: V7 blind IDH1 logical ${{ matrix.logical }} micro ${{ matrix.micro }}
-    steps:
-      - uses: actions/checkout@v4
-        with: {persist-credentials: false, fetch-depth: 1}
-      - name: token
-        shell: bash
-        env: {A: '${{ secrets.GIOCHEM_SOURCE_TOKEN }}', B: '${{ secrets.PFARMA_SOURCE_TOKEN }}'}
-        run: 'T="${A:-${B:-}}"; test -n "$T"; echo PRIVATE_SOURCE_TOKEN=$T >> "$GITHUB_ENV"'
-      - uses: actions/checkout@v4
-        with: {repository: giovannifidel-collab/giochem, ref: '${{ needs.setup.outputs.source }}', token: '${{ env.PRIVATE_SOURCE_TOKEN }}', path: src, fetch-depth: 1, persist-credentials: false}
-      - uses: actions/download-artifact@v4
-        with: {run-id: '${{ needs.setup.outputs.base_run }}', github-token: '${{ github.token }}', name: giochem-v34-v4-blind, path: /tmp/blind}
-      - uses: actions/download-artifact@v4
-        with: {run-id: '${{ needs.setup.outputs.base_run }}', github-token: '${{ github.token }}', name: giochem-v34-v4-receptors, path: /tmp/receptors}
-      - uses: actions/download-artifact@v4
-        with: {run-id: '${{ needs.setup.outputs.base_run }}', github-token: '${{ github.token }}', name: giochem-v34-v4-receptor-manifest, path: /tmp/rmanifest}
-      - uses: actions/cache/restore@v4
-        with: {path: /tmp/giochem-gnina-runtime, key: '${{ needs.setup.outputs.cache }}', fail-on-cache-miss: true}
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - name: install
-        working-directory: src
-        run: |
-          sudo apt-get update -y >/dev/null && sudo apt-get install -y autodock-vina >/dev/null
-          python -m pip install --disable-pip-version-check --no-cache-dir -r scientific-api/requirements.txt >/dev/null
-          python -m pip install --disable-pip-version-check --no-cache-dir 'meeko==0.7.1' 'rdkit==2025.9.6' >/dev/null
-      - name: runtime
-        run: |
-          echo "LD_LIBRARY_PATH=$(cat /tmp/giochem-gnina-runtime/ld-library-path.txt):${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
-          echo GIOCHEM_GNINA_BIN=/tmp/giochem-gnina-runtime/gnina >> "$GITHUB_ENV"
-          test "$(sha256sum /tmp/giochem-gnina-runtime/gnina|awk '{print $1}')" = '${{ needs.setup.outputs.gnina }}'
-      - name: score deterministic execution micro-shard without truth
-        shell: bash
-        run: |
-          set -euo pipefail
-          ! find /tmp -type f -name '*.truth.jsonl' -print -quit 2>/dev/null | grep -q .
-          B=$(find /tmp/blind -type f -name 'IDH1.blind.jsonl' -print -quit); M=$(find /tmp/rmanifest -type f -name '*.json' -print -quit)
-          python scripts/giochem_v34_v7_micro_score.py --source-root src --target IDH1 --blind-input "$B" --receptor-dir /tmp/receptors --receptor-manifest "$M" --runtime-lock-sha256 '${{ needs.setup.outputs.runtime }}' --source-code-sha '${{ needs.setup.outputs.source }}' --logical-shard-index '${{ matrix.logical }}' --logical-shard-count 26 --micro-index '${{ matrix.micro }}' --micro-count 4 --output /tmp/IDH1-${{ matrix.logical }}-${{ matrix.micro }}.jsonl
-      - uses: actions/upload-artifact@v4
-        with: {name: 'giochem-v34-v7-micro-IDH1-${{ matrix.logical }}-${{ matrix.micro }}', path: '/tmp/IDH1-${{ matrix.logical }}-${{ matrix.micro }}.jsonl', if-no-files-found: error, retention-days: 90}
+        with: {name: 'giochem-v34-v7-micro-${{ matrix.target }}-${{ matrix.shard }}-${{ matrix.micro }}', path: '/tmp/${{ matrix.target }}-${{ matrix.shard }}-micro-${{ matrix.micro }}.jsonl', if-no-files-found: error, retention-days: 90}
 
   recombine:
-    needs: [setup, score_aldh1, score_mtorc1, score_idh1]
+    needs: [setup, micro_score]
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        target: [ALDH1, MTORC1, IDH1]
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
+        exclude:
+          - {target: IDH1, shard: 26}
+    name: V7 recombine ${{ matrix.target }} logical shard ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false, fetch-depth: 1}
@@ -215,19 +126,19 @@ jobs:
       - uses: actions/checkout@v4
         with: {repository: giovannifidel-collab/giochem, ref: '${{ needs.setup.outputs.source }}', token: '${{ env.PRIVATE_SOURCE_TOKEN }}', path: src, fetch-depth: 1, persist-credentials: false}
       - uses: actions/download-artifact@v4
-        with: {pattern: 'giochem-v34-v7-micro-*', path: /tmp/micro, merge-multiple: true}
+        with: {pattern: 'giochem-v34-v7-micro-${{ matrix.target }}-${{ matrix.shard }}-*', path: /tmp/micros, merge-multiple: true}
       - uses: actions/download-artifact@v4
         with: {run-id: '${{ needs.setup.outputs.base_run }}', github-token: '${{ github.token }}', name: giochem-v34-v4-blind, path: /tmp/blind}
-      - name: deterministic recombination to frozen logical shards
+      - name: recombine exact frozen logical shard
         shell: bash
         run: |
           set -euo pipefail
           ! find /tmp -type f -name '*.truth.jsonl' -print -quit 2>/dev/null | grep -q .
-          mkdir -p /tmp/logical
-          python scripts/giochem_v34_v7_recombine.py --source-root src --micro-dir /tmp/micro --blind-dir /tmp/blind --runtime-lock-sha256 '${{ needs.setup.outputs.runtime }}' --gnina-sha256 '${{ needs.setup.outputs.gnina }}' --source-code-sha '${{ needs.setup.outputs.source }}' --output-dir /tmp/logical
-          test "$(find /tmp/logical -maxdepth 1 -type f -name '*.jsonl' | wc -l)" -eq 80
+          B=$(find /tmp/blind -type f -name '${{ matrix.target }}.blind.jsonl' -print -quit)
+          N=27; [ '${{ matrix.target }}' = IDH1 ] && N=26
+          python scripts/giochem_v34_v7_microshard.py recombine --source-root src --target '${{ matrix.target }}' --blind-input "$B" --micro-dir /tmp/micros --logical-shard '${{ matrix.shard }}' --logical-count "$N" --micro-count 3 --output /tmp/${{ matrix.target }}-${{ matrix.shard }}.jsonl
       - uses: actions/upload-artifact@v4
-        with: {name: giochem-v34-v7-logical-scores, path: '/tmp/logical/*.jsonl', if-no-files-found: error, retention-days: 90}
+        with: {name: 'giochem-v34-v7-score-${{ matrix.target }}-${{ matrix.shard }}', path: '/tmp/${{ matrix.target }}-${{ matrix.shard }}.jsonl', if-no-files-found: error, retention-days: 90}
 
   preunblind:
     needs: [setup, recombine]
@@ -243,7 +154,7 @@ jobs:
       - uses: actions/checkout@v4
         with: {repository: giovannifidel-collab/giochem, ref: '${{ needs.setup.outputs.source }}', token: '${{ env.PRIVATE_SOURCE_TOKEN }}', path: src, fetch-depth: 1, persist-credentials: false}
       - uses: actions/download-artifact@v4
-        with: {name: giochem-v34-v7-logical-scores, path: /tmp/scores}
+        with: {pattern: 'giochem-v34-v7-score-*', path: /tmp/scores, merge-multiple: true}
       - uses: actions/download-artifact@v4
         with: {run-id: '${{ needs.setup.outputs.base_run }}', github-token: '${{ github.token }}', name: giochem-v34-v4-blind, path: /tmp/blind}
       - uses: actions/download-artifact@v4
