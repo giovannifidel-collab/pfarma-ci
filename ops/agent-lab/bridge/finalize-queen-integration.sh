@@ -23,7 +23,7 @@ publish_status(){
   node - "$stage" "$state" "$detail" "$ADAPTER_SHA" "$REPORT" >"$tmp" <<'NODE' || true
 const fs=require('fs');
 const [stage,state,detail,adapterSha,reportPath]=process.argv.slice(2);
-let summary={passed:null,failed_count:null,failures:[]};
+let summary={passed:null,requested:null,failed_count:null,failures:[]};
 try{
   const r=JSON.parse(fs.readFileSync(reportPath,'utf8'));
   const cls=(raw)=>{
@@ -36,14 +36,19 @@ try{
     if(s.includes('CDP'))return 'CDP';
     return s?'PROBE_FAILED':'UNKNOWN';
   };
+  const code=(raw)=>{
+    const s=String(raw||'').toUpperCase();
+    const m=s.match(/\b(?:META|KIMI|QWEN|GEMINI|DUCK|PROMPT|RESPONSE|EXACT|STANDARD|CDP|BLOCKED)[A-Z0-9_:-]{0,80}/);
+    return m?m[0].replace(/:.*/,''):'UNSPECIFIED';
+  };
   summary={
     passed:Number.isFinite(Number(r.passed_count))?Number(r.passed_count):null,
+    requested:Array.isArray(r.requested)?r.requested.length:null,
     failed_count:Number.isFinite(Number(r.failed_count))?Number(r.failed_count):null,
-    failures:(r.results||[]).filter(x=>!x.pass).map(x=>({
-      id:String(x.id||'unknown'),
-      class:cls(x.error||x.output?.text||x.health?.text),
-      attempts:Number(x.attempt_count||x.attempts?.length||0)
-    }))
+    failures:(r.results||[]).filter(x=>!x.pass).map(x=>{
+      const raw=x.error||x.output?.text||x.health?.text;
+      return {id:String(x.id||'unknown'),class:cls(raw),code:code(raw),attempts:Number(x.attempt_count||x.attempts?.length||0)};
+    })
   };
 }catch{}
 const stamp=new Date().toISOString();
@@ -54,11 +59,11 @@ console.log(`- Stage: \`${stage}\``);
 console.log(`- Updated: \`${stamp}\``);
 console.log(`- Adapter SHA: \`${adapterSha}\``);
 if(detail)console.log(`- Detail: \`${String(detail).replace(/[`\r\n]/g,' ').slice(0,180)}\``);
-if(summary.passed!==null)console.log(`- Latest standardization: \`${summary.passed}/10 passed\`, \`${summary.failed_count} failed\``);
+if(summary.passed!==null)console.log(`- Latest standardization: \`${summary.passed}/${summary.requested??'?'} passed\`, \`${summary.failed_count} failed\``);
 if(summary.failures.length){
   console.log('');
   console.log('### Sanitized failures');
-  for(const f of summary.failures)console.log(`- \`${f.id}\` — \`${f.class}\` — attempts: \`${f.attempts}\``);
+  for(const f of summary.failures)console.log(`- \`${f.id}\` — \`${f.class}\` — code: \`${f.code}\` — attempts: \`${f.attempts}\``);
 }
 console.log('');
 console.log('No credentials, cookies, browser-session material, probe tokens or provider response bodies are published here.');
@@ -87,10 +92,40 @@ run_failed_gate(){
   set -e
   return "$rc"
 }
+previous_failed_count(){
+  [[ -f "$REPORT" ]] || { echo 0; return; }
+  node - "$REPORT" <<'NODE'
+const fs=require('fs');try{const r=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));console.log((r.results||[]).filter(x=>!x.pass).length)}catch{console.log(0)}
+NODE
+}
 
 say 'SELF-HEALING 10-AGENT STANDARDIZATION'
-publish_status standardization RUNNING full-gate
 FULL_OK=0
+PREV_FAILED="$(previous_failed_count)"
+if [[ "$PREV_FAILED" =~ ^[0-9]+$ ]] && (( PREV_FAILED > 0 && PREV_FAILED < 10 )); then
+  echo "TARGETED_PRIOR_FAILURES=$PREV_FAILED"
+  publish_status standardization RUNNING "targeted-prior-failures-${PREV_FAILED}"
+  TARGETED_OK=0
+  for round in 1 2 3; do
+    echo "TARGETED_RECOVERY_ROUND=$round/3"
+    if run_failed_gate; then
+      TARGETED_OK=1
+      break
+    fi
+    publish_status standardization RUNNING "targeted-recovery-round-${round}"
+  done
+  if [[ "$TARGETED_OK" != "1" ]]; then
+    say 'STANDARDIZATION BLOCKED'
+    publish_status standardization BLOCKED targeted-self-healing-exhausted
+    echo 'ERROR: prior failing agents did not recover; full 10-agent gate was intentionally not rerun.'
+    exit 20
+  fi
+  echo 'TARGETED_RECOVERY=PASSED'
+  publish_status standardization PASSED targeted-recovery-passed
+  echo 'RUNNING_SINGLE_FINAL_FULL_CONFIRMATION=true'
+fi
+
+publish_status standardization RUNNING full-gate
 if run_full_gate; then
   FULL_OK=1
 else
