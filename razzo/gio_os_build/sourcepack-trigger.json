@@ -1,0 +1,11 @@
+{
+  "schema": "gio.os.public-source-pack-trigger.v1",
+  "generation": "2026-09-02-v1",
+  "target": "lavender",
+  "android": "14",
+  "pack_count": 16,
+  "sourcepack_tag": "gio-a14-lavender-srcpack-v1-20260902",
+  "public_inputs_only": true,
+  "private_gio_source_on_workers": false,
+  "signing_keys_on_workers": false
+}
