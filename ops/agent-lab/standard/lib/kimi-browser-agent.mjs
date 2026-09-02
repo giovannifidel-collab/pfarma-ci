@@ -1,6 +1,7 @@
 import { KeyboardBrowserAgent } from './keyboard-browser-agent.mjs';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const retryableCdpError=e=>/CDP_TIMEOUT_(Runtime\.enable|Runtime\.evaluate|Page\.enable)|CDP_CONNECT_(TIMEOUT|ERROR)|PAGE_WEBSOCKET_NOT_FOUND|WebSocket|InvalidStateError/i.test(String(e?.message||e||''));
 
 export class KimiBrowserAgent extends KeyboardBrowserAgent {
   async ensureBrowser(){
@@ -10,6 +11,53 @@ export class KimiBrowserAgent extends KeyboardBrowserAgent {
       const preferred=list.find(t=>t?.type==='page'&&/https?:\/\/[^/]*kimi\.ai/i.test(String(t.url||''))&&t.webSocketDebuggerUrl);
       return preferred||fallback;
     }catch{return fallback;}
+  }
+
+  async recycleTarget(){
+    const port=this.port||this.config.port;
+    const base=`http://127.0.0.1:${port}`;
+    this.close();
+    try{
+      const response=await fetch(`${base}/json/list`,{signal:AbortSignal.timeout(4000)});
+      if(!response.ok)return false;
+      const targets=await response.json();
+      const matching=targets.filter(t=>t?.type==='page'&&this.config.targetPattern.test(String(t.url||'')));
+      const preferred=matching.find(t=>/https?:\/\/[^/]*kimi\.ai/i.test(String(t.url||'')));
+      const fallbackUrl=preferred?.url||'https://www.kimi.ai/';
+      for(const target of matching){
+        if(!target?.id)continue;
+        await fetch(`${base}/json/close/${encodeURIComponent(target.id)}`,{signal:AbortSignal.timeout(4000)}).catch(()=>null);
+      }
+      await sleep(600);
+      const opened=await fetch(`${base}/json/new?${encodeURIComponent(fallbackUrl)}`,{method:'PUT',signal:AbortSignal.timeout(7000)});
+      if(!opened.ok)return false;
+      const target=await opened.json();
+      if(target?.id)await fetch(`${base}/json/activate/${encodeURIComponent(target.id)}`,{signal:AbortSignal.timeout(4000)}).catch(()=>null);
+      await sleep(1800);
+      return true;
+    }catch{return false;}
+  }
+
+  async connect(){
+    let last=null;
+    for(let attempt=1;attempt<=3;attempt++){
+      try{
+        if(this.ws?.readyState===WebSocket.OPEN){
+          await this.call('Runtime.evaluate',{expression:'1',returnByValue:true},6000);
+          return;
+        }
+        await super.connect();
+        await this.call('Runtime.evaluate',{expression:'1',returnByValue:true},7000);
+        return;
+      }catch(e){
+        last=e;
+        this.close();
+        if(!retryableCdpError(e))throw e;
+        await this.recycleTarget().catch(()=>false);
+        await sleep(900*attempt);
+      }
+    }
+    throw new Error(`KIMI_CDP_RECOVERY_EXHAUSTED:${String(last?.message||last||'unknown')}`);
   }
 
   async clickKimiSendCandidate(){
