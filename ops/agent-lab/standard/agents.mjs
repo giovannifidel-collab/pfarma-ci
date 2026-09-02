@@ -6,6 +6,7 @@ import { DuckBrowserAgent } from './lib/duck-browser-agent.mjs';
 import { MetaBrowserAgent } from './lib/meta-browser-agent.mjs';
 import { QwenBrowserAgent } from './lib/qwen-browser-agent.mjs';
 import { GeminiBrowserAgent } from './lib/gemini-browser-agent.mjs';
+import { MistralBrowserAgent } from './lib/mistral-browser-agent.mjs';
 
 export const AGENT_CONFIGS = [
   {id:'kimi',product:'Kimi Web / Kimi Code',port:9223,scanPorts:[9223],startScript:'kimi/start-browser.sh',homeUrl:'https://www.kimi.com/',targetPattern:/kimi\.(com|ai)|moonshot/i,composerPatterns:['ask.*kimi','message.*kimi','chat with kimi','send a message','^message$'],submitPatterns:['^send$','send message','submit'],inputMode:'keyboard',blockPatterns:['log in to kimi','sign in to kimi','continue with.*(google|apple|phone)'],freshChat:true},
@@ -13,7 +14,7 @@ export const AGENT_CONFIGS = [
   {id:'gemini',product:'Gemini Web',port:9225,startScript:'gemini/start-browser.sh',homeUrl:'https://gemini.google.com/app',targetPattern:/gemini\.google\.com/i,composerPatterns:['enter a prompt','ask gemini','message gemini','prompt'],submitPatterns:['send message','^send$'],inputMode:'gemini',blockPatterns:['sign in to gemini','log in to gemini'],freshChat:true,timeoutMs:150000},
   {id:'deepseek',product:'DeepSeek Web',port:9227,startScript:'deepseek/start-browser.sh',homeUrl:'https://chat.deepseek.com/',targetPattern:/chat\.deepseek\.com|deepseek\.com/i,composerPatterns:['message deepseek','ask deepseek','send a message','^message$'],submitPatterns:['^send$','send message'],inputMode:'keyboard',blockPatterns:['phone number / email address','/sign_in'],freshChat:true},
   {id:'qwen',product:'Qwen Web',port:9228,startScript:'qwen/start-browser.sh',homeUrl:'https://chat.qwen.ai/',targetPattern:/chat\.qwen\.ai/i,composerPatterns:['ask qwen','message qwen','send a message'],submitPatterns:['^send$','send message','submit'],inputMode:'qwen',blockPatterns:[],freshChat:true,timeoutMs:150000},
-  {id:'mistral',product:'Mistral Vibe Web / Fast',port:9229,startScript:'mistral/start-browser.sh',homeUrl:'https://chat.mistral.ai/chat',targetPattern:/chat\.mistral\.ai/i,composerPatterns:['ask.*mistral','message.*mistral','send a message','^message$'],submitPatterns:['^send$','send message'],inputMode:'keyboard',blockPatterns:['log in to mistral','sign in to mistral'],freshChat:true},
+  {id:'mistral',product:'Mistral Vibe Web / Fast',port:9229,startScript:'mistral/start-browser.sh',homeUrl:'https://chat.mistral.ai/chat',targetPattern:/chat\.mistral\.ai/i,composerPatterns:['ask.*mistral','message.*mistral','send a message','^message$'],submitPatterns:['^send$','send message'],inputMode:'mistral',blockPatterns:['log in to mistral','sign in to mistral'],freshChat:true,timeoutMs:150000},
   {id:'perplexity',product:'Perplexity Web',port:9230,startScript:'perplexity/start-browser.sh',homeUrl:'https://www.perplexity.ai/',targetPattern:/perplexity\.ai/i,composerPatterns:['ask anything','ask perplexity','message perplexity','^ask$'],submitPatterns:['submit','^ask$','^send$','send message'],inputMode:'keyboard',blockPatterns:['sign in to perplexity','log in to perplexity'],freshChat:true,timeoutMs:210000},
   {id:'copilot',product:'Microsoft Copilot Web / Standard chat',port:9231,startScript:'copilot/start-browser.sh',homeUrl:'https://copilot.microsoft.com/',targetPattern:/copilot\.(com|microsoft\.com)/i,composerPatterns:['message copilot','ask copilot','send a message'],submitPatterns:['^send$','send message','submit'],inputMode:'marker',blockPatterns:['sign in to copilot','log in to copilot'],freshChat:true,timeoutMs:210000},
   {id:'meta',product:'Meta AI Web / Instant',port:9232,startScript:'meta/start-browser.sh',homeUrl:'https://www.meta.ai/',targetPattern:/meta\.ai/i,composerPatterns:['ask meta ai','message meta ai','^message$'],submitPatterns:['^send$','send message','submit'],inputMode:'meta',blockPatterns:['log in to meta ai','sign in to meta ai'],freshChat:true},
@@ -26,6 +27,7 @@ export function buildAgents({rootDir,fresh=true}={}){
     if(c.id==='kimi')return [c.id,new KimiHybridAgent(c,opts)];
     if(c.inputMode==='gemini')return [c.id,new GeminiBrowserAgent(c,opts)];
     if(c.inputMode==='qwen')return [c.id,new QwenBrowserAgent(c,opts)];
+    if(c.inputMode==='mistral')return [c.id,new MistralBrowserAgent(c,opts)];
     if(c.inputMode==='meta')return [c.id,new MetaBrowserAgent(c,opts)];
     if(c.inputMode==='duck')return [c.id,new DuckBrowserAgent(c,opts)];
     if(c.inputMode==='marker')return [c.id,new MarkerBrowserAgent(c,opts)];
