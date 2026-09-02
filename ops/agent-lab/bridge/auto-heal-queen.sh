@@ -5,7 +5,18 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 BRANCH="hive-cloud-computer-v0"
 POLL_SECONDS="${HIVE_AUTO_HEAL_POLL_SECONDS:-20}"
+STATE_DIR="$HOME/.hive-agent-lab"
+LOCK_FILE="$STATE_DIR/auto-heal.lock"
 LAST_SHA=""
+mkdir -p "$STATE_DIR"
+
+# Single-instance guard. A second launcher exits immediately instead of racing
+# the active finalizer against the same git workspace and standardization reports.
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  printf '[%s] auto-heal already running; exiting duplicate launcher\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  exit 0
+fi
 
 log(){ printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 
