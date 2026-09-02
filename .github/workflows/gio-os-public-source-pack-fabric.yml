@@ -1,0 +1,169 @@
+name: GIO OS Public Source Pack Fabric
+
+on:
+  push:
+    branches: [gio-os-distributed-build]
+    paths:
+      - 'razzo/gio_os_build/sourcepack-trigger.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PACK_COUNT: '16'
+  SOURCEPACK_TAG: 'gio-a14-lavender-srcpack-v1-20260902'
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create public source-pack release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "$SOURCEPACK_TAG" >/dev/null 2>&1; then
+            gh release create "$SOURCEPACK_TAG" --target "$GITHUB_SHA" \
+              --title "GIO OS Android 14 lavender public source packs" \
+              --notes "Public upstream source only. No private GIO OS source and no signing keys."
+          fi
+
+  pack:
+    needs: prepare-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        pack_id: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - name: Reclaim runner disk
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+          df -h /
+
+      - name: Install source-pack tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git git-lfs squashfs-tools python3 curl
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod 0755 "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          git lfs install --skip-repo
+
+      - name: Initialize exact Android 14 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/bin:$PATH"
+          root="$RUNNER_TEMP/a14-pack-${{ matrix.pack_id }}"
+          mkdir -p "$root"
+          cd "$root"
+          repo init -u https://github.com/crdroidandroid/android.git -b 14.0 \
+            --git-lfs --no-clone-bundle --depth=1 --partial-clone --clone-filter=blob:limit=10M
+          mkdir -p .repo/local_manifests
+          cat > .repo/local_manifests/gio-lavender-public.xml <<'XML'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <remote name="crdroid-gio" fetch="https://github.com/crdroidandroid" />
+            <project path="device/xiaomi/lavender" name="android_device_xiaomi_lavender" remote="crdroid-gio" revision="fd2a90e734a101fad046736970fa4dfb492d7d78" />
+            <project path="kernel/xiaomi/lavender" name="android_kernel_xiaomi_lavender" remote="crdroid-gio" revision="b7b27af5994f7afc11f69cfef194a8dc738842b4" />
+            <project path="vendor/xiaomi/lavender" name="proprietary_vendor_xiaomi_lavender" remote="crdroid-gio" revision="483e3e7ca5828c54d8b4408b87ee14069a8d027b" />
+          </manifest>
+          XML
+          repo manifest -o "$RUNNER_TEMP/merged-${{ matrix.pack_id }}.xml"
+
+      - name: Select deterministic project bucket
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, os, xml.etree.ElementTree as ET
+          src=os.path.join(os.environ['RUNNER_TEMP'], 'merged-${{ matrix.pack_id }}.xml')
+          root=ET.parse(src).getroot()
+          n=int(os.environ['PACK_COUNT']); bucket=int('${{ matrix.pack_id }}')
+          paths=[]
+          for p in root.findall('project'):
+              path=p.get('path') or p.get('name')
+              if int.from_bytes(hashlib.sha256(path.encode()).digest()[:8], 'big') % n == bucket:
+                  paths.append(path)
+          paths=sorted(set(paths))
+          if not paths:
+              raise SystemExit('empty source-pack bucket')
+          out=os.path.join(os.environ['RUNNER_TEMP'], 'paths-${{ matrix.pack_id }}.txt')
+          open(out,'w').write('\n'.join(paths)+'\n')
+          print('PACK_ID=${{ matrix.pack_id }} PROJECTS='+str(len(paths)))
+          PY
+          head -20 "$RUNNER_TEMP/paths-${{ matrix.pack_id }}.txt"
+
+      - name: Sync only assigned public projects
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/bin:$PATH"
+          root="$RUNNER_TEMP/a14-pack-${{ matrix.pack_id }}"
+          cd "$root"
+          mapfile -t projects < "$RUNNER_TEMP/paths-${{ matrix.pack_id }}.txt"
+          repo sync -c --force-sync --optimized-fetch --prune --no-clone-bundle --no-tags -j4 "${projects[@]}"
+          echo "SYNC_ASSIGNED_PROJECTS=PASS"
+          df -h /
+
+      - name: Record exact source revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/a14-pack-${{ matrix.pack_id }}"
+          ROOT="$root" PATHS="$RUNNER_TEMP/paths-${{ matrix.pack_id }}.txt" OUT="$RUNNER_TEMP/pack-${{ matrix.pack_id }}-projects.json" python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          root=pathlib.Path(os.environ['ROOT'])
+          rows=[]
+          for path in pathlib.Path(os.environ['PATHS']).read_text().splitlines():
+              p=root/path
+              if not p.exists():
+                  raise SystemExit('missing synced project '+path)
+              sha=subprocess.check_output(['git','-C',str(p),'rev-parse','HEAD'],text=True).strip()
+              rows.append({'path':path,'sha':sha})
+          pathlib.Path(os.environ['OUT']).write_text(json.dumps({'schema':'gio.os.public-source-pack.v1','pack_id':${{ matrix.pack_id }},'pack_count':16,'projects':rows,'public_inputs_only':True,'private_gio_source_present':False,'signing_keys_present':False},indent=2,sort_keys=True)+'\n')
+          PY
+          grep -q 'fd2a90e734a101fad046736970fa4dfb492d7d78' "$RUNNER_TEMP/pack-${{ matrix.pack_id }}-projects.json" || true
+
+      - name: Create compressed source image
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/a14-pack-${{ matrix.pack_id }}"
+          # Repo worktree .git files point into .repo; remove those broken public metadata pointers from the image.
+          find "$root" -type f -name .git -delete
+          out="$RUNNER_TEMP/gio-a14-source-pack-${{ matrix.pack_id }}.sqfs"
+          mksquashfs "$root" "$out" -noappend -comp zstd -Xcompression-level 15 -processors 2 -e .repo
+          sha256sum "$out" > "$RUNNER_TEMP/gio-a14-source-pack-${{ matrix.pack_id }}.sqfs.sha256"
+          size=$(stat -c %s "$out")
+          echo "PACK_BYTES=$size"
+          split -b 1800M -d -a 2 "$out" "$RUNNER_TEMP/gio-a14-source-pack-${{ matrix.pack_id }}.sqfs.part-"
+          sha256sum "$RUNNER_TEMP"/gio-a14-source-pack-${{ matrix.pack_id }}.sqfs.part-* > "$RUNNER_TEMP/gio-a14-source-pack-${{ matrix.pack_id }}.chunks.sha256"
+
+      - name: Publish public source pack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets=(
+            "$RUNNER_TEMP/pack-${{ matrix.pack_id }}-projects.json"
+            "$RUNNER_TEMP/gio-a14-source-pack-${{ matrix.pack_id }}.sqfs.sha256"
+            "$RUNNER_TEMP/gio-a14-source-pack-${{ matrix.pack_id }}.chunks.sha256"
+          )
+          for f in "$RUNNER_TEMP"/gio-a14-source-pack-${{ matrix.pack_id }}.sqfs.part-*; do assets+=("$f"); done
+          gh release upload "$SOURCEPACK_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          echo "SOURCE_PACK_${{ matrix.pack_id }}=PUBLISHED"
