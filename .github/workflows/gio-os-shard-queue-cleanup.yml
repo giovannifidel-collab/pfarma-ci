@@ -1,6 +1,7 @@
 name: GIO OS Shard Queue Cleanup
 
 on:
+  workflow_call:
   push:
     branches: [gio-os-distributed-build]
     paths:
