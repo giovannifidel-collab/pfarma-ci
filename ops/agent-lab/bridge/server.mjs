@@ -9,7 +9,9 @@ const PORT=Number(process.env.HIVE_AGENT_BRIDGE_PORT||9240);
 const TOKEN=String(process.env.HIVE_AGENT_BRIDGE_TOKEN||'');
 const MAX_BODY=256*1024;
 const MAX_ATTEMPTS=Math.max(1,Math.min(Number(process.env.HIVE_AGENT_BRIDGE_ATTEMPTS||2),4));
+const JOB_TTL_MS=Math.max(300000,Math.min(Number(process.env.HIVE_AGENT_BRIDGE_JOB_TTL_MS||3600000),86400000));
 const locks=new Map();
+const jobs=new Map();
 
 if(!TOKEN||TOKEN.length<32){
   console.error('ERROR: HIVE_AGENT_BRIDGE_TOKEN must contain at least 32 characters');
@@ -62,7 +64,7 @@ async function invoke(id,task,{fresh=true,timeoutMs=null}={}){
   for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
     const started=Date.now();
     const health=await agent.health();
-    trace.push({attempt,stage:'health',status:health.status,text:health.text,latency_ms:Date.now()-started});
+    trace.push({attempt,stage:'health',status:health.status,text:String(health.text||'').slice(0,240),latency_ms:Date.now()-started});
     if(health.status==='ok'){
       last=await agent.run(task,{fresh,timeoutMs:timeoutMs||undefined});
       trace.push({attempt,stage:'run',status:last.status,text:String(last.text||'').slice(0,400),latency_ms:Date.now()-started});
@@ -80,27 +82,77 @@ async function invoke(id,task,{fresh=true,timeoutMs=null}={}){
       await sleep(900*attempt);
     }
   }
-  return {...last,metadata:{...(last.metadata||{}),bridge:'hive-standard-agent-bridge',bridge_trace:trace}};
+  return {...last,metadata:{...(last.metadata||{}),bridge:'hive-standard-agent-bridge',bridge_protocol:'async-job-v1',bridge_trace:trace}};
 }
+
+function publicJob(job){
+  return {
+    id:job.id,
+    agent_id:job.agent_id,
+    state:job.state,
+    created_at:job.created_at,
+    started_at:job.started_at||null,
+    finished_at:job.finished_at||null,
+    result:job.state==='done'?job.result:null,
+    error:job.state==='failed'?job.error:null
+  };
+}
+
+function startJob({agentId,task,fresh,timeoutMs}){
+  const id=crypto.randomUUID();
+  const job={id,agent_id:agentId,state:'queued',created_at:new Date().toISOString(),started_at:null,finished_at:null,result:null,error:null,expires_at:Date.now()+JOB_TTL_MS};
+  jobs.set(id,job);
+  setImmediate(async()=>{
+    job.state='running';
+    job.started_at=new Date().toISOString();
+    try{
+      job.result=await withAgentLock(agentId,()=>invoke(agentId,task,{fresh,timeoutMs}));
+      job.state='done';
+    }catch(e){
+      job.error=String(e?.message||'bridge job failed').slice(0,500);
+      job.state='failed';
+    }finally{
+      job.finished_at=new Date().toISOString();
+      job.expires_at=Date.now()+JOB_TTL_MS;
+    }
+  });
+  return job;
+}
+
+setInterval(()=>{
+  const now=Date.now();
+  for(const [id,job] of jobs){
+    if((job.state==='done'||job.state==='failed')&&job.expires_at<now)jobs.delete(id);
+  }
+},60000).unref();
 
 const server=http.createServer(async(req,res)=>{
   try{
     const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);
     if(req.method==='GET'&&url.pathname==='/health'){
-      return json(res,200,{ok:true,service:'hive-standard-agent-bridge',schema_version:1,agent_count:agentIds.length});
+      return json(res,200,{ok:true,service:'hive-standard-agent-bridge',schema_version:2,protocol:'async-job-v1',agent_count:agentIds.length,jobs:{active:[...jobs.values()].filter(j=>j.state==='queued'||j.state==='running').length}});
     }
     if(!authorized(req))return json(res,401,{ok:false,error:'unauthorized'});
     if(req.method==='GET'&&url.pathname==='/agents'){
       return json(res,200,{ok:true,agents:[...agentIds]});
     }
-    if(req.method==='POST'&&url.pathname==='/invoke'){
+    if(req.method==='POST'&&url.pathname==='/jobs'){
       const body=await readJson(req);
-      const id=String(body.agent_id||'').toLowerCase();
+      const agentId=String(body.agent_id||'').toLowerCase();
       const task=String(body.task||'').trim();
-      if(!agentIds.includes(id))return json(res,400,{ok:false,error:`UNKNOWN_AGENT:${id}`});
+      if(!agentIds.includes(agentId))return json(res,400,{ok:false,error:`UNKNOWN_AGENT:${agentId}`});
       if(!task)return json(res,400,{ok:false,error:'task required'});
-      const out=await withAgentLock(id,()=>invoke(id,task,{fresh:body.fresh!==false,timeoutMs:Number(body.timeout_ms)||null}));
-      return json(res,out.status==='ok'?200:(out.status==='blocked'?423:502),{ok:out.status==='ok',result:out});
+      const job=startJob({agentId,task,fresh:body.fresh!==false,timeoutMs:Number(body.timeout_ms)||null});
+      return json(res,202,{ok:true,job_id:job.id,state:job.state,protocol:'async-job-v1'});
+    }
+    if(req.method==='GET'&&url.pathname.startsWith('/jobs/')){
+      const id=decodeURIComponent(url.pathname.slice('/jobs/'.length));
+      const job=jobs.get(id);
+      if(!job)return json(res,404,{ok:false,error:'JOB_NOT_FOUND'});
+      return json(res,200,{ok:true,job:publicJob(job)});
+    }
+    if(req.method==='POST'&&url.pathname==='/invoke'){
+      return json(res,426,{ok:false,error:'ASYNC_JOB_PROTOCOL_REQUIRED',submit:'/jobs',poll:'/jobs/{job_id}'});
     }
     return json(res,404,{ok:false,error:'not found'});
   }catch(e){return json(res,e.status||500,{ok:false,error:e.message||'bridge error'});}
@@ -108,6 +160,7 @@ const server=http.createServer(async(req,res)=>{
 
 server.listen(PORT,HOST,()=>{
   console.log(`HIVE_AGENT_BRIDGE_READY=http://${HOST}:${PORT}`);
+  console.log('BRIDGE_PROTOCOL=async-job-v1');
   console.log(`AGENTS=${agentIds.join(',')}`);
 });
 

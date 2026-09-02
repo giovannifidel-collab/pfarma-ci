@@ -28,38 +28,63 @@ if ! port_open "$PORT" || ! curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/nu
   nohup env HIVE_AGENT_BRIDGE_PORT="$PORT" HIVE_AGENT_BRIDGE_TOKEN="$TOKEN" \
     node ops/agent-lab/bridge/server.mjs >"$SERVER_LOG" 2>&1 &
   echo $! >"$STATE/server.pid"
-  for _ in {1..60}; do
+  for _ in {1..80}; do
     curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 && break
     sleep 0.25
   done
 fi
 curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null
 
-if [[ ! -x "$CLOUDFLARED" ]]; then
-  ARCH="$(uname -m)"
-  case "$ARCH" in
-    x86_64|amd64) ASSET="cloudflared-linux-amd64" ;;
-    aarch64|arm64) ASSET="cloudflared-linux-arm64" ;;
-    *) echo "ERROR: unsupported architecture: $ARCH" >&2; exit 1 ;;
-  esac
-  curl -fL --retry 3 --connect-timeout 10 \
-    "https://github.com/cloudflare/cloudflared/releases/latest/download/${ASSET}" \
-    -o "$CLOUDFLARED"
-  chmod 700 "$CLOUDFLARED"
+PUBLIC_URL=""
+PUBLIC_MODE=""
+
+# Prefer the stable GitHub Codespaces port-forwarding endpoint. The bridge itself
+# remains bearer-token protected; only /health is intentionally unauthenticated.
+if [[ -n "${CODESPACE_NAME:-}" && -n "${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-}" ]] && command -v gh >/dev/null 2>&1; then
+  if gh codespace ports visibility "${PORT}:public" -c "$CODESPACE_NAME" >/dev/null 2>&1; then
+    CANDIDATE="https://${CODESPACE_NAME}-${PORT}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
+    for _ in {1..40}; do
+      if curl -fsS --max-time 10 "$CANDIDATE/health" >/dev/null 2>&1; then
+        PUBLIC_URL="$CANDIDATE"
+        PUBLIC_MODE="codespaces-port"
+        break
+      fi
+      sleep 0.5
+    done
+  fi
 fi
 
-pkill -f "cloudflared tunnel.*127.0.0.1:${PORT}" >/dev/null 2>&1 || true
-: >"$TUNNEL_LOG"
-nohup "$CLOUDFLARED" tunnel --no-autoupdate --url "http://127.0.0.1:${PORT}" >"$TUNNEL_LOG" 2>&1 &
-echo $! >"$STATE/tunnel.pid"
+if [[ -z "$PUBLIC_URL" ]]; then
+  if [[ ! -x "$CLOUDFLARED" ]]; then
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+      x86_64|amd64) ASSET="cloudflared-linux-amd64" ;;
+      aarch64|arm64) ASSET="cloudflared-linux-arm64" ;;
+      *) echo "ERROR: unsupported architecture: $ARCH" >&2; exit 1 ;;
+    esac
+    curl -fL --retry 3 --connect-timeout 10 \
+      "https://github.com/cloudflare/cloudflared/releases/latest/download/${ASSET}" \
+      -o "$CLOUDFLARED"
+    chmod 700 "$CLOUDFLARED"
+  fi
 
-PUBLIC_URL=""
-for _ in {1..120}; do
-  PUBLIC_URL="$(grep -Eo 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" | tail -n1 || true)"
-  [[ -n "$PUBLIC_URL" ]] && break
-  sleep 0.25
-done
-[[ -n "$PUBLIC_URL" ]] || { echo "ERROR: tunnel URL unavailable" >&2; tail -n 80 "$TUNNEL_LOG" >&2; exit 1; }
+  pkill -f "cloudflared tunnel.*127.0.0.1:${PORT}" >/dev/null 2>&1 || true
+  : >"$TUNNEL_LOG"
+  nohup "$CLOUDFLARED" tunnel --no-autoupdate --url "http://127.0.0.1:${PORT}" >"$TUNNEL_LOG" 2>&1 &
+  echo $! >"$STATE/tunnel.pid"
+
+  for _ in {1..120}; do
+    PUBLIC_URL="$(grep -Eo 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" | tail -n1 || true)"
+    [[ -n "$PUBLIC_URL" ]] && break
+    sleep 0.25
+  done
+  [[ -n "$PUBLIC_URL" ]] || { echo "ERROR: tunnel URL unavailable" >&2; tail -n 80 "$TUNNEL_LOG" >&2; exit 1; }
+  PUBLIC_MODE="cloudflare-quick-tunnel"
+else
+  # No quick tunnel is needed when the stable Codespaces endpoint is healthy.
+  pkill -f "cloudflared tunnel.*127.0.0.1:${PORT}" >/dev/null 2>&1 || true
+fi
+
 printf '%s\n' "$PUBLIC_URL" >"$URL_FILE"
 chmod 600 "$URL_FILE"
 
@@ -78,6 +103,8 @@ else
 fi
 
 echo "HIVE_AGENT_BRIDGE_TUNNEL=READY"
+echo "BRIDGE_PROTOCOL=async-job-v1"
+echo "PUBLIC_MODE=$PUBLIC_MODE"
 echo "PUBLIC_HEALTH=${PUBLIC_URL}/health"
 echo "HIVE_SECRETS_SYNCED=${SECRETS_SYNCED}"
 echo "TOKEN_EXPOSED=false"
