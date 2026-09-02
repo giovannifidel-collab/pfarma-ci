@@ -31,7 +31,8 @@ export class KimiHybridAgent{
       const prompt=expectedText
         ? `Return exactly this token and nothing else: ${expectedText}`
         : `HIVE standard adapter request ${nonce}. Execute USER_TASK and place only the real final answer between these exact markers.\nUSER_TASK:\n${String(task)}\n\n${begin}\n${end}`;
-      const r=spawnSync('kimi',['-p',prompt],{encoding:'utf8',timeout:options.timeoutMs||240000,maxBuffer:16*1024*1024,env:process.env});
+      const cliTimeout=expectedText?Math.min(Number(options.cliTimeoutMs||60000),90000):(options.timeoutMs||240000);
+      const r=spawnSync('kimi',['-p',prompt],{encoding:'utf8',timeout:cliTimeout,maxBuffer:16*1024*1024,env:process.env});
       const stdout=String(r.stdout||'');
       const stderr=String(r.stderr||'');
       const combined=`${stdout}\n${stderr}`;
