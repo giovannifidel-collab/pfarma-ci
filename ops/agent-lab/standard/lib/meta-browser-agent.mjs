@@ -85,7 +85,7 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
 
   async metaUiState(){
     const expr=this.metaComposerExpr();
-    return this.eval(`(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const composer=(${expr});const controls=[...document.querySelectorAll('button,a,[role="button"]')].filter(visible);const send=document.querySelector('[data-testid="composer-send-button"]')||controls.find(e=>/^send$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));const stop=document.querySelector('[data-testid="composer-stop-button"]')||controls.find(e=>/^(stop|stop generating|stop responding|cancel response)$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));const dialogs=[...document.querySelectorAll('[role="dialog"],[aria-modal="true"]')].filter(visible).map(e=>String(e.innerText||e.textContent||''));const authInput=!!document.querySelector('input[type="password"],input[type="email"],input[type="tel"]');const loginControl=controls.some(e=>/(^|\\b)(log\\s*in|sign\\s*in|continue\\s+with|accedi)(\\b|$)/i.test(String(e.innerText||e.getAttribute('aria-label')||'').trim()));const loginDialog=dialogs.some(t=>/log in to meta ai|continue with facebook|continue with instagram|continue with email|sign in to meta ai/i.test(t));const login=!composer&&(loginDialog||(authInput&&loginControl));return {href:String(location.href||''),ready:document.readyState,composer:!!composer,composerText:composer?String(composer.value||composer.innerText||composer.textContent||''):'',composerTag:composer?.tagName?.toLowerCase()||null,sendVisible:!!send&&visible(send),sendDisabled:send?!!send.disabled||send.getAttribute('aria-disabled')==='true':null,stopVisible:!!stop&&visible(stop),loginVisible:!!login};})()`);
+    return this.eval(`(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const composer=(${expr});const controls=[...document.querySelectorAll('button,a,[role="button"]')].filter(visible);const send=document.querySelector('[data-testid="composer-send-button"]')||controls.find(e=>/^send$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));const stop=document.querySelector('[data-testid="composer-stop-button"]')||controls.find(e=>/^(stop|stop generating|stop responding|cancel response)$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));const sendVisible=!!send&&visible(send);const sendDisabled=send?!!send.disabled||send.getAttribute('aria-disabled')==='true':null;const stopVisible=!!stop&&visible(stop);const stopDisabled=stop?!!stop.disabled||stop.getAttribute('aria-disabled')==='true':null;const thinking=[...document.querySelectorAll('[data-testid="thinking-status"],[data-testid="subagent-cot-list"]')].some(visible);const generating=thinking||(stopVisible&&!stopDisabled&&!sendVisible);const dialogs=[...document.querySelectorAll('[role="dialog"],[aria-modal="true"]')].filter(visible).map(e=>String(e.innerText||e.textContent||''));const authInput=!!document.querySelector('input[type="password"],input[type="email"],input[type="tel"]');const loginControl=controls.some(e=>/(^|\\b)(log\\s*in|sign\\s*in|continue\\s+with|accedi)(\\b|$)/i.test(String(e.innerText||e.getAttribute('aria-label')||'').trim()));const loginDialog=dialogs.some(t=>/log in to meta ai|continue with facebook|continue with instagram|continue with email|sign in to meta ai/i.test(t));const login=!composer&&(loginDialog||(authInput&&loginControl));return {href:String(location.href||''),ready:document.readyState,composer:!!composer,composerText:composer?String(composer.value||composer.innerText||composer.textContent||''):'',composerTag:composer?.tagName?.toLowerCase()||null,sendVisible,sendDisabled,stopVisible,stopDisabled,thinkingVisible:thinking,generating,loginVisible:!!login};})()`);
   }
 
   async metaNavigateHome(){
@@ -123,35 +123,48 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
   }
 
   async clickMetaStop(){
-    return this.eval(`(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(visible);const e=document.querySelector('[data-testid="composer-stop-button"]')||controls.find(x=>/^(stop|stop generating|stop responding|cancel response)$/i.test(String(x.getAttribute('aria-label')||x.innerText||'').trim()));if(!e||!visible(e)||e.disabled||e.getAttribute('aria-disabled')==='true')return false;e.click();return true;})()`);
+    const p=await this.eval(`(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(visible);const e=document.querySelector('[data-testid="composer-stop-button"]')||controls.find(x=>/^(stop|stop generating|stop responding|cancel response)$/i.test(String(x.getAttribute('aria-label')||x.innerText||'').trim()));if(!e||!visible(e)||e.disabled||e.getAttribute('aria-disabled')==='true')return null;const r=e.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};})()`);
+    if(!p)return false;
+    await this.call('Input.dispatchMouseEvent',{type:'mouseMoved',x:p.x,y:p.y,button:'none'});
+    await this.call('Input.dispatchMouseEvent',{type:'mousePressed',x:p.x,y:p.y,button:'left',clickCount:1});
+    await this.call('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x,y:p.y,button:'left',clickCount:1});
+    return true;
+  }
+
+  async resetIdleTarget(){
+    const recycled=await this.recycleTarget();
+    if(!recycled)throw new Error('META_IDLE_TARGET_RECYCLE_FAILED');
+    await this.connect();
+    return this.metaWaitComposer(30000,{repair:true});
   }
 
   async metaWaitIdle(timeout=60000){
-    const deadline=Date.now()+timeout;let stable=0,stopSince=0,stopAttempted=false,homeReset=false;
+    const deadline=Date.now()+timeout;let stable=0,busySince=0,stopAttempted=false,targetReset=false;
     while(Date.now()<deadline){
       const s=await this.metaUiState();
       if(s.loginVisible)throw new Error('BLOCKED:META_LOGIN_REQUIRED');
-      if(s.composer&&!s.stopVisible){
+      if(s.composer&&!s.generating){
         stable++;
-        stopSince=0;
+        busySince=0;
         if(stable>=4)return true;
       }else{
         stable=0;
-        if(s.stopVisible){
-          if(!stopSince)stopSince=Date.now();
-          const stuckFor=Date.now()-stopSince;
+        if(s.generating){
+          if(!busySince)busySince=Date.now();
+          const stuckFor=Date.now()-busySince;
           if(!stopAttempted&&stuckFor>=5000){
             if(await this.clickMetaStop().catch(()=>false)){
               stopAttempted=true;
-              await sleep(900);
+              await sleep(1200);
               continue;
             }
           }
-          if(stopAttempted&&!homeReset&&stuckFor>=15000){
-            await this.metaNavigateHome().catch(()=>{});
-            homeReset=true;
-            stopSince=0;
-            await sleep(1200);
+          if(!targetReset&&stuckFor>=15000){
+            await this.resetIdleTarget();
+            targetReset=true;
+            stopAttempted=false;
+            busySince=0;
+            await sleep(1000);
             continue;
           }
         }
@@ -203,7 +216,7 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
       s=await this.metaUiState();
       if(s.loginVisible)throw new Error('BLOCKED:META_LOGIN_REQUIRED');
       const body=await this.bodyText();
-      if(!s.composerText.includes(marker)&&(body.includes(marker)||s.stopVisible||s.composerText.trim()===''))return method;
+      if(!s.composerText.includes(marker)&&(body.includes(marker)||s.generating||s.composerText.trim()===''))return method;
       await sleep(300);
     }
     throw new Error('META_PROMPT_NOT_SUBMITTED');
@@ -239,7 +252,7 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
         if(s.loginVisible)throw new Error('BLOCKED:META_LOGIN_REQUIRED');
         const body=await this.bodyText();
         const n=count(body,expectedText);
-        if(n>=baseline+2&&!s.stopVisible){
+        if(n>=baseline+2&&!s.generating){
           if(n===last)stable++;else{last=n;stable=1;}
           if(stable>=3&&await this.metaWaitIdle(30000))return {status:'ok',text:expectedText,metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:s.href||state.href,fresh_chat:false,fresh_policy:'nonce-baseline-no-reset',submit_method:submitMethod,transport:'browser-cdp',zero_cost_path:true,latency_ms:Date.now()-started,capture:'body-occurrence-exact-token'}};
         }
@@ -259,6 +272,7 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
       if(!recycled)throw new Error('META_TARGET_RECYCLE_FAILED');
       await this.connect();
       await this.metaWaitComposer(30000,{repair:true});
+      await this.metaWaitIdle(20000);
       return {recovered:true,method:'meta-target-recycle',reason,port:this.port};
     }catch(e){
       this.close();
