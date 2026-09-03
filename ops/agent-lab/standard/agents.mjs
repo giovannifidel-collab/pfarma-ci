@@ -3,7 +3,7 @@ import { KeyboardBrowserAgent } from './lib/keyboard-browser-agent.mjs';
 import { MarkerBrowserAgent } from './lib/marker-browser-agent.mjs';
 import { KimiHybridAgent } from './lib/kimi-hybrid-agent.mjs';
 import { DuckBrowserAgent } from './lib/duck-browser-agent.mjs';
-import { MetaBrowserAgent } from './lib/meta-browser-agent-idlefix.mjs';
+import { MetaBrowserAgent } from './lib/meta-browser-agent.mjs';
 import { QwenBrowserAgent } from './lib/qwen-browser-agent.mjs';
 import { GeminiBrowserAgent } from './lib/gemini-browser-agent.mjs';
 import { MistralBrowserAgent } from './lib/mistral-browser-agent.mjs';
