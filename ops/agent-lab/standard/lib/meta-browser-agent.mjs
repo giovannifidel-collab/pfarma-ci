@@ -88,6 +88,10 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
     return this.eval(`(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const composer=(${expr});const controls=[...document.querySelectorAll('button,a,[role="button"]')].filter(visible);const send=[...document.querySelectorAll('[data-testid="composer-send-button"]')].find(visible)||controls.find(e=>/^(send|send message|submit)$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));const stop=[...document.querySelectorAll('[data-testid="composer-stop-button"]')].find(visible)||controls.find(e=>/^(stop|stop generating|stop responding|cancel response)$/i.test(String(e.getAttribute('aria-label')||e.innerText||'').trim()));const sendVisible=!!send&&visible(send);const sendDisabled=send?!!send.disabled||send.getAttribute('aria-disabled')==='true':null;const stopVisible=!!stop&&visible(stop);const stopDisabled=stop?!!stop.disabled||stop.getAttribute('aria-disabled')==='true':null;const thinking=[...document.querySelectorAll('[data-testid="thinking-status"],[data-testid="subagent-cot-list"]')].some(visible);const generating=thinking||(stopVisible&&!stopDisabled&&!sendVisible);const dialogs=[...document.querySelectorAll('[role="dialog"],[aria-modal="true"]')].filter(visible).map(e=>String(e.innerText||e.textContent||''));const authInput=!!document.querySelector('input[type="password"],input[type="email"],input[type="tel"]');const loginControl=controls.some(e=>/(^|\\b)(log\\s*in|sign\\s*in|continue\\s+with|accedi)(\\b|$)/i.test(String(e.innerText||e.getAttribute('aria-label')||'').trim()));const loginDialog=dialogs.some(t=>/log in to meta ai|continue with facebook|continue with instagram|continue with email|sign in to meta ai/i.test(t));const login=!composer&&(loginDialog||(authInput&&loginControl));return {href:String(location.href||''),ready:document.readyState,composer:!!composer,composerText:composer?String(composer.value||composer.innerText||composer.textContent||''):'',composerTag:composer?.tagName?.toLowerCase()||null,sendVisible,sendDisabled,stopVisible,stopDisabled,thinkingVisible:thinking,generating,loginVisible:!!login};})()`);
   }
 
+  async metaAssistantTexts(){
+    return this.eval(`(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};return [...document.querySelectorAll('[data-testid="assistant-message"]')].filter(visible).map(e=>String(e.innerText||e.textContent||'').trim()).filter(Boolean);})()`);
+  }
+
   async metaNavigateHome(){
     await this.call('Page.navigate',{url:'https://www.meta.ai/'},12000);
     await sleep(2200);
@@ -200,7 +204,7 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
   }
 
   async submitMetaExact(prompt,marker){
-    if(!await this.metaWaitIdle(60000))throw new Error('META_NOT_IDLE_BEFORE_SEND');
+    await this.metaWaitComposer(15000,{repair:false});
     await this.clearMetaComposer();
     await this.call('Input.insertText',{text:prompt});
     await sleep(500);
@@ -216,7 +220,7 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
       s=await this.metaUiState();
       if(s.loginVisible)throw new Error('BLOCKED:META_LOGIN_REQUIRED');
       const body=await this.bodyText();
-      if(!s.composerText.includes(marker)&&(body.includes(marker)||s.generating||s.composerText.trim()===''))return method;
+      if(!s.composerText.includes(marker)&&(body.includes(marker)||s.composerText.trim()===''))return method;
       await sleep(300);
     }
     throw new Error('META_PROMPT_NOT_SUBMITTED');
@@ -242,19 +246,23 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
     try{
       await this.connect();
       const state=await this.metaWaitComposer(45000,{repair:true});
-      const baseline=count(await this.bodyText(),expectedText);
+      const baselineTexts=await this.metaAssistantTexts();
+      const baselineExact=baselineTexts.filter(x=>x===expectedText).length;
       const prompt=`${requestMarker}\nReply EXACTLY with the token below. Do not add punctuation, markdown or explanation.\n${expectedText}`;
       const submitMethod=await this.submitMetaExact(prompt,requestMarker);
       const deadline=Date.now()+(options.timeoutMs||this.config.timeoutMs||180000);
-      let stable=0,last=-1;
+      let stable=0,last=baselineExact;
       while(Date.now()<deadline){
         const s=await this.metaUiState();
         if(s.loginVisible)throw new Error('BLOCKED:META_LOGIN_REQUIRED');
-        const body=await this.bodyText();
-        const n=count(body,expectedText);
-        if(n>=baseline+2&&!s.generating){
+        const assistantTexts=await this.metaAssistantTexts();
+        const n=assistantTexts.filter(x=>x===expectedText).length;
+        if(n>=baselineExact+1){
           if(n===last)stable++;else{last=n;stable=1;}
-          if(stable>=3&&await this.metaWaitIdle(30000))return {status:'ok',text:expectedText,metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:s.href||state.href,fresh_chat:false,fresh_policy:'nonce-baseline-no-reset',submit_method:submitMethod,transport:'browser-cdp',zero_cost_path:true,latency_ms:Date.now()-started,capture:'body-occurrence-exact-token'}};
+          if(stable>=3)return {status:'ok',text:expectedText,metadata:{agent_id:this.id,provider:this.config.product,port:this.port,url:s.href||state.href,fresh_chat:false,fresh_policy:'nonce-assistant-message-no-reset',submit_method:submitMethod,transport:'browser-cdp',zero_cost_path:true,latency_ms:Date.now()-started,capture:'assistant-message-exact-token'}};
+        }else{
+          stable=0;
+          last=n;
         }
         await sleep(750);
       }
@@ -268,15 +276,12 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
   async recover(reason='unknown'){
     this.close();
     try{
-      const recycled=await this.recycleTarget();
-      if(!recycled)throw new Error('META_TARGET_RECYCLE_FAILED');
       await this.connect();
       await this.metaWaitComposer(30000,{repair:true});
-      await this.metaWaitIdle(20000);
-      return {recovered:true,method:'meta-target-recycle',reason,port:this.port};
+      return {recovered:true,method:'meta-session-reconnect',reason,port:this.port};
     }catch(e){
       this.close();
-      return {recovered:false,method:'meta-target-recycle',reason,error:String(e?.message||e)};
+      return {recovered:false,method:'meta-session-reconnect',reason,error:String(e?.message||e)};
     }
   }
 }
