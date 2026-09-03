@@ -1,4 +1,4 @@
-name: GIOCHEM Validation V3.4 Final Blind LIT-PCBA V7 Microshard Recovery
+name: GIOCHEM Validation V3.4 Final Blind LIT-PCBA V8 Microshard Recovery
 on:
   workflow_dispatch:
   push:
@@ -60,7 +60,7 @@ jobs:
           - {target: IDH1, shard: 26, micro: 0}
           - {target: IDH1, shard: 26, micro: 1}
           - {target: IDH1, shard: 26, micro: 2}
-    name: V7 blind ${{ matrix.target }} logical ${{ matrix.shard }} micro ${{ matrix.micro }}
+    name: V8 blind ${{ matrix.target }} logical ${{ matrix.shard }} micro ${{ matrix.micro }}
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false, fetch-depth: 1}
@@ -115,7 +115,7 @@ jobs:
         shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
         exclude:
           - {target: IDH1, shard: 26}
-    name: V7 recombine ${{ matrix.target }} logical shard ${{ matrix.shard }}
+    name: V8 recombine ${{ matrix.target }} logical shard ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false, fetch-depth: 1}
