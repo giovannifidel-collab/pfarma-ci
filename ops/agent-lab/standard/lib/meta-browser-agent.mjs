@@ -122,12 +122,40 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
     throw new Error(repair?'META_COMPOSER_NOT_READY_AFTER_TARGET_RECOVERY':'META_COMPOSER_NOT_READY');
   }
 
+  async clickMetaStop(){
+    return this.eval(`(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const controls=[...document.querySelectorAll('button,[role="button"]')].filter(visible);const e=document.querySelector('[data-testid="composer-stop-button"]')||controls.find(x=>/^(stop|stop generating|stop responding|cancel response)$/i.test(String(x.getAttribute('aria-label')||x.innerText||'').trim()));if(!e||!visible(e)||e.disabled||e.getAttribute('aria-disabled')==='true')return false;e.click();return true;})()`);
+  }
+
   async metaWaitIdle(timeout=60000){
-    const deadline=Date.now()+timeout;let stable=0;
+    const deadline=Date.now()+timeout;let stable=0,stopSince=0,stopAttempted=false,homeReset=false;
     while(Date.now()<deadline){
       const s=await this.metaUiState();
       if(s.loginVisible)throw new Error('BLOCKED:META_LOGIN_REQUIRED');
-      if(s.composer&&!s.stopVisible){stable++;if(stable>=4)return true;}else stable=0;
+      if(s.composer&&!s.stopVisible){
+        stable++;
+        stopSince=0;
+        if(stable>=4)return true;
+      }else{
+        stable=0;
+        if(s.stopVisible){
+          if(!stopSince)stopSince=Date.now();
+          const stuckFor=Date.now()-stopSince;
+          if(!stopAttempted&&stuckFor>=5000){
+            if(await this.clickMetaStop().catch(()=>false)){
+              stopAttempted=true;
+              await sleep(900);
+              continue;
+            }
+          }
+          if(stopAttempted&&!homeReset&&stuckFor>=15000){
+            await this.metaNavigateHome().catch(()=>{});
+            homeReset=true;
+            stopSince=0;
+            await sleep(1200);
+            continue;
+          }
+        }
+      }
       await sleep(350);
     }
     return false;
