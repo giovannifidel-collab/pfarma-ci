@@ -87,12 +87,12 @@ def score_micro(args) -> None:
         'labelsRead':False,
         'numModes':policy['docking']['numModes'],
         'receptorWeights':[0.5,0.5],
-        'executionMode':'V7_DETERMINISTIC_MICROSHARD_RECOVERY',
+        'executionMode':'V8_DETERMINISTIC_MICROSHARD_RECOVERY_NO_LOCAL_FAILURE_ABORT',
         'executionMicroIndex':args.micro_index,
         'executionMicroCount':args.micro_count,
     }
     out = Path(args.output)
-    with tempfile.TemporaryDirectory(prefix=f'giochem-v34-v7-{args.target}-{args.logical_shard}-{args.micro_index}-') as td, out.open('w', encoding='utf-8') as fh:
+    with tempfile.TemporaryDirectory(prefix=f'giochem-v34-v8-{args.target}-{args.logical_shard}-{args.micro_index}-') as td, out.open('w', encoding='utf-8') as fh:
         fh.write(json.dumps(meta, sort_keys=True) + '\n')
         root = Path(td)
         for n, row in enumerate(selected, 1):
@@ -102,13 +102,14 @@ def score_micro(args) -> None:
             fh.write(json.dumps(result, sort_keys=True) + '\n')
             fh.flush()
             if n % 5 == 0:
-                print(f'V7 {args.target} logical {args.logical_shard} micro {args.micro_index}: {n}/{len(selected)}', flush=True)
+                print(f'V8 {args.target} logical {args.logical_shard} micro {args.micro_index}: {n}/{len(selected)}', flush=True)
     objs = read_jsonl(out)[1:]
     if len(objs) != len(selected):
         raise SystemExit('FAIL-CLOSED micro output cardinality drift')
     failures = sum(r.get('status') != 'OK' for r in objs)
-    if failures / len(objs) > 0.25:
-        raise SystemExit(4)
+    # Execution microshards are partitioning only. Preserve all per-ligand failure
+    # records and defer acceptance to the frozen pre-unblind seal, which requires
+    # failedLigands == 0 across the exact recombined 80 logical shards.
     print(json.dumps({'target':args.target,'logicalShard':args.logical_shard,'microIndex':args.micro_index,'records':len(objs),'failures':failures}, sort_keys=True))
 
 
@@ -134,7 +135,7 @@ def recombine_one(args) -> None:
             raise SystemExit('FAIL-CLOSED micro metadata missing')
         meta = objs[0]
         mi = int(meta.get('executionMicroIndex', -1))
-        if meta.get('executionMode') != 'V7_DETERMINISTIC_MICROSHARD_RECOVERY' or int(meta.get('executionMicroCount', -1)) != args.micro_count or mi in seen_micro:
+        if meta.get('executionMode') != 'V8_DETERMINISTIC_MICROSHARD_RECOVERY_NO_LOCAL_FAILURE_ABORT' or int(meta.get('executionMicroCount', -1)) != args.micro_count or mi in seen_micro:
             raise SystemExit('FAIL-CLOSED micro execution provenance drift')
         seen_micro.add(mi)
         if meta.get('target') != args.target or int(meta.get('shardIndex', -1)) != args.logical_shard or int(meta.get('shardCount', -1)) != args.logical_count:
