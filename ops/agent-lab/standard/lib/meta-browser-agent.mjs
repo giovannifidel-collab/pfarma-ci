@@ -2,10 +2,85 @@ import { MarkerBrowserAgent } from './marker-browser-agent.mjs';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const count=(text,token)=>token?String(text||'').split(token).length-1:0;
+const retryableCdp=e=>/CDP_TIMEOUT_(Runtime\.enable|Runtime\.evaluate|Page\.enable)|CDP_CONNECT_(TIMEOUT|ERROR)|PAGE_WEBSOCKET_NOT_FOUND|WebSocket|InvalidStateError/i.test(String(e?.message||e||''));
 
 export class MetaBrowserAgent extends MarkerBrowserAgent {
+  usable(url=''){
+    try{
+      const u=new URL(String(url));
+      return /(^|\.)meta\.ai$/i.test(u.hostname)&&!/^\/(?:auth|login|oauth|account|accounts)(?:\/|$)/i.test(u.pathname);
+    }catch{return false;}
+  }
+
+  async targets(){
+    const r=await fetch(`http://127.0.0.1:${this.port}/json/list`,{signal:AbortSignal.timeout(4000)});
+    if(!r.ok)throw new Error(`META_TARGET_LIST_HTTP_${r.status}`);
+    return r.json();
+  }
+
+  async openHome(){
+    const base=`http://127.0.0.1:${this.port}`;
+    const r=await fetch(`${base}/json/new?${encodeURIComponent('https://www.meta.ai/')}`,{method:'PUT',signal:AbortSignal.timeout(7000)});
+    if(!r.ok)throw new Error(`META_TARGET_OPEN_HTTP_${r.status}`);
+    const t=await r.json();
+    if(t?.id)await fetch(`${base}/json/activate/${encodeURIComponent(t.id)}`,{signal:AbortSignal.timeout(3500)}).catch(()=>null);
+    await sleep(1500);
+    return t;
+  }
+
+  async ensureBrowser(){
+    const fallback=await super.ensureBrowser();
+    try{
+      const pages=(await this.targets()).filter(t=>t?.type==='page'&&t.webSocketDebuggerUrl);
+      const prompt=pages.find(t=>this.usable(t.url)&&/\/prompt\//i.test(String(t.url||'')));
+      if(prompt)return prompt;
+      const root=pages.find(t=>this.usable(t.url)&&/^https?:\/\/(?:www\.)?meta\.ai\/?(?:[?#].*)?$/i.test(String(t.url||'')));
+      if(root)return root;
+      const hit=pages.find(t=>this.usable(t.url));
+      if(hit)return hit;
+      const t=await this.openHome();
+      if(t?.webSocketDebuggerUrl)return t;
+    }catch{}
+    if(fallback&&this.usable(fallback.url))return fallback;
+    throw new Error('META_USABLE_TARGET_NOT_FOUND');
+  }
+
+  async recycleTarget(){
+    this.close();
+    try{
+      const base=`http://127.0.0.1:${this.port}`;
+      const all=await this.targets();
+      for(const t of all.filter(x=>x?.type==='page'&&this.config.targetPattern.test(String(x.url||'')))){
+        if(t.id)await fetch(`${base}/json/close/${encodeURIComponent(t.id)}`,{signal:AbortSignal.timeout(3500)}).catch(()=>null);
+      }
+      await sleep(600);
+      return !!(await this.openHome())?.webSocketDebuggerUrl;
+    }catch{return false;}
+  }
+
+  async connect(){
+    let last=null;
+    for(let i=1;i<=3;i++){
+      try{
+        if(this.ws?.readyState===WebSocket.OPEN){
+          await this.call('Runtime.evaluate',{expression:'1',returnByValue:true},6000);
+          return;
+        }
+        await super.connect();
+        await this.call('Runtime.evaluate',{expression:'1',returnByValue:true},7000);
+        return;
+      }catch(e){
+        last=e;this.close();
+        if(!retryableCdp(e))throw e;
+        await this.recycleTarget().catch(()=>false);
+        await sleep(700*i);
+      }
+    }
+    throw new Error(`META_CDP_RECOVERY_EXHAUSTED:${String(last?.message||last||'unknown')}`);
+  }
+
   metaComposerExpr(){
-    return `(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const tested=[...document.querySelectorAll('[data-testid="composer-input"]')].filter(visible);const preferred=tested.find(x=>x.tagName!=='TEXTAREA')||tested[0]||null;if(preferred)return preferred;const all=[...document.querySelectorAll('input,textarea,[contenteditable="true"],[role="textbox"]')].filter(visible);return all.find(x=>/ask meta ai|message meta ai/i.test(String(x.getAttribute('aria-label')||x.getAttribute('placeholder')||'')))||all.find(x=>x.getAttribute('contenteditable')==='true'&&x.getAttribute('role')==='textbox')||all.find(x=>x.getAttribute('contenteditable')==='true')||all.find(x=>x.tagName==='TEXTAREA')||all.find(x=>x.getAttribute('role')==='textbox')||null;})()`;
+    return `(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const tested=[...document.querySelectorAll('[data-testid="composer-input"]')].filter(visible);const preferred=tested.find(x=>x.tagName==='TEXTAREA')||tested.find(x=>x.getAttribute('contenteditable')==='true')||tested[0]||null;if(preferred)return preferred;const all=[...document.querySelectorAll('input,textarea,[contenteditable="true"],[role="textbox"]')].filter(visible);return all.find(x=>/ask meta ai|message meta ai/i.test(String(x.getAttribute('aria-label')||x.getAttribute('placeholder')||'')))||all.find(x=>x.getAttribute('contenteditable')==='true'&&x.getAttribute('role')==='textbox')||all.find(x=>x.getAttribute('contenteditable')==='true')||all.find(x=>x.tagName==='TEXTAREA')||all.find(x=>x.getAttribute('role')==='textbox')||null;})()`;
   }
 
   async metaUiState(){
@@ -25,19 +100,26 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
 
   async metaWaitComposer(timeout=45000,{repair=true}={}){
     const started=Date.now(),deadline=started+timeout;
-    let navigated=false,reloaded=false,last=null;
+    let promptReloaded=false,homeNavigated=false,homeReloaded=false,last=null;
     while(Date.now()<deadline){
       const s=await this.metaUiState();
       last=s;
       if(s.loginVisible)throw new Error('BLOCKED:META_LOGIN_REQUIRED');
       if(s.composer&&s.ready!=='loading')return s;
       const elapsed=Date.now()-started;
-      if(repair&&!navigated&&elapsed>=6500){await this.metaNavigateHome().catch(()=>{});navigated=true;}
-      else if(repair&&navigated&&!reloaded&&elapsed>=17000){await this.metaReload().catch(()=>{});reloaded=true;}
+      if(repair&&!promptReloaded&&/\/prompt\//i.test(String(s.href||''))&&elapsed>=8000){
+        await this.metaReload().catch(()=>{});promptReloaded=true;
+      }else if(repair&&!homeNavigated&&elapsed>=19000){
+        await this.metaNavigateHome().catch(()=>{});homeNavigated=true;
+      }else if(repair&&homeNavigated&&!homeReloaded&&elapsed>=31000){
+        await this.metaReload().catch(()=>{});homeReloaded=true;
+      }
       await sleep(350);
     }
     if(last?.loginVisible)throw new Error('BLOCKED:META_LOGIN_REQUIRED');
-    throw new Error(repair?'META_COMPOSER_NOT_READY_AFTER_PAGE_RECOVERY':'META_COMPOSER_NOT_READY');
+    if(last&&/\/prompt\//i.test(String(last.href||'')))throw new Error('META_PROMPT_TARGET_NO_COMPOSER');
+    if(last&&this.usable(last.href))throw new Error('META_HOME_TARGET_NO_COMPOSER');
+    throw new Error(repair?'META_COMPOSER_NOT_READY_AFTER_TARGET_RECOVERY':'META_COMPOSER_NOT_READY');
   }
 
   async metaWaitIdle(timeout=60000){
@@ -145,13 +227,14 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
   async recover(reason='unknown'){
     this.close();
     try{
+      const recycled=await this.recycleTarget();
+      if(!recycled)throw new Error('META_TARGET_RECYCLE_FAILED');
       await this.connect();
-      await this.metaNavigateHome().catch(()=>{});
       await this.metaWaitComposer(30000,{repair:true});
-      return {recovered:true,method:'meta-page-recovery',reason,port:this.port};
+      return {recovered:true,method:'meta-target-recycle',reason,port:this.port};
     }catch(e){
       this.close();
-      return {recovered:false,method:'meta-page-recovery',reason,error:String(e?.message||e)};
+      return {recovered:false,method:'meta-target-recycle',reason,error:String(e?.message||e)};
     }
   }
 }
