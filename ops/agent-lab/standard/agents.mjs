@@ -4,6 +4,7 @@ import { MarkerBrowserAgent } from './lib/marker-browser-agent.mjs';
 import { KimiHybridAgent } from './lib/kimi-hybrid-agent.mjs';
 import { DuckBrowserAgent } from './lib/duck-browser-agent.mjs';
 import { MetaBrowserAgent } from './lib/meta-browser-agent.mjs';
+import { MetaLlamaApiAgent } from './lib/meta-llama-api-agent.mjs';
 import { QwenBrowserAgent } from './lib/qwen-browser-agent.mjs';
 import { GeminiBrowserAgent } from './lib/gemini-browser-agent.mjs';
 import { MistralBrowserAgent } from './lib/mistral-browser-agent.mjs';
@@ -17,7 +18,7 @@ export const AGENT_CONFIGS = [
   {id:'mistral',product:'Mistral Vibe Web / Fast',port:9229,startScript:'mistral/start-browser.sh',homeUrl:'https://chat.mistral.ai/chat',targetPattern:/chat\.mistral\.ai/i,composerPatterns:['ask.*mistral','message.*mistral','send a message','^message$'],submitPatterns:['^send$','send message'],inputMode:'mistral',blockPatterns:['log in to mistral','sign in to mistral'],freshChat:true,timeoutMs:150000},
   {id:'perplexity',product:'Perplexity Web',port:9230,startScript:'perplexity/start-browser.sh',homeUrl:'https://www.perplexity.ai/',targetPattern:/perplexity\.ai/i,composerPatterns:['ask anything','ask perplexity','message perplexity','^ask$'],submitPatterns:['submit','^ask$','^send$','send message'],inputMode:'keyboard',blockPatterns:['sign in to perplexity','log in to perplexity'],freshChat:true,timeoutMs:210000},
   {id:'copilot',product:'Microsoft Copilot Web / Standard chat',port:9231,startScript:'copilot/start-browser.sh',homeUrl:'https://copilot.microsoft.com/',targetPattern:/copilot\.(com|microsoft\.com)/i,composerPatterns:['message copilot','ask copilot','send a message'],submitPatterns:['^send$','send message','submit'],inputMode:'marker',blockPatterns:['sign in to copilot','log in to copilot'],freshChat:true,timeoutMs:210000},
-  {id:'meta',product:'Meta AI Web / Instant',port:9232,startScript:'meta/start-browser.sh',homeUrl:'https://www.meta.ai/',targetPattern:/meta\.ai/i,composerPatterns:['ask meta ai','message meta ai','^message$'],submitPatterns:['^send$','send message','submit'],inputMode:'meta',blockPatterns:['log in to meta ai','sign in to meta ai'],freshChat:true},
+  {id:'meta',product:'Meta AI Web / Instant',port:9232,startScript:'meta/start-browser.sh',homeUrl:'https://www.meta.ai/',targetPattern:/meta\.ai/i,composerPatterns:['ask meta ai','message meta ai','^message$'],submitPatterns:['^send$','send message','submit'],inputMode:'meta',blockPatterns:['log in to meta ai','sign in to meta ai'],freshChat:true,timeoutMs:120000},
   {id:'duck',product:'Duck.ai Web / Free / Fast',port:9233,startScript:'duck/start-browser.sh',homeUrl:'https://duck.ai/',targetPattern:/duck\.ai/i,composerPatterns:['ask anything privately'],submitPatterns:['^send$','^ask$'],inputMode:'duck',blockPatterns:['daily limit','rate limit','usage limit','limit reached','you.ve reached.*limit'],freshChat:true}
 ];
 
@@ -28,7 +29,7 @@ export function buildAgents({rootDir,fresh=true}={}){
     if(c.inputMode==='gemini')return [c.id,new GeminiBrowserAgent(c,opts)];
     if(c.inputMode==='qwen')return [c.id,new QwenBrowserAgent(c,opts)];
     if(c.inputMode==='mistral')return [c.id,new MistralBrowserAgent(c,opts)];
-    if(c.inputMode==='meta')return [c.id,new MetaBrowserAgent(c,opts)];
+    if(c.inputMode==='meta')return [c.id,process.env.LLAMA_API_KEY?.trim()?new MetaLlamaApiAgent(c,opts):new MetaBrowserAgent(c,opts)];
     if(c.inputMode==='duck')return [c.id,new DuckBrowserAgent(c,opts)];
     if(c.inputMode==='marker')return [c.id,new MarkerBrowserAgent(c,opts)];
     return [c.id,c.inputMode==='native'?new BrowserAgent(c,opts):new KeyboardBrowserAgent(c,opts)];
