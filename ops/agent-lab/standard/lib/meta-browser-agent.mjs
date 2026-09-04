@@ -205,8 +205,7 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
 
   async submitMetaExact(prompt,marker){
     await this.metaWaitComposer(15000,{repair:false});
-    await this.clearMetaComposer();
-    await this.call('Input.insertText',{text:prompt});
+    await this.setComposer(prompt);
     await sleep(500);
     let s=await this.metaUiState();
     if(!s.composerText.includes(marker))throw new Error('META_TEXT_NOT_INSERTED');
