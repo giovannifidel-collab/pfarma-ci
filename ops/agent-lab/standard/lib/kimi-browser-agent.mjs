@@ -67,6 +67,7 @@ export class KimiBrowserAgent extends KeyboardBrowserAgent {
       }catch(e){
         last=e;this.close();
         if(!retryableCdp(e))throw e;
+        if(i===1){await sleep(700);continue;}
         await this.recycleTarget().catch(()=>false);
         await sleep(700*i);
       }
@@ -179,7 +180,13 @@ export class KimiBrowserAgent extends KeyboardBrowserAgent {
     if(!await this.waitKimiIdle())throw new Error('KIMI_NOT_IDLE_BEFORE_SEND');
     const before=(await this.ui()).userCount;
     await this.setKimiInput(prompt);
-    const ready=Date.now()+6000;
+
+    const genericReady=await this.waitSubmitReady(5000).catch(()=>null);
+    if(genericReady&&await this.clickSubmit().catch(()=>false)){
+      if(await this.submitted(marker,before,8000))return 'generic-send-button';
+    }
+
+    const ready=Date.now()+5000;
     while(Date.now()<ready){const s=await this.ui();if(s.sendVisible&&!s.sendDisabled&&!s.generating)break;await sleep(200);}
     if(await this.clickSend())if(await this.submitted(marker,before))return 'kimi-send-container';
     if(await this.pressEnter())if(await this.submitted(marker,before,10000))return 'cdp-enter';
@@ -219,6 +226,11 @@ export class KimiBrowserAgent extends KeyboardBrowserAgent {
 
   async recover(reason='unknown'){
     this.close();
+    try{
+      await this.connect();
+      await this.waitComposer(20000,false);
+      return {recovered:true,method:'kimi-session-reconnect',reason,port:this.port};
+    }catch{}
     if(!await this.recycleTarget().catch(()=>false))return {recovered:false,method:'kimi-target-recycle',reason};
     try{
       await this.connect();
