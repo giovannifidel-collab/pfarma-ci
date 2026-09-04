@@ -205,7 +205,14 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
 
   async submitMetaExact(prompt,marker){
     await this.metaWaitComposer(15000,{repair:false});
-    await this.setComposer(prompt);
+    const compact=String(prompt).replace(/\s+/g,' ').trim();
+    const payload=JSON.stringify(compact);
+    const expr=this.metaComposerExpr();
+    const nativeSet=await this.eval(`(()=>{const e=(${expr});if(!e)return false;e.click();e.focus();const isInput=e.tagName==='INPUT',isTextarea=e.tagName==='TEXTAREA';if(!isInput&&!isTextarea)return false;const proto=isInput?HTMLInputElement.prototype:HTMLTextAreaElement.prototype;const setter=Object.getOwnPropertyDescriptor(proto,'value')?.set;if(!setter)return false;setter.call(e,${payload});try{e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:${payload}}))}catch{e.dispatchEvent(new Event('input',{bubbles:true}))}e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+    if(!nativeSet){
+      await this.clearMetaComposer();
+      await this.call('Input.insertText',{text:compact});
+    }
     await sleep(500);
     let s=await this.metaUiState();
     if(!s.composerText.includes(marker))throw new Error('META_TEXT_NOT_INSERTED');
@@ -247,7 +254,7 @@ export class MetaBrowserAgent extends MarkerBrowserAgent {
       const state=await this.metaWaitComposer(45000,{repair:true});
       const baselineTexts=await this.metaAssistantTexts();
       const baselineExact=baselineTexts.filter(x=>x===expectedText).length;
-      const prompt=`${requestMarker}\nReply EXACTLY with the token below. Do not add punctuation, markdown or explanation.\n${expectedText}`;
+      const prompt=`${requestMarker} Reply EXACTLY with this token and nothing else: ${expectedText}`;
       const submitMethod=await this.submitMetaExact(prompt,requestMarker);
       const deadline=Date.now()+(options.timeoutMs||this.config.timeoutMs||180000);
       let stable=0,last=baselineExact;
