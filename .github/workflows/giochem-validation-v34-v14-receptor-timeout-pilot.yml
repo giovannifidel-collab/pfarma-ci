@@ -81,3 +81,4 @@ jobs:
             --source-code-sha '53445632b854cb4970dcf0484f53b248bd9f3813' \
             --receptor-index '${{ matrix.receptor }}' --gnina-timeout-seconds 16200
           ! find /tmp -type f \( -name '*.sdf' -o -name '*.pdbqt' -o -name '*.jsonl' \) -path '*giochem-v34-v14*' -print -quit | grep -q .
+# V14 trigger revision: timeout-only, outcome-independent, truth-free
