@@ -1,0 +1,85 @@
+name: GIOCHEM Validation V3.4 V12 Timeout-Only Blind Technical Pilot
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/giochem-validation-v34-v12-timeout-pilot.yml
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        target: [ALDH1, MTORC1, IDH1]
+    name: V12 timeout-only pilot ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false, fetch-depth: 1}
+      - name: verify control-plane helper commit lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f scripts/giochem_v34_v12_timeout_microshard.py
+          grep -q 'V12_DETERMINISTIC_MICROSHARD_PER_DOCKING_TIMEOUT_ONLY_RECOVERY' scripts/giochem_v34_v12_timeout_microshard.py
+      - name: token
+        shell: bash
+        env: {A: '${{ secrets.GIOCHEM_SOURCE_TOKEN }}', B: '${{ secrets.PFARMA_SOURCE_TOKEN }}'}
+        run: 'T="${A:-${B:-}}"; test -n "$T"; echo PRIVATE_SOURCE_TOKEN=$T >> "$GITHUB_ENV"'
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/giochem
+          ref: 53445632b854cb4970dcf0484f53b248bd9f3813
+          token: '${{ env.PRIVATE_SOURCE_TOKEN }}'
+          path: src
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with: {run-id: '33219905221', github-token: '${{ github.token }}', name: giochem-v34-v4-blind, path: /tmp/blind}
+      - uses: actions/download-artifact@v4
+        with: {run-id: '33219905221', github-token: '${{ github.token }}', name: giochem-v34-v4-receptors, path: /tmp/receptors}
+      - uses: actions/download-artifact@v4
+        with: {run-id: '33219905221', github-token: '${{ github.token }}', name: giochem-v34-v4-receptor-manifest, path: /tmp/rmanifest}
+      - uses: actions/cache/restore@v4
+        with:
+          path: /tmp/giochem-gnina-runtime
+          key: giochem-v31-gnina-runtime-a3838e2ec2987e2ec98f0a4f07420e27887809ba3aa64e43382f9073e9c8e54a
+          fail-on-cache-miss: true
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: install frozen runtime dependencies
+        run: |
+          sudo apt-get update -y >/dev/null && sudo apt-get install -y autodock-vina >/dev/null
+          python -m pip install --disable-pip-version-check --no-cache-dir -r src/scientific-api/requirements.txt >/dev/null
+          python -m pip install --disable-pip-version-check --no-cache-dir 'meeko==0.7.1' 'rdkit==2025.9.6' >/dev/null
+      - name: runtime lock
+        shell: bash
+        run: |
+          echo "LD_LIBRARY_PATH=$(cat /tmp/giochem-gnina-runtime/ld-library-path.txt):${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo GIOCHEM_GNINA_BIN=/tmp/giochem-gnina-runtime/gnina >> "$GITHUB_ENV"
+          test "$(sha256sum /tmp/giochem-gnina-runtime/gnina|awk '{print $1}')" = '3340c1f49cd3c7c84d8699182a1c6af13c7fa2a22448d1204640446106f72172'
+      - name: deterministic truth-free timeout-only pilot
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! find /tmp -type f -name '*.truth.jsonl' -print -quit 2>/dev/null | grep -q .
+          B=$(find /tmp/blind -type f -name '${{ matrix.target }}.blind.jsonl' -print -quit)
+          M=$(find /tmp/rmanifest -type f -name '*.json' -print -quit)
+          test -n "$B"; test -n "$M"
+          N=27; [ '${{ matrix.target }}' = IDH1 ] && N=26
+          python scripts/giochem_v34_v12_timeout_microshard.py score \
+            --source-root src --target '${{ matrix.target }}' --blind-input "$B" \
+            --receptor-dir /tmp/receptors --receptor-manifest "$M" \
+            --runtime-lock-sha256 'a3838e2ec2987e2ec98f0a4f07420e27887809ba3aa64e43382f9073e9c8e54a' \
+            --source-code-sha '53445632b854cb4970dcf0484f53b248bd9f3813' \
+            --logical-shard 0 --logical-count "$N" --micro-index 0 --micro-count 100 \
+            --gnina-timeout-seconds 3600 --require-zero-failures --output /tmp/pilot.jsonl
+          ! grep -E '"(label|active|inactive|truth|smiles|experimentalOutcome|originalCompoundId|sourceFile)"' /tmp/pilot.jsonl
+          rm -f /tmp/pilot.jsonl
