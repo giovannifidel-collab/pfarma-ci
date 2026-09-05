@@ -1,4 +1,4 @@
-name: GIOCHEM Validation V3.4 Final Blind LIT-PCBA V9 Recombine-Only Recovery
+name: GIOCHEM Validation V3.4 Final Blind LIT-PCBA V10 Paginated Recombine-Only Recovery
 on:
   workflow_dispatch:
   push:
@@ -54,10 +54,11 @@ jobs:
           J=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/runs/$R")
           test "$(jq -r .head_sha <<<"$J")" = "$H"
           test "$(jq -r .status <<<"$J")" = "completed"
-          A=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/runs/$R/artifacts?per_page=100&page=1")
-          B=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/runs/$R/artifacts?per_page=100&page=2")
-          C=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/runs/$R/artifacts?per_page=100&page=3")
-          printf '%s\n%s\n%s\n' "$A" "$B" "$C" | jq -s '[.[].artifacts[] | select(.name|startswith("giochem-v34-v7-micro-"))] | length == 240' | grep -qx true
+          mkdir -p /tmp/v8meta
+          for P in 1 2 3; do
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/runs/$R/artifacts?per_page=100&page=$P" > "/tmp/v8meta/$P.json"
+          done
+          jq -s '[.[].artifacts[] | select(.name|startswith("giochem-v34-v7-micro-"))] as $a | ($a|length)==240 and ([$a[].name]|unique|length)==240 and ([$a[]|select(.expired==true)]|length)==0 and ([$a[]|select(.name|startswith("giochem-v34-v7-micro-ALDH1-"))]|length)==81 and ([$a[]|select(.name|startswith("giochem-v34-v7-micro-MTORC1-"))]|length)==81 and ([$a[]|select(.name|startswith("giochem-v34-v7-micro-IDH1-"))]|length)==78' /tmp/v8meta/1.json /tmp/v8meta/2.json /tmp/v8meta/3.json | grep -qx true
 
   recombine:
     needs: setup
@@ -71,7 +72,7 @@ jobs:
         shard: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
         exclude:
           - {target: IDH1, shard: 26}
-    name: V9 recombine ${{ matrix.target }} logical shard ${{ matrix.shard }}
+    name: V10 recombine ${{ matrix.target }} logical shard ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false, fetch-depth: 1}
@@ -81,13 +82,29 @@ jobs:
         run: 'T="${A:-${B:-}}"; test -n "$T"; echo PRIVATE_SOURCE_TOKEN=$T >> "$GITHUB_ENV"'
       - uses: actions/checkout@v4
         with: {repository: giovannifidel-collab/giochem, ref: '${{ needs.setup.outputs.source }}', token: '${{ env.PRIVATE_SOURCE_TOKEN }}', path: src, fetch-depth: 1, persist-credentials: false}
-      - uses: actions/download-artifact@v4
-        with:
-          run-id: '${{ needs.setup.outputs.micro_run }}'
-          github-token: '${{ github.token }}'
-          pattern: 'giochem-v34-v7-micro-${{ matrix.target }}-${{ matrix.shard }}-*'
-          path: /tmp/micros
-          merge-multiple: true
+      - name: Download exact V8 micro artifacts with explicit pagination
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          R='${{ needs.setup.outputs.micro_run }}'
+          mkdir -p /tmp/micros /tmp/v8meta
+          for P in 1 2 3; do
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/runs/$R/artifacts?per_page=100&page=$P" > "/tmp/v8meta/$P.json"
+          done
+          jq -s '[.[].artifacts[]]' /tmp/v8meta/1.json /tmp/v8meta/2.json /tmp/v8meta/3.json > /tmp/v8meta/all.json
+          for M in 0 1 2; do
+            NAME='giochem-v34-v7-micro-${{ matrix.target }}-${{ matrix.shard }}-'$M
+            COUNT=$(jq --arg n "$NAME" '[.[] | select(.name==$n and .expired==false)] | length' /tmp/v8meta/all.json)
+            test "$COUNT" -eq 1
+            ID=$(jq -r --arg n "$NAME" '.[] | select(.name==$n and .expired==false) | .id' /tmp/v8meta/all.json)
+            test -n "$ID"; test "$ID" != null
+            mkdir -p "/tmp/micros/$M"
+            curl -fsSL -L -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ID/zip" -o "/tmp/micro-$M.zip"
+            unzip -q "/tmp/micro-$M.zip" -d "/tmp/micros/$M"
+          done
+          test "$(find /tmp/micros -type f -name '*.jsonl' | wc -l)" -eq 3
       - uses: actions/download-artifact@v4
         with: {run-id: '${{ needs.setup.outputs.base_run }}', github-token: '${{ github.token }}', name: giochem-v34-v4-blind, path: /tmp/blind}
       - uses: actions/setup-python@v5
