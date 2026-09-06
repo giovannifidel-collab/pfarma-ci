@@ -199,10 +199,18 @@ export class KimiBrowserAgent extends KeyboardBrowserAgent {
     while(Date.now()<deadline){
       const s=await this.ui();
       if(s.loginVisible)throw new Error('BLOCKED:KIMI_LOGIN_REQUIRED');
-      if(!s.composerText.includes(marker)&&(s.userCount>before||s.generating||s.composerText.trim()===''))return true;
+      if(s.userCount>before||s.generating)return true;
       await sleep(250);
     }
     return false;
+  }
+
+  async restorePromptAfterQuota(prompt,marker){
+    const dismissed=await this.dismissQuotaModal().catch(()=>false);
+    if(dismissed)await sleep(500);
+    const s=await this.ui();
+    if(!s.composerText.includes(marker))await this.setKimiInput(prompt);
+    return dismissed;
   }
 
   async submit(prompt,marker){
@@ -210,17 +218,30 @@ export class KimiBrowserAgent extends KeyboardBrowserAgent {
     if(!await this.waitKimiIdle())throw new Error('KIMI_NOT_IDLE_BEFORE_SEND');
     const before=(await this.ui()).userCount;
     await this.setKimiInput(prompt);
-    await this.dismissQuotaModal().catch(()=>false);
 
-    const genericReady=await this.waitSubmitReady(5000).catch(()=>null);
-    if(genericReady&&await this.clickSubmit().catch(()=>false)){
-      if(await this.submitted(marker,before,8000))return 'generic-send-button';
+    for(let round=1;round<=3;round++){
+      await this.restorePromptAfterQuota(prompt,marker).catch(()=>false);
+
+      const genericReady=await this.waitSubmitReady(5000).catch(()=>null);
+      if(genericReady&&await this.clickSubmit().catch(()=>false)){
+        if(await this.submitted(marker,before,5000))return `generic-send-button-r${round}`;
+      }
+
+      await this.restorePromptAfterQuota(prompt,marker).catch(()=>false);
+      const ready=Date.now()+4000;
+      while(Date.now()<ready){const s=await this.ui();if(s.sendVisible&&!s.sendDisabled&&!s.generating)break;await sleep(200);}
+      if(await this.clickSend()){
+        if(await this.submitted(marker,before,5000))return `kimi-send-container-r${round}`;
+      }
+
+      await this.restorePromptAfterQuota(prompt,marker).catch(()=>false);
+      if(await this.pressEnter()){
+        if(await this.submitted(marker,before,5000))return `cdp-enter-r${round}`;
+      }
+
+      await this.dismissQuotaModal().catch(()=>false);
+      await sleep(700);
     }
-
-    const ready=Date.now()+5000;
-    while(Date.now()<ready){const s=await this.ui();if(s.sendVisible&&!s.sendDisabled&&!s.generating)break;await sleep(200);}
-    if(await this.clickSend())if(await this.submitted(marker,before))return 'kimi-send-container';
-    if(await this.pressEnter())if(await this.submitted(marker,before,10000))return 'cdp-enter';
     throw new Error('KIMI_PROMPT_NOT_SUBMITTED');
   }
 
