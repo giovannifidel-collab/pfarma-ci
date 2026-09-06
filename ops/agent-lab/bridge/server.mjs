@@ -57,7 +57,7 @@ async function withAgentLock(id,fn){
   }
 }
 
-async function invoke(id,task,{fresh=true,timeoutMs=null}={}){
+async function invoke(id,task,{fresh=true,timeoutMs=null,expectedText=null}={}){
   const agent=getAgent(id);
   const trace=[];
   let last={status:'error',text:'BRIDGE_NOT_RUN',metadata:{agent_id:id}};
@@ -66,7 +66,7 @@ async function invoke(id,task,{fresh=true,timeoutMs=null}={}){
     const health=await agent.health();
     trace.push({attempt,stage:'health',status:health.status,text:String(health.text||'').slice(0,240),latency_ms:Date.now()-started});
     if(health.status==='ok'){
-      last=await agent.run(task,{fresh,timeoutMs:timeoutMs||undefined});
+      last=await agent.run(task,{fresh,timeoutMs:timeoutMs||undefined,expectedText:expectedText||undefined});
       trace.push({attempt,stage:'run',status:last.status,text:String(last.text||'').slice(0,400),latency_ms:Date.now()-started});
       if(last.status==='ok'||last.status==='blocked')break;
     }else{
@@ -98,7 +98,7 @@ function publicJob(job){
   };
 }
 
-function startJob({agentId,task,fresh,timeoutMs}){
+function startJob({agentId,task,fresh,timeoutMs,expectedText}){
   const id=crypto.randomUUID();
   const job={id,agent_id:agentId,state:'queued',created_at:new Date().toISOString(),started_at:null,finished_at:null,result:null,error:null,expires_at:Date.now()+JOB_TTL_MS};
   jobs.set(id,job);
@@ -106,7 +106,7 @@ function startJob({agentId,task,fresh,timeoutMs}){
     job.state='running';
     job.started_at=new Date().toISOString();
     try{
-      job.result=await withAgentLock(agentId,()=>invoke(agentId,task,{fresh,timeoutMs}));
+      job.result=await withAgentLock(agentId,()=>invoke(agentId,task,{fresh,timeoutMs,expectedText}));
       job.state='done';
     }catch(e){
       job.error=String(e?.message||'bridge job failed').slice(0,500);
@@ -140,9 +140,10 @@ const server=http.createServer(async(req,res)=>{
       const body=await readJson(req);
       const agentId=String(body.agent_id||'').toLowerCase();
       const task=String(body.task||'').trim();
+      const expectedText=body.expected_text==null?null:String(body.expected_text).trim();
       if(!agentIds.includes(agentId))return json(res,400,{ok:false,error:`UNKNOWN_AGENT:${agentId}`});
       if(!task)return json(res,400,{ok:false,error:'task required'});
-      const job=startJob({agentId,task,fresh:body.fresh!==false,timeoutMs:Number(body.timeout_ms)||null});
+      const job=startJob({agentId,task,fresh:body.fresh!==false,timeoutMs:Number(body.timeout_ms)||null,expectedText});
       return json(res,202,{ok:true,job_id:job.id,state:job.state,protocol:'async-job-v1'});
     }
     if(req.method==='GET'&&url.pathname.startsWith('/jobs/')){
