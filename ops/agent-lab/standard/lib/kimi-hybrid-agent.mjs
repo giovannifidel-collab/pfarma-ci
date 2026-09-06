@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { KimiBrowserAgent } from './kimi-browser-agent.mjs';
 
+const KIMI_JINA_HEALTH='https://r.jina.ai/https://hive-kimi-relay.project-giovanni.workers.dev/health';
+
 function cliAvailable(){const r=spawnSync('bash',['-lc','command -v kimi >/dev/null 2>&1'],{stdio:'ignore'});return r.status===0;}
 function stripAnsi(v){return String(v||'').replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g,'');}
 function parseEnvelope(stdout,begin,end){const s=stripAnsi(stdout);const i=s.lastIndexOf(begin);if(i<0)return null;const j=s.indexOf(end,i+begin.length);if(j<0)return null;return s.slice(i+begin.length,j).trim();}
@@ -29,6 +31,52 @@ async function visibleExactTokenElement(browser,expected){
     });
   })()`));
 }
+function splitToken(expected){
+  const s=String(expected);
+  const out=[];
+  for(let i=0;i<s.length;i+=4)out.push(s.slice(i,i+4));
+  return out;
+}
+async function runJinaHealthStandard(browser,id,config,expectedText,options,started){
+  const marker=`HIVE_KIMI_HEALTH:${Date.now()}:${crypto.randomBytes(4).toString('hex')}`;
+  const pieces=splitToken(expectedText);
+  const prompt=[
+    marker,
+    'Use web_open_url to open this health URL exactly once:',
+    KIMI_JINA_HEALTH,
+    'Only if the returned JSON says ok=true, concatenate the following pieces in their listed order with absolutely nothing inserted between pieces.',
+    'Return only that concatenated result. No markdown, quotes, punctuation, explanation, tool report, or extra text.',
+    'PIECES:',
+    ...pieces.map((p,i)=>`${i+1}: ${JSON.stringify(p)}`),
+  ].join('\n');
+  let method='unknown',last='';
+  try{
+    await browser.connect();
+    await browser.waitComposer(45000,true);
+    const before=await browser.assistant();
+    method=await browser.submit(prompt,marker);
+    const deadline=Date.now()+(options.timeoutMs||config.timeoutMs||180000);
+    while(Date.now()<deadline){
+      const s=await browser.ui();
+      if(s.loginVisible)throw new Error('BLOCKED:KIMI_LOGIN_REQUIRED');
+      const a=await browser.assistant();
+      if(a.count>before.count&&a.text&&!s.generating){
+        last=a.text;
+        if(a.text===expectedText){
+          return {status:'ok',text:expectedText,metadata:{agent_id:id,provider:config.product,port:browser.port,url:s.href||null,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,capture:'kimi-assistant-segment-exact-derived-token',submit_method:method,relay_health:KIMI_JINA_HEALTH,anti_echo:'expected-token-not-present-contiguously-in-prompt'}};
+        }
+      }
+      if(!s.generating&&await visibleExactTokenElement(browser,expectedText)){
+        return {status:'ok',text:expectedText,metadata:{agent_id:id,provider:config.product,port:browser.port,url:s.href||null,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,capture:'visible-exact-derived-token-current-ui',submit_method:method,relay_health:KIMI_JINA_HEALTH,anti_echo:'expected-token-not-present-contiguously-in-prompt'}};
+      }
+      await new Promise(r=>setTimeout(r,650));
+    }
+    return {status:'error',text:last?'KIMI_HEALTH_RESPONSE_NOT_EXACT':'KIMI_HEALTH_EXACT_RESPONSE_TIMEOUT',metadata:{agent_id:id,provider:config.product,port:browser.port,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,response_length:last.length,submit_method:method,relay_health:KIMI_JINA_HEALTH}};
+  }catch(e){
+    const message=String(e?.message||e||'KIMI_HEALTH_RUN_ERROR');
+    return {status:/^BLOCKED:/i.test(message)?'blocked':'error',text:message,metadata:{agent_id:id,provider:config.product,port:browser.port,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,submit_method:method,relay_health:KIMI_JINA_HEALTH}};
+  }
+}
 
 export class KimiHybridAgent{
   constructor(config,opts={}){this.config=config;this.id=config.id;this.browser=new KimiBrowserAgent(config,opts);}
@@ -55,18 +103,16 @@ export class KimiHybridAgent{
       const text=expectedText?exactStandardTokenLine(combined,expectedText):parseEnvelope(combined,begin,end);
       if(r.status===0&&text!==null)return {status:'ok',text,metadata:{agent_id:this.id,provider:this.config.product,transport:'kimi-cli',zero_cost_path:true,latency_ms:Date.now()-started,nonce,capture:expectedText?'exact-token-line-normalized-combined-streams':'envelope'}};
       const cliError=stripAnsi(stderr||stdout||r.error?.message||`CLI_EXIT_${r.status}`).trim().slice(-3000);
-      const fallback=await this.browser.run(task,options);
+      const fallback=expectedText
+        ? await runJinaHealthStandard(this.browser,this.id,this.config,expectedText,options,started)
+        : await this.browser.run(task,options);
       fallback.metadata={...fallback.metadata,kimi_cli_fallback_reason:cliError,transport:fallback.metadata?.transport||'browser-cdp'};
-      if(expectedText&&fallback.status!=='ok'&&fallback.text==='KIMI_EXACT_RESPONSE_TIMEOUT'){
-        try{
-          if(await visibleExactTokenElement(this.browser,expectedText)){
-            return {status:'ok',text:expectedText,metadata:{...fallback.metadata,agent_id:this.id,provider:this.config.product,zero_cost_path:true,latency_ms:Date.now()-started,capture:'visible-exact-token-element-current-ui',anti_echo:'excluded-composer-and-known-user-segment'}};
-          }
-        }catch{}
-      }
       return fallback;
     }
-    return this.browser.run(task,options);
+    const expectedText=options.expectedText?String(options.expectedText):null;
+    return expectedText
+      ? runJinaHealthStandard(this.browser,this.id,this.config,expectedText,options,started)
+      : this.browser.run(task,options);
   }
   async recover(reason='unknown'){return this.browser.recover(reason);}
   close(){this.browser.close();}
