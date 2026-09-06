@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { KimiBrowserAgent } from './kimi-browser-agent.mjs';
 
 const KIMI_JINA_HEALTH='https://r.jina.ai/https://hive-kimi-relay.project-giovanni.workers.dev/health';
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 function cliAvailable(){const r=spawnSync('bash',['-lc','command -v kimi >/dev/null 2>&1'],{stdio:'ignore'});return r.status===0;}
 function stripAnsi(v){return String(v||'').replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g,'');}
@@ -49,7 +50,7 @@ async function runJinaHealthStandard(browser,id,config,expectedText,options,star
     'PIECES:',
     ...pieces.map((p,i)=>`${i+1}: ${JSON.stringify(p)}`),
   ].join('\n');
-  let method='unknown',last='';
+  let method='unknown',last='',quotaDismissals=0,resubmits=0;
   try{
     await browser.connect();
     await browser.waitComposer(45000,true);
@@ -57,24 +58,35 @@ async function runJinaHealthStandard(browser,id,config,expectedText,options,star
     method=await browser.submit(prompt,marker);
     const deadline=Date.now()+(options.timeoutMs||config.timeoutMs||180000);
     while(Date.now()<deadline){
+      const dismissed=await browser.dismissQuotaModal().catch(()=>false);
+      if(dismissed){
+        quotaDismissals++;
+        await sleep(900);
+        const post=await browser.ui();
+        if(post.composerText.includes(marker)&&resubmits<2){
+          method=await browser.submit(prompt,marker);
+          resubmits++;
+          continue;
+        }
+      }
       const s=await browser.ui();
       if(s.loginVisible)throw new Error('BLOCKED:KIMI_LOGIN_REQUIRED');
       const a=await browser.assistant();
       if(a.count>before.count&&a.text&&!s.generating){
         last=a.text;
         if(a.text===expectedText){
-          return {status:'ok',text:expectedText,metadata:{agent_id:id,provider:config.product,port:browser.port,url:s.href||null,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,capture:'kimi-assistant-segment-exact-derived-token',submit_method:method,relay_health:KIMI_JINA_HEALTH,anti_echo:'expected-token-not-present-contiguously-in-prompt'}};
+          return {status:'ok',text:expectedText,metadata:{agent_id:id,provider:config.product,port:browser.port,url:s.href||null,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,capture:'kimi-assistant-segment-exact-derived-token',submit_method:method,relay_health:KIMI_JINA_HEALTH,anti_echo:'expected-token-not-present-contiguously-in-prompt',quota_modal_dismissals:quotaDismissals,resubmits}};
         }
       }
       if(!s.generating&&await visibleExactTokenElement(browser,expectedText)){
-        return {status:'ok',text:expectedText,metadata:{agent_id:id,provider:config.product,port:browser.port,url:s.href||null,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,capture:'visible-exact-derived-token-current-ui',submit_method:method,relay_health:KIMI_JINA_HEALTH,anti_echo:'expected-token-not-present-contiguously-in-prompt'}};
+        return {status:'ok',text:expectedText,metadata:{agent_id:id,provider:config.product,port:browser.port,url:s.href||null,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,capture:'visible-exact-derived-token-current-ui',submit_method:method,relay_health:KIMI_JINA_HEALTH,anti_echo:'expected-token-not-present-contiguously-in-prompt',quota_modal_dismissals:quotaDismissals,resubmits}};
       }
-      await new Promise(r=>setTimeout(r,650));
+      await sleep(650);
     }
-    return {status:'error',text:last?'KIMI_HEALTH_RESPONSE_NOT_EXACT':'KIMI_HEALTH_EXACT_RESPONSE_TIMEOUT',metadata:{agent_id:id,provider:config.product,port:browser.port,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,response_length:last.length,submit_method:method,relay_health:KIMI_JINA_HEALTH}};
+    return {status:'error',text:last?'KIMI_HEALTH_RESPONSE_NOT_EXACT':'KIMI_HEALTH_EXACT_RESPONSE_TIMEOUT',metadata:{agent_id:id,provider:config.product,port:browser.port,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,response_length:last.length,submit_method:method,relay_health:KIMI_JINA_HEALTH,quota_modal_dismissals:quotaDismissals,resubmits}};
   }catch(e){
     const message=String(e?.message||e||'KIMI_HEALTH_RUN_ERROR');
-    return {status:/^BLOCKED:/i.test(message)?'blocked':'error',text:message,metadata:{agent_id:id,provider:config.product,port:browser.port,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,submit_method:method,relay_health:KIMI_JINA_HEALTH}};
+    return {status:/^BLOCKED:/i.test(message)?'blocked':'error',text:message,metadata:{agent_id:id,provider:config.product,port:browser.port,transport:'browser-cdp-jina-health',zero_cost_path:true,latency_ms:Date.now()-started,submit_method:method,relay_health:KIMI_JINA_HEALTH,quota_modal_dismissals:quotaDismissals,resubmits}};
   }
 }
 
