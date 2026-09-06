@@ -1,7 +1,7 @@
 {
-  "task_id": "HIVE-KIMI-AUTO-0007",
-  "inline_prompt": "HIVE fresh execution certification AUTO-0007. Compute exactly: (9137 * 23) - 18456 + (77 * 64). Reply with exactly this format and nothing else: HIVE-AUTO-0007-<ANSWER>",
-  "inline_expected": "HIVE-AUTO-0007-196623",
+  "task_id": "HIVE-KIMI-AUTO-0008",
+  "inline_prompt": "HIVE fresh execution certification AUTO-0008. Compute exactly: (8421 * 31) - 17654 + (83 * 57). Reply with exactly this format and nothing else: HIVE-AUTO-0008-<ANSWER>",
+  "inline_expected": "HIVE-AUTO-0008-248128",
   "max_attempts": 4,
   "issued_by": "HIVE",
   "human_kimi_intervention_required": false,
