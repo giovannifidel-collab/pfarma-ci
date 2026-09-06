@@ -101,17 +101,29 @@ export class KimiBrowserAgent extends KeyboardBrowserAgent {
 
   async dismissQuotaModal(){
     const clicked=await this.eval(`(()=>{
-      const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};
-      const body=String(document.body?.innerText||'');
+      const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&s.opacity!=='0'};
+      const norm=v=>String(v||'').replace(/\\s+/g,' ').trim();
+      const body=norm(document.body?.innerText||'');
       if(!/(credits? used up|free quota is used up|quota gratuita.{0,40}esaurita|quota.{0,40}esaurita)/i.test(body))return false;
+      const accept=/^(got it|ok|okay|capito|ho capito|va bene|entendido|知道了)$/i;
+      const all=[...document.querySelectorAll('button,[role="button"],div,span')].filter(visible);
+      const exact=all.filter(e=>accept.test(norm(e.innerText||e.textContent||'')));
+      for(const e of exact){
+        const childExact=[...e.children].some(c=>accept.test(norm(c.innerText||c.textContent||'')));
+        if(childExact)continue;
+        const target=e.closest('button,[role="button"]')||e;
+        try{target.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,view:window}));}catch{}
+        try{target.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,view:window}));}catch{}
+        try{target.click();return true;}catch{}
+      }
       const controls=[...document.querySelectorAll('button,[role="button"]')].filter(visible);
-      const ok=controls.find(e=>/^(got it|ok|capito|ho capito|va bene|entendido|知道了)$/i.test(String(e.innerText||e.textContent||'').trim()));
-      if(ok){ok.click();return true;}
-      const close=controls.find(e=>/close|chiudi/i.test(String(e.getAttribute('aria-label')||e.title||'')));
+      const contains=controls.find(e=>/(got it|capito|ho capito|va bene|entendido|知道了)/i.test(norm(e.innerText||e.textContent||'')));
+      if(contains){contains.click();return true;}
+      const close=controls.find(e=>/close|chiudi/i.test(norm(e.getAttribute('aria-label')||e.title||'')));
       if(close){close.click();return true;}
       return false;
     })()`).catch(()=>false);
-    if(clicked)await sleep(700);
+    if(clicked)await sleep(900);
     return clicked;
   }
 
