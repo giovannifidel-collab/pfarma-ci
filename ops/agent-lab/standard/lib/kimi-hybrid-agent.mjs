@@ -13,6 +13,22 @@ function exactStandardTokenLine(output,expected){
     .filter(Boolean);
   return lines.includes(expected)?expected:null;
 }
+async function visibleExactTokenElement(browser,expected){
+  if(!expected)return false;
+  const token=JSON.stringify(String(expected));
+  return Boolean(await browser.eval(`(()=>{
+    const t=${token};
+    const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};
+    const nodes=[...document.querySelectorAll('body *')].filter(visible);
+    return nodes.some(e=>{
+      if(e.closest('[contenteditable="true"]'))return false;
+      if(e.closest('.segment-user,.segment.segment-user'))return false;
+      const txt=String(e.innerText||e.textContent||'').trim();
+      if(txt!==t)return false;
+      return ![...e.children].some(c=>String(c.innerText||c.textContent||'').trim()===t);
+    });
+  })()`));
+}
 
 export class KimiHybridAgent{
   constructor(config,opts={}){this.config=config;this.id=config.id;this.browser=new KimiBrowserAgent(config,opts);}
@@ -39,7 +55,16 @@ export class KimiHybridAgent{
       const text=expectedText?exactStandardTokenLine(combined,expectedText):parseEnvelope(combined,begin,end);
       if(r.status===0&&text!==null)return {status:'ok',text,metadata:{agent_id:this.id,provider:this.config.product,transport:'kimi-cli',zero_cost_path:true,latency_ms:Date.now()-started,nonce,capture:expectedText?'exact-token-line-normalized-combined-streams':'envelope'}};
       const cliError=stripAnsi(stderr||stdout||r.error?.message||`CLI_EXIT_${r.status}`).trim().slice(-3000);
-      const fallback=await this.browser.run(task,options);fallback.metadata={...fallback.metadata,kimi_cli_fallback_reason:cliError,transport:fallback.metadata?.transport||'browser-cdp'};return fallback;
+      const fallback=await this.browser.run(task,options);
+      fallback.metadata={...fallback.metadata,kimi_cli_fallback_reason:cliError,transport:fallback.metadata?.transport||'browser-cdp'};
+      if(expectedText&&fallback.status!=='ok'&&fallback.text==='KIMI_EXACT_RESPONSE_TIMEOUT'){
+        try{
+          if(await visibleExactTokenElement(this.browser,expectedText)){
+            return {status:'ok',text:expectedText,metadata:{...fallback.metadata,agent_id:this.id,provider:this.config.product,zero_cost_path:true,latency_ms:Date.now()-started,capture:'visible-exact-token-element-current-ui',anti_echo:'excluded-composer-and-known-user-segment'}};
+          }
+        }catch{}
+      }
+      return fallback;
     }
     return this.browser.run(task,options);
   }
