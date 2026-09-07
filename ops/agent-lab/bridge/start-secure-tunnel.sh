@@ -5,20 +5,31 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 PORT="${HIVE_AGENT_BRIDGE_PORT:-9240}"
 STATE="$HOME/.hive-agent-lab/agent-bridge"
-TOKEN_FILE="$STATE/token"
+PERSIST_STATE="/workspaces/.hive-agent-lab/agent-bridge"
+TOKEN_FILE="$PERSIST_STATE/token"
+LEGACY_TOKEN_FILE="$STATE/token"
 URL_FILE="$STATE/url"
 SERVER_LOG="$STATE/server.log"
 TUNNEL_LOG="$STATE/tunnel.log"
 CLOUDFLARED="$HOME/.local/bin/cloudflared"
 mkdir -p "$STATE" "$HOME/.local/bin"
+sudo mkdir -p "$PERSIST_STATE"
 chmod 700 "$STATE"
+sudo chmod 700 "$PERSIST_STATE"
 
+# Keep the bearer token stable across Codespace container rebuilds. Migrate the
+# pre-existing token so the already configured public-runner secret remains valid.
+if [[ ! -f "$TOKEN_FILE" && -f "$LEGACY_TOKEN_FILE" && ! -L "$LEGACY_TOKEN_FILE" ]]; then
+  sudo cp "$LEGACY_TOKEN_FILE" "$TOKEN_FILE"
+fi
 if [[ ! -f "$TOKEN_FILE" ]]; then
   umask 077
-  openssl rand -hex 32 >"$TOKEN_FILE"
+  openssl rand -hex 32 | sudo tee "$TOKEN_FILE" >/dev/null
 fi
-chmod 600 "$TOKEN_FILE"
-TOKEN="$(cat "$TOKEN_FILE")"
+sudo chmod 600 "$TOKEN_FILE"
+rm -f "$LEGACY_TOKEN_FILE"
+ln -s "$TOKEN_FILE" "$LEGACY_TOKEN_FILE"
+TOKEN="$(sudo cat "$TOKEN_FILE")"
 
 port_open(){ timeout 1 bash -c ">/dev/tcp/127.0.0.1/$1" >/dev/null 2>&1; }
 
@@ -81,7 +92,6 @@ if [[ -z "$PUBLIC_URL" ]]; then
   [[ -n "$PUBLIC_URL" ]] || { echo "ERROR: tunnel URL unavailable" >&2; tail -n 80 "$TUNNEL_LOG" >&2; exit 1; }
   PUBLIC_MODE="cloudflare-quick-tunnel"
 else
-  # No quick tunnel is needed when the stable Codespaces endpoint is healthy.
   pkill -f "cloudflared tunnel.*127.0.0.1:${PORT}" >/dev/null 2>&1 || true
 fi
 
@@ -94,12 +104,11 @@ for _ in {1..30}; do
 done
 curl -fsS --max-time 10 "$PUBLIC_URL/health" >/dev/null
 
-if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+SECRETS_SYNCED=false
+if [[ "${HIVE_SKIP_SECRET_SYNC:-0}" != "1" ]] && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   printf '%s' "$PUBLIC_URL" | gh secret set HIVE_AGENT_BRIDGE_URL -R giovannifidel-collab/hive-alveare
   printf '%s' "$TOKEN" | gh secret set HIVE_AGENT_BRIDGE_TOKEN -R giovannifidel-collab/hive-alveare
   SECRETS_SYNCED=true
-else
-  SECRETS_SYNCED=false
 fi
 
 echo "HIVE_AGENT_BRIDGE_TUNNEL=READY"
@@ -109,3 +118,4 @@ echo "PUBLIC_HEALTH=${PUBLIC_URL}/health"
 echo "HIVE_SECRETS_SYNCED=${SECRETS_SYNCED}"
 echo "TOKEN_EXPOSED=false"
 echo "STATE_DIR=$STATE"
+echo "TOKEN_STATE_DIR=$PERSIST_STATE"
