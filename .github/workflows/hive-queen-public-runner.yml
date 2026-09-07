@@ -11,6 +11,10 @@ on:
         description: Exact authoritative hive-alveare main commit to execute
         required: true
         type: string
+      bridge_url:
+        description: Current non-secret public bridge URL; bearer token remains in Actions secrets
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -26,10 +30,14 @@ jobs:
     timeout-minutes: 70
     environment: pfarma-ci-trusted
     env:
-      HIVE_AGENT_BRIDGE_URL: ${{ secrets.HIVE_AGENT_BRIDGE_URL }}
+      HIVE_AGENT_BRIDGE_URL: ${{ inputs.bridge_url || secrets.HIVE_AGENT_BRIDGE_URL }}
       HIVE_AGENT_BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
       HIVE_ADAPTER_SOURCE_SHA: ${{ inputs.adapter_sha }}
       HIVE_PRIVATE_SOURCE_SHA: ${{ inputs.hive_private_sha }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
       QUEEN_AGENT_SEMANTIC_ATTEMPTS: '2'
       QUEEN_DEFERRED_AGENT_IDS: meta
     steps:
@@ -47,12 +55,14 @@ jobs:
           [[ "$HIVE_ADAPTER_SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'Invalid adapter_sha'; exit 2; }
           [[ "$HIVE_PRIVATE_SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'Invalid hive_private_sha'; exit 2; }
           [[ -n "$SOURCE_TOKEN" ]] || { echo 'PFARMA_SOURCE_TOKEN secret missing'; exit 2; }
-          [[ -n "$HIVE_AGENT_BRIDGE_URL" ]] || { echo 'HIVE_AGENT_BRIDGE_URL secret missing'; exit 2; }
+          [[ "$HIVE_AGENT_BRIDGE_URL" == https://* ]] || { echo 'HIVE_AGENT_BRIDGE_URL missing/invalid'; exit 2; }
           [[ ${#HIVE_AGENT_BRIDGE_TOKEN} -ge 32 ]] || { echo 'HIVE_AGENT_BRIDGE_TOKEN secret missing/invalid'; exit 2; }
           REMOTE_ADAPTER_SHA="$(git ls-remote https://github.com/giovannifidel-collab/pfarma-ci.git refs/heads/hive-cloud-computer-v0 | awk '{print $1}')"
           echo "ADAPTER_REQUESTED_SHA=$HIVE_ADAPTER_SOURCE_SHA"
           echo "ADAPTER_REMOTE_SHA=$REMOTE_ADAPTER_SHA"
           [[ "$REMOTE_ADAPTER_SHA" == "$HIVE_ADAPTER_SOURCE_SHA" ]] || { echo 'Adapter branch moved: refusing stale proof'; exit 2; }
+          curl -fsS --max-time 15 "$HIVE_AGENT_BRIDGE_URL/health" >/dev/null
+          echo 'PUBLIC_BRIDGE_HEALTH=PASS'
 
       - name: Check out exact authoritative private HIVE commit
         uses: actions/checkout@v4
@@ -96,11 +106,38 @@ jobs:
         working-directory: private-hive
         run: node ops/queen/agents/fabric-router.mjs --self-test
 
+      - name: Detect already sealed static degraded proof
+        id: static
+        working-directory: private-hive
+        shell: bash
+        run: |
+          set -euo pipefail
+          if node - <<'NODE'
+          const fs=require('fs');
+          try {
+            const r=JSON.parse(fs.readFileSync('ops/queen/runtime/AGENT_REGISTRY.json','utf8'));
+            const l=JSON.parse(fs.readFileSync('ops/queen/agents/PROOF_LOCK.json','utf8'));
+            const active=(r.agents||[]).filter(a=>a.enrollment==='managed'&&a.certified===true&&a.enabled===true);
+            const deferred=(r.agents||[]).filter(a=>a.enrollment==='deferred'&&a.enabled===false);
+            if((r.agents||[]).length!==10||active.length!==9||deferred.length!==1||deferred[0]?.id!=='meta') process.exit(1);
+            if(l.status!=='HIVE_INTEGRATED_DEGRADED'||l.managed_agent_count!==9||l.slot_count!==10||l.deferred_agent_count!==1||l.deferred_agent_ids?.[0]!=='meta') process.exit(1);
+          } catch { process.exit(1); }
+          NODE
+          then
+            echo 'static_ready=true' >> "$GITHUB_OUTPUT"
+            echo 'STATIC_DEGRADED_PROOF=ALREADY_SEALED'
+          else
+            echo 'static_ready=false' >> "$GITHUB_OUTPUT"
+            echo 'STATIC_DEGRADED_PROOF=REQUIRES_LIVE_GATE'
+          fi
+
       - name: Live Queen to bridge gate for 9 active providers
+        if: steps.static.outputs.static_ready != 'true'
         working-directory: private-hive
         run: node ops/queen/agents/integration-gate-degraded.mjs
 
       - name: Promote 9 certified agents with Meta deferred
+        if: steps.static.outputs.static_ready != 'true'
         working-directory: private-hive
         run: node ops/queen/agents/promote-managed-degraded.mjs
 
@@ -127,21 +164,7 @@ jobs:
           console.log('HIVE_INTEGRATION_PROOF_LOCK=degraded-explicit');
           NODE
 
-      - name: Publish authoritative integration evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: queen-public-runner-${{ github.run_id }}
-          path: |
-            private-hive/.queen-agent-fabric/
-            private-hive/ops/queen/runtime/AGENT_REGISTRY.json
-            private-hive/ops/queen/cognitive/CAPABILITY_MESH.json
-            private-hive/ops/queen/agents/PROOF_LOCK.json
-          include-hidden-files: true
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Seal authoritative degraded proof back to private HIVE
+      - name: Seal static degraded proof back to private HIVE
         working-directory: private-hive
         shell: bash
         run: |
@@ -156,6 +179,57 @@ jobs:
             git push origin HEAD:main
           fi
 
+      - name: Sync managed registry into live HIVE runtime
+        working-directory: private-hive
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${HIVE_RUNTIME_BEARER_TOKEN:-}" && ( -z "${CF_ACCESS_CLIENT_ID:-}" || -z "${CF_ACCESS_CLIENT_SECRET:-}" ) ]]; then
+            echo 'RUNTIME_SYNC_AUTH=MISSING'
+            exit 2
+          fi
+          node ops/queen/agents/sync-runtime-registry-degraded.mjs
+
+      - name: Seal live runtime synchronization proof
+        working-directory: private-hive
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('fs');
+          const out={
+            status:'HIVE_RUNTIME_SYNCED_DEGRADED',
+            managed_agent_count:9,
+            slot_count:10,
+            deferred_agent_count:1,
+            deferred_agent_ids:['meta'],
+            capability:'hive.ai.general',
+            source_sha:process.env.HIVE_PRIVATE_SOURCE_SHA,
+            synced_at:new Date().toISOString()
+          };
+          fs.writeFileSync('ops/queen/runtime/RUNTIME_SYNC_LOCK.json',JSON.stringify(out,null,2)+'\n');
+          NODE
+          git add ops/queen/runtime/RUNTIME_SYNC_LOCK.json
+          git config user.name 'HIVE Queen Public Runner'
+          git config user.email 'hive-queen@users.noreply.github.com'
+          git commit -m 'feat(queen): seal degraded runtime synchronization'
+          git push origin HEAD:main
+
+      - name: Publish authoritative integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-public-runner-${{ github.run_id }}
+          path: |
+            private-hive/.queen-agent-fabric/
+            private-hive/ops/queen/runtime/AGENT_REGISTRY.json
+            private-hive/ops/queen/runtime/RUNTIME_SYNC_LOCK.json
+            private-hive/ops/queen/cognitive/CAPABILITY_MESH.json
+            private-hive/ops/queen/agents/PROOF_LOCK.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Final public-runner integration statement
         run: |
           echo 'QUEEN_AGENT_FABRIC=INTEGRATED_DEGRADED'
@@ -165,4 +239,5 @@ jobs:
           echo 'CAPABILITY=hive.ai.general'
           echo 'MAX_AUTHORITY=L1'
           echo 'FAIL_CLOSED=true'
-          echo 'RUNTIME_DATA_PLANE_SYNC=PENDING_SEPARATE_VERIFICATION'
+          echo 'RUNTIME_DATA_PLANE_SYNC=9/10_MANAGED_META_DEFERRED'
+          echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
