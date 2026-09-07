@@ -1,0 +1,167 @@
+name: HIVE Queen Public Runner — Degraded
+
+on:
+  workflow_dispatch:
+    inputs:
+      adapter_sha:
+        description: Exact pfarma-ci hive-cloud-computer-v0 adapter commit to certify
+        required: true
+        type: string
+      hive_private_sha:
+        description: Exact authoritative hive-alveare main commit to execute
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-queen-public-runner
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    name: Public runner proving Queen 9 active + Meta deferred
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    environment: pfarma-ci-trusted
+    env:
+      HIVE_AGENT_BRIDGE_URL: ${{ secrets.HIVE_AGENT_BRIDGE_URL }}
+      HIVE_AGENT_BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
+      HIVE_ADAPTER_SOURCE_SHA: ${{ inputs.adapter_sha }}
+      HIVE_PRIVATE_SOURCE_SHA: ${{ inputs.hive_private_sha }}
+      QUEEN_AGENT_SEMANTIC_ATTEMPTS: '2'
+      QUEEN_DEFERRED_AGENT_IDS: meta
+    steps:
+      - name: Check out public execution repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate exact source refs and required secrets
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$HIVE_ADAPTER_SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'Invalid adapter_sha'; exit 2; }
+          [[ "$HIVE_PRIVATE_SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'Invalid hive_private_sha'; exit 2; }
+          [[ -n "$SOURCE_TOKEN" ]] || { echo 'PFARMA_SOURCE_TOKEN secret missing'; exit 2; }
+          [[ -n "$HIVE_AGENT_BRIDGE_URL" ]] || { echo 'HIVE_AGENT_BRIDGE_URL secret missing'; exit 2; }
+          [[ ${#HIVE_AGENT_BRIDGE_TOKEN} -ge 32 ]] || { echo 'HIVE_AGENT_BRIDGE_TOKEN secret missing/invalid'; exit 2; }
+          REMOTE_ADAPTER_SHA="$(git ls-remote https://github.com/giovannifidel-collab/pfarma-ci.git refs/heads/hive-cloud-computer-v0 | awk '{print $1}')"
+          echo "ADAPTER_REQUESTED_SHA=$HIVE_ADAPTER_SOURCE_SHA"
+          echo "ADAPTER_REMOTE_SHA=$REMOTE_ADAPTER_SHA"
+          [[ "$REMOTE_ADAPTER_SHA" == "$HIVE_ADAPTER_SOURCE_SHA" ]] || { echo 'Adapter branch moved: refusing stale proof'; exit 2; }
+
+      - name: Check out exact authoritative private HIVE commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ inputs.hive_private_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-hive
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Verify exact private HIVE commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C private-hive rev-parse HEAD)"
+          echo "HIVE_PRIVATE_REQUESTED_SHA=$HIVE_PRIVATE_SOURCE_SHA"
+          echo "HIVE_PRIVATE_ACTUAL_SHA=$actual"
+          [[ "$actual" == "$HIVE_PRIVATE_SOURCE_SHA" ]] || { echo 'Private HIVE commit mismatch'; exit 2; }
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Validate Queen degraded fabric syntax
+        working-directory: private-hive
+        run: |
+          node --check ops/queen/agents/bridge-client.mjs
+          node --check ops/queen/agents/fabric-router.mjs
+          node --check ops/queen/agents/integration-gate-degraded.mjs
+          node --check ops/queen/agents/promote-managed-degraded.mjs
+          node --check ops/queen/agents/sync-runtime-registry-degraded.mjs
+          node --check ops/queen/runtime/queen-runtime.mjs
+
+      - name: Validate Queen deterministic safety core
+        working-directory: private-hive
+        run: node ops/queen/runtime/queen-runtime.mjs --self-test
+
+      - name: Validate direct fallback parallel fabric semantics
+        working-directory: private-hive
+        run: node ops/queen/agents/fabric-router.mjs --self-test
+
+      - name: Live Queen to bridge gate for 9 active providers
+        working-directory: private-hive
+        run: node ops/queen/agents/integration-gate-degraded.mjs
+
+      - name: Promote 9 certified agents with Meta deferred
+        working-directory: private-hive
+        run: node ops/queen/agents/promote-managed-degraded.mjs
+
+      - name: Validate promoted Queen fabric status
+        working-directory: private-hive
+        run: node ops/queen/agents/fabric-router.mjs status
+
+      - name: Validate degraded registry contract
+        working-directory: private-hive
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('ops/queen/runtime/AGENT_REGISTRY.json','utf8'));
+          if(r.agents?.length!==10)throw new Error('slot count != 10');
+          const active=r.agents.filter(a=>a.enrollment==='managed'&&a.certified===true&&a.enabled===true);
+          const deferred=r.agents.filter(a=>a.enrollment==='deferred'&&a.enabled===false);
+          if(active.length!==9)throw new Error('managed active count != 9');
+          if(deferred.length!==1||deferred[0].id!=='meta'||deferred[0].certified!==false)throw new Error('Meta deferred contract invalid');
+          if(active.some(a=>a.transport!=='agent-bridge'||a.max_authority!==1||a.cost_mode==='paid'))throw new Error('active managed registry contract invalid');
+          const lock=JSON.parse(fs.readFileSync('ops/queen/agents/PROOF_LOCK.json','utf8'));
+          if(lock.status!=='HIVE_INTEGRATED_DEGRADED'||lock.managed_agent_count!==9||lock.slot_count!==10||lock.deferred_agent_count!==1||lock.deferred_agent_ids?.[0]!=='meta')throw new Error('degraded proof lock invalid');
+          console.log('QUEEN_MANAGED_REGISTRY=9/10_ACTIVE');
+          console.log('QUEEN_DEFERRED_AGENT=meta');
+          console.log('HIVE_INTEGRATION_PROOF_LOCK=degraded-explicit');
+          NODE
+
+      - name: Publish authoritative integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-public-runner-${{ github.run_id }}
+          path: |
+            private-hive/.queen-agent-fabric/
+            private-hive/ops/queen/runtime/AGENT_REGISTRY.json
+            private-hive/ops/queen/cognitive/CAPABILITY_MESH.json
+            private-hive/ops/queen/agents/PROOF_LOCK.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Seal authoritative degraded proof back to private HIVE
+        working-directory: private-hive
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'HIVE Queen Public Runner'
+          git config user.email 'hive-queen@users.noreply.github.com'
+          git add ops/queen/runtime/AGENT_REGISTRY.json ops/queen/cognitive/CAPABILITY_MESH.json ops/queen/agents/PROOF_LOCK.json
+          if git diff --cached --quiet; then
+            echo 'HIVE_AGENT_FABRIC_ALREADY_SEALED=true'
+          else
+            git commit -m 'feat(queen): integrate 9-agent fabric with Meta deferred via public runner'
+            git push origin HEAD:main
+          fi
+
+      - name: Final public-runner integration statement
+        run: |
+          echo 'QUEEN_AGENT_FABRIC=INTEGRATED_DEGRADED'
+          echo 'MANAGED_AGENTS=9/10'
+          echo 'DEFERRED_AGENT=meta'
+          echo 'QUEEN_ROUTING=direct+fallback+parallel'
+          echo 'CAPABILITY=hive.ai.general'
+          echo 'MAX_AUTHORITY=L1'
+          echo 'FAIL_CLOSED=true'
