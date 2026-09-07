@@ -2,6 +2,8 @@ name: HIVE Codespace Non-Destructive Recovery
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '23 * * * *'
   push:
     branches: [main]
     paths:
@@ -26,165 +28,139 @@ jobs:
       PUBLIC_REPO: giovannifidel-collab/pfarma-ci
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
       ADAPTER_BRANCH: hive-cloud-computer-v0
+      BRIDGE_PORT: '9240'
     steps:
-      - name: Validate authorization and start Codespace
-        id: wake
+      - name: Validate authorization and terminal proof state
+        id: pre
         shell: bash
         run: |
           set -euo pipefail
           [[ -n "${GH_TOKEN:-}" ]] || { echo 'PFARMA_SOURCE_TOKEN missing'; exit 2; }
           gh api "repos/$PRIVATE_REPO" --jq '.full_name' >/dev/null
+          proof="$(gh api "repos/$PRIVATE_REPO/contents/ops/queen/agents/PROOF_LOCK.json?ref=main" --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null || true)"
+          registry="$(gh api "repos/$PRIVATE_REPO/contents/ops/queen/runtime/AGENT_REGISTRY.json?ref=main" --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null || true)"
+          ready=false
+          if [[ -n "$proof" && -n "$registry" ]] && \
+             jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_count==1 and .deferred_agent_ids==["meta"]' <<<"$proof" >/dev/null 2>&1 && \
+             jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==9 and ([.agents[]|select(.enrollment=="deferred" and .id=="meta" and .enabled==false)]|length)==1' <<<"$registry" >/dev/null 2>&1; then ready=true; fi
+          echo "static_ready=$ready" >> "$GITHUB_OUTPUT"
+          echo "STATIC_QUEEN_READY=$ready"
+
+      - name: Start existing Codespace without rebuild
+        id: wake
+        if: steps.pre.outputs.static_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
           CURRENT="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state')"
+          echo "CODESPACE_INITIAL_STATE=$CURRENT"
           if [[ "$CURRENT" == 'Available' ]]; then
             echo 'started=false' >> "$GITHUB_OUTPUT"
           else
             echo 'started=true' >> "$GITHUB_OUTPUT"
-            gh api -X POST "/user/codespaces/$CODESPACE_NAME/start" >/dev/null
+            set +e
+            gh api -X POST "/user/codespaces/$CODESPACE_NAME/start" >/dev/null 2>&1
+            rc=$?
+            set -e
+            [[ "$rc" -eq 0 ]] || [[ "$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)" =~ ^(Available|Starting)$ ]] || exit "$rc"
           fi
-          for _ in {1..60}; do
+          for _ in {1..72}; do
             STATE="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)"
             [[ "$STATE" == 'Available' ]] && break
             sleep 5
           done
-          [[ "$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state')" == 'Available' ]] || { echo 'CODESPACE_NOT_AVAILABLE'; exit 3; }
-          echo 'CODESPACE_CONTROL_PLANE=AVAILABLE'
+          STATE="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state')"
+          echo "CODESPACE_FINAL_STATE=$STATE"
+          [[ "$STATE" == 'Available' ]] || { echo 'CODESPACE_NOT_AVAILABLE'; exit 3; }
 
-      - name: Open internal Jupyter control tunnel without rebuilding container
-        id: jupyter
+      - name: Expose stable bearer-protected bridge port
+        if: steps.pre.outputs.static_ready != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          : > /tmp/hive-jupyter.log
-          BROWSER=/bin/true timeout 900s gh codespace jupyter -c "$CODESPACE_NAME" >/tmp/hive-jupyter.log 2>&1 &
-          echo $! >/tmp/hive-jupyter.pid
-          URL=''
-          for _ in {1..45}; do
-            URL="$(grep -Eo 'https?://(127\.0\.0\.1|localhost):[0-9]+[^[:space:]]*' /tmp/hive-jupyter.log | tail -n1 || true)"
-            [[ -n "$URL" ]] && break
-            if ! kill -0 "$(cat /tmp/hive-jupyter.pid)" 2>/dev/null; then break; fi
-            sleep 2
-          done
-          if [[ -z "$URL" ]]; then
-            echo 'JUPYTER_CONTROL_TUNNEL=UNAVAILABLE'
-            sed -E 's#(token=)[^&[:space:]]+#\1***#g' /tmp/hive-jupyter.log | tail -n 20
-            exit 7
+          set +e
+          gh api -X PATCH "/user/codespaces/$CODESPACE_NAME/ports/$BRIDGE_PORT" -f visibility=public >/tmp/port-patch.json 2>/tmp/port-patch.err
+          rc=$?
+          set -e
+          if [[ "$rc" -ne 0 ]]; then
+            echo 'PORT_VISIBILITY_PATCH=DEFERRED_TO_CODESPACE_LIFECYCLE'
+          else
+            echo 'PORT_VISIBILITY_PATCH=PASS'
           fi
-          printf '%s' "$URL" >/tmp/hive-jupyter.url
-          chmod 600 /tmp/hive-jupyter.url
-          echo 'JUPYTER_CONTROL_TUNNEL=READY'
+          rm -f /tmp/port-patch.json /tmp/port-patch.err
 
-      - name: Bootstrap secure HIVE bridge through Jupyter terminal
+      - name: Wait for lifecycle auto-heal bridge
+        id: bridge
+        if: steps.pre.outputs.static_ready != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --disable-pip-version-check requests websocket-client
-          python3 - <<'PY'
-          import json, os, re, shlex, sys, time
-          from urllib.parse import urlsplit, parse_qs, quote
-          import requests
-          import websocket
-
-          target=open('/tmp/hive-jupyter.url','r',encoding='utf-8').read().strip()
-          u=urlsplit(target)
-          token=parse_qs(u.query).get('token',[''])[0]
-          if not token:
-              raise SystemExit('JUPYTER_TOKEN_MISSING')
-          origin=f'{u.scheme}://{u.netloc}'
-          path=u.path
-          base=''
-          for marker in ('/lab','/tree'):
-              if marker in path:
-                  base=path.split(marker,1)[0]
-                  break
-          api=f'{origin}{base}/api/terminals'
-          r=requests.post(api, params={'token':token}, json={}, timeout=20)
-          r.raise_for_status()
-          name=r.json()['name']
-          ws_scheme='wss' if u.scheme=='https' else 'ws'
-          ws_url=f'{ws_scheme}://{u.netloc}{base}/terminals/websocket/{quote(str(name))}?token={quote(token)}'
-          ws=websocket.create_connection(ws_url, timeout=30, origin=origin)
-
-          script=r'''set -euo pipefail
-          cd /workspaces/pfarma-ci
-          git fetch origin hive-cloud-computer-v0
-          git switch hive-cloud-computer-v0
-          git merge --ff-only FETCH_HEAD
-          echo "REMOTE_ADAPTER_SHA=$(git rev-parse HEAD)"
-          HIVE_SKIP_SECRET_SYNC=1 GH_TOKEN=HIVE_SKIP_GH GITHUB_TOKEN=HIVE_SKIP_GH bash ops/agent-lab/bridge/start-secure-tunnel.sh
-          echo '__HIVE_BRIDGE_BOOTSTRAP_DONE__'
-          '''
-          cmd='bash -lc '+shlex.quote(script)+'\n'
-          ws.send(json.dumps(['stdin',cmd]))
-          deadline=time.time()+420
-          buffer=''
-          while time.time()<deadline:
-              try:
-                  raw=ws.recv()
-              except Exception as e:
-                  if '__HIVE_BRIDGE_BOOTSTRAP_DONE__' in buffer:
-                      break
-                  raise
-              try:
-                  msg=json.loads(raw)
-              except Exception:
-                  continue
-              if isinstance(msg,list) and len(msg)>=2 and msg[0]=='stdout':
-                  text=str(msg[1])
-                  buffer+=text
-                  if '__HIVE_BRIDGE_BOOTSTRAP_DONE__' in buffer:
-                      break
-          ws.close()
-          if '__HIVE_BRIDGE_BOOTSTRAP_DONE__' not in buffer:
-              safe='\n'.join(line for line in buffer.splitlines() if 'token' not in line.lower())[-5000:]
-              print(safe)
-              raise SystemExit('REMOTE_BRIDGE_BOOTSTRAP_TIMEOUT_OR_FAILURE')
-          sha_match=re.findall(r'REMOTE_ADAPTER_SHA=([0-9a-f]{40})',buffer)
-          health_match=re.findall(r'PUBLIC_HEALTH=(https://[^\s]+?)/health',buffer)
-          if not sha_match or not health_match:
-              raise SystemExit('REMOTE_BRIDGE_BOOTSTRAP_OUTPUT_INCOMPLETE')
-          bridge=health_match[-1]
-          with open('/tmp/hive-bridge.url','w',encoding='utf-8') as f:f.write(bridge)
-          with open('/tmp/hive-adapter.sha','w',encoding='utf-8') as f:f.write(sha_match[-1])
-          os.chmod('/tmp/hive-bridge.url',0o600)
-          print('REMOTE_BRIDGE_BOOTSTRAP=PASS')
-          print('REMOTE_ADAPTER_SYNC=PASS')
-          PY
-          BRIDGE_URL="$(cat /tmp/hive-bridge.url)"
-          curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null
+          DOMAIN="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.web_url' | sed -E 's#https://github.com/codespaces/([^/?]+).*#\1#' || true)"
+          # Codespaces forwarded ports use the stable app.github.dev hostname.
+          CANDIDATE="https://${CODESPACE_NAME}-${BRIDGE_PORT}.app.github.dev"
+          URL=''
+          for _ in {1..120}; do
+            if curl -fsS --max-time 10 "$CANDIDATE/health" >/dev/null 2>&1; then
+              URL="$CANDIDATE"
+              break
+            fi
+            sleep 5
+          done
+          [[ -n "$URL" ]] || { echo 'LIFECYCLE_BRIDGE_RECOVERY_TIMEOUT'; exit 4; }
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo 'PUBLIC_BRIDGE_HEALTH=PASS'
 
-      - name: Dispatch Queen public runner against recovered bridge
-        id: dispatch
+      - name: Resolve exact current source commits
+        id: refs
+        if: steps.pre.outputs.static_ready != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          ADAPTER_SHA="$(cat /tmp/hive-adapter.sha)"
-          REMOTE_SHA="$(gh api "repos/$PUBLIC_REPO/branches/$ADAPTER_BRANCH" --jq '.commit.sha')"
-          [[ "$ADAPTER_SHA" == "$REMOTE_SHA" ]] || { echo 'ADAPTER_SHA_MOVED'; exit 8; }
+          ADAPTER_SHA="$(gh api "repos/$PUBLIC_REPO/branches/$ADAPTER_BRANCH" --jq '.commit.sha')"
           PRIVATE_SHA="$(gh api "repos/$PRIVATE_REPO/branches/main" --jq '.commit.sha')"
-          BRIDGE_URL="$(cat /tmp/hive-bridge.url)"
-          PREV="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
-          gh workflow run hive-queen-public-runner.yml -R "$PUBLIC_REPO" --ref main \
-            -f "adapter_sha=$ADAPTER_SHA" \
-            -f "hive_private_sha=$PRIVATE_SHA" \
-            -f "bridge_url=$BRIDGE_URL"
-          RUN_ID=''
-          for _ in {1..30}; do
-            CANDIDATE="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
-            if [[ "$CANDIDATE" != "$PREV" && "$CANDIDATE" != '0' ]]; then RUN_ID="$CANDIDATE"; break; fi
-            sleep 2
-          done
-          [[ -n "$RUN_ID" ]] || { echo 'QUEEN_RUN_IDENTIFICATION_FAILED'; exit 9; }
+          [[ "$ADAPTER_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PRIVATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "adapter_sha=$ADAPTER_SHA" >> "$GITHUB_OUTPUT"
+          echo "private_sha=$PRIVATE_SHA" >> "$GITHUB_OUTPUT"
+          echo "ADAPTER_SHA=$ADAPTER_SHA"
+          echo "HIVE_PRIVATE_SHA=$PRIVATE_SHA"
+
+      - name: Dispatch Queen public runner
+        id: dispatch
+        if: steps.pre.outputs.static_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTIVE="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 20 --json databaseId,status --jq '[.[]|select(.status=="queued" or .status=="in_progress" or .status=="waiting")][0].databaseId // empty')"
+          if [[ -n "$ACTIVE" ]]; then
+            RUN_ID="$ACTIVE"
+            echo "QUEEN_PUBLIC_RUNNER_REUSED=$RUN_ID"
+          else
+            PREV="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
+            gh workflow run hive-queen-public-runner.yml -R "$PUBLIC_REPO" --ref main \
+              -f "adapter_sha=${{ steps.refs.outputs.adapter_sha }}" \
+              -f "hive_private_sha=${{ steps.refs.outputs.private_sha }}" \
+              -f "bridge_url=${{ steps.bridge.outputs.url }}"
+            RUN_ID=''
+            for _ in {1..30}; do
+              CANDIDATE="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
+              if [[ "$CANDIDATE" != "$PREV" && "$CANDIDATE" != '0' ]]; then RUN_ID="$CANDIDATE"; break; fi
+              sleep 2
+            done
+            [[ -n "$RUN_ID" ]] || { echo 'QUEEN_RUN_IDENTIFICATION_FAILED'; exit 5; }
+            echo "QUEEN_PUBLIC_RUNNER_DISPATCHED=$RUN_ID"
+          fi
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-          echo "QUEEN_PUBLIC_RUNNER_DISPATCHED=$RUN_ID"
 
       - name: Wait for Queen terminal result
+        if: steps.pre.outputs.static_ready != 'true'
         shell: bash
         run: |
           set -euo pipefail
           gh run watch "${{ steps.dispatch.outputs.run_id }}" -R "$PUBLIC_REPO" --exit-status
 
       - name: Verify authoritative degraded proof
+        if: steps.pre.outputs.static_ready != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -192,21 +168,21 @@ jobs:
           PROOF="$(read_json ops/queen/agents/PROOF_LOCK.json)"
           REGISTRY="$(read_json ops/queen/runtime/AGENT_REGISTRY.json)"
           jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_count==1 and .deferred_agent_ids==["meta"]' <<<"$PROOF" >/dev/null
-          jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==9 and ([.agents[]|select(.enrollment=="deferred" and .id=="meta")]|length)==1' <<<"$REGISTRY" >/dev/null
-          echo 'STATIC_QUEEN_PROOF=HIVE_INTEGRATED_DEGRADED'
+          jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==9 and ([.agents[]|select(.enrollment=="deferred" and .id=="meta" and .enabled==false)]|length)==1' <<<"$REGISTRY" >/dev/null
+          echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
           echo 'MANAGED_AGENTS=9/10'
           echo 'DEFERRED_AGENT=meta'
 
-      - name: Close Jupyter tunnel
-        if: always()
-        shell: bash
+      - name: Already complete
+        if: steps.pre.outputs.static_ready == 'true'
         run: |
-          if [[ -f /tmp/hive-jupyter.pid ]]; then kill "$(cat /tmp/hive-jupyter.pid)" 2>/dev/null || true; fi
-          rm -f /tmp/hive-jupyter.url /tmp/hive-bridge.url /tmp/hive-jupyter.log
-          echo 'JUPYTER_CONTROL_TUNNEL=CLOSED'
+          echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
+          echo 'MANAGED_AGENTS=9/10'
+          echo 'DEFERRED_AGENT=meta'
+          echo 'AUTONOMOUS_RECOVERY=NO_ACTION_REQUIRED'
 
-      - name: Stop automation-started Codespace only after terminal run
-        if: always() && steps.wake.outputs.started == 'true'
+      - name: Stop automation-started Codespace after successful proof
+        if: success() && steps.wake.outputs.started == 'true'
         shell: bash
         run: |
           gh api -X POST "/user/codespaces/$CODESPACE_NAME/stop" >/dev/null 2>&1 || true
