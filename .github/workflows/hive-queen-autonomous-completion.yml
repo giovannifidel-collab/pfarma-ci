@@ -1,0 +1,205 @@
+name: HIVE Queen Autonomous Completion
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '11 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-queen-autonomous-completion
+  cancel-in-progress: false
+
+jobs:
+  complete:
+    name: Wake control plane and drive Queen to terminal proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CODESPACE_NAME: glorious-fishstick-vpp99jqr55xvh967
+      PUBLIC_REPO: giovannifidel-collab/pfarma-ci
+      PRIVATE_REPO: giovannifidel-collab/hive-alveare
+      ADAPTER_BRANCH: hive-cloud-computer-v0
+    steps:
+      - name: Validate controller authorization
+        run: |
+          set -euo pipefail
+          [[ -n "${GH_TOKEN:-}" ]] || { echo 'PFARMA_SOURCE_TOKEN missing'; exit 2; }
+          gh api "repos/$PUBLIC_REPO" --jq '.full_name' >/dev/null
+          gh api "repos/$PRIVATE_REPO" --jq '.full_name' >/dev/null
+          echo 'AUTONOMOUS_CONTROLLER_AUTH=READY'
+
+      - name: Inspect authoritative completion state
+        id: state
+        shell: bash
+        run: |
+          set -euo pipefail
+          read_json(){
+            local path="$1"
+            gh api "repos/$PRIVATE_REPO/contents/$path?ref=main" --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null || true
+          }
+          PROOF="$(read_json ops/queen/agents/PROOF_LOCK.json)"
+          REGISTRY="$(read_json ops/queen/runtime/AGENT_REGISTRY.json)"
+          RUNTIME="$(read_json ops/queen/runtime/RUNTIME_SYNC_LOCK.json)"
+
+          static_ready=false
+          full_ready=false
+          if [[ -n "$PROOF" && -n "$REGISTRY" ]] && \
+             jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_count==1 and .deferred_agent_ids==["meta"]' <<<"$PROOF" >/dev/null 2>&1 && \
+             jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==9 and ([.agents[]|select(.enrollment=="deferred" and .enabled==false and .id=="meta")]|length)==1' <<<"$REGISTRY" >/dev/null 2>&1; then
+            static_ready=true
+          fi
+          if [[ "$static_ready" == true && -n "$RUNTIME" ]] && \
+             jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_count==1 and .deferred_agent_ids==["meta"]' <<<"$RUNTIME" >/dev/null 2>&1; then
+            full_ready=true
+          fi
+          echo "static_ready=$static_ready" >> "$GITHUB_OUTPUT"
+          echo "full_ready=$full_ready" >> "$GITHUB_OUTPUT"
+          echo "STATIC_DEGRADED_READY=$static_ready"
+          echo "FULL_RUNTIME_READY=$full_ready"
+
+      - name: Terminal success already sealed
+        if: steps.state.outputs.full_ready == 'true'
+        run: |
+          echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
+          echo 'MANAGED_AGENTS=9/10'
+          echo 'DEFERRED_AGENT=meta'
+          echo 'AUTONOMOUS_COMPLETION=ALREADY_DONE'
+
+      - name: Start Codespace only when live bridge is still required
+        id: wake
+        if: steps.state.outputs.full_ready != 'true' && steps.state.outputs.static_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state')"
+          echo "CODESPACE_INITIAL_STATE=$CURRENT"
+          if [[ "$CURRENT" == 'Available' ]]; then
+            echo 'started_by_controller=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'started_by_controller=true' >> "$GITHUB_OUTPUT"
+            set +e
+            gh api -X POST "/user/codespaces/$CODESPACE_NAME/start" >/dev/null 2>&1
+            RC=$?
+            set -e
+            if [[ "$RC" -ne 0 ]]; then
+              AFTER="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)"
+              [[ "$AFTER" == 'Available' || "$AFTER" == 'Starting' ]] || { echo 'CODESPACE_START_FAILED'; exit "$RC"; }
+            fi
+          fi
+          for _ in {1..60}; do
+            STATE="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)"
+            [[ "$STATE" == 'Available' ]] && break
+            sleep 5
+          done
+          STATE="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state')"
+          echo "CODESPACE_FINAL_STATE=$STATE"
+          [[ "$STATE" == 'Available' ]] || { echo 'CODESPACE_NOT_AVAILABLE'; exit 3; }
+
+      - name: Wait for self-healed bearer-protected bridge
+        id: bridge
+        if: steps.state.outputs.full_ready != 'true' && steps.state.outputs.static_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL=''
+          for _ in {1..72}; do
+            CONTENT="$(gh api "repos/$PUBLIC_REPO/contents/ops/agent-lab/bridge/runtime-public-endpoint.json?ref=$ADAPTER_BRANCH" --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null || true)"
+            CANDIDATE="$(jq -r '.url // empty' <<<"$CONTENT" 2>/dev/null || true)"
+            if [[ "$CANDIDATE" == https://* ]] && curl -fsS --max-time 10 "$CANDIDATE/health" >/dev/null 2>&1; then
+              URL="$CANDIDATE"
+              break
+            fi
+            sleep 5
+          done
+          [[ "$URL" == https://* ]] || { echo 'PUBLIC_BRIDGE_RECOVERY_TIMEOUT'; exit 4; }
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo 'PUBLIC_BRIDGE_RECOVERED=PASS'
+
+      - name: Resolve exact source commits
+        id: refs
+        if: steps.state.outputs.full_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ADAPTER_SHA="$(gh api "repos/$PUBLIC_REPO/branches/$ADAPTER_BRANCH" --jq '.commit.sha')"
+          PRIVATE_SHA="$(gh api "repos/$PRIVATE_REPO/branches/main" --jq '.commit.sha')"
+          [[ "$ADAPTER_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PRIVATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "adapter_sha=$ADAPTER_SHA" >> "$GITHUB_OUTPUT"
+          echo "private_sha=$PRIVATE_SHA" >> "$GITHUB_OUTPUT"
+          echo "ADAPTER_SHA=$ADAPTER_SHA"
+          echo "HIVE_PRIVATE_SHA=$PRIVATE_SHA"
+
+      - name: Reuse any active Queen public runner
+        id: active
+        if: steps.state.outputs.full_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 20 --json databaseId,status --jq '[.[]|select(.status=="queued" or .status=="in_progress" or .status=="waiting")][0].databaseId // empty')"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          if [[ -n "$RUN_ID" ]]; then echo "ACTIVE_QUEEN_PUBLIC_RUNNER=$RUN_ID"; else echo 'ACTIVE_QUEEN_PUBLIC_RUNNER=NONE'; fi
+
+      - name: Dispatch exactly one Queen public runner
+        id: dispatch
+        if: steps.state.outputs.full_ready != 'true' && steps.active.outputs.run_id == ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREV="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
+          ARGS=(workflow run hive-queen-public-runner.yml -R "$PUBLIC_REPO" --ref main -f "adapter_sha=${{ steps.refs.outputs.adapter_sha }}" -f "hive_private_sha=${{ steps.refs.outputs.private_sha }}")
+          if [[ "${{ steps.state.outputs.static_ready }}" != 'true' ]]; then
+            ARGS+=( -f "bridge_url=${{ steps.bridge.outputs.url }}" )
+          fi
+          gh "${ARGS[@]}"
+          RUN_ID=''
+          for _ in {1..30}; do
+            CANDIDATE="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
+            if [[ "$CANDIDATE" != "$PREV" && "$CANDIDATE" != '0' ]]; then RUN_ID="$CANDIDATE"; break; fi
+            sleep 2
+          done
+          [[ -n "$RUN_ID" ]] || { echo 'QUEEN_RUN_IDENTIFICATION_FAILED'; exit 5; }
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "QUEEN_PUBLIC_RUNNER_DISPATCHED=$RUN_ID"
+
+      - name: Wait for Queen public runner terminal result
+        if: steps.state.outputs.full_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID="${{ steps.active.outputs.run_id }}"
+          [[ -n "$RUN_ID" ]] || RUN_ID="${{ steps.dispatch.outputs.run_id }}"
+          [[ -n "$RUN_ID" ]] || { echo 'QUEEN_RUN_ID_MISSING'; exit 6; }
+          gh run watch "$RUN_ID" -R "$PUBLIC_REPO" --exit-status
+
+      - name: Verify terminal Queen proof from private source of truth
+        if: steps.state.outputs.full_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          read_json(){
+            local path="$1"
+            gh api "repos/$PRIVATE_REPO/contents/$path?ref=main" --jq '.content' | tr -d '\n' | base64 -d
+          }
+          PROOF="$(read_json ops/queen/agents/PROOF_LOCK.json)"
+          REGISTRY="$(read_json ops/queen/runtime/AGENT_REGISTRY.json)"
+          RUNTIME="$(read_json ops/queen/runtime/RUNTIME_SYNC_LOCK.json)"
+          jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_ids==["meta"]' <<<"$PROOF" >/dev/null
+          jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==9' <<<"$REGISTRY" >/dev/null
+          jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_ids==["meta"]' <<<"$RUNTIME" >/dev/null
+          echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
+          echo 'MANAGED_AGENTS=9/10'
+          echo 'DEFERRED_AGENT=meta'
+          echo 'RUNTIME_DATA_PLANE_SYNC=PASS'
+
+      - name: Stop controller-started Codespace to conserve free quota
+        if: always() && steps.wake.outputs.started_by_controller == 'true'
+        shell: bash
+        run: |
+          gh api -X POST "/user/codespaces/$CODESPACE_NAME/stop" >/dev/null 2>&1 || true
+          echo 'CODESPACE_AUTOMATION_STOP_REQUESTED=true'
