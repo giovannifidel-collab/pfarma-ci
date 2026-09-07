@@ -54,17 +54,36 @@ jobs:
           set -euo pipefail
           CURRENT="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state')"
           echo "CODESPACE_INITIAL_STATE=$CURRENT"
+
+          # Never rebuild: the logged-in provider browser profiles live in the
+          # current container home. If a previous controller is still stopping
+          # the VM, wait for that transition to finish before issuing start.
+          if [[ "$CURRENT" == 'ShuttingDown' ]]; then
+            for _ in {1..60}; do
+              CURRENT="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)"
+              [[ "$CURRENT" != 'ShuttingDown' ]] && break
+              sleep 5
+            done
+            echo "CODESPACE_POST_SHUTDOWN_STATE=$CURRENT"
+          fi
+
           if [[ "$CURRENT" == 'Available' ]]; then
             echo 'started=false' >> "$GITHUB_OUTPUT"
+          elif [[ "$CURRENT" == 'Starting' ]]; then
+            echo 'started=true' >> "$GITHUB_OUTPUT"
           else
             echo 'started=true' >> "$GITHUB_OUTPUT"
             set +e
             gh api -X POST "/user/codespaces/$CODESPACE_NAME/start" >/dev/null 2>&1
             rc=$?
             set -e
-            [[ "$rc" -eq 0 ]] || [[ "$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)" =~ ^(Available|Starting)$ ]] || exit "$rc"
+            if [[ "$rc" -ne 0 ]]; then
+              AFTER="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)"
+              [[ "$AFTER" == 'Available' || "$AFTER" == 'Starting' ]] || { echo "CODESPACE_START_FAILED_STATE=$AFTER"; exit "$rc"; }
+            fi
           fi
-          for _ in {1..72}; do
+
+          for _ in {1..90}; do
             STATE="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)"
             [[ "$STATE" == 'Available' ]] && break
             sleep 5
@@ -95,8 +114,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          DOMAIN="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.web_url' | sed -E 's#https://github.com/codespaces/([^/?]+).*#\1#' || true)"
-          # Codespaces forwarded ports use the stable app.github.dev hostname.
           CANDIDATE="https://${CODESPACE_NAME}-${BRIDGE_PORT}.app.github.dev"
           URL=''
           for _ in {1..120}; do
