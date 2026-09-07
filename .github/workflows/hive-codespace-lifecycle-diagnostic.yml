@@ -1,0 +1,34 @@
+name: HIVE Codespace Lifecycle Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-codespace-lifecycle-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CODESPACE_NAME: glorious-fishstick-vpp99jqr55xvh967
+    steps:
+      - name: Read Codespace lifecycle logs without container mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "/user/codespaces/$CODESPACE_NAME" --jq '"CODESPACE_STATE=" + .state'
+          set +e
+          gh codespace logs -c "$CODESPACE_NAME" 2>&1 \
+            | sed -E 's#(token=)[^&[:space:]]+#\1***#g; s#(gho_|ghp_|github_pat_)[A-Za-z0-9_]+#***#g' \
+            | tail -n 400
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "CODESPACE_LOGS_RC=$rc"
+          exit "$rc"
