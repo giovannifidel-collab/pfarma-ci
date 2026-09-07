@@ -46,7 +46,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate exact source refs and required secrets
+      - name: Validate exact source refs and source token
         shell: bash
         env:
           SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
@@ -55,14 +55,10 @@ jobs:
           [[ "$HIVE_ADAPTER_SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'Invalid adapter_sha'; exit 2; }
           [[ "$HIVE_PRIVATE_SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'Invalid hive_private_sha'; exit 2; }
           [[ -n "$SOURCE_TOKEN" ]] || { echo 'PFARMA_SOURCE_TOKEN secret missing'; exit 2; }
-          [[ "$HIVE_AGENT_BRIDGE_URL" == https://* ]] || { echo 'HIVE_AGENT_BRIDGE_URL missing/invalid'; exit 2; }
-          [[ ${#HIVE_AGENT_BRIDGE_TOKEN} -ge 32 ]] || { echo 'HIVE_AGENT_BRIDGE_TOKEN secret missing/invalid'; exit 2; }
           REMOTE_ADAPTER_SHA="$(git ls-remote https://github.com/giovannifidel-collab/pfarma-ci.git refs/heads/hive-cloud-computer-v0 | awk '{print $1}')"
           echo "ADAPTER_REQUESTED_SHA=$HIVE_ADAPTER_SOURCE_SHA"
           echo "ADAPTER_REMOTE_SHA=$REMOTE_ADAPTER_SHA"
           [[ "$REMOTE_ADAPTER_SHA" == "$HIVE_ADAPTER_SOURCE_SHA" ]] || { echo 'Adapter branch moved: refusing stale proof'; exit 2; }
-          curl -fsS --max-time 15 "$HIVE_AGENT_BRIDGE_URL/health" >/dev/null
-          echo 'PUBLIC_BRIDGE_HEALTH=PASS'
 
       - name: Check out exact authoritative private HIVE commit
         uses: actions/checkout@v4
@@ -130,6 +126,16 @@ jobs:
             echo 'static_ready=false' >> "$GITHUB_OUTPUT"
             echo 'STATIC_DEGRADED_PROOF=REQUIRES_LIVE_GATE'
           fi
+
+      - name: Validate live bridge for required Queen gate
+        if: steps.static.outputs.static_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HIVE_AGENT_BRIDGE_URL" == https://* ]] || { echo 'HIVE_AGENT_BRIDGE_URL missing/invalid'; exit 2; }
+          [[ ${#HIVE_AGENT_BRIDGE_TOKEN} -ge 32 ]] || { echo 'HIVE_AGENT_BRIDGE_TOKEN secret missing/invalid'; exit 2; }
+          curl -fsS --max-time 15 "$HIVE_AGENT_BRIDGE_URL/health" >/dev/null
+          echo 'PUBLIC_BRIDGE_HEALTH=PASS'
 
       - name: Live Queen to bridge gate for 9 active providers
         if: steps.static.outputs.static_ready != 'true'
