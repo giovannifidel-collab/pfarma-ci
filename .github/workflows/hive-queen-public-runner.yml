@@ -165,3 +165,4 @@ jobs:
           echo 'CAPABILITY=hive.ai.general'
           echo 'MAX_AUTHORITY=L1'
           echo 'FAIL_CLOSED=true'
+          echo 'RUNTIME_DATA_PLANE_SYNC=PENDING_SEPARATE_VERIFICATION'
