@@ -1,8 +1,11 @@
 {
   "name": "HIVE Kimi Cloud Bootstrap",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
   "postCreateCommand": "bash hive-kimi-cloud/install.sh",
-  "postStartCommand": "bash -lc 'mkdir -p \"$HOME/.hive-agent-lab\"; if ! pgrep -f \"ops/agent-lab/bridge/auto-heal-queen.sh\" >/dev/null 2>&1; then cd /workspaces/pfarma-ci && nohup bash ops/agent-lab/bridge/auto-heal-queen.sh >\"$HOME/.hive-agent-lab/auto-heal.log\" 2>&1 & fi'",
+  "postStartCommand": "bash -lc 'cd /workspaces/pfarma-ci; mkdir -p \"$HOME/.hive-agent-lab\"; bash ops/agent-lab/bridge/ensure-tailscale.sh >\"$HOME/.hive-agent-lab/tailscale-start.log\" 2>&1 || true; if ! pgrep -f \"ops/agent-lab/bridge/auto-heal-queen.sh\" >/dev/null 2>&1; then nohup bash ops/agent-lab/bridge/auto-heal-queen.sh >\"$HOME/.hive-agent-lab/auto-heal.log\" 2>&1 & fi'",
   "customizations": {
     "vscode": {
       "settings": {
