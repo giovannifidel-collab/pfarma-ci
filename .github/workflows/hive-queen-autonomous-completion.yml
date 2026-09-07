@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '11 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-queen-autonomous-completion.yml'
 
 permissions:
   contents: read
