@@ -7,6 +7,7 @@ BRANCH="hive-cloud-computer-v0"
 POLL_SECONDS="${HIVE_AUTO_HEAL_POLL_SECONDS:-20}"
 STATE_DIR="$HOME/.hive-agent-lab"
 LOCK_FILE="$STATE_DIR/auto-heal.lock"
+STATUS_FILE="ops/agent-lab/bridge/runtime-auto-heal-status.json"
 LAST_SHA=""
 mkdir -p "$STATE_DIR"
 
@@ -19,6 +20,36 @@ if ! flock -n 9; then
 fi
 
 log(){ printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+
+publish_failure(){
+  local sha="$1" rc="$2" hint
+  case "$rc" in
+    90) hint='git-missing' ;;
+    91) hint='github-cli-missing' ;;
+    93) hint='dirty-worktree' ;;
+    94) hint='private-auth-strict-path' ;;
+    95) hint='invalid-public-bridge-url' ;;
+    96) hint='public-runner-dispatch-failed' ;;
+    *) hint='bridge-or-tunnel-recovery-failed' ;;
+  esac
+  python3 - "$sha" "$rc" "$hint" >"$STATUS_FILE" <<'PY'
+import json, sys
+print(json.dumps({
+  'status':'BLOCKED',
+  'adapter_sha':sys.argv[1],
+  'finalizer_rc':int(sys.argv[2]),
+  'phase_hint':sys.argv[3],
+  'token_exposed':False
+}, indent=2, sort_keys=True))
+PY
+  git config user.name 'HIVE Auto Heal'
+  git config user.email 'hive-auto-heal@users.noreply.github.com'
+  git add "$STATUS_FILE"
+  if ! git diff --cached --quiet; then
+    git commit -m 'chore(hive): publish autonomous Queen recovery status'
+    git push origin "HEAD:${BRANCH}" || true
+  fi
+}
 
 while true; do
   git fetch origin "$BRANCH" >/dev/null 2>&1 || { log 'fetch failed; retrying'; sleep "$POLL_SECONDS"; continue; }
@@ -33,24 +64,13 @@ while true; do
     RC=$?
     set -e
     if [[ "$RC" == "0" ]]; then
-      if [[ -f ops/agent-lab/bridge/AUTONOMOUS_PUBLIC_RUNNER ]]; then
-        log 'public bridge recovery completed; dispatching Queen public runner'
-        set +e
-        bash ops/agent-lab/bridge/dispatch-public-runner.sh
-        DISPATCH_RC=$?
-        set -e
-        if [[ "$DISPATCH_RC" == "0" ]]; then
-          log 'Queen public runner dispatched'
-          exit 0
-        fi
-        log "public-runner dispatch stopped with rc=$DISPATCH_RC; waiting for next repair commit"
-      else
-        log 'HIVE/Queen integration completed'
-        exit 0
-      fi
-    else
-      log "finalizer stopped with rc=$RC; waiting for next repair commit"
+      # run-finalize-queen.sh owns the autonomous public-runner dispatch. Do not
+      # dispatch a second copy here; exit once the handoff was created.
+      log 'Queen recovery handoff completed by finalizer'
+      exit 0
     fi
+    log "finalizer stopped with rc=$RC; publishing safe recovery status"
+    publish_failure "$SHA" "$RC"
   fi
   sleep "$POLL_SECONDS"
 done
