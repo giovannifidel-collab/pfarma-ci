@@ -28,8 +28,8 @@ git pull --ff-only origin "$BRANCH"
 
 # Autonomous public-runner takeover. The strict 10/10 finalizer below remains
 # unchanged and can still be invoked explicitly with HIVE_STRICT_10=1. In the
-# normal recovery path we only restore Tailscale + the bearer-protected bridge,
-# publish its non-secret endpoint, and leave certification to the public runner.
+# normal recovery path we restore Tailscale + the bearer-protected bridge,
+# publish its non-secret endpoint, then dispatch certification to the public runner.
 if [[ -f "$AUTONOMOUS_MARKER" && "${HIVE_STRICT_10:-0}" != "1" ]]; then
   echo 'QUEEN_CONTROL_PLANE=AUTONOMOUS_PUBLIC_RUNNER'
   bash ops/agent-lab/bridge/ensure-tailscale.sh >/tmp/hive-ensure-tailscale.log 2>&1 || true
@@ -55,11 +55,20 @@ PY
     git push origin "HEAD:${BRANCH}"
   fi
 
+  # The endpoint commit above can advance the adapter branch. Dispatch only after
+  # that push so the public runner certifies the exact current branch SHA and does
+  # not reject its own proof as stale.
+  ADAPTER_SHA="$(git rev-parse HEAD)"
   echo 'PUBLIC_BRIDGE_ENDPOINT=PUBLISHED'
   echo "ADAPTER_SHA=$ADAPTER_SHA"
   echo 'TOKEN_EXPOSED=false'
-  echo 'ENTRYPOINT_RESULT=PUBLIC_BRIDGE_READY'
-  exit 0
+
+  if bash ops/agent-lab/bridge/dispatch-public-runner.sh; then
+    echo 'ENTRYPOINT_RESULT=PUBLIC_RUNNER_DISPATCHED'
+    exit 0
+  fi
+  echo 'ERROR: public bridge is healthy but Queen public-runner dispatch failed' >&2
+  exit 96
 fi
 
 # Strict 10/10 path preserved for explicit use. GitHub Codespaces may inject a
