@@ -1,0 +1,173 @@
+name: HIVE Cloudflare Access Discovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-cloudflare-access-discovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    env:
+      CF_ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
+
+    steps:
+      - name: Discover existing HIVE Cloudflare Access state
+        shell: bash
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          [[ -n "${CF_TOKEN:-}" ]] || {
+            echo 'CLOUDFLARE_API_TOKEN=EMPTY'
+            exit 2
+          }
+
+          echo 'CLOUDFLARE_API_TOKEN=AVAILABLE'
+
+          AUTH=(-H "Authorization: Bearer $CF_TOKEN")
+
+          echo '=== SERVICE TOKENS ==='
+
+          STATUS="$(
+            curl -sS \
+              "${AUTH[@]}" \
+              -o /tmp/service-tokens.json \
+              -w '%{http_code}' \
+              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/access/service_tokens"
+          )"
+
+          echo "SERVICE_TOKENS_HTTP=$STATUS"
+
+          if [[ "$STATUS" == "200" ]]; then
+            jq -r '
+              .result[]? |
+              "SERVICE_TOKEN_NAME=\(.name)
+SERVICE_TOKEN_ID=\(.id)
+SERVICE_TOKEN_ENABLED=\(.enabled)
+SERVICE_TOKEN_EXPIRES=\(.expires_at // "none")
+CLIENT_ID_PRESENT=\(((.client_id // "") | length) > 0)
+---"
+            ' /tmp/service-tokens.json
+          else
+            jq -r '.errors[]? |
+              "SERVICE_TOKEN_API_ERROR=\(.code):\(.message)"' \
+              /tmp/service-tokens.json
+          fi
+
+          echo '=== HIVE ACCESS APPLICATION ==='
+
+          STATUS="$(
+            curl -sS \
+              "${AUTH[@]}" \
+              -o /tmp/apps.json \
+              -w '%{http_code}' \
+              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/access/apps"
+          )"
+
+          echo "ACCESS_APPS_HTTP=$STATUS"
+
+          if [[ "$STATUS" == "200" ]]; then
+            jq -r '
+              .result[]? |
+              select(
+                ((.domain // "") | contains("hive-alveare"))
+                or
+                (((.name // "") | ascii_downcase) | contains("hive"))
+              ) |
+              "ACCESS_APP_NAME=\(.name)
+ACCESS_APP_DOMAIN=\(.domain // "none")
+ACCESS_APP_ID=\(.id)
+ACCESS_APP_AUD=\(.aud // "none")
+---"
+            ' /tmp/apps.json
+
+            while read -r APP; do
+              [[ -n "$APP" ]] || continue
+
+              PSTATUS="$(
+                curl -sS \
+                  "${AUTH[@]}" \
+                  -o /tmp/policies.json \
+                  -w '%{http_code}' \
+                  "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/access/apps/$APP/policies"
+              )"
+
+              echo "ACCESS_POLICIES_HTTP=$PSTATUS"
+
+              if [[ "$PSTATUS" == "200" ]]; then
+                jq -r '
+                  .result[]? |
+                  "POLICY_NAME=\(.name)
+POLICY_DECISION=\(.decision)
+SERVICE_TOKEN_IDS=\(
+                    [.include[]? |
+                     .service_token?.token_id // empty]
+                    | join(",")
+                  )
+---"
+                ' /tmp/policies.json
+              fi
+            done < <(
+              jq -r '
+                .result[]? |
+                select(
+                  ((.domain // "") | contains("hive-alveare"))
+                  or
+                  (((.name // "") | ascii_downcase) | contains("hive"))
+                ) |
+                .id
+              ' /tmp/apps.json
+            )
+          fi
+
+          echo '=== HIVE PAGES PROJECT ==='
+
+          STATUS="$(
+            curl -sS \
+              "${AUTH[@]}" \
+              -o /tmp/pages.json \
+              -w '%{http_code}' \
+              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/pages/projects/hive-alveare"
+          )"
+
+          echo "PAGES_PROJECT_HTTP=$STATUS"
+
+          if [[ "$STATUS" == "200" ]]; then
+            echo "PAGES_PROJECT_NAME=$(jq -r '.result.name' /tmp/pages.json)"
+
+            jq -r '
+              .result.deployment_configs as $d |
+              ["production","preview"][] as $scope |
+              ($d[$scope].env_vars // {}) |
+              to_entries[] |
+              "\($scope | ascii_upcase)_ENV_KEY=\(.key) TYPE=\(.value.type // "unknown") VALUE_PRESENT=\((((.value.value // "") | length) > 0))"
+            ' /tmp/pages.json
+          else
+            echo '--- AVAILABLE PAGES PROJECTS ---'
+
+            curl -sS \
+              "${AUTH[@]}" \
+              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/pages/projects" \
+              -o /tmp/projects.json
+
+            jq -r '.result[]?.name | "PAGES_PROJECT=" + .' \
+              /tmp/projects.json
+          fi
+
+          echo '=== CLOUDFLARE DISCOVERY COMPLETE ==='
+
+          rm -f \
+            /tmp/service-tokens.json \
+            /tmp/apps.json \
+            /tmp/policies.json \
+            /tmp/pages.json \
+            /tmp/projects.json
