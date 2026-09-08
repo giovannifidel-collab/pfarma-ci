@@ -33,10 +33,24 @@ while true; do
     RC=$?
     set -e
     if [[ "$RC" == "0" ]]; then
-      log 'HIVE/Queen integration completed'
-      exit 0
+      if [[ -f ops/agent-lab/bridge/AUTONOMOUS_PUBLIC_RUNNER ]]; then
+        log 'public bridge recovery completed; dispatching Queen public runner'
+        set +e
+        bash ops/agent-lab/bridge/dispatch-public-runner.sh
+        DISPATCH_RC=$?
+        set -e
+        if [[ "$DISPATCH_RC" == "0" ]]; then
+          log 'Queen public runner dispatched'
+          exit 0
+        fi
+        log "public-runner dispatch stopped with rc=$DISPATCH_RC; waiting for next repair commit"
+      else
+        log 'HIVE/Queen integration completed'
+        exit 0
+      fi
+    else
+      log "finalizer stopped with rc=$RC; waiting for next repair commit"
     fi
-    log "finalizer stopped with rc=$RC; waiting for next repair commit"
   fi
   sleep "$POLL_SECONDS"
 done
