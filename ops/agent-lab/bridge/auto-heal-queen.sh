@@ -60,7 +60,10 @@ while true; do
     git reset --hard "origin/$BRANCH" >/dev/null
     LAST_SHA="$SHA"
     set +e
-    bash ops/agent-lab/bridge/run-finalize-queen.sh
+    # Close the single-instance lock FD before launching the finalizer. Long-lived
+    # descendants such as tailscaled/cloudflared/server.mjs must never inherit it,
+    # otherwise a killed controller can leave an apparently stale lock forever.
+    bash ops/agent-lab/bridge/run-finalize-queen.sh 9>&-
     RC=$?
     set -e
     if [[ "$RC" == "0" ]]; then
