@@ -55,9 +55,6 @@ jobs:
           CURRENT="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state')"
           echo "CODESPACE_INITIAL_STATE=$CURRENT"
 
-          # Never rebuild: the logged-in provider browser profiles live in the
-          # current container home. If a previous controller is still stopping
-          # the VM, wait for that transition to finish before issuing start.
           if [[ "$CURRENT" == 'ShuttingDown' ]]; then
             for _ in {1..60}; do
               CURRENT="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)"
@@ -92,20 +89,33 @@ jobs:
           echo "CODESPACE_FINAL_STATE=$STATE"
           [[ "$STATE" == 'Available' ]] || { echo 'CODESPACE_NOT_AVAILABLE'; exit 3; }
 
+      - name: Launch auto-heal inside existing Codespace
+        if: steps.pre.outputs.static_ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh codespace ssh -c "$CODESPACE_NAME" -- \
+            "cd /workspaces/pfarma-ci && git fetch origin $ADAPTER_BRANCH && git checkout $ADAPTER_BRANCH && git reset --hard origin/$ADAPTER_BRANCH && mkdir -p \"\$HOME/.hive-agent-lab\" && (nohup bash ops/agent-lab/bridge/auto-heal-queen.sh >\"\$HOME/.hive-agent-lab/auto-heal.log\" 2>&1 </dev/null & )"
+          echo 'CODESPACE_AUTO_HEAL_LAUNCHED=true'
+
       - name: Expose stable bearer-protected bridge port
         if: steps.pre.outputs.static_ready != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          set +e
-          gh api -X PATCH "/user/codespaces/$CODESPACE_NAME/ports/$BRIDGE_PORT" -f visibility=public >/tmp/port-patch.json 2>/tmp/port-patch.err
-          rc=$?
-          set -e
-          if [[ "$rc" -ne 0 ]]; then
-            echo 'PORT_VISIBILITY_PATCH=DEFERRED_TO_CODESPACE_LIFECYCLE'
-          else
-            echo 'PORT_VISIBILITY_PATCH=PASS'
-          fi
+          for _ in {1..20}; do
+            set +e
+            gh api -X PATCH "/user/codespaces/$CODESPACE_NAME/ports/$BRIDGE_PORT" -f visibility=public >/tmp/port-patch.json 2>/tmp/port-patch.err
+            rc=$?
+            set -e
+            if [[ "$rc" -eq 0 ]]; then
+              echo 'PORT_VISIBILITY_PATCH=PASS'
+              rm -f /tmp/port-patch.json /tmp/port-patch.err
+              exit 0
+            fi
+            sleep 3
+          done
+          echo 'PORT_VISIBILITY_PATCH=DEFERRED_TO_CODESPACE_LIFECYCLE'
           rm -f /tmp/port-patch.json /tmp/port-patch.err
 
       - name: Wait for lifecycle auto-heal bridge
