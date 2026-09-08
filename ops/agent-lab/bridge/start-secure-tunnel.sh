@@ -49,10 +49,10 @@ curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null
 PUBLIC_URL=""
 PUBLIC_MODE=""
 
-# Prefer the stable GitHub Codespaces port-forwarding endpoint. The bridge itself
-# remains bearer-token protected; only /health is intentionally unauthenticated.
+# Prefer the stable GitHub Codespaces port-forwarding endpoint. Bound this probe
+# so a transient gh/Codespaces API stall cannot block the Cloudflare fallback.
 if [[ -n "${CODESPACE_NAME:-}" && -n "${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-}" ]] && command -v gh >/dev/null 2>&1; then
-  if gh codespace ports visibility "${PORT}:public" -c "$CODESPACE_NAME" >/dev/null 2>&1; then
+  if timeout 15s gh codespace ports visibility "${PORT}:public" -c "$CODESPACE_NAME" >/dev/null 2>&1; then
     CANDIDATE="https://${CODESPACE_NAME}-${PORT}.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN}"
     for _ in {1..40}; do
       if curl -fsS --max-time 10 "$CANDIDATE/health" >/dev/null 2>&1; then
