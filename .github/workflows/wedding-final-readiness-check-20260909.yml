@@ -1,0 +1,73 @@
+name: Wedding Final Readiness Check 20260909
+
+on:
+  push:
+    branches:
+      - wedding-external-stress-20260909
+    paths:
+      - '.github/workflows/wedding-final-readiness-check-20260909.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PROD: https://rocco-rosy-wedding.project-giovanni.workers.dev
+      OLD_MEDIA_ID: p_1fa2bd8d-7bce-4368-a0a7-bef9fd5e1b42
+    steps:
+      - name: Verify clean production state
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          code="$(curl -sS -o /tmp/gallery1.json -w '%{http_code}' "$PROD/api/gallery?ready=$GITHUB_SHA")"
+          test "$code" = 200
+          jq -e '.items|length==0' /tmp/gallery1.json >/dev/null
+
+          sleep 5
+          code="$(curl -sS -o /tmp/gallery2.json -w '%{http_code}' "$PROD/api/gallery?ready2=$GITHUB_SHA")"
+          test "$code" = 200
+          jq -e '.items|length==0' /tmp/gallery2.json >/dev/null
+
+          code="$(curl -sS -o /tmp/mode.json -w '%{http_code}' "$PROD/api/system-mode?ready=$GITHUB_SHA")"
+          test "$code" = 200
+          jq -e '.emergency==false' /tmp/mode.json >/dev/null
+
+          code="$(curl -sS -o /tmp/oldmedia -w '%{http_code}' "$PROD/api/media/$OLD_MEDIA_ID?ready=$GITHUB_SHA")"
+          test "$code" = 404
+
+          code="$(curl -sS -o /tmp/guest.html -w '%{http_code}' "$PROD/?ready=$GITHUB_SHA")"
+          test "$code" = 200
+          test "$(wc -c </tmp/guest.html)" -gt 1000
+
+          code="$(curl -sS -o /tmp/admin.html -w '%{http_code}' "$PROD/admin?ready=$GITHUB_SHA")"
+          test "$code" = 200
+          test "$(wc -c </tmp/admin.html)" -gt 1000
+
+          code="$(curl -sS -o /tmp/remote.html -w '%{http_code}' "$PROD/remote?ready=$GITHUB_SHA")"
+          test "$code" = 200
+          test "$(wc -c </tmp/remote.html)" -gt 1000
+
+          code="$(curl -sS -o /tmp/wall.html -w '%{http_code}' "$PROD/wall?ready=$GITHUB_SHA")"
+          test "$code" = 401
+
+          code="$(curl -sS -o /tmp/version.json -w '%{http_code}' "$PROD/api/remote-version?ready=$GITHUB_SHA")"
+          test "$code" = 200
+
+          echo 'RR_FINAL_READINESS_PASS'
+          echo 'gallery=0 twice; emergency=false; old media=404; guest/admin/remote=200; wall auth=401; version=200'
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wedding-final-readiness-report
+          path: |
+            /tmp/gallery1.json
+            /tmp/gallery2.json
+            /tmp/mode.json
+            /tmp/version.json
+          if-no-files-found: warn
+          retention-days: 3
