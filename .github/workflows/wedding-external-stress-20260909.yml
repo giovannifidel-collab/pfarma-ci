@@ -1,0 +1,69 @@
+name: Wedding External Stress 20260909
+
+on:
+  push:
+    branches:
+      - wedding-external-stress-20260909
+    paths:
+      - '.github/workflows/wedding-external-stress-20260909.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Stress wedding production from independent runner
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import concurrent.futures as cf, json, math, statistics, time, urllib.request
+          BASE='https://rocco-rosy-wedding.project-giovanni.workers.dev'
+          targets=[
+            ('gallery','/api/gallery'),
+            ('gallery','/api/gallery'),
+            ('mode','/api/system-mode'),
+            ('guest','/'),
+          ]
+          def pct(v,q):
+            x=sorted(v);return x[min(len(x)-1,max(0,math.ceil(q*len(x))-1))] if x else 0
+          def one(i):
+            label,path=targets[i%len(targets)]
+            req=urllib.request.Request(BASE+path,headers={'User-Agent':'RR-Wedding-External-Stress/20260909','Cache-Control':'no-cache','Accept':'application/json,text/html;q=0.9,*/*;q=0.8'})
+            st=time.perf_counter()
+            try:
+              with urllib.request.urlopen(req,timeout=15) as r:
+                body=r.read();status=r.status
+              ok=200<=status<300 and len(body)>0;err='' if ok else f'HTTP {status}'
+            except Exception as e:
+              status=getattr(e,'code',0) or 0;ok=False;err=f'{type(e).__name__}: {e}'
+            return label,ok,status,(time.perf_counter()-st)*1000,err
+          def phase(name,n,c):
+            st=time.perf_counter()
+            with cf.ThreadPoolExecutor(max_workers=c) as ex:
+              res=list(ex.map(one,range(n)))
+            elapsed=time.perf_counter()-st
+            lat=[x[3] for x in res];errors=[x for x in res if not x[1]]
+            out={'phase':name,'requests':n,'concurrency':c,'errors':len(errors),'error_rate_pct':round(len(errors)*100/n,3),'throughput_rps':round(n/elapsed,2),'avg_ms':round(statistics.mean(lat),1),'p50_ms':round(pct(lat,.50),1),'p95_ms':round(pct(lat,.95),1),'p99_ms':round(pct(lat,.99),1),'max_ms':round(max(lat),1),'sample_errors':[x[4] for x in errors[:5]]}
+            print('RR_RESULT '+json.dumps(out,separators=(',',':')))
+            return out
+          warm=phase('warm-up',40,8)
+          if warm['errors']:
+            raise SystemExit('FAIL warm-up')
+          heavy=phase('100-guest-heavy',900,100)
+          spike=phase('spike-160',640,160)
+          report={'heavy':heavy,'spike':spike}
+          open('/tmp/wedding-stress.json','w').write(json.dumps(report,indent=2))
+          failed=any(s['error_rate_pct']>1.0 or s['p95_ms']>3500 for s in (heavy,spike))
+          if failed:
+            raise SystemExit('FAIL reliability threshold exceeded')
+          print('RR_STRESS_PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wedding-external-stress-report
+          path: /tmp/wedding-stress.json
+          if-no-files-found: ignore
