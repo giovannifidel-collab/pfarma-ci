@@ -14,8 +14,10 @@ jobs:
   inventory:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: pfarma-ci-trusted
     env:
-      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
       ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
       DB_ID: 104865ad-1ec1-4ecb-b534-9d68f02c6635
       BUCKET: rocco-rosy-media
@@ -24,9 +26,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${CF_TOKEN:-}"
-          AUTH="Authorization: Bearer $CF_TOKEN"
           QURL="https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/d1/database/$DB_ID/query"
+          probe(){ local tok="$1" out; [[ -n "$tok" ]] || return 1; out="$(curl -sS -X POST -H "Authorization: Bearer $tok" -H 'content-type: application/json' --data '{"sql":"SELECT 1 AS ok"}' "$QURL")"; [[ "$(jq -r '.success // false' <<<"$out")" == true ]]; }
+          CF_TOKEN=''
+          if probe "${CF_TOKEN_PRIMARY:-}"; then CF_TOKEN="$CF_TOKEN_PRIMARY"; echo 'TOKEN_SOURCE=PRIMARY'; elif probe "${CF_TOKEN_FALLBACK:-}"; then CF_TOKEN="$CF_TOKEN_FALLBACK"; echo 'TOKEN_SOURCE=FALLBACK'; else echo 'No trusted Cloudflare token can access wedding D1' >&2; exit 1; fi
+          AUTH="Authorization: Bearer $CF_TOKEN"
           q(){ local sql="$1" out; out="$(curl -sS -X POST -H "$AUTH" -H 'content-type: application/json' --data "$(jq -nc --arg sql "$sql" '{sql:$sql}')" "$QURL")"; if [[ "$(jq -r '.success // false' <<<"$out")" != true ]]; then echo "D1_QUERY_ERROR=$(jq -c '.errors // .' <<<"$out")" >&2; return 1; fi; printf '%s' "$out"; }
           mkdir -p /tmp/wedding-inventory
           q "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name" > /tmp/wedding-inventory/tables.json
