@@ -37,8 +37,21 @@ jobs:
           cat >/tmp/rr-clean/worker.js <<'JS'
           const H={'content-type':'application/json; charset=utf-8','cache-control':'no-store'};
           const j=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
-          const tables=['admin_login_rate','guest_devices','guests','media','memory_gifts','messages','ops_events','quiz_answers','quiz_questions','reactions','settings','upload_receipts'];
-          async function counts(db){const o={};for(const t of tables){try{const r=await db.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).first();o[t]=Number(r?.n||0)}catch{o[t]=null}}return o}
+          async function counts(db){
+            return await db.prepare(`SELECT
+              (SELECT COUNT(*) FROM admin_login_rate) AS admin_login_rate,
+              (SELECT COUNT(*) FROM guest_devices) AS guest_devices,
+              (SELECT COUNT(*) FROM guests) AS guests,
+              (SELECT COUNT(*) FROM media) AS media,
+              (SELECT COUNT(*) FROM memory_gifts) AS memory_gifts,
+              (SELECT COUNT(*) FROM messages) AS messages,
+              (SELECT COUNT(*) FROM ops_events) AS ops_events,
+              (SELECT COUNT(*) FROM quiz_answers) AS quiz_answers,
+              (SELECT COUNT(*) FROM quiz_questions) AS quiz_questions,
+              (SELECT COUNT(*) FROM reactions) AS reactions,
+              (SELECT COUNT(*) FROM settings) AS settings,
+              (SELECT COUNT(*) FROM upload_receipts) AS upload_receipts`).first();
+          }
           function up(db,k,v){return db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(k,String(v))}
           export default{async fetch(req,env){
             if(req.headers.get('authorization')!==`Bearer ${env.MAINT_TOKEN}`)return new Response('Not found',{status:404});
@@ -48,40 +61,46 @@ jobs:
             let b={};try{b=await req.json()}catch{}
             if(b.confirm!=='ROCCO_ROSY_FINAL_CLEAN_20260909')return j({error:'confirmation required'},400);
             const before=await counts(env.DB),wowNonce=crypto.randomUUID(),now=Date.now();
-            await env.DB.batch([
-              env.DB.prepare('DELETE FROM quiz_answers'),
-              env.DB.prepare('DELETE FROM reactions'),
-              env.DB.prepare('DELETE FROM memory_gifts'),
-              env.DB.prepare('DELETE FROM media'),
-              env.DB.prepare('DELETE FROM messages'),
-              env.DB.prepare('DELETE FROM guest_devices'),
-              env.DB.prepare('DELETE FROM guests'),
-              env.DB.prepare('DELETE FROM upload_receipts'),
-              env.DB.prepare('DELETE FROM ops_events'),
-              env.DB.prepare('DELETE FROM admin_login_rate'),
-              env.DB.prepare('UPDATE quiz_questions SET active=0'),
-              up(env.DB,'wall_enabled','1'),
-              up(env.DB,'wall_freeze','0'),
-              up(env.DB,'reactions_enabled','0'),
-              up(env.DB,'quiz_reveal','0'),
-              up(env.DB,'rush_until','0'),
-              up(env.DB,'rush_start_total','0'),
-              up(env.DB,'final_awards','0'),
-              up(env.DB,'challenge_active','0'),
-              up(env.DB,'challenge_target',''),
-              up(env.DB,'challenge_text',''),
-              up(env.DB,'challenge_icon','🎡'),
-              up(env.DB,'challenge_started_at','0'),
-              up(env.DB,'challenge_duration','30'),
-              up(env.DB,'challenge_last',''),
-              up(env.DB,'reaction_rankings_visible','0'),
-              up(env.DB,'wall_rankings_visible','0'),
-              up(env.DB,'wall_games_visible','0'),
-              up(env.DB,'emergency_mode','0'),
-              up(env.DB,'wall_wow_action','clear'),
-              up(env.DB,'wall_wow_nonce',wowNonce),
-              up(env.DB,'wall_wow_requested_at',now)
-            ]);
+            try{
+              await env.DB.batch([
+                env.DB.prepare('DELETE FROM quiz_answers'),
+                env.DB.prepare('DELETE FROM reactions'),
+                env.DB.prepare('DELETE FROM memory_gifts'),
+                env.DB.prepare('DELETE FROM media'),
+                env.DB.prepare('DELETE FROM messages'),
+                env.DB.prepare('DELETE FROM guest_devices'),
+                env.DB.prepare('DELETE FROM guests'),
+                env.DB.prepare('DELETE FROM upload_receipts'),
+                env.DB.prepare('DELETE FROM ops_events'),
+                env.DB.prepare('DELETE FROM admin_login_rate'),
+                env.DB.prepare('UPDATE quiz_questions SET active=0')
+              ]);
+            }catch(e){return j({ok:false,phase:'delete-data',before,error:String(e?.stack||e)},500)}
+            try{
+              await env.DB.batch([
+                up(env.DB,'wall_enabled','1'),
+                up(env.DB,'wall_freeze','0'),
+                up(env.DB,'reactions_enabled','0'),
+                up(env.DB,'quiz_reveal','0'),
+                up(env.DB,'rush_until','0'),
+                up(env.DB,'rush_start_total','0'),
+                up(env.DB,'final_awards','0'),
+                up(env.DB,'challenge_active','0'),
+                up(env.DB,'challenge_target',''),
+                up(env.DB,'challenge_text',''),
+                up(env.DB,'challenge_icon','🎡'),
+                up(env.DB,'challenge_started_at','0'),
+                up(env.DB,'challenge_duration','30'),
+                up(env.DB,'challenge_last',''),
+                up(env.DB,'reaction_rankings_visible','0'),
+                up(env.DB,'wall_rankings_visible','0'),
+                up(env.DB,'wall_games_visible','0'),
+                up(env.DB,'emergency_mode','0'),
+                up(env.DB,'wall_wow_action','clear'),
+                up(env.DB,'wall_wow_nonce',wowNonce),
+                up(env.DB,'wall_wow_requested_at',now)
+              ]);
+            }catch(e){return j({ok:false,phase:'reset-state',before,error:String(e?.stack||e)},500)}
             const after=await counts(env.DB);
             const settings=(await env.DB.prepare("SELECT key,value FROM settings WHERE key IN ('wall_enabled','wall_freeze','reactions_enabled','quiz_reveal','rush_until','final_awards','challenge_active','wall_rankings_visible','wall_games_visible','emergency_mode','wall_wow_action') ORDER BY key").all()).results||[];
             return j({ok:true,before,after,settings});
@@ -114,7 +133,8 @@ jobs:
           echo '=== PRE-CLEAN COUNTS ==='
           jq '.counts' /tmp/pre.json
           code="$(curl -sS -o /tmp/clean.json -w '%{http_code}' -X POST -H "Authorization: Bearer $MAINT_TOKEN" -H 'content-type: application/json' --data '{"confirm":"ROCCO_ROSY_FINAL_CLEAN_20260909"}' "$URL/clean")"
-          test "$code" = 200
+          echo "CLEAN_HTTP=$code"
+          if [[ "$code" != 200 ]]; then cat /tmp/clean.json; exit 1; fi
           jq -e '.ok==true' /tmp/clean.json >/dev/null
           echo '=== POST-CLEAN COUNTS ==='
           jq '.after' /tmp/clean.json
@@ -128,6 +148,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          code=000
           for i in $(seq 1 8); do
             code="$(curl -sS -o /tmp/gallery.json -w '%{http_code}' "$PROD/api/gallery?finalclean=$GITHUB_SHA" || true)"
             if [[ "$code" == 200 ]] && jq -e '.items|length==0' /tmp/gallery.json >/dev/null 2>&1; then break; fi
