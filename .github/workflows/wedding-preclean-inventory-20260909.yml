@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 10
     env:
       CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
       DB_ID: 104865ad-1ec1-4ecb-b534-9d68f02c6635
       BUCKET: rocco-rosy-media
     steps:
@@ -25,22 +26,12 @@ jobs:
           set -euo pipefail
           test -n "${CF_TOKEN:-}"
           AUTH="Authorization: Bearer $CF_TOKEN"
-          curl -fsS -H "$AUTH" https://api.cloudflare.com/client/v4/accounts -o /tmp/accounts.json
-          ACCOUNT_ID=''
-          while read -r id; do
-            code="$(curl -sS -o /tmp/dbmeta.json -w '%{http_code}' -H "$AUTH" "https://api.cloudflare.com/client/v4/accounts/$id/d1/database/$DB_ID")"
-            if [[ "$code" == 200 ]] && [[ "$(jq -r '.success' /tmp/dbmeta.json)" == true ]]; then ACCOUNT_ID="$id"; break; fi
-          done < <(jq -r '.result[].id' /tmp/accounts.json)
-          test -n "$ACCOUNT_ID"
-          echo "ACCOUNT_ID=$ACCOUNT_ID"
           QURL="https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/d1/database/$DB_ID/query"
-          q(){ local sql="$1"; curl -fsS -X POST -H "$AUTH" -H 'content-type: application/json' --data "$(jq -nc --arg sql "$sql" '{sql:$sql}')" "$QURL"; }
-          q "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name" > /tmp/tables.json
-          jq -e '.success==true' /tmp/tables.json >/dev/null
+          q(){ local sql="$1" out; out="$(curl -sS -X POST -H "$AUTH" -H 'content-type: application/json' --data "$(jq -nc --arg sql "$sql" '{sql:$sql}')" "$QURL")"; if [[ "$(jq -r '.success // false' <<<"$out")" != true ]]; then echo "D1_QUERY_ERROR=$(jq -c '.errors // .' <<<"$out")" >&2; return 1; fi; printf '%s' "$out"; }
           mkdir -p /tmp/wedding-inventory
-          cp /tmp/tables.json /tmp/wedding-inventory/tables.json
+          q "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name" > /tmp/wedding-inventory/tables.json
           echo '=== TABLE COUNTS ==='
-          jq -r '.result[0].results[].name' /tmp/tables.json | while read -r t; do
+          jq -r '.result[0].results[].name' /tmp/wedding-inventory/tables.json | while read -r t; do
             safe="${t//\"/}"
             r="$(q "SELECT COUNT(*) AS n FROM \"$safe\"")"
             n="$(jq -r '.result[0].results[0].n // 0' <<<"$r")"
@@ -51,12 +42,12 @@ jobs:
           q 'SELECT key,value FROM settings ORDER BY key' | tee /tmp/wedding-inventory/settings.json | jq -r '.result[0].results[] | [.key,.value] | @tsv'
           echo '=== MEDIA KEYS ==='
           q 'SELECT object_key FROM media ORDER BY object_key' | tee /tmp/wedding-inventory/media-keys.json | jq -r '.result[0].results[]?.object_key'
-          if jq -r '.result[0].results[].name' /tmp/tables.json | grep -qx memory_gifts; then
+          if jq -r '.result[0].results[].name' /tmp/wedding-inventory/tables.json | grep -qx memory_gifts; then
             echo '=== MEMORY KEYS ==='
             q 'SELECT object_key FROM memory_gifts ORDER BY object_key' | tee /tmp/wedding-inventory/memory-keys.json | jq -r '.result[0].results[]?.object_key'
           fi
           export CLOUDFLARE_API_TOKEN="$CF_TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
-          echo '=== R2 BUCKET ACCESS ==='
+          echo '=== R2 ACCESS ==='
           npx -y wrangler@4 r2 bucket list | tee /tmp/wedding-inventory/r2-buckets.txt
           echo 'RR_INVENTORY_PASS'
       - uses: actions/upload-artifact@v4
@@ -64,4 +55,4 @@ jobs:
         with:
           name: wedding-preclean-inventory
           path: /tmp/wedding-inventory
-          if-no-files-found: error
+          if-no-files-found: warn
