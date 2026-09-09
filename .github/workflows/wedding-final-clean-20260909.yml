@@ -1,0 +1,165 @@
+name: Wedding Final Clean 20260909
+
+on:
+  push:
+    branches:
+      - wedding-external-stress-20260909
+    paths:
+      - '.github/workflows/wedding-final-clean-20260909.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: pfarma-ci-trusted
+    env:
+      ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
+      CF_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      NAME: rr-wedding-final-clean-20260909
+      URL: https://rr-wedding-final-clean-20260909.project-giovanni.workers.dev
+      PROD: https://rocco-rosy-wedding.project-giovanni.workers.dev
+    steps:
+      - name: Deploy isolated D1 maintenance worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          CF_TOKEN="${CF_TOKEN_PRIMARY:-${CF_TOKEN_FALLBACK:-}}"
+          test -n "$CF_TOKEN"
+          echo "CF_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
+          token="$(openssl rand -hex 32)"
+          echo "::add-mask::$token"
+          echo "MAINT_TOKEN=$token" >> "$GITHUB_ENV"
+          mkdir -p /tmp/rr-clean
+          cat >/tmp/rr-clean/worker.js <<'JS'
+          const H={'content-type':'application/json; charset=utf-8','cache-control':'no-store'};
+          const j=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
+          const tables=['admin_login_rate','guest_devices','guests','media','memory_gifts','messages','ops_events','quiz_answers','quiz_questions','reactions','settings','upload_receipts'];
+          async function counts(db){const o={};for(const t of tables){try{const r=await db.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).first();o[t]=Number(r?.n||0)}catch{o[t]=null}}return o}
+          function up(db,k,v){return db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(k,String(v))}
+          export default{async fetch(req,env){
+            if(req.headers.get('authorization')!==`Bearer ${env.MAINT_TOKEN}`)return new Response('Not found',{status:404});
+            const u=new URL(req.url);
+            if(req.method==='GET')return j({ok:true,counts:await counts(env.DB)});
+            if(req.method!=='POST'||u.pathname!=='/clean')return j({error:'Not found'},404);
+            let b={};try{b=await req.json()}catch{}
+            if(b.confirm!=='ROCCO_ROSY_FINAL_CLEAN_20260909')return j({error:'confirmation required'},400);
+            const before=await counts(env.DB),wowNonce=crypto.randomUUID(),now=Date.now();
+            await env.DB.batch([
+              env.DB.prepare('DELETE FROM quiz_answers'),
+              env.DB.prepare('DELETE FROM reactions'),
+              env.DB.prepare('DELETE FROM memory_gifts'),
+              env.DB.prepare('DELETE FROM media'),
+              env.DB.prepare('DELETE FROM messages'),
+              env.DB.prepare('DELETE FROM guest_devices'),
+              env.DB.prepare('DELETE FROM guests'),
+              env.DB.prepare('DELETE FROM upload_receipts'),
+              env.DB.prepare('DELETE FROM ops_events'),
+              env.DB.prepare('DELETE FROM admin_login_rate'),
+              env.DB.prepare('UPDATE quiz_questions SET active=0'),
+              up(env.DB,'wall_enabled','1'),
+              up(env.DB,'wall_freeze','0'),
+              up(env.DB,'reactions_enabled','0'),
+              up(env.DB,'quiz_reveal','0'),
+              up(env.DB,'rush_until','0'),
+              up(env.DB,'rush_start_total','0'),
+              up(env.DB,'final_awards','0'),
+              up(env.DB,'challenge_active','0'),
+              up(env.DB,'challenge_target',''),
+              up(env.DB,'challenge_text',''),
+              up(env.DB,'challenge_icon','🎡'),
+              up(env.DB,'challenge_started_at','0'),
+              up(env.DB,'challenge_duration','30'),
+              up(env.DB,'challenge_last',''),
+              up(env.DB,'reaction_rankings_visible','0'),
+              up(env.DB,'wall_rankings_visible','0'),
+              up(env.DB,'wall_games_visible','0'),
+              up(env.DB,'emergency_mode','0'),
+              up(env.DB,'wall_wow_action','clear'),
+              up(env.DB,'wall_wow_nonce',wowNonce),
+              up(env.DB,'wall_wow_requested_at',now)
+            ]);
+            const after=await counts(env.DB);
+            const settings=(await env.DB.prepare("SELECT key,value FROM settings WHERE key IN ('wall_enabled','wall_freeze','reactions_enabled','quiz_reveal','rush_until','final_awards','challenge_active','wall_rankings_visible','wall_games_visible','emergency_mode','wall_wow_action') ORDER BY key").all()).results||[];
+            return j({ok:true,before,after,settings});
+          }};
+          JS
+          cat >/tmp/rr-clean/wrangler.jsonc <<EOF
+          {
+            "name":"$NAME",
+            "main":"worker.js",
+            "compatibility_date":"2026-09-03",
+            "workers_dev":true,
+            "vars":{"MAINT_TOKEN":"$token"},
+            "d1_databases":[{"binding":"DB","database_name":"rocco-rosy-db","database_id":"104865ad-1ec1-4ecb-b534-9d68f02c6635"}]
+          }
+          EOF
+          cd /tmp/rr-clean
+          CLOUDFLARE_API_TOKEN="$CF_TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" npx --yes wrangler@4.123.0 deploy
+
+      - name: Execute controlled cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for i in $(seq 1 12); do
+            code="$(curl -sS -o /tmp/pre.json -w '%{http_code}' -H "Authorization: Bearer $MAINT_TOKEN" "$URL/?v=$GITHUB_SHA" || true)"
+            if [[ "$code" == 200 ]]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          echo '=== PRE-CLEAN COUNTS ==='
+          jq '.counts' /tmp/pre.json
+          code="$(curl -sS -o /tmp/clean.json -w '%{http_code}' -X POST -H "Authorization: Bearer $MAINT_TOKEN" -H 'content-type: application/json' --data '{"confirm":"ROCCO_ROSY_FINAL_CLEAN_20260909"}' "$URL/clean")"
+          test "$code" = 200
+          jq -e '.ok==true' /tmp/clean.json >/dev/null
+          echo '=== POST-CLEAN COUNTS ==='
+          jq '.after' /tmp/clean.json
+          echo '=== READY SETTINGS ==='
+          jq '.settings' /tmp/clean.json
+          jq -e '.after.guests==0 and .after.guest_devices==0 and .after.messages==0 and .after.media==0 and .after.memory_gifts==0 and .after.reactions==0 and .after.quiz_answers==0 and .after.upload_receipts==0 and .after.ops_events==0 and .after.admin_login_rate==0' /tmp/clean.json >/dev/null
+          jq -e '[.settings[]|{(.key):.value}]|add|.wall_enabled=="1" and .wall_freeze=="0" and .reactions_enabled=="0" and .quiz_reveal=="0" and .final_awards=="0" and .challenge_active=="0" and .wall_rankings_visible=="0" and .wall_games_visible=="0" and .emergency_mode=="0" and .wall_wow_action=="clear"' /tmp/clean.json >/dev/null
+          echo 'RR_FINAL_CLEAN_PASS'
+
+      - name: Verify production reads empty and healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 8); do
+            code="$(curl -sS -o /tmp/gallery.json -w '%{http_code}' "$PROD/api/gallery?finalclean=$GITHUB_SHA" || true)"
+            if [[ "$code" == 200 ]] && jq -e '.items|length==0' /tmp/gallery.json >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          test "$code" = 200
+          jq -e '.items|length==0' /tmp/gallery.json >/dev/null
+          code="$(curl -sS -o /tmp/mode.json -w '%{http_code}' "$PROD/api/system-mode?finalclean=$GITHUB_SHA" || true)"
+          test "$code" = 200
+          jq -e '.emergency==false' /tmp/mode.json >/dev/null
+          code="$(curl -sS -o /tmp/guest.html -w '%{http_code}' "$PROD/?finalclean=$GITHUB_SHA" || true)"
+          test "$code" = 200
+          grep -q '<!DOCTYPE html>' /tmp/guest.html
+          echo 'RR_PRODUCTION_READY_PASS'
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wedding-final-clean-report
+          path: |
+            /tmp/pre.json
+            /tmp/clean.json
+            /tmp/gallery.json
+            /tmp/mode.json
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Delete temporary maintenance worker directly
+        if: always()
+        shell: bash
+        run: |
+          tok="${CF_TOKEN:-${CF_TOKEN_PRIMARY:-}}"
+          code="$(curl -sS -o /tmp/del.json -w '%{http_code}' -X DELETE -H "Authorization: Bearer $tok" "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/workers/services/$NAME" || true)"
+          echo "TEMP_WORKER_DELETE_HTTP=$code"
+          if [[ "$code" != 200 && "$code" != 404 ]]; then exit 1; fi
