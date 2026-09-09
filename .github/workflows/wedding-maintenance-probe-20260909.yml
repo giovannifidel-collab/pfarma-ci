@@ -22,7 +22,7 @@ jobs:
       NAME: rr-wedding-maint-20260909-probe
       URL: https://rr-wedding-maint-20260909-probe.project-giovanni.workers.dev
     steps:
-      - name: Build and deploy read-only D1 maintenance probe
+      - name: Build and deploy minimal read-only D1 probe
         shell: bash
         run: |
           set -euo pipefail
@@ -30,12 +30,24 @@ jobs:
           test -n "$CF_TOKEN"
           echo "CF_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
           token="$(openssl rand -hex 32)"
+          echo "::add-mask::$token"
           echo "MAINT_TOKEN=$token" >> "$GITHUB_ENV"
           mkdir -p /tmp/rr-maint
           cat >/tmp/rr-maint/worker.js <<'JS'
           const H={'content-type':'application/json; charset=utf-8','cache-control':'no-store'};
           const j=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
-          export default{async fetch(req,env){if(req.headers.get('authorization')!==`Bearer ${env.MAINT_TOKEN}`)return new Response('Not found',{status:404});try{const tr=(await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()).results||[],counts={};for(const x of tr){const t=String(x.name).replace(/"/g,'');const row=await env.DB.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).first();counts[t]=Number(row?.n||0)}const settings=(await env.DB.prepare('SELECT key,value FROM settings ORDER BY key').all()).results||[];const media=(tr.some(x=>x.name==='media')?(await env.DB.prepare('SELECT object_key FROM media ORDER BY object_key').all()).results:[])||[];const memories=(tr.some(x=>x.name==='memory_gifts')?(await env.DB.prepare('SELECT object_key FROM memory_gifts ORDER BY object_key').all()).results:[])||[];return j({ok:true,tables:counts,settings,referencedObjects:{media:media.map(x=>x.object_key),memory:memories.map(x=>x.object_key)}})}catch(e){return j({ok:false,error:String(e?.stack||e)},500)}}};
+          export default{async fetch(req,env){
+            if(req.headers.get('authorization')!==`Bearer ${env.MAINT_TOKEN}`)return new Response('Not found',{status:404});
+            const out={ok:false,steps:{}};
+            try{out.steps.ping=await env.DB.prepare('SELECT 1 AS ok').first()}catch(e){return j({ok:false,phase:'ping',error:String(e?.stack||e)},500)}
+            let tr=[];
+            try{tr=(await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()).results||[];out.steps.tableNames=tr.map(x=>x.name)}catch(e){return j({ok:false,phase:'tables',error:String(e?.stack||e),steps:out.steps},500)}
+            const counts={};
+            for(const x of tr){try{const t=String(x.name).replace(/"/g,'');const row=await env.DB.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).first();counts[t]=Number(row?.n||0)}catch(e){return j({ok:false,phase:'count:'+x.name,error:String(e?.stack||e),steps:out.steps,counts},500)}}
+            let settings=[];try{if(tr.some(x=>x.name==='settings'))settings=(await env.DB.prepare('SELECT key,value FROM settings ORDER BY key').all()).results||[]}catch(e){return j({ok:false,phase:'settings',error:String(e?.stack||e),counts},500)}
+            let media=[],memories=[];try{if(tr.some(x=>x.name==='media'))media=(await env.DB.prepare('SELECT object_key FROM media ORDER BY object_key').all()).results||[];if(tr.some(x=>x.name==='memory_gifts'))memories=(await env.DB.prepare('SELECT object_key FROM memory_gifts ORDER BY object_key').all()).results||[]}catch(e){return j({ok:false,phase:'object-keys',error:String(e?.stack||e),counts},500)}
+            return j({ok:true,tables:counts,settings,referencedObjects:{media:media.map(x=>x.object_key),memory:memories.map(x=>x.object_key)}})
+          }};
           JS
           cat >/tmp/rr-maint/wrangler.jsonc <<EOF
           {
@@ -49,16 +61,19 @@ jobs:
           EOF
           cd /tmp/rr-maint
           CLOUDFLARE_API_TOKEN="$CF_TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" npx --yes wrangler@4.123.0 deploy
-      - name: Read live D1 inventory through isolated worker
+      - name: Diagnose live D1 binding
         shell: bash
         run: |
           set -euo pipefail
-          ok=0
+          status=000
           for i in $(seq 1 12); do
-            if curl -fsS -H "Authorization: Bearer $MAINT_TOKEN" "$URL/?v=$GITHUB_SHA" -o /tmp/inventory.json; then ok=1; break; fi
+            status="$(curl -sS -o /tmp/inventory.json -w '%{http_code}' -H "Authorization: Bearer $MAINT_TOKEN" "$URL/?v=$GITHUB_SHA" || true)"
+            if [[ "$status" != 404 && "$status" != 000 ]]; then break; fi
             sleep 2
           done
-          test "$ok" = 1
+          echo "PROBE_HTTP=$status"
+          cat /tmp/inventory.json | jq . || cat /tmp/inventory.json
+          [[ "$status" == 200 ]]
           jq -e '.ok==true' /tmp/inventory.json >/dev/null
           echo '=== WEDDING LIVE D1 INVENTORY ==='
           jq '{tables:.tables,settings:(.settings|from_entries),referencedObjectCounts:{media:(.referencedObjects.media|length),memory:(.referencedObjects.memory|length)}}' /tmp/inventory.json
@@ -69,8 +84,10 @@ jobs:
           name: wedding-maintenance-d1-inventory
           path: /tmp/inventory.json
           if-no-files-found: warn
-      - name: Delete temporary maintenance worker
+      - name: Delete temporary maintenance worker directly
         if: always()
         shell: bash
         run: |
-          if [ -f /tmp/rr-maint/wrangler.jsonc ]; then cd /tmp/rr-maint; CLOUDFLARE_API_TOKEN="${CF_TOKEN:-${CF_TOKEN_PRIMARY:-}}" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" npx --yes wrangler@4.123.0 delete --force || true; fi
+          tok="${CF_TOKEN:-${CF_TOKEN_PRIMARY:-}}"
+          code="$(curl -sS -o /tmp/del.json -w '%{http_code}' -X DELETE -H "Authorization: Bearer $tok" "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/workers/services/$NAME" || true)"
+          echo "TEMP_WORKER_DELETE_HTTP=$code"
