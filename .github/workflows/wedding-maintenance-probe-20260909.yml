@@ -22,7 +22,7 @@ jobs:
       NAME: rr-wedding-maint-20260909-probe
       URL: https://rr-wedding-maint-20260909-probe.project-giovanni.workers.dev
     steps:
-      - name: Build and deploy read-only maintenance probe
+      - name: Build and deploy read-only D1 maintenance probe
         shell: bash
         run: |
           set -euo pipefail
@@ -35,8 +35,7 @@ jobs:
           cat >/tmp/rr-maint/worker.js <<'JS'
           const H={'content-type':'application/json; charset=utf-8','cache-control':'no-store'};
           const j=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
-          async function r2all(b){let cursor,out=[];do{const p=await b.list({limit:1000,cursor});for(const o of p.objects||[])out.push({key:o.key,size:o.size});cursor=p.truncated?p.cursor:undefined}while(cursor);return out}
-          export default{async fetch(req,env){if(req.headers.get('authorization')!==`Bearer ${env.MAINT_TOKEN}`)return new Response('Not found',{status:404});try{const tr=(await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()).results||[],counts={};for(const x of tr){const t=String(x.name).replace(/"/g,'');const row=await env.DB.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).first();counts[t]=Number(row?.n||0)}const settings=(await env.DB.prepare('SELECT key,value FROM settings ORDER BY key').all()).results||[];const objects=await r2all(env.MEDIA_BUCKET);const active=objects.filter(o=>o.key.startsWith('wedding/2026-09-10/')&&!o.key.startsWith('wedding/2026-09-10/backups/'));return j({ok:true,tables:counts,settings,r2:{objects:objects.length,activeObjects:active.length,activeBytes:active.reduce((a,b)=>a+Number(b.size||0),0),backupObjects:objects.length-active.length}})}catch(e){return j({ok:false,error:String(e?.stack||e)},500)}}};
+          export default{async fetch(req,env){if(req.headers.get('authorization')!==`Bearer ${env.MAINT_TOKEN}`)return new Response('Not found',{status:404});try{const tr=(await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()).results||[],counts={};for(const x of tr){const t=String(x.name).replace(/"/g,'');const row=await env.DB.prepare(`SELECT COUNT(*) AS n FROM "${t}"`).first();counts[t]=Number(row?.n||0)}const settings=(await env.DB.prepare('SELECT key,value FROM settings ORDER BY key').all()).results||[];const media=(tr.some(x=>x.name==='media')?(await env.DB.prepare('SELECT object_key FROM media ORDER BY object_key').all()).results:[])||[];const memories=(tr.some(x=>x.name==='memory_gifts')?(await env.DB.prepare('SELECT object_key FROM memory_gifts ORDER BY object_key').all()).results:[])||[];return j({ok:true,tables:counts,settings,referencedObjects:{media:media.map(x=>x.object_key),memory:memories.map(x=>x.object_key)}})}catch(e){return j({ok:false,error:String(e?.stack||e)},500)}}};
           JS
           cat >/tmp/rr-maint/wrangler.jsonc <<EOF
           {
@@ -45,13 +44,12 @@ jobs:
             "compatibility_date":"2026-09-03",
             "workers_dev":true,
             "vars":{"MAINT_TOKEN":"$token"},
-            "d1_databases":[{"binding":"DB","database_name":"rocco-rosy-db","database_id":"104865ad-1ec1-4ecb-b534-9d68f02c6635"}],
-            "r2_buckets":[{"binding":"MEDIA_BUCKET","bucket_name":"rocco-rosy-media"}]
+            "d1_databases":[{"binding":"DB","database_name":"rocco-rosy-db","database_id":"104865ad-1ec1-4ecb-b534-9d68f02c6635"}]
           }
           EOF
           cd /tmp/rr-maint
           CLOUDFLARE_API_TOKEN="$CF_TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" npx --yes wrangler@4.123.0 deploy
-      - name: Read live inventory through isolated worker
+      - name: Read live D1 inventory through isolated worker
         shell: bash
         run: |
           set -euo pipefail
@@ -62,13 +60,13 @@ jobs:
           done
           test "$ok" = 1
           jq -e '.ok==true' /tmp/inventory.json >/dev/null
-          echo '=== WEDDING LIVE INVENTORY ==='
-          jq '{tables:.tables,r2:.r2,settings:(.settings|from_entries)}' /tmp/inventory.json
-          echo 'RR_MAINTENANCE_BINDINGS_PASS'
+          echo '=== WEDDING LIVE D1 INVENTORY ==='
+          jq '{tables:.tables,settings:(.settings|from_entries),referencedObjectCounts:{media:(.referencedObjects.media|length),memory:(.referencedObjects.memory|length)}}' /tmp/inventory.json
+          echo 'RR_MAINTENANCE_D1_BINDING_PASS'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: wedding-maintenance-inventory
+          name: wedding-maintenance-d1-inventory
           path: /tmp/inventory.json
           if-no-files-found: warn
       - name: Delete temporary maintenance worker
