@@ -2,11 +2,6 @@ name: HIVE Cloudflare Access Discovery
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/hive-cloudflare-access-discovery.yml'
 
 permissions:
   contents: read
@@ -16,101 +11,77 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
 
-    env:
-      CF_ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
-
     steps:
-      - name: Discover existing HIVE Cloudflare Access state
+      - name: Discover Cloudflare accounts and Access state
         shell: bash
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
 
-          if [[ -z "${CF_TOKEN:-}" ]]; then
-            echo 'CLOUDFLARE_API_TOKEN=EMPTY'
-            exit 2
-          fi
+          test -n "${CF_TOKEN:-}"
+          AUTH="Authorization: Bearer $CF_TOKEN"
 
-          echo 'CLOUDFLARE_API_TOKEN=AVAILABLE'
+          curl -sS \
+            -H "$AUTH" \
+            https://api.cloudflare.com/client/v4/accounts \
+            -o /tmp/accounts.json
 
-          api_get() {
-            local path="$1"
-            local output="$2"
-            curl -sS \
-              -H "Authorization: Bearer $CF_TOKEN" \
-              -H 'Accept: application/json' \
-              -o "$output" \
-              -w '%{http_code}' \
-              "https://api.cloudflare.com/client/v4${path}"
-          }
+          echo "ACCOUNTS_HTTP_RESULT=$(jq -r '.success' /tmp/accounts.json)"
+          echo "ACCOUNT_COUNT=$(jq '.result | length' /tmp/accounts.json)"
 
-          echo '=== SERVICE TOKENS ==='
+          jq -r '.result[] | [.id,.name] | @tsv' /tmp/accounts.json |
+          while IFS=$'\t' read -r ID NAME; do
 
-          ST_HTTP="$(api_get "/accounts/$CF_ACCOUNT_ID/access/service_tokens" /tmp/st.json)"
-          echo "SERVICE_TOKENS_HTTP=$ST_HTTP"
+            echo "=== ACCOUNT ==="
+            echo "ACCOUNT_ID=$ID"
+            echo "ACCOUNT_NAME=$NAME"
 
-          if [[ "$ST_HTTP" == "200" ]]; then
-            jq -r '.result[]? | "SERVICE_TOKEN_NAME=" + (.name // "")' /tmp/st.json
-            jq -r '.result[]? | "SERVICE_TOKEN_ID=" + (.id // "")' /tmp/st.json
-            jq -r '.result[]? | "SERVICE_TOKEN_ENABLED=" + ((.enabled // false) | tostring)' /tmp/st.json
-            jq -r '.result[]? | "SERVICE_TOKEN_EXPIRES=" + (.expires_at // "none")' /tmp/st.json
-            jq -r '.result[]? | "CLIENT_ID_PRESENT=" + ((((.client_id // "") | length) > 0) | tostring)' /tmp/st.json
-          else
-            jq -r '.errors[]? | "SERVICE_TOKEN_API_ERROR=" + (.code|tostring) + ":" + (.message // "")' /tmp/st.json || true
-          fi
+            ST_HTTP="$(
+              curl -sS \
+                -H "$AUTH" \
+                -o /tmp/st.json \
+                -w '%{http_code}' \
+                "https://api.cloudflare.com/client/v4/accounts/$ID/access/service_tokens"
+            )"
 
-          echo '=== HIVE ACCESS APPLICATION ==='
+            echo "SERVICE_TOKENS_HTTP=$ST_HTTP"
 
-          APPS_HTTP="$(api_get "/accounts/$CF_ACCOUNT_ID/access/apps" /tmp/apps.json)"
-          echo "ACCESS_APPS_HTTP=$APPS_HTTP"
+            if [[ "$ST_HTTP" == 200 ]]; then
+              echo "SERVICE_TOKEN_COUNT=$(jq '.result | length' /tmp/st.json)"
 
-          if [[ "$APPS_HTTP" == "200" ]]; then
-            jq -r '.result[]? | select(((.domain // "") | contains("hive-alveare")) or (((.name // "") | ascii_downcase) | contains("hive"))) | "ACCESS_APP_NAME=" + (.name // "")' /tmp/apps.json
-            jq -r '.result[]? | select(((.domain // "") | contains("hive-alveare")) or (((.name // "") | ascii_downcase) | contains("hive"))) | "ACCESS_APP_DOMAIN=" + (.domain // "none")' /tmp/apps.json
-            jq -r '.result[]? | select(((.domain // "") | contains("hive-alveare")) or (((.name // "") | ascii_downcase) | contains("hive"))) | "ACCESS_APP_ID=" + (.id // "")' /tmp/apps.json
-            jq -r '.result[]? | select(((.domain // "") | contains("hive-alveare")) or (((.name // "") | ascii_downcase) | contains("hive"))) | "ACCESS_APP_AUD=" + (.aud // "none")' /tmp/apps.json
+              jq -r '
+                .result[]? |
+                "SERVICE_TOKEN_NAME=" + (.name // "")
+              ' /tmp/st.json
 
-            mapfile -t APP_IDS < <(
-              jq -r '.result[]? | select(((.domain // "") | contains("hive-alveare")) or (((.name // "") | ascii_downcase) | contains("hive"))) | .id' /tmp/apps.json
-            )
-
-            for APP_ID in "${APP_IDS[@]}"; do
-              P_HTTP="$(api_get "/accounts/$CF_ACCOUNT_ID/access/apps/$APP_ID/policies" /tmp/policies.json)"
-              echo "ACCESS_POLICIES_HTTP=$P_HTTP"
-
-              if [[ "$P_HTTP" == "200" ]]; then
-                jq -r '.result[]? | "POLICY_NAME=" + (.name // "")' /tmp/policies.json
-                jq -r '.result[]? | "POLICY_DECISION=" + (.decision // "")' /tmp/policies.json
-                jq -r '.result[]? | "SERVICE_TOKEN_IDS=" + ([.include[]? | (.service_token.token_id // empty)] | join(","))' /tmp/policies.json
-              fi
-            done
-          else
-            jq -r '.errors[]? | "ACCESS_APPS_API_ERROR=" + (.code|tostring) + ":" + (.message // "")' /tmp/apps.json || true
-          fi
-
-          echo '=== HIVE PAGES PROJECT ==='
-
-          PAGES_HTTP="$(api_get "/accounts/$CF_ACCOUNT_ID/pages/projects/hive-alveare" /tmp/pages.json)"
-          echo "PAGES_PROJECT_HTTP=$PAGES_HTTP"
-
-          if [[ "$PAGES_HTTP" == "200" ]]; then
-            echo "PAGES_PROJECT_NAME=$(jq -r '.result.name // "unknown"' /tmp/pages.json)"
-
-            jq -r '.result.deployment_configs.production.env_vars // {} | keys[] | "PRODUCTION_ENV_KEY=" + .' /tmp/pages.json
-            jq -r '.result.deployment_configs.preview.env_vars // {} | keys[] | "PREVIEW_ENV_KEY=" + .' /tmp/pages.json
-
-            jq -r '.result.deployment_configs.production.env_vars // {} | to_entries[] | "PRODUCTION_ENV_TYPE=" + .key + ":" + (.value.type // "unknown")' /tmp/pages.json
-            jq -r '.result.deployment_configs.preview.env_vars // {} | to_entries[] | "PREVIEW_ENV_TYPE=" + .key + ":" + (.value.type // "unknown")' /tmp/pages.json
-          else
-            echo '=== AVAILABLE PAGES PROJECTS ==='
-            ALL_HTTP="$(api_get "/accounts/$CF_ACCOUNT_ID/pages/projects" /tmp/all-pages.json)"
-            echo "PAGES_LIST_HTTP=$ALL_HTTP"
-            if [[ "$ALL_HTTP" == "200" ]]; then
-              jq -r '.result[]?.name | "PAGES_PROJECT=" + .' /tmp/all-pages.json
+              jq -r '
+                .result[]? |
+                "SERVICE_TOKEN_CLIENT_ID=" + (.client_id // "")
+              ' /tmp/st.json
             fi
-          fi
 
-          echo '=== CLOUDFLARE DISCOVERY COMPLETE ==='
+            APPS_HTTP="$(
+              curl -sS \
+                -H "$AUTH" \
+                -o /tmp/apps.json \
+                -w '%{http_code}' \
+                "https://api.cloudflare.com/client/v4/accounts/$ID/access/apps"
+            )"
 
-          rm -f /tmp/st.json /tmp/apps.json /tmp/policies.json /tmp/pages.json /tmp/all-pages.json
+            echo "ACCESS_APPS_HTTP=$APPS_HTTP"
+
+            if [[ "$APPS_HTTP" == 200 ]]; then
+              echo "ACCESS_APP_COUNT=$(jq '.result | length' /tmp/apps.json)"
+
+              jq -r '
+                .result[]? |
+                "ACCESS_APP_NAME=" + (.name // "") +
+                " DOMAIN=" + (.domain // "") +
+                " ID=" + (.id // "")
+              ' /tmp/apps.json
+            fi
+
+          done
+
+          echo '=== DISCOVERY COMPLETE ==='
