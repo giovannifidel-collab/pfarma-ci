@@ -6,7 +6,7 @@ import { agentIds, getAgent, closeAll } from '../standard/index.mjs';
 
 const HOST=process.env.HIVE_AGENT_BRIDGE_HOST||'127.0.0.1';
 const PORT=Number(process.env.HIVE_AGENT_BRIDGE_PORT||9240);
-const TOKEN=String(process.env.HIVE_AGENT_BRIDGE_TOKEN||'');
+const TOKEN=String(process.env.HIVE_AGENT_BRIDGE_TOKEN||'').trim();
 const MAX_BODY=256*1024;
 const MAX_ATTEMPTS=Math.max(1,Math.min(Number(process.env.HIVE_AGENT_BRIDGE_ATTEMPTS||2),4));
 const JOB_TTL_MS=Math.max(300000,Math.min(Number(process.env.HIVE_AGENT_BRIDGE_JOB_TTL_MS||3600000),86400000));
@@ -26,8 +26,8 @@ const json=(res,status,data)=>{
 };
 
 function authorized(req){
-  const bearer=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
-  const dedicated=String(req.headers['x-hive-agent-bridge-token']||'');
+  const bearer=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
+  const dedicated=String(req.headers['x-hive-agent-bridge-token']||'').trim();
   const candidates=[bearer,dedicated].filter(Boolean);
   return candidates.some(raw=>raw.length===TOKEN.length&&crypto.timingSafeEqual(Buffer.from(raw),Buffer.from(TOKEN)));
 }
