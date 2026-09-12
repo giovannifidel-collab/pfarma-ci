@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     env:
-      ADAPTER_SHA: 0fd279ba30deebaed1dd9b49b84409c41b4899b5
+      ADAPTER_SHA: bd27fc8eb3c5930c8297af0987e827d2898d34f0
       HIVE_AGENT_BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
       HIVE_IPAD_VNC_PASSWORD: ${{ secrets.HIVE_IPAD_VNC_PASSWORD }}
       HIVE_SKIP_SECRET_SYNC: '1'
@@ -42,8 +42,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$ADAPTER_SHA"
-          [[ ${#HIVE_AGENT_BRIDGE_TOKEN} -ge 32 ]] || { echo 'HIVE_AGENT_BRIDGE_TOKEN missing/invalid'; exit 2; }
+          BRIDGE_TOKEN="$(printf '%s' "$HIVE_AGENT_BRIDGE_TOKEN" | tr -d '\r\n')"
+          [[ ${#BRIDGE_TOKEN} -ge 32 ]] || { echo 'HIVE_AGENT_BRIDGE_TOKEN missing/invalid'; exit 2; }
           [[ ${#HIVE_IPAD_VNC_PASSWORD} -ge 12 ]] || { echo 'HIVE_IPAD_VNC_PASSWORD missing/too short'; exit 2; }
+          echo "BRIDGE_TOKEN_NORMALIZED_LENGTH=${#BRIDGE_TOKEN}"
           echo 'SOURCE_SHA=PASS'
           echo 'REQUIRED_SECRETS=PASS'
 
@@ -99,10 +101,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          BRIDGE_TOKEN="$(printf '%s' "$HIVE_AGENT_BRIDGE_TOKEN" | tr -d '\r\n')"
           sudo mkdir -p /workspaces/.hive-agent-lab/agent-bridge
-          printf '%s' "$HIVE_AGENT_BRIDGE_TOKEN" | sudo tee /workspaces/.hive-agent-lab/agent-bridge/token >/dev/null
+          printf '%s' "$BRIDGE_TOKEN" | sudo tee /workspaces/.hive-agent-lab/agent-bridge/token >/dev/null
           sudo chmod 600 /workspaces/.hive-agent-lab/agent-bridge/token
-          HIVE_SKIP_SECRET_SYNC=1 bash ops/agent-lab/bridge/start-secure-tunnel.sh
+          HIVE_AGENT_BRIDGE_TOKEN="$BRIDGE_TOKEN" HIVE_SKIP_SECRET_SYNC=1 bash ops/agent-lab/bridge/start-secure-tunnel.sh
           BRIDGE_URL="$(cat "$HOME/.hive-agent-lab/agent-bridge/url")"
           curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null
           echo "BRIDGE_URL=$BRIDGE_URL" >> "$GITHUB_ENV"
@@ -112,13 +115,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          BRIDGE_TOKEN="$(printf '%s' "$HIVE_AGENT_BRIDGE_TOKEN" | tr -d '\r\n')"
           LOCAL_STATUS="$(curl -sS --max-time 15 -o /tmp/local-agents.json -w '%{http_code}' \
-            -H "Authorization: Bearer $HIVE_AGENT_BRIDGE_TOKEN" \
-            -H "X-Hive-Agent-Bridge-Token: $HIVE_AGENT_BRIDGE_TOKEN" \
+            -H "Authorization: Bearer $BRIDGE_TOKEN" \
+            -H "X-Hive-Agent-Bridge-Token: $BRIDGE_TOKEN" \
             http://127.0.0.1:9240/agents)"
           PUBLIC_STATUS="$(curl -sS --max-time 20 -o /tmp/public-agents.json -w '%{http_code}' \
-            -H "Authorization: Bearer $HIVE_AGENT_BRIDGE_TOKEN" \
-            -H "X-Hive-Agent-Bridge-Token: $HIVE_AGENT_BRIDGE_TOKEN" \
+            -H "Authorization: Bearer $BRIDGE_TOKEN" \
+            -H "X-Hive-Agent-Bridge-Token: $BRIDGE_TOKEN" \
             "$BRIDGE_URL/agents")"
           echo "LOCAL_BRIDGE_AUTH_HTTP=$LOCAL_STATUS"
           echo "PUBLIC_BRIDGE_AUTH_HTTP=$PUBLIC_STATUS"
