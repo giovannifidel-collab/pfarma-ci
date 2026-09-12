@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     env:
-      ADAPTER_SHA: f6e7ad0905b0c1ac49e79a6d50f945a46cb25748
+      ADAPTER_SHA: 0fd279ba30deebaed1dd9b49b84409c41b4899b5
       HIVE_AGENT_BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
       HIVE_IPAD_VNC_PASSWORD: ${{ secrets.HIVE_IPAD_VNC_PASSWORD }}
       HIVE_SKIP_SECRET_SYNC: '1'
@@ -107,6 +107,27 @@ jobs:
           curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null
           echo "BRIDGE_URL=$BRIDGE_URL" >> "$GITHUB_ENV"
           echo 'BRIDGE_PUBLIC=PASS'
+
+      - name: Validate bridge auth through public tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOCAL_STATUS="$(curl -sS --max-time 15 -o /tmp/local-agents.json -w '%{http_code}' \
+            -H "Authorization: Bearer $HIVE_AGENT_BRIDGE_TOKEN" \
+            -H "X-Hive-Agent-Bridge-Token: $HIVE_AGENT_BRIDGE_TOKEN" \
+            http://127.0.0.1:9240/agents)"
+          PUBLIC_STATUS="$(curl -sS --max-time 20 -o /tmp/public-agents.json -w '%{http_code}' \
+            -H "Authorization: Bearer $HIVE_AGENT_BRIDGE_TOKEN" \
+            -H "X-Hive-Agent-Bridge-Token: $HIVE_AGENT_BRIDGE_TOKEN" \
+            "$BRIDGE_URL/agents")"
+          echo "LOCAL_BRIDGE_AUTH_HTTP=$LOCAL_STATUS"
+          echo "PUBLIC_BRIDGE_AUTH_HTTP=$PUBLIC_STATUS"
+          [[ "$LOCAL_STATUS" == 200 ]] || { jq -c '{ok,error}' /tmp/local-agents.json || true; exit 30; }
+          [[ "$PUBLIC_STATUS" == 200 ]] || { jq -c '{ok,error}' /tmp/public-agents.json || true; exit 31; }
+          jq -e '.ok==true and (.agents|length)==10' /tmp/local-agents.json >/dev/null
+          jq -e '.ok==true and (.agents|length)==10' /tmp/public-agents.json >/dev/null
+          echo 'BRIDGE_AUTH_LOCAL=PASS'
+          echo 'BRIDGE_AUTH_PUBLIC=PASS'
 
       - name: Expose password-protected noVNC desktop
         shell: bash
