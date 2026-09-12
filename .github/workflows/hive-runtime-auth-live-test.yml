@@ -1,0 +1,64 @@
+name: HIVE Runtime Auth Live Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-runtime-auth-live-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+    steps:
+      - name: Verify runtime auth without exposing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          BASE="${BASE%/}"
+
+          [[ -n "${CF_ACCESS_CLIENT_ID:-}" ]] && echo 'CF_ACCESS_CLIENT_ID=PRESENT' || echo 'CF_ACCESS_CLIENT_ID=MISSING'
+          [[ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]] && echo 'CF_ACCESS_CLIENT_SECRET=PRESENT' || echo 'CF_ACCESS_CLIENT_SECRET=MISSING'
+          [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]] && echo 'HIVE_RUNTIME_BEARER_TOKEN=PRESENT' || echo 'HIVE_RUNTIME_BEARER_TOKEN=MISSING'
+
+          args=(-sS --max-time 25 -o /tmp/body -D /tmp/headers -w '%{http_code}')
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          fi
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+            args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          fi
+
+          CODE="$(curl "${args[@]}" "$BASE/api/health")"
+          echo "HIVE_RUNTIME_HTTP=$CODE"
+          TYPE="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/,""); print $2; exit}' /tmp/headers || true)"
+          echo "HIVE_RUNTIME_CONTENT_TYPE=${TYPE:-UNKNOWN}"
+
+          if [[ "$CODE" == "200" ]] && jq -e '.ok == true' /tmp/body >/dev/null 2>&1; then
+            echo 'HIVE_RUNTIME_AUTH=PASS'
+            jq -r '"HIVE_RUNTIME_OK=" + ((.ok // false)|tostring)' /tmp/body
+            exit 0
+          fi
+
+          if jq -e . /tmp/body >/dev/null 2>&1; then
+            jq -r '"HIVE_RUNTIME_ERROR=" + ((.error // .message // "UNKNOWN")|tostring)' /tmp/body | head -c 500; echo
+          else
+            LOC="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {$1=""; sub(/^ /,""); gsub(/\r/,""); print; exit}' /tmp/headers || true)"
+            if [[ -n "$LOC" ]]; then
+              HOST="$(printf '%s' "$LOC" | sed -E 's#https?://([^/]+).*#\1#')"
+              echo "HIVE_RUNTIME_REDIRECT_HOST=$HOST"
+            fi
+          fi
+          echo 'HIVE_RUNTIME_AUTH=FAIL'
+          exit 3
