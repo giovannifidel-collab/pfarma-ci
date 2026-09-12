@@ -1,0 +1,35 @@
+name: HIVE Runtime Auth Shape
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-runtime-auth-shape.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shape:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      CID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CSEC: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Validate shape without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$CID" && -n "$CSEC" ]]
+          echo "CLIENT_ID_LENGTH=${#CID}"
+          [[ "$CID" == *.access ]] && echo 'CLIENT_ID_SUFFIX_ACCESS=YES' || echo 'CLIENT_ID_SUFFIX_ACCESS=NO'
+          echo "CLIENT_SECRET_LENGTH=${#CSEC}"
+          [[ "$CSEC" == cfast_* ]] && echo 'CLIENT_SECRET_FORMAT=CFAST' || echo 'CLIENT_SECRET_FORMAT=LEGACY_OR_OTHER'
+          code="$(curl -sS --max-time 20 -o /dev/null -D /tmp/h -w '%{http_code}' \
+            -H "CF-Access-Client-Id: $CID" \
+            -H "CF-Access-Client-Secret: $CSEC" \
+            https://hive-alveare.pages.dev/api/health)"
+          echo "ACCESS_HTTP=$code"
+          awk 'BEGIN{IGNORECASE=1} /^location:/ {print "ACCESS_REDIRECT=YES"; exit}' /tmp/h || true
