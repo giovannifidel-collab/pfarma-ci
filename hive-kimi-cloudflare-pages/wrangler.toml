@@ -1,0 +1,7 @@
+name = "hive-kimi-relay-pages"
+compatibility_date = "2026-08-28"
+pages_build_output_dir = "./dist"
+
+[[kv_namespaces]]
+binding = "HIVE_KIMI_RESULTS"
+id = "ce7b2c7ef1fa44acaf4a9d0214c13518"

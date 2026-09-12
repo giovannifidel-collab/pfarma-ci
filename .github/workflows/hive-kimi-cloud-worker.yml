@@ -1,0 +1,138 @@
+name: HIVE Kimi Cloud Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: HIVE task issue number
+        required: true
+        default: '1165'
+        type: string
+      base_branch:
+        description: Experimental base branch
+        required: true
+        default: hive-cloud-computer-v0
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+env:
+  KIMI_CODE_HOME: ${{ runner.temp }}/kimi-code
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  kimi-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: hive-kimi-${{ inputs.issue_number }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Validate task inputs
+        shell: bash
+        env:
+          ISSUE: ${{ inputs.issue_number }}
+          BASE: ${{ inputs.base_branch }}
+        run: |
+          set -euo pipefail
+          [[ "$ISSUE" =~ ^[0-9]+$ ]] || { echo 'issue_number must be numeric' >&2; exit 1; }
+          test "$BASE" = 'hive-cloud-computer-v0' || { echo 'Only the isolated HIVE experimental base is allowed in v0.' >&2; exit 1; }
+
+      - name: Checkout experimental HIVE cloud computer branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_branch }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Fail closed unless Kimi OAuth bootstrap exists
+        shell: bash
+        env:
+          KIMI_BUNDLE: ${{ secrets.HIVE_KIMI_CODE_HOME_B64 }}
+        run: test -n "$KIMI_BUNDLE"
+
+      - name: Restore encrypted Kimi Code identity
+        shell: bash
+        env:
+          KIMI_BUNDLE: ${{ secrets.HIVE_KIMI_CODE_HOME_B64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/restore"
+          printf '%s' "$KIMI_BUNDLE" | base64 -d | tar -xzf - -C "$RUNNER_TEMP/restore"
+          mkdir -p "$KIMI_CODE_HOME"
+          cp -a "$RUNNER_TEMP/restore/kimi-code/." "$KIMI_CODE_HOME/"
+          chmod 700 "$KIMI_CODE_HOME/credentials" 2>/dev/null || true
+          find "$KIMI_CODE_HOME/credentials" -type f -exec chmod 600 {} + 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/restore"
+
+      - name: Install Kimi Code
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g @moonshot-ai/kimi-code@latest
+          kimi --version
+
+      - name: Install HIVE Agent Skill into Kimi runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$KIMI_CODE_HOME/skills/hive-agent"
+          cp hive-agent-skill/SKILL.md "$KIMI_CODE_HOME/skills/hive-agent/SKILL.md"
+
+      - name: Configure Git identity
+        shell: bash
+        run: |
+          git config user.name 'HIVE Kimi Worker'
+          git config user.email 'hive-kimi-worker@users.noreply.github.com'
+
+      - name: Verify Kimi account is usable
+        shell: bash
+        run: |
+          set -euo pipefail
+          kimi -p 'Reply with exactly KIMI_CLOUD_AUTH_OK and do not call tools.' > kimi-auth-check.txt
+          grep -q 'KIMI_CLOUD_AUTH_OK' kimi-auth-check.txt
+          rm -f kimi-auth-check.txt
+
+      - name: Run HIVE task through Kimi Code
+        shell: bash
+        env:
+          ISSUE: ${{ inputs.issue_number }}
+          BASE: ${{ inputs.base_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          issue_text="$(gh issue view "$ISSUE" --repo "$REPO" --json title,body --jq '.title + "\n\n" + .body')"
+          prompt="You are KIMI operating as the HIVE Agent Skill in a GitHub-hosted cloud runner. Everything is online. Do not use localhost or user hardware. The authoritative HIVE task is GitHub issue #$ISSUE in $REPO. You are currently checked out at base branch $BASE. Read hive-agent-skill/SKILL.md and hive-kimi-lab/README.md. Execute the issue completely. You have Bash, git and GitHub CLI already authenticated through GH_TOKEN. You MUST NOT modify main. Create the isolated branch requested by the issue, make only the allowed change, commit it, push it, and create a PR targeting $BASE. Do not expose credentials. Finish with the standard HIVE Result Envelope. Here is the issue content:\n\n$issue_text"
+          kimi -p "/goal $prompt" --output-format stream-json | tee hive-kimi-output.jsonl
+
+      - name: Verify Kimi produced a roundtrip PR
+        shell: bash
+        env:
+          ISSUE: ${{ inputs.issue_number }}
+          REPO: ${{ github.repository }}
+          BASE: ${{ inputs.base_branch }}
+        run: |
+          set -euo pipefail
+          pr="$(gh pr list --repo "$REPO" --base "$BASE" --state open --search "HIVE-KIMI-0001" --json number,url,headRefName --jq '.[0] // empty')"
+          test -n "$pr" || { echo 'Kimi did not create the expected PR.' >&2; exit 1; }
+          echo "$pr" | tee hive-kimi-pr.json
+
+      - name: Upload non-secret HIVE execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-kimi-${{ inputs.issue_number }}
+          path: |
+            hive-kimi-output.jsonl
+            hive-kimi-pr.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Destroy Kimi runtime credentials
+        if: always()
+        shell: bash
+        run: rm -rf "$KIMI_CODE_HOME"

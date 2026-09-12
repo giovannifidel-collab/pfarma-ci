@@ -1,0 +1,10 @@
+{
+  "name": "hive-agent-lab-perplexity",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Standalone zero-cost Perplexity browser certification lab for HIVE.",
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}
