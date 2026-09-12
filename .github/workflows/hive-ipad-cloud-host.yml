@@ -1,0 +1,199 @@
+name: HIVE iPad Cloud Host
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/hive-ipad-cloud-host.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-ipad-cloud-host
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: Free browser host + agent bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      ADAPTER_SHA: f6e7ad0905b0c1ac49e79a6d50f945a46cb25748
+      HIVE_AGENT_BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
+      HIVE_IPAD_VNC_PASSWORD: ${{ secrets.HIVE_IPAD_VNC_PASSWORD }}
+      HIVE_SKIP_SECRET_SYNC: '1'
+      HIVE_AGENTLAB_DISPLAY_NUM: '1'
+      HIVE_AGENTLAB_VNC_PORT: '5901'
+      HIVE_AGENTLAB_WEB_PORT: '6080'
+
+    steps:
+      - name: Check out exact operational HIVE adapter
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ADAPTER_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate exact source and required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ADAPTER_SHA"
+          [[ ${#HIVE_AGENT_BRIDGE_TOKEN} -ge 32 ]] || { echo 'HIVE_AGENT_BRIDGE_TOKEN missing/invalid'; exit 2; }
+          [[ ${#HIVE_IPAD_VNC_PASSWORD} -ge 12 ]] || { echo 'HIVE_IPAD_VNC_PASSWORD missing/too short'; exit 2; }
+          echo 'SOURCE_SHA=PASS'
+          echo 'REQUIRED_SECRETS=PASS'
+
+      - name: Install shared graphical host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            xvfb openbox tint2 x11vnc novnc websockify dbus-x11 x11-utils openssl curl ca-certificates jq
+
+      - name: Seed private VNC credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/.hive-agent-lab/browser-host"
+          mkdir -p "$ROOT"
+          chmod 700 "$ROOT"
+          umask 077
+          printf '%s\n' "$HIVE_IPAD_VNC_PASSWORD" > "$ROOT/vnc.password"
+          x11vnc -storepasswd "$HIVE_IPAD_VNC_PASSWORD" "$ROOT/vnc.pass" >/dev/null
+          chmod 600 "$ROOT/vnc.password" "$ROOT/vnc.pass"
+          echo 'VNC_CREDENTIAL=READY'
+
+      - name: Start shared HIVE desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ops/agent-lab/browser-host/ensure-desktop.sh
+          export DISPLAY=:1
+          if ! pgrep -x tint2 >/dev/null 2>&1; then
+            nohup env DISPLAY=:1 tint2 >"$HOME/.hive-agent-lab/browser-host/tint2.log" 2>&1 &
+          fi
+          curl -fsS http://127.0.0.1:6080/vnc.html >/dev/null
+          echo 'HIVE_DESKTOP_LOCAL=PASS'
+
+      - name: Start nine active browser agents
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DISPLAY=:1
+          ACTIVE=(kimi claude gemini deepseek qwen mistral perplexity copilot duck)
+          for id in "${ACTIVE[@]}"; do
+            script="ops/agent-lab/$id/start-browser.sh"
+            [[ -f "$script" ]] || { echo "START_SCRIPT_MISSING=$id"; exit 3; }
+            echo "STARTING_AGENT_BROWSER=$id"
+            bash "$script"
+          done
+          echo 'ACTIVE_BROWSER_SLOTS_STARTED=9/9'
+          echo 'DEFERRED_AGENT=meta'
+
+      - name: Seed stable bridge bearer and start bridge tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /workspaces/.hive-agent-lab/agent-bridge
+          printf '%s' "$HIVE_AGENT_BRIDGE_TOKEN" | sudo tee /workspaces/.hive-agent-lab/agent-bridge/token >/dev/null
+          sudo chmod 600 /workspaces/.hive-agent-lab/agent-bridge/token
+          HIVE_SKIP_SECRET_SYNC=1 bash ops/agent-lab/bridge/start-secure-tunnel.sh
+          BRIDGE_URL="$(cat "$HOME/.hive-agent-lab/agent-bridge/url")"
+          curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null
+          echo "BRIDGE_URL=$BRIDGE_URL" >> "$GITHUB_ENV"
+          echo 'BRIDGE_PUBLIC=PASS'
+
+      - name: Expose password-protected noVNC desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLOUDFLARED="$HOME/.local/bin/cloudflared"
+          [[ -x "$CLOUDFLARED" ]] || { echo 'cloudflared missing after bridge bootstrap'; exit 4; }
+          LOG="$HOME/.hive-agent-lab/browser-host/ipad-tunnel.log"
+          : > "$LOG"
+          nohup "$CLOUDFLARED" tunnel --no-autoupdate --url http://127.0.0.1:6080 >"$LOG" 2>&1 &
+          echo $! > "$HOME/.hive-agent-lab/browser-host/ipad-tunnel.pid"
+          VNC_BASE=''
+          for _ in $(seq 1 120); do
+            VNC_BASE="$(grep -Eo 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' "$LOG" | tail -n1 || true)"
+            [[ -n "$VNC_BASE" ]] && break
+            sleep 0.25
+          done
+          [[ -n "$VNC_BASE" ]] || { echo 'VNC_TUNNEL_URL=FAIL'; tail -n 80 "$LOG"; exit 5; }
+          VNC_URL="${VNC_BASE}/vnc.html?autoconnect=true&resize=scale&path=websockify"
+          for _ in $(seq 1 30); do
+            curl -fsS --max-time 10 "$VNC_BASE/vnc.html" >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -fsS --max-time 10 "$VNC_BASE/vnc.html" >/dev/null
+          echo "VNC_BASE=$VNC_BASE" >> "$GITHUB_ENV"
+          echo "VNC_URL=$VNC_URL" >> "$GITHUB_ENV"
+          echo 'VNC_PUBLIC=PASS'
+
+      - name: Publish iPad access coordinates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/hive-ipad-access.txt <<EOF
+          HIVE iPad Cloud Host
+          RUN_ID=$GITHUB_RUN_ID
+          VNC_URL=$VNC_URL
+          BRIDGE_URL=$BRIDGE_URL
+          ACTIVE_AGENTS=9/9
+          DEFERRED_AGENT=meta
+          EOF
+          {
+            echo '## HIVE iPad Cloud Host READY'
+            echo ''
+            echo "**noVNC desktop:** $VNC_URL"
+            echo ''
+            echo "**Queen bridge URL:** $BRIDGE_URL"
+            echo ''
+            echo '**VNC password:** use the value stored in `HIVE_IPAD_VNC_PASSWORD` (it is never printed).'
+            echo ''
+            echo '**Agent slots:** 9 active browser slots started; Meta remains deferred.'
+            echo ''
+            echo 'This runner is temporary. Keep this workflow running while authenticating providers and executing Queen.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo 'IPAD_HOST_READY=true'
+
+      - name: Upload non-secret access coordinates
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-ipad-host-access-${{ github.run_id }}
+          path: /tmp/hive-ipad-access.txt
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Keep free HIVE host alive
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'HIVE_IPAD_HOST=LIVE'
+          echo "RUN_ID=$GITHUB_RUN_ID"
+          START="$(date +%s)"
+          END=$((START + 19800))
+          n=0
+          while [[ "$(date +%s)" -lt "$END" ]]; do
+            n=$((n+1))
+            curl -fsS --max-time 10 http://127.0.0.1:6080/vnc.html >/dev/null || { echo 'LOCAL_VNC=FAIL'; exit 20; }
+            curl -fsS --max-time 10 http://127.0.0.1:9240/health >/dev/null || { echo 'LOCAL_BRIDGE=FAIL'; exit 21; }
+            if ! curl -fsS --max-time 15 "$VNC_BASE/vnc.html" >/dev/null 2>&1; then
+              echo "PUBLIC_VNC=DEGRADED heartbeat=$n"
+            fi
+            if ! curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null 2>&1; then
+              echo "PUBLIC_BRIDGE=DEGRADED heartbeat=$n"
+            fi
+            if (( n % 10 == 0 )); then
+              echo "HIVE_HOST_HEARTBEAT=$n"
+              echo 'LOCAL_VNC=PASS'
+              echo 'LOCAL_BRIDGE=PASS'
+            fi
+            sleep 60
+          done
+          echo 'HIVE_IPAD_HOST_WINDOW=COMPLETE'
