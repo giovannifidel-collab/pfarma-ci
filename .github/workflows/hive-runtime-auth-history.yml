@@ -1,0 +1,56 @@
+name: HIVE Runtime Auth History
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-runtime-auth-history.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Trace credential configuration without exposing values
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ -n "${SOURCE_TOKEN:-}" ]] || { echo 'PFARMA_SOURCE_TOKEN=EMPTY'; exit 2; }
+
+          for NAME in pfarma-ci hive-alveare hive-interface; do
+            echo "=== REPOSITORY=$NAME ==="
+            DIR="/tmp/$NAME"
+            rm -rf "$DIR"
+            git clone --quiet --filter=blob:none --no-single-branch \
+              "https://x-access-token:${SOURCE_TOKEN}@github.com/giovannifidel-collab/${NAME}.git" "$DIR"
+
+            cd "$DIR"
+            echo "HEAD=$(git rev-parse HEAD)"
+
+            for MARKER in CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET HIVE_RUNTIME_BEARER_TOKEN; do
+              echo "MARKER=$MARKER"
+              COMMITS="$(git log --all --format='%H' -S"$MARKER" -- . 2>/dev/null | head -n 20 || true)"
+              if [[ -z "$COMMITS" ]]; then
+                echo 'HISTORY_MATCHES=0'
+              else
+                echo "HISTORY_MATCHES=$(printf '%s\n' "$COMMITS" | sed '/^$/d' | wc -l)"
+                while IFS= read -r C; do
+                  [[ -n "$C" ]] || continue
+                  echo "COMMIT=$C"
+                  git diff-tree --no-commit-id --name-only -r "$C" 2>/dev/null | sed 's/^/PATH=/' | head -n 20
+                done <<< "$COMMITS"
+              fi
+            done
+
+            echo 'CURRENT_TREE_FILES_WITH_MARKERS:'
+            git grep -l -E 'CF_ACCESS_CLIENT_ID|CF_ACCESS_CLIENT_SECRET|HIVE_RUNTIME_BEARER_TOKEN' HEAD -- 2>/dev/null | sed 's/^/PATH=/' | head -n 50 || true
+            cd /
+          done
+
+          echo '=== AUTH HISTORY TRACE COMPLETE ==='
