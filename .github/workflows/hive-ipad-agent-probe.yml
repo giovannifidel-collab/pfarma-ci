@@ -13,12 +13,12 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     env:
       BRIDGE_URL: https://amended-properties-employee-orientation.trycloudflare.com
       BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
     steps:
-      - name: Probe nine active agents
+      - name: Probe Kimi text-only path
         shell: bash
         run: |
           set -euo pipefail
@@ -26,42 +26,38 @@ jobs:
           [[ ${#TOKEN} -ge 32 ]] || { echo 'BRIDGE_TOKEN=INVALID'; exit 2; }
           curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null
           echo 'BRIDGE_HEALTH=PASS'
-          ACTIVE=(kimi claude gemini deepseek qwen mistral perplexity copilot duck)
-          for id in "${ACTIVE[@]}"; do
-            echo "=== AGENT=$id ==="
-            submit="$(curl -sS --max-time 20 -X POST \
+
+          submit="$(curl -sS --max-time 20 -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "X-Hive-Agent-Bridge-Token: $TOKEN" \
+            -H 'Content-Type: application/json' \
+            "$BRIDGE_URL/jobs" \
+            --data "$(jq -nc '{agent_id:"kimi",task:"Reply exactly H and nothing else.",fresh:true,timeout_ms:120000}')")"
+
+          echo "$submit" | jq -e '.ok == true and (.job_id|type=="string")' >/dev/null
+          job="$(jq -r '.job_id' <<<"$submit")"
+
+          for _ in $(seq 1 100); do
+            poll="$(curl -sS --max-time 20 \
               -H "Authorization: Bearer $TOKEN" \
               -H "X-Hive-Agent-Bridge-Token: $TOKEN" \
-              -H 'Content-Type: application/json' \
-              "$BRIDGE_URL/jobs" \
-              --data "$(jq -nc --arg id "$id" '{agent_id:$id,task:"Reply exactly H",expected_text:"H",fresh:true,timeout_ms:120000}')")"
-            ok="$(jq -r '.ok // false' <<<"$submit")"
-            if [[ "$ok" != "true" ]]; then
-              echo "AGENT_RESULT=$id SUBMIT_FAIL"
-              echo "$submit" | jq -c '{ok,error}'
-              continue
-            fi
-            job="$(jq -r '.job_id' <<<"$submit")"
-            result=''
-            for _ in $(seq 1 90); do
-              poll="$(curl -sS --max-time 20 \
-                -H "Authorization: Bearer $TOKEN" \
-                -H "X-Hive-Agent-Bridge-Token: $TOKEN" \
-                "$BRIDGE_URL/jobs/$job")"
-              state="$(jq -r '.job.state // "unknown"' <<<"$poll")"
-              if [[ "$state" == "done" || "$state" == "failed" ]]; then
-                result="$poll"
-                break
+              "$BRIDGE_URL/jobs/$job")"
+            state="$(jq -r '.job.state // "unknown"' <<<"$poll")"
+            if [[ "$state" == "done" || "$state" == "failed" ]]; then
+              status="$(jq -r '.job.result.status // ""' <<<"$poll")"
+              text="$(jq -r '.job.result.text // .job.error // ""' <<<"$poll" | tr '\n' ' ' | cut -c1-240)"
+              echo "KIMI_DIRECT_STATE=$state"
+              echo "KIMI_DIRECT_STATUS=$status"
+              echo "KIMI_DIRECT_TEXT=$text"
+              if [[ "$status" == "ok" && "$text" == "H" ]]; then
+                echo 'KIMI_DIRECT_EXACT=PASS'
+              else
+                echo 'KIMI_DIRECT_EXACT=FAIL'
               fi
-              sleep 2
-            done
-            if [[ -z "$result" ]]; then
-              echo "AGENT_RESULT=$id TIMEOUT"
-              continue
+              exit 0
             fi
-            state="$(jq -r '.job.state' <<<"$result")"
-            status="$(jq -r '.job.result.status // ""' <<<"$result")"
-            text="$(jq -r '.job.result.text // .job.error // ""' <<<"$result" | tr '\n' ' ' | cut -c1-180)"
-            echo "AGENT_RESULT=$id STATE=$state STATUS=$status TEXT=$text"
+            sleep 2
           done
-          echo '=== PROBE COMPLETE ==='
+
+          echo 'KIMI_DIRECT_STATE=TIMEOUT'
+          exit 0
