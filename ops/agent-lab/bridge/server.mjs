@@ -26,9 +26,10 @@ const json=(res,status,data)=>{
 };
 
 function authorized(req){
-  const raw=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
-  if(!raw||raw.length!==TOKEN.length)return false;
-  return crypto.timingSafeEqual(Buffer.from(raw),Buffer.from(TOKEN));
+  const bearer=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
+  const dedicated=String(req.headers['x-hive-agent-bridge-token']||'');
+  const candidates=[bearer,dedicated].filter(Boolean);
+  return candidates.some(raw=>raw.length===TOKEN.length&&crypto.timingSafeEqual(Buffer.from(raw),Buffer.from(TOKEN)));
 }
 
 async function readJson(req){
