@@ -15,21 +15,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      BRIDGE_URL: https://strain-translate-acdbentity-boxes.trycloudflare.com
+      BRIDGE_URL: https://amended-properties-employee-orientation.trycloudflare.com
       BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
     steps:
       - name: Probe nine active agents
         shell: bash
         run: |
           set -euo pipefail
-          [[ ${#BRIDGE_TOKEN} -ge 32 ]] || { echo 'BRIDGE_TOKEN=INVALID'; exit 2; }
+          TOKEN="$(printf '%s' "$BRIDGE_TOKEN" | tr -d '\r\n')"
+          [[ ${#TOKEN} -ge 32 ]] || { echo 'BRIDGE_TOKEN=INVALID'; exit 2; }
           curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null
           echo 'BRIDGE_HEALTH=PASS'
           ACTIVE=(kimi claude gemini deepseek qwen mistral perplexity copilot duck)
           for id in "${ACTIVE[@]}"; do
             echo "=== AGENT=$id ==="
             submit="$(curl -sS --max-time 20 -X POST \
-              -H "Authorization: Bearer $BRIDGE_TOKEN" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "X-Hive-Agent-Bridge-Token: $TOKEN" \
               -H 'Content-Type: application/json' \
               "$BRIDGE_URL/jobs" \
               --data "$(jq -nc --arg id "$id" '{agent_id:$id,task:"Reply exactly H",expected_text:"H",fresh:true,timeout_ms:120000}')")"
@@ -43,7 +45,8 @@ jobs:
             result=''
             for _ in $(seq 1 90); do
               poll="$(curl -sS --max-time 20 \
-                -H "Authorization: Bearer $BRIDGE_TOKEN" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "X-Hive-Agent-Bridge-Token: $TOKEN" \
                 "$BRIDGE_URL/jobs/$job")"
               state="$(jq -r '.job.state // "unknown"' <<<"$poll")"
               if [[ "$state" == "done" || "$state" == "failed" ]]; then
