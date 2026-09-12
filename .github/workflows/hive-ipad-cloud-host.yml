@@ -24,7 +24,6 @@ jobs:
       ADAPTER_SHA: bd27fc8eb3c5930c8297af0987e827d2898d34f0
       HIVE_AGENT_BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
       HIVE_IPAD_VNC_PASSWORD: ${{ secrets.HIVE_IPAD_VNC_PASSWORD }}
-      HIVE_SKIP_SECRET_SYNC: '1'
       HIVE_AGENTLAB_DISPLAY_NUM: '1'
       HIVE_AGENTLAB_VNC_PORT: '5901'
       HIVE_AGENTLAB_WEB_PORT: '6080'
@@ -48,6 +47,42 @@ jobs:
           echo "BRIDGE_TOKEN_NORMALIZED_LENGTH=${#BRIDGE_TOKEN}"
           echo 'SOURCE_SHA=PASS'
           echo 'REQUIRED_SECRETS=PASS'
+
+      - name: Start bridge directly and prove local authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRIDGE_TOKEN="$(printf '%s' "$HIVE_AGENT_BRIDGE_TOKEN" | tr -d '\r\n')"
+          STATE="$HOME/.hive-agent-lab/agent-bridge"
+          mkdir -p "$STATE"
+          chmod 700 "$STATE"
+          pkill -f 'node ops/agent-lab/bridge/server.mjs' 2>/dev/null || true
+          nohup env -i \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            HIVE_AGENT_BRIDGE_PORT=9240 \
+            HIVE_AGENT_BRIDGE_HOST=127.0.0.1 \
+            HIVE_AGENT_BRIDGE_TOKEN="$BRIDGE_TOKEN" \
+            node ops/agent-lab/bridge/server.mjs >"$STATE/server.log" 2>&1 &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > "$STATE/server.pid"
+          for _ in $(seq 1 80); do
+            curl -fsS --max-time 2 http://127.0.0.1:9240/health >/dev/null 2>&1 && break
+            sleep 0.25
+          done
+          curl -fsS --max-time 5 http://127.0.0.1:9240/health >/dev/null
+          PROC_TOKEN="$(tr '\0' '\n' < "/proc/$SERVER_PID/environ" | sed -n 's/^HIVE_AGENT_BRIDGE_TOKEN=//p')"
+          echo "SERVER_ENV_TOKEN_LENGTH=${#PROC_TOKEN}"
+          [[ "$PROC_TOKEN" == "$BRIDGE_TOKEN" ]] || { echo 'SERVER_ENV_TOKEN_MATCH=FAIL'; exit 28; }
+          echo 'SERVER_ENV_TOKEN_MATCH=PASS'
+          LOCAL_STATUS="$(curl -sS --max-time 10 -o /tmp/local-agents.json -w '%{http_code}' \
+            -H "Authorization: Bearer $BRIDGE_TOKEN" \
+            -H "X-Hive-Agent-Bridge-Token: $BRIDGE_TOKEN" \
+            http://127.0.0.1:9240/agents)"
+          echo "LOCAL_BRIDGE_AUTH_HTTP=$LOCAL_STATUS"
+          [[ "$LOCAL_STATUS" == 200 ]] || { jq -c '{ok,error}' /tmp/local-agents.json || true; tail -n 40 "$STATE/server.log" || true; exit 30; }
+          jq -e '.ok==true and (.agents|length)==10' /tmp/local-agents.json >/dev/null
+          echo 'BRIDGE_AUTH_LOCAL=PASS'
 
       - name: Install shared graphical host dependencies
         shell: bash
@@ -97,40 +132,43 @@ jobs:
           echo 'ACTIVE_BROWSER_SLOTS_STARTED=9/9'
           echo 'DEFERRED_AGENT=meta'
 
-      - name: Seed stable bridge bearer and start bridge tunnel
+      - name: Expose authenticated bridge through Cloudflare quick tunnel
         shell: bash
         run: |
           set -euo pipefail
           BRIDGE_TOKEN="$(printf '%s' "$HIVE_AGENT_BRIDGE_TOKEN" | tr -d '\r\n')"
-          sudo mkdir -p /workspaces/.hive-agent-lab/agent-bridge
-          printf '%s' "$BRIDGE_TOKEN" | sudo tee /workspaces/.hive-agent-lab/agent-bridge/token >/dev/null
-          sudo chmod 600 /workspaces/.hive-agent-lab/agent-bridge/token
-          HIVE_AGENT_BRIDGE_TOKEN="$BRIDGE_TOKEN" HIVE_SKIP_SECRET_SYNC=1 bash ops/agent-lab/bridge/start-secure-tunnel.sh
-          BRIDGE_URL="$(cat "$HOME/.hive-agent-lab/agent-bridge/url")"
-          curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null
-          echo "BRIDGE_URL=$BRIDGE_URL" >> "$GITHUB_ENV"
-          echo 'BRIDGE_PUBLIC=PASS'
-
-      - name: Validate bridge auth through public tunnel
-        shell: bash
-        run: |
-          set -euo pipefail
-          BRIDGE_TOKEN="$(printf '%s' "$HIVE_AGENT_BRIDGE_TOKEN" | tr -d '\r\n')"
-          LOCAL_STATUS="$(curl -sS --max-time 15 -o /tmp/local-agents.json -w '%{http_code}' \
-            -H "Authorization: Bearer $BRIDGE_TOKEN" \
-            -H "X-Hive-Agent-Bridge-Token: $BRIDGE_TOKEN" \
-            http://127.0.0.1:9240/agents)"
+          CLOUDFLARED="$HOME/.local/bin/cloudflared"
+          mkdir -p "$HOME/.local/bin" "$HOME/.hive-agent-lab/agent-bridge"
+          if [[ ! -x "$CLOUDFLARED" ]]; then
+            curl -fL --retry 3 --connect-timeout 10 \
+              https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+              -o "$CLOUDFLARED"
+            chmod 700 "$CLOUDFLARED"
+          fi
+          LOG="$HOME/.hive-agent-lab/agent-bridge/tunnel.log"
+          : > "$LOG"
+          nohup "$CLOUDFLARED" tunnel --no-autoupdate --url http://127.0.0.1:9240 >"$LOG" 2>&1 &
+          echo $! > "$HOME/.hive-agent-lab/agent-bridge/tunnel.pid"
+          BRIDGE_URL=''
+          for _ in $(seq 1 120); do
+            BRIDGE_URL="$(grep -Eo 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' "$LOG" | tail -n1 || true)"
+            [[ -n "$BRIDGE_URL" ]] && break
+            sleep 0.25
+          done
+          [[ -n "$BRIDGE_URL" ]] || { echo 'BRIDGE_TUNNEL_URL=FAIL'; tail -n 80 "$LOG"; exit 31; }
+          for _ in $(seq 1 30); do
+            curl -fsS --max-time 10 "$BRIDGE_URL/health" >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -fsS --max-time 10 "$BRIDGE_URL/health" >/dev/null
           PUBLIC_STATUS="$(curl -sS --max-time 20 -o /tmp/public-agents.json -w '%{http_code}' \
             -H "Authorization: Bearer $BRIDGE_TOKEN" \
             -H "X-Hive-Agent-Bridge-Token: $BRIDGE_TOKEN" \
             "$BRIDGE_URL/agents")"
-          echo "LOCAL_BRIDGE_AUTH_HTTP=$LOCAL_STATUS"
           echo "PUBLIC_BRIDGE_AUTH_HTTP=$PUBLIC_STATUS"
-          [[ "$LOCAL_STATUS" == 200 ]] || { jq -c '{ok,error}' /tmp/local-agents.json || true; exit 30; }
-          [[ "$PUBLIC_STATUS" == 200 ]] || { jq -c '{ok,error}' /tmp/public-agents.json || true; exit 31; }
-          jq -e '.ok==true and (.agents|length)==10' /tmp/local-agents.json >/dev/null
+          [[ "$PUBLIC_STATUS" == 200 ]] || { jq -c '{ok,error}' /tmp/public-agents.json || true; exit 32; }
           jq -e '.ok==true and (.agents|length)==10' /tmp/public-agents.json >/dev/null
-          echo 'BRIDGE_AUTH_LOCAL=PASS'
+          echo "BRIDGE_URL=$BRIDGE_URL" >> "$GITHUB_ENV"
           echo 'BRIDGE_AUTH_PUBLIC=PASS'
 
       - name: Expose password-protected noVNC desktop
@@ -138,7 +176,6 @@ jobs:
         run: |
           set -euo pipefail
           CLOUDFLARED="$HOME/.local/bin/cloudflared"
-          [[ -x "$CLOUDFLARED" ]] || { echo 'cloudflared missing after bridge bootstrap'; exit 4; }
           LOG="$HOME/.hive-agent-lab/browser-host/ipad-tunnel.log"
           : > "$LOG"
           nohup "$CLOUDFLARED" tunnel --no-autoupdate --url http://127.0.0.1:6080 >"$LOG" 2>&1 &
@@ -179,11 +216,9 @@ jobs:
             echo ''
             echo "**Queen bridge URL:** $BRIDGE_URL"
             echo ''
-            echo '**VNC password:** use the value stored in `HIVE_IPAD_VNC_PASSWORD` (it is never printed).'
+            echo '**VNC password:** use `HIVE_IPAD_VNC_PASSWORD`; it is never printed.'
             echo ''
-            echo '**Agent slots:** 9 active browser slots started; Meta remains deferred.'
-            echo ''
-            echo 'This runner is temporary. Keep this workflow running while authenticating providers and executing Queen.'
+            echo '**Agent slots:** 9 active browser slots; Meta remains deferred.'
           } >> "$GITHUB_STEP_SUMMARY"
           echo 'IPAD_HOST_READY=true'
 
@@ -208,12 +243,8 @@ jobs:
             n=$((n+1))
             curl -fsS --max-time 10 http://127.0.0.1:6080/vnc.html >/dev/null || { echo 'LOCAL_VNC=FAIL'; exit 20; }
             curl -fsS --max-time 10 http://127.0.0.1:9240/health >/dev/null || { echo 'LOCAL_BRIDGE=FAIL'; exit 21; }
-            if ! curl -fsS --max-time 15 "$VNC_BASE/vnc.html" >/dev/null 2>&1; then
-              echo "PUBLIC_VNC=DEGRADED heartbeat=$n"
-            fi
-            if ! curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null 2>&1; then
-              echo "PUBLIC_BRIDGE=DEGRADED heartbeat=$n"
-            fi
+            if ! curl -fsS --max-time 15 "$VNC_BASE/vnc.html" >/dev/null 2>&1; then echo "PUBLIC_VNC=DEGRADED heartbeat=$n"; fi
+            if ! curl -fsS --max-time 15 "$BRIDGE_URL/health" >/dev/null 2>&1; then echo "PUBLIC_BRIDGE=DEGRADED heartbeat=$n"; fi
             if (( n % 10 == 0 )); then
               echo "HIVE_HOST_HEARTBEAT=$n"
               echo 'LOCAL_VNC=PASS'
