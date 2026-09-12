@@ -32,6 +32,15 @@ jobs:
           [[ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]] && echo 'CF_ACCESS_CLIENT_SECRET=PRESENT' || echo 'CF_ACCESS_CLIENT_SECRET=MISSING'
           [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]] && echo 'HIVE_RUNTIME_BEARER_TOKEN=PRESENT' || echo 'HIVE_RUNTIME_BEARER_TOKEN=MISSING'
 
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" ]]; then
+            echo "CF_ACCESS_CLIENT_ID_LENGTH=${#CF_ACCESS_CLIENT_ID}"
+            [[ "$CF_ACCESS_CLIENT_ID" == *.access ]] && echo 'CF_ACCESS_CLIENT_ID_SUFFIX_ACCESS=YES' || echo 'CF_ACCESS_CLIENT_ID_SUFFIX_ACCESS=NO'
+          fi
+          if [[ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            echo "CF_ACCESS_CLIENT_SECRET_LENGTH=${#CF_ACCESS_CLIENT_SECRET}"
+            [[ "$CF_ACCESS_CLIENT_SECRET" == cfast_* ]] && echo 'CF_ACCESS_CLIENT_SECRET_FORMAT=CFAST' || echo 'CF_ACCESS_CLIENT_SECRET_FORMAT=LEGACY_OR_OTHER'
+          fi
+
           args=(-sS --max-time 25 -o /tmp/body -D /tmp/headers -w '%{http_code}')
           if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
             args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
@@ -45,6 +54,26 @@ jobs:
           TYPE="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub(/\r/,""); print $2; exit}' /tmp/headers || true)"
           echo "HIVE_RUNTIME_CONTENT_TYPE=${TYPE:-UNKNOWN}"
 
+          LOC="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {$1=""; sub(/^ /,""); gsub(/\r/,""); print; exit}' /tmp/headers || true)"
+          if [[ -n "$LOC" ]]; then
+            python3 - "$LOC" <<'PY'
+import sys, urllib.parse
+u=urllib.parse.urlparse(sys.argv[1])
+print('HIVE_RUNTIME_REDIRECT_HOST=' + (u.hostname or 'UNKNOWN'))
+q=urllib.parse.parse_qs(u.query)
+for key in ('aud','kid','redirect_url','meta'):
+    if key in q:
+        if key == 'redirect_url':
+            try:
+                ru=urllib.parse.urlparse(q[key][0])
+                print('REDIRECT_URL_HOST=' + (ru.hostname or 'UNKNOWN'))
+            except Exception:
+                pass
+        else:
+            print(f'REDIRECT_QUERY_{key.upper()}=PRESENT')
+PY
+          fi
+
           if [[ "$CODE" == "200" ]] && jq -e '.ok == true' /tmp/body >/dev/null 2>&1; then
             echo 'HIVE_RUNTIME_AUTH=PASS'
             jq -r '"HIVE_RUNTIME_OK=" + ((.ok // false)|tostring)' /tmp/body
@@ -53,12 +82,6 @@ jobs:
 
           if jq -e . /tmp/body >/dev/null 2>&1; then
             jq -r '"HIVE_RUNTIME_ERROR=" + ((.error // .message // "UNKNOWN")|tostring)' /tmp/body | head -c 500; echo
-          else
-            LOC="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {$1=""; sub(/^ /,""); gsub(/\r/,""); print; exit}' /tmp/headers || true)"
-            if [[ -n "$LOC" ]]; then
-              HOST="$(printf '%s' "$LOC" | sed -E 's#https?://([^/]+).*#\1#')"
-              echo "HIVE_RUNTIME_REDIRECT_HOST=$HOST"
-            fi
           fi
           echo 'HIVE_RUNTIME_AUTH=FAIL'
           exit 3
