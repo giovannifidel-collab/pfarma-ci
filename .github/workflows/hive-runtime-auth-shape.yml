@@ -23,10 +23,17 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "$CID" && -n "$CSEC" ]]
+
           echo "CLIENT_ID_LENGTH=${#CID}"
           [[ "$CID" == *.access ]] && echo 'CLIENT_ID_SUFFIX_ACCESS=YES' || echo 'CLIENT_ID_SUFFIX_ACCESS=NO'
+          [[ "$CID" == cfast_* ]] && echo 'CLIENT_ID_LOOKS_LIKE_SECRET=YES' || echo 'CLIENT_ID_LOOKS_LIKE_SECRET=NO'
+          [[ "$CID" =~ ^[0-9a-fA-F]{32}\.access$ ]] && echo 'CLIENT_ID_CANONICAL_FORMAT=YES' || echo 'CLIENT_ID_CANONICAL_FORMAT=NO'
+
           echo "CLIENT_SECRET_LENGTH=${#CSEC}"
           [[ "$CSEC" == cfast_* ]] && echo 'CLIENT_SECRET_FORMAT=CFAST' || echo 'CLIENT_SECRET_FORMAT=LEGACY_OR_OTHER'
+
+          [[ "$CID" == "$CSEC" ]] && echo 'CLIENT_ID_EQUALS_SECRET=YES' || echo 'CLIENT_ID_EQUALS_SECRET=NO'
+
           code="$(curl -sS --max-time 20 -o /dev/null -D /tmp/h -w '%{http_code}' \
             -H "CF-Access-Client-Id: $CID" \
             -H "CF-Access-Client-Secret: $CSEC" \
