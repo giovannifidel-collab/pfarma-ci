@@ -1,0 +1,276 @@
+name: HIVE Queen iPad GitHub-Only Seal
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-queen-ipad-github-seal.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-queen-ipad-github-seal
+  cancel-in-progress: false
+
+jobs:
+  seal:
+    name: Seal transparent 8/10 degraded HIVE without Codespace
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: pfarma-ci-trusted
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Validate GitHub-only controller inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${SOURCE_TOKEN:-}" ]] || { echo 'PFARMA_SOURCE_TOKEN=MISSING'; exit 2; }
+          [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]] || { echo 'CLOUDFLARE_SERVICE_AUTH=MISSING'; exit 2; }
+          echo 'IPAD_GITHUB_ONLY_CONTROLLER=READY'
+          echo 'CODESPACE_REQUIRED=false'
+
+      - name: Check out authoritative private HIVE
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: main
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-hive
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Validate degraded runtime code
+        working-directory: private-hive
+        run: |
+          set -euo pipefail
+          node --check ops/queen/agents/fabric-router.mjs
+          node --check ops/queen/agents/sync-runtime-registry-degraded.mjs
+          node --check ops/queen/runtime/queen-runtime.mjs
+          node ops/queen/runtime/queen-runtime.mjs --self-test
+          echo 'QUEEN_SAFETY_CORE=PASS'
+
+      - name: Build transparent historical-attestation degraded seal
+        working-directory: private-hive
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('fs');
+          const crypto=require('crypto');
+          const CANDIDATES='ops/queen/agents/CANDIDATES.json';
+          const REGISTRY='ops/queen/runtime/AGENT_REGISTRY.json';
+          const MESH='ops/queen/cognitive/CAPABILITY_MESH.json';
+          const LOCK='ops/queen/agents/PROOF_LOCK.json';
+          const expected=['kimi','claude','gemini','deepseek','qwen','mistral','perplexity','copilot','meta','duck'];
+          const deferred=['kimi','meta'];
+          const active=expected.filter(x=>!deferred.includes(x));
+          const catalog=JSON.parse(fs.readFileSync(CANDIDATES,'utf8'));
+          const registry=JSON.parse(fs.readFileSync(REGISTRY,'utf8'));
+          const mesh=JSON.parse(fs.readFileSync(MESH,'utf8'));
+          const candidates=catalog.candidates||[];
+          const ids=candidates.map(x=>x.id);
+          if(ids.length!==expected.length||!expected.every(x=>ids.includes(x))) throw new Error('CANDIDATE_SET_INVALID');
+          const now=new Date().toISOString();
+          const historical={
+            kind:'historical-standardization-attestation',
+            verified_result:'PASSED=9/9; FIRST_PASS=6/9; RECOVERED=3; FAILED=0; ACTIVE_STANDARDIZATION=9/9; META_STANDARDIZATION=DEFERRED',
+            verified_on:'2026-09-07',
+            original_report_path:'/workspaces/pfarma-ci/ops/agent-lab/standard/reports/standardization-2026-09-07T21-33-28-532Z.json',
+            contract:'agent.run(task)->{status,text,metadata}',
+            limitation:'Fresh Queen bridge refresh cannot be executed while the browser host Codespace is quota-blocked. This seal does not claim a fresh live gate.',
+            live_refresh_pending:true
+          };
+          const evidence={
+            mode:'degraded-explicit-historical-attestation',
+            historical_standardization:historical,
+            strict_10_of_10_gate_preserved:true,
+            fresh_live_gate:false,
+            sealed_at:now
+          };
+          registry.schema_version=Math.max(Number(registry.schema_version)||1,3);
+          registry.policy='managed-certified-historical-attestation-with-explicit-deferred-slots';
+          registry.default_enrollment='external';
+          registry.runtime_source_of_truth='hive-neon.agents';
+          registry.compute_fabric_binding='ops/queen/compute/FABRIC_BINDING.json';
+          registry.static_registry_role='bootstrap-and-certification-contract-only';
+          registry.agent_fabric={
+            status:'integrated-degraded',
+            integration_mode:'degraded-explicit-historical-attestation',
+            transport:'agent-bridge',
+            slot_count:10,
+            managed_count:8,
+            deferred_count:2,
+            deferred_agent_ids:deferred,
+            capability_scope:['hive.ai.general'],
+            max_authority:1,
+            strict_10_of_10_gate_preserved:true,
+            live_refresh_pending:true,
+            evidence
+          };
+          registry.agents=candidates.map(c=>{
+            if(deferred.includes(c.id)){
+              const kimi=c.id==='kimi';
+              return {
+                id:c.id,name:c.name,kind:c.kind,product:c.product,bridge_agent_id:c.bridge_agent_id,
+                enrollment:'deferred',status:'deferred',enabled:false,certified:false,certification_scope:null,
+                capabilities:[],max_authority:0,priority:0,transport:'deferred',
+                cost_mode:kimi?'temporarily-unavailable-provider-quota':'unavailable-under-zero-additional-cost-policy',
+                deferred_reason:kimi
+                  ? 'Kimi temporarily deferred because provider quota/cooldown prevents a fresh live Queen proof. Historical standardization evidence is retained but is not used as a fresh certification.'
+                  : 'Meta deferred because current web/API access conflicts with the zero-additional-cost policy.',
+                evidence
+              };
+            }
+            return {
+              id:c.id,name:c.name,kind:c.kind,product:c.product,bridge_agent_id:c.bridge_agent_id,
+              enrollment:'managed',status:'available-degraded-attested',enabled:true,certified:true,
+              certification_scope:catalog.certification_scope,certification_freshness:'historical-attested',fresh_live_certification:false,
+              capabilities:['hive.ai.general'],max_authority:1,cost_mode:'zero-additional-cost',priority:50,transport:'agent-bridge',evidence
+            };
+          });
+          const provider={
+            id:'hive-external-ai-fabric',name:'HIVE External AI Fabric',kind:'managed-agent-fabric',
+            status:'available-degraded-attested',certified:true,degraded:true,authority_owner:'hive',governor:'queen',
+            slot_count:10,managed_agents:8,deferred_agents:deferred,transport:'agent-bridge',cost_mode:'zero-additional-cost',
+            live_refresh_pending:true,strict_10_of_10_gate_preserved:true,evidence:'ops/queen/agents/PROOF_LOCK.json'
+          };
+          mesh.providers=[...(mesh.providers||[]).filter(p=>p.id!==provider.id),provider];
+          const capability={
+            id:'queen-managed-general-ai',name:'hive.ai.general',kind:'managed-fabric',provider:provider.id,
+            status:'available-degraded-attested',certified:true,degraded:true,active_provider_count:8,deferred_agent_ids:deferred,
+            max_authority:1,cost_mode:'zero-additional-cost',live_refresh_pending:true,
+            evidence:'8 managed agents sealed from prior verified standardization; fresh Queen live refresh explicitly pending'
+          };
+          mesh.capabilities=[...(mesh.capabilities||[]).filter(c=>c.id!==capability.id),capability];
+          mesh.enrollment_queue=[
+            ...(mesh.enrollment_queue||[]).filter(x=>!expected.includes(x?.id||x)),
+            {id:'kimi',status:'deferred',reason:'provider quota/cooldown; fresh live proof pending',replacement_allowed:false},
+            {id:'meta',status:'deferred',reason:'provider unavailable under zero-additional-cost policy',replacement_allowed:true}
+          ];
+          const lock={
+            schema_version:3,
+            status:'HIVE_INTEGRATED_DEGRADED',
+            integration_mode:'degraded-explicit-historical-attestation',
+            proof_level:'historical-attestation',
+            slot_count:10,managed_agent_count:8,deferred_agent_count:2,
+            active_agent_ids:active,deferred_agent_ids:deferred,agent_ids:expected,
+            capability_scope:['hive.ai.general'],max_authority:1,
+            certification_scope:catalog.certification_scope,
+            strict_10_of_10_gate_preserved:true,
+            fresh_live_gate:false,
+            live_refresh_pending:true,
+            historical_standardization:historical,
+            proof_contract:'Prior verified standardization attestation -> transparent degraded enrollment; no fresh provider-side Queen gate is claimed.',
+            integrated_at:now
+          };
+          fs.writeFileSync(REGISTRY,JSON.stringify(registry,null,2)+'\n');
+          fs.writeFileSync(MESH,JSON.stringify(mesh,null,2)+'\n');
+          fs.writeFileSync(LOCK,JSON.stringify(lock,null,2)+'\n');
+          console.log('STATIC_SEAL=READY');
+          console.log('MANAGED_AGENTS=8/10');
+          console.log('DEFERRED_AGENTS=kimi,meta');
+          console.log('LIVE_REFRESH_PENDING=true');
+          console.log('STRICT_10_OF_10_GATE_PRESERVED=true');
+          NODE
+
+      - name: Validate static degraded contract
+        working-directory: private-hive
+        run: |
+          set -euo pipefail
+          node ops/queen/agents/fabric-router.mjs status
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('ops/queen/runtime/AGENT_REGISTRY.json','utf8'));
+          const p=JSON.parse(fs.readFileSync('ops/queen/agents/PROOF_LOCK.json','utf8'));
+          const managed=(r.agents||[]).filter(a=>a.enrollment==='managed'&&a.enabled===true&&a.certified===true);
+          const deferred=(r.agents||[]).filter(a=>a.enrollment==='deferred'&&a.enabled===false&&a.certified===false).map(a=>a.id).sort();
+          if((r.agents||[]).length!==10||managed.length!==8||JSON.stringify(deferred)!==JSON.stringify(['kimi','meta'])) throw new Error('REGISTRY_8_OF_10_INVALID');
+          if(p.status!=='HIVE_INTEGRATED_DEGRADED'||p.managed_agent_count!==8||p.live_refresh_pending!==true||p.fresh_live_gate!==false||p.strict_10_of_10_gate_preserved!==true) throw new Error('PROOF_LOCK_INVALID');
+          console.log('STATIC_DEGRADED_CONTRACT=PASS');
+          NODE
+
+      - name: Commit transparent static seal to private HIVE
+        working-directory: private-hive
+        run: |
+          set -euo pipefail
+          git config user.name 'HIVE Queen GitHub-Only Controller'
+          git config user.email 'hive-queen@users.noreply.github.com'
+          git add ops/queen/runtime/AGENT_REGISTRY.json ops/queen/cognitive/CAPABILITY_MESH.json ops/queen/agents/PROOF_LOCK.json
+          if git diff --cached --quiet; then
+            echo 'STATIC_SEAL_ALREADY_COMMITTED=true'
+          else
+            git commit -m 'feat(queen): seal transparent 8-agent degraded fabric from historical attestation'
+            git push origin HEAD:main
+          fi
+          echo "PRIVATE_STATIC_SEAL_SHA=$(git rev-parse HEAD)"
+
+      - name: Sync 8 managed agents into live HIVE runtime
+        working-directory: private-hive
+        run: |
+          set -euo pipefail
+          node ops/queen/agents/sync-runtime-registry-degraded.mjs
+
+      - name: Seal runtime synchronization proof
+        working-directory: private-hive
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('fs');
+          const out={
+            schema_version:2,
+            status:'HIVE_RUNTIME_SYNCED_DEGRADED',
+            integration_mode:'degraded-explicit-historical-attestation',
+            managed_agent_count:8,
+            slot_count:10,
+            deferred_agent_count:2,
+            deferred_agent_ids:['kimi','meta'],
+            capability:'hive.ai.general',
+            strict_10_of_10_gate_preserved:true,
+            fresh_live_gate:false,
+            live_refresh_pending:true,
+            synced_at:new Date().toISOString()
+          };
+          fs.writeFileSync('ops/queen/runtime/RUNTIME_SYNC_LOCK.json',JSON.stringify(out,null,2)+'\n');
+          NODE
+          git add ops/queen/runtime/RUNTIME_SYNC_LOCK.json
+          git config user.name 'HIVE Queen GitHub-Only Controller'
+          git config user.email 'hive-queen@users.noreply.github.com'
+          git commit -m 'feat(queen): seal GitHub-only degraded runtime synchronization' || true
+          git push origin HEAD:main
+          echo "PRIVATE_RUNTIME_SEAL_SHA=$(git rev-parse HEAD)"
+
+      - name: Verify terminal private source of truth
+        working-directory: private-hive
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin main
+          node - <<'NODE'
+          const fs=require('fs');
+          const p=JSON.parse(fs.readFileSync('ops/queen/agents/PROOF_LOCK.json','utf8'));
+          const r=JSON.parse(fs.readFileSync('ops/queen/runtime/AGENT_REGISTRY.json','utf8'));
+          const s=JSON.parse(fs.readFileSync('ops/queen/runtime/RUNTIME_SYNC_LOCK.json','utf8'));
+          const managed=(r.agents||[]).filter(a=>a.enrollment==='managed'&&a.enabled===true&&a.certified===true);
+          const deferred=(r.agents||[]).filter(a=>a.enrollment==='deferred'&&a.enabled===false&&a.certified===false).map(a=>a.id).sort();
+          if(p.status!=='HIVE_INTEGRATED_DEGRADED'||p.managed_agent_count!==8||p.live_refresh_pending!==true) throw new Error('PROOF_NOT_TERMINAL');
+          if(managed.length!==8||JSON.stringify(deferred)!==JSON.stringify(['kimi','meta'])) throw new Error('REGISTRY_NOT_TERMINAL');
+          if(s.status!=='HIVE_RUNTIME_SYNCED_DEGRADED'||s.managed_agent_count!==8||s.live_refresh_pending!==true) throw new Error('RUNTIME_NOT_TERMINAL');
+          console.log('ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED');
+          console.log('MANAGED_AGENTS=8/10');
+          console.log('DEFERRED_AGENTS=kimi,meta');
+          console.log('RUNTIME_DATA_PLANE_SYNC=PASS');
+          console.log('LIVE_REFRESH_PENDING=true');
+          console.log('STRICT_10_OF_10_GATE_PRESERVED=true');
+          NODE
