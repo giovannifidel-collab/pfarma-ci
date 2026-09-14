@@ -68,12 +68,16 @@ read_secret_file(){
   tr -d '\r\n' <"$file"
 }
 
+as_hive(){
+  runuser -u "$SERVICE_USER" -- "$@"
+}
+
 echo "=== HIVE AGENT GATEWAY v1 INSTALL ==="
 
 echo "[1/7] Installing base OS dependencies..."
 apt-get update -y
 apt-get install -y --no-install-recommends \
-  ca-certificates curl git gnupg jq openssl rsync \
+  ca-certificates curl git gnupg jq openssl rsync util-linux \
   xvfb openbox x11vnc novnc websockify dbus-x11 x11-utils
 
 NODE_MAJOR=0
@@ -94,8 +98,11 @@ fi
 NODE_MAJOR="$(node -p "Number(process.versions.node.split('.')[0])")"
 (( NODE_MAJOR >= 22 )) || { echo "ERROR: Node.js >=22 required." >&2; exit 4; }
 
+if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
+  groupadd --system "$SERVICE_GROUP"
+fi
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
-  useradd --system --create-home --home-dir "$STATE_DIR" --shell /bin/bash "$SERVICE_USER"
+  useradd --system --gid "$SERVICE_GROUP" --create-home --home-dir "$STATE_DIR" --shell /bin/bash "$SERVICE_USER"
 fi
 install -d -m 0755 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$APP_ROOT"
 install -d -m 0700 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$STATE_DIR"
@@ -103,14 +110,14 @@ install -d -m 0750 -o root -g "$SERVICE_GROUP" "$CONFIG_DIR"
 
 echo "[3/7] Installing/updating repository checkout..."
 if [[ -d "$APP_DIR/.git" ]]; then
-  sudo -u "$SERVICE_USER" git -C "$APP_DIR" fetch --prune origin "$BRANCH"
-  sudo -u "$SERVICE_USER" git -C "$APP_DIR" checkout "$BRANCH"
-  sudo -u "$SERVICE_USER" git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
+  as_hive git -C "$APP_DIR" fetch --prune origin "$BRANCH"
+  as_hive git -C "$APP_DIR" checkout "$BRANCH"
+  as_hive git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
 elif [[ -e "$APP_DIR" ]]; then
   echo "ERROR: $APP_DIR exists but is not a git checkout." >&2
   exit 5
 else
-  sudo -u "$SERVICE_USER" git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
+  as_hive git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
 fi
 
 # Runtime configuration is created once and preserved on later installs.

@@ -1,0 +1,24 @@
+name: HIVE Agent Gateway Package Check
+
+on:
+  push:
+    branches:
+      - hive-cloud-computer-v0
+    paths:
+      - 'ops/agent-gateway/**'
+      - '.github/workflows/hive-agent-gateway-package-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Gateway package
+        run: bash ops/agent-gateway/validate-package.sh
