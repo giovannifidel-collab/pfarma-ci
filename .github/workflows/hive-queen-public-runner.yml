@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   integrate:
-    name: Public runner proving Queen 9 active + Meta deferred
+    name: Public runner proving Queen 8 active + Kimi/Meta deferred
     runs-on: ubuntu-latest
     timeout-minutes: 70
     environment: pfarma-ci-trusted
@@ -39,7 +39,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
       QUEEN_AGENT_SEMANTIC_ATTEMPTS: '2'
-      QUEEN_DEFERRED_AGENT_IDS: meta
+      QUEEN_DEFERRED_AGENT_IDS: kimi,meta
     steps:
       - name: Check out public execution repository
         uses: actions/checkout@v4
@@ -110,13 +110,14 @@ jobs:
           set -euo pipefail
           if node - <<'NODE'
           const fs=require('fs');
+          const exact=(a,b)=>Array.isArray(a)&&a.length===b.length&&b.every(x=>a.includes(x));
           try {
             const r=JSON.parse(fs.readFileSync('ops/queen/runtime/AGENT_REGISTRY.json','utf8'));
             const l=JSON.parse(fs.readFileSync('ops/queen/agents/PROOF_LOCK.json','utf8'));
             const active=(r.agents||[]).filter(a=>a.enrollment==='managed'&&a.certified===true&&a.enabled===true);
-            const deferred=(r.agents||[]).filter(a=>a.enrollment==='deferred'&&a.enabled===false);
-            if((r.agents||[]).length!==10||active.length!==9||deferred.length!==1||deferred[0]?.id!=='meta') process.exit(1);
-            if(l.status!=='HIVE_INTEGRATED_DEGRADED'||l.managed_agent_count!==9||l.slot_count!==10||l.deferred_agent_count!==1||l.deferred_agent_ids?.[0]!=='meta') process.exit(1);
+            const deferred=(r.agents||[]).filter(a=>a.enrollment==='deferred'&&a.enabled===false&&a.certified===false).map(a=>a.id);
+            if((r.agents||[]).length!==10||active.length!==8||!exact(deferred,['kimi','meta'])) process.exit(1);
+            if(l.status!=='HIVE_INTEGRATED_DEGRADED'||l.managed_agent_count!==8||l.slot_count!==10||l.deferred_agent_count!==2||!exact(l.deferred_agent_ids,['kimi','meta'])||l.strict_10_of_10_gate_preserved!==true) process.exit(1);
           } catch { process.exit(1); }
           NODE
           then
@@ -137,12 +138,12 @@ jobs:
           curl -fsS --max-time 15 "$HIVE_AGENT_BRIDGE_URL/health" >/dev/null
           echo 'PUBLIC_BRIDGE_HEALTH=PASS'
 
-      - name: Live Queen to bridge gate for 9 active providers
+      - name: Live Queen to bridge gate for 8 active providers
         if: steps.static.outputs.static_ready != 'true'
         working-directory: private-hive
         run: node ops/queen/agents/integration-gate-degraded.mjs
 
-      - name: Promote 9 certified agents with Meta deferred
+      - name: Promote 8 certified agents with Kimi and Meta deferred
         if: steps.static.outputs.static_ready != 'true'
         working-directory: private-hive
         run: node ops/queen/agents/promote-managed-degraded.mjs
@@ -156,17 +157,19 @@ jobs:
         run: |
           node - <<'NODE'
           const fs=require('fs');
+          const exact=(a,b)=>Array.isArray(a)&&a.length===b.length&&b.every(x=>a.includes(x));
           const r=JSON.parse(fs.readFileSync('ops/queen/runtime/AGENT_REGISTRY.json','utf8'));
           if(r.agents?.length!==10)throw new Error('slot count != 10');
           const active=r.agents.filter(a=>a.enrollment==='managed'&&a.certified===true&&a.enabled===true);
-          const deferred=r.agents.filter(a=>a.enrollment==='deferred'&&a.enabled===false);
-          if(active.length!==9)throw new Error('managed active count != 9');
-          if(deferred.length!==1||deferred[0].id!=='meta'||deferred[0].certified!==false)throw new Error('Meta deferred contract invalid');
+          const deferred=r.agents.filter(a=>a.enrollment==='deferred'&&a.enabled===false&&a.certified===false).map(a=>a.id);
+          if(active.length!==8)throw new Error('managed active count != 8');
+          if(!exact(deferred,['kimi','meta']))throw new Error('Kimi/Meta deferred contract invalid');
           if(active.some(a=>a.transport!=='agent-bridge'||a.max_authority!==1||a.cost_mode==='paid'))throw new Error('active managed registry contract invalid');
           const lock=JSON.parse(fs.readFileSync('ops/queen/agents/PROOF_LOCK.json','utf8'));
-          if(lock.status!=='HIVE_INTEGRATED_DEGRADED'||lock.managed_agent_count!==9||lock.slot_count!==10||lock.deferred_agent_count!==1||lock.deferred_agent_ids?.[0]!=='meta')throw new Error('degraded proof lock invalid');
-          console.log('QUEEN_MANAGED_REGISTRY=9/10_ACTIVE');
-          console.log('QUEEN_DEFERRED_AGENT=meta');
+          if(lock.status!=='HIVE_INTEGRATED_DEGRADED'||lock.managed_agent_count!==8||lock.slot_count!==10||lock.deferred_agent_count!==2||!exact(lock.deferred_agent_ids,['kimi','meta'])||lock.strict_10_of_10_gate_preserved!==true)throw new Error('degraded proof lock invalid');
+          console.log('QUEEN_MANAGED_REGISTRY=8/10_ACTIVE');
+          console.log('QUEEN_DEFERRED_AGENTS=kimi,meta');
+          console.log('STRICT_10_OF_10_GATE_PRESERVED=true');
           console.log('HIVE_INTEGRATION_PROOF_LOCK=degraded-explicit');
           NODE
 
@@ -181,7 +184,7 @@ jobs:
           if git diff --cached --quiet; then
             echo 'HIVE_AGENT_FABRIC_ALREADY_SEALED=true'
           else
-            git commit -m 'feat(queen): integrate 9-agent fabric with Meta deferred via public runner'
+            git commit -m 'feat(queen): integrate 8-agent fabric with Kimi and Meta deferred via public runner'
             git push origin HEAD:main
           fi
 
@@ -205,11 +208,12 @@ jobs:
           const fs=require('fs');
           const out={
             status:'HIVE_RUNTIME_SYNCED_DEGRADED',
-            managed_agent_count:9,
+            managed_agent_count:8,
             slot_count:10,
-            deferred_agent_count:1,
-            deferred_agent_ids:['meta'],
+            deferred_agent_count:2,
+            deferred_agent_ids:['kimi','meta'],
             capability:'hive.ai.general',
+            strict_10_of_10_gate_preserved:true,
             source_sha:process.env.HIVE_PRIVATE_SOURCE_SHA,
             synced_at:new Date().toISOString()
           };
@@ -218,7 +222,7 @@ jobs:
           git add ops/queen/runtime/RUNTIME_SYNC_LOCK.json
           git config user.name 'HIVE Queen Public Runner'
           git config user.email 'hive-queen@users.noreply.github.com'
-          git commit -m 'feat(queen): seal degraded runtime synchronization'
+          git commit -m 'feat(queen): seal 8-agent degraded runtime synchronization'
           git push origin HEAD:main
 
       - name: Publish authoritative integration evidence
@@ -239,11 +243,12 @@ jobs:
       - name: Final public-runner integration statement
         run: |
           echo 'QUEEN_AGENT_FABRIC=INTEGRATED_DEGRADED'
-          echo 'MANAGED_AGENTS=9/10'
-          echo 'DEFERRED_AGENT=meta'
+          echo 'MANAGED_AGENTS=8/10'
+          echo 'DEFERRED_AGENTS=kimi,meta'
           echo 'QUEEN_ROUTING=direct+fallback+parallel'
           echo 'CAPABILITY=hive.ai.general'
           echo 'MAX_AUTHORITY=L1'
           echo 'FAIL_CLOSED=true'
-          echo 'RUNTIME_DATA_PLANE_SYNC=9/10_MANAGED_META_DEFERRED'
+          echo 'STRICT_10_OF_10_GATE_PRESERVED=true'
+          echo 'RUNTIME_DATA_PLANE_SYNC=8/10_MANAGED_KIMI_META_DEFERRED'
           echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
