@@ -53,12 +53,12 @@ jobs:
           static_ready=false
           full_ready=false
           if [[ -n "$PROOF" && -n "$REGISTRY" ]] && \
-             jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_count==1 and .deferred_agent_ids==["meta"]' <<<"$PROOF" >/dev/null 2>&1 && \
-             jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==9 and ([.agents[]|select(.enrollment=="deferred" and .enabled==false and .id=="meta")]|length)==1' <<<"$REGISTRY" >/dev/null 2>&1; then
+             jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true' <<<"$PROOF" >/dev/null 2>&1 && \
+             jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==8 and ([.agents[]|select(.enrollment=="deferred" and .enabled==false and .certified==false)|.id]|sort)==["kimi","meta"]' <<<"$REGISTRY" >/dev/null 2>&1; then
             static_ready=true
           fi
           if [[ "$static_ready" == true && -n "$RUNTIME" ]] && \
-             jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_count==1 and .deferred_agent_ids==["meta"]' <<<"$RUNTIME" >/dev/null 2>&1; then
+             jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true' <<<"$RUNTIME" >/dev/null 2>&1; then
             full_ready=true
           fi
           echo "static_ready=$static_ready" >> "$GITHUB_OUTPUT"
@@ -70,8 +70,9 @@ jobs:
         if: steps.state.outputs.full_ready == 'true'
         run: |
           echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
-          echo 'MANAGED_AGENTS=9/10'
-          echo 'DEFERRED_AGENT=meta'
+          echo 'MANAGED_AGENTS=8/10'
+          echo 'DEFERRED_AGENTS=kimi,meta'
+          echo 'STRICT_10_OF_10_GATE_PRESERVED=true'
           echo 'AUTONOMOUS_COMPLETION=ALREADY_DONE'
 
       - name: Start Codespace only when live bridge is still required
@@ -193,12 +194,13 @@ jobs:
           PROOF="$(read_json ops/queen/agents/PROOF_LOCK.json)"
           REGISTRY="$(read_json ops/queen/runtime/AGENT_REGISTRY.json)"
           RUNTIME="$(read_json ops/queen/runtime/RUNTIME_SYNC_LOCK.json)"
-          jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_ids==["meta"]' <<<"$PROOF" >/dev/null
-          jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==9' <<<"$REGISTRY" >/dev/null
-          jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==9 and .slot_count==10 and .deferred_agent_ids==["meta"]' <<<"$RUNTIME" >/dev/null
+          jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true' <<<"$PROOF" >/dev/null
+          jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==8 and ([.agents[]|select(.enrollment=="deferred" and .enabled==false and .certified==false)|.id]|sort)==["kimi","meta"]' <<<"$REGISTRY" >/dev/null
+          jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true' <<<"$RUNTIME" >/dev/null
           echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
-          echo 'MANAGED_AGENTS=9/10'
-          echo 'DEFERRED_AGENT=meta'
+          echo 'MANAGED_AGENTS=8/10'
+          echo 'DEFERRED_AGENTS=kimi,meta'
+          echo 'STRICT_10_OF_10_GATE_PRESERVED=true'
           echo 'RUNTIME_DATA_PLANE_SYNC=PASS'
 
       - name: Stop controller-started Codespace to conserve free quota
