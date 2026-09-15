@@ -1,0 +1,22 @@
+{
+  "hive_result": {
+    "task_id": "HIVE-KIMI-0001",
+    "status": "needs_review",
+    "agent": "KIMI",
+    "source_ref": "114fcf2813c764df7f058bf83d151b177255526f",
+    "result_ref": null,
+    "working_branch": "hive/HIVE-KIMI-0001-control",
+    "pr": null,
+    "changed_files": [
+      "hive-kimi-lab/result-HIVE-KIMI-0001.json"
+    ],
+    "tests": [
+      "synthetic control envelope for HIVE roundtrip wiring"
+    ],
+    "risks": [
+      "synthetic control only; no Kimi execution occurred"
+    ],
+    "handoff_to": "GPT",
+    "message": "KIMI_CONNECTED_TO_HIVE"
+  }
+}
