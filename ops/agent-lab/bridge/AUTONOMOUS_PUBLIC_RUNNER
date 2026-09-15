@@ -1,0 +1,3 @@
+enabled
+
+This marker makes the Codespace recovery entrypoint bootstrap only the secure bridge and publish its non-secret endpoint. The original strict 10/10 finalizer remains available with HIVE_STRICT_10=1.
