@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-17T02:13:44.646Z",
+  "generated_at": "2026-09-17T07:38:59.293Z",
   "policy": "authoritative-source-first",
   "privacy": "sanitized allowlist; gio-OS private source never materialized in global HIVE sync; no credentials or user data published",
   "cadence_minutes": 15,
@@ -18,7 +18,7 @@
         "ref": "main",
         "available": true,
         "sha": "e7c9dc3f826894b45059406cf286fac6ec44279e",
-        "observed_at": "2026-09-17T02:13:44.646Z",
+        "observed_at": "2026-09-17T07:38:59.293Z",
         "version": null,
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -29,9 +29,9 @@
           "role": "primary",
           "reachable": true,
           "http_status": 302,
-          "latency_ms": 520,
+          "latency_ms": 120,
           "summary": null,
-          "observed_at": "2026-09-17T02:13:44.646Z"
+          "observed_at": "2026-09-17T07:38:59.293Z"
         }
       ],
       "sync_depth": "source+runtime+control-state"
@@ -43,7 +43,7 @@
         "ref": "main",
         "available": true,
         "sha": "8d8922171bfdc3554cb7786d08b3594ec681f59a",
-        "observed_at": "2026-09-17T02:13:44.646Z",
+        "observed_at": "2026-09-17T07:38:59.293Z",
         "version": "1.7.0",
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -54,12 +54,12 @@
           "role": "primary",
           "reachable": true,
           "http_status": 200,
-          "latency_ms": 3144,
+          "latency_ms": 2875,
           "summary": {
             "status": "ok",
             "version": "1.7.0-cloudflare-hive"
           },
-          "observed_at": "2026-09-17T02:13:44.646Z"
+          "observed_at": "2026-09-17T07:38:59.293Z"
         }
       ],
       "sync_depth": "source+runtime+scientific-control-state"
@@ -71,7 +71,7 @@
         "ref": "main",
         "available": true,
         "sha": "c839ef2f5488ac91682b9753fcd86b9c059d379e",
-        "observed_at": "2026-09-17T02:13:44.646Z",
+        "observed_at": "2026-09-17T07:38:59.293Z",
         "version": null,
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -82,9 +82,9 @@
           "role": "primary",
           "reachable": true,
           "http_status": 303,
-          "latency_ms": 1619,
+          "latency_ms": 1534,
           "summary": null,
-          "observed_at": "2026-09-17T02:13:44.646Z"
+          "observed_at": "2026-09-17T07:38:59.293Z"
         }
       ],
       "sync_depth": "source+runtime+business-control-state"
@@ -96,7 +96,7 @@
         "ref": "main",
         "available": true,
         "sha": "31103989996a664dff385896143dccd03072cdf6",
-        "observed_at": "2026-09-17T02:13:44.646Z",
+        "observed_at": "2026-09-17T07:38:59.293Z",
         "version": null,
         "progress": {
           "phase": "software-complete-release-candidate",
@@ -113,7 +113,7 @@
           "reachable": null,
           "status": "human-gated",
           "target": "Xiaomi Redmi Note 7 lavender",
-          "observed_at": "2026-09-17T02:13:44.646Z"
+          "observed_at": "2026-09-17T07:38:59.293Z"
         }
       ],
       "sync_depth": "sanitized-source-state+build-state+certification-state"
@@ -125,7 +125,7 @@
         "ref": "agent/bootstrap-family-cloud",
         "available": true,
         "sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
-        "observed_at": "2026-09-17T02:13:44.646Z",
+        "observed_at": "2026-09-17T07:38:59.293Z",
         "version": "1.1.4",
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -136,9 +136,9 @@
           "role": "primary",
           "reachable": true,
           "http_status": 200,
-          "latency_ms": 276,
+          "latency_ms": 39,
           "summary": null,
-          "observed_at": "2026-09-17T02:13:44.646Z"
+          "observed_at": "2026-09-17T07:38:59.293Z"
         }
       ],
       "sync_depth": "source+runtime+storage-control-state"
@@ -150,7 +150,7 @@
         "ref": "main",
         "available": true,
         "sha": "968a0f157823d9d522ac8640df1e6e26dc002ecd",
-        "observed_at": "2026-09-17T02:13:44.646Z",
+        "observed_at": "2026-09-17T07:38:59.293Z",
         "version": "1.0.0",
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -161,18 +161,18 @@
           "role": "primary",
           "reachable": true,
           "http_status": 307,
-          "latency_ms": 1162,
+          "latency_ms": 921,
           "summary": null,
-          "observed_at": "2026-09-17T02:13:44.646Z"
+          "observed_at": "2026-09-17T07:38:59.293Z"
         },
         {
           "url": "https://project-giovanni.project-giovanni.workers.dev",
           "role": "standby",
           "reachable": true,
           "http_status": 307,
-          "latency_ms": 563,
+          "latency_ms": 483,
           "summary": null,
-          "observed_at": "2026-09-17T02:13:44.646Z"
+          "observed_at": "2026-09-17T07:38:59.293Z"
         }
       ],
       "sync_depth": "source+runtime+application-control-state"
@@ -182,7 +182,7 @@
         "kind": "hive-strategic-state",
         "available": true,
         "sha": null,
-        "observed_at": "2026-09-17T02:13:44.646Z",
+        "observed_at": "2026-09-17T07:38:59.293Z",
         "provenance": "HIVE_CONTROL_PLANE"
       },
       "runtime": [],
@@ -194,8 +194,8 @@
         "repo": "giovannifidel-collab/pfarma-ci",
         "ref": "main",
         "available": true,
-        "sha": "d746a5ccde68a5656c16b97d2cc16ea59bbdfb17",
-        "observed_at": "2026-09-17T02:13:44.646Z",
+        "sha": "55f304f3848f1d1db1fddfa6795119a574300173",
+        "observed_at": "2026-09-17T07:38:59.293Z",
         "provenance": "PUBLIC_CI_FABRIC"
       },
       "runtime": [],
@@ -206,7 +206,7 @@
         "kind": "hive-strategic-state",
         "available": true,
         "sha": null,
-        "observed_at": "2026-09-17T02:13:44.646Z",
+        "observed_at": "2026-09-17T07:38:59.293Z",
         "provenance": "HIVE_CONTROL_PLANE"
       },
       "runtime": [],
