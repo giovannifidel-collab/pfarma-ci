@@ -1,0 +1,10 @@
+{
+  "name": "hive-agent-lab-qwen",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Standalone zero-cost Qwen browser certification lab for HIVE.",
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}
