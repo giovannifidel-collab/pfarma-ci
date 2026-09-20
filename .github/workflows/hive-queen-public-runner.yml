@@ -1,4 +1,4 @@
-name: HIVE Queen Public Runner — Degraded
+name: HIVE Queen Public Runner — V1 Fresh Live
 
 on:
   workflow_dispatch:
@@ -102,7 +102,7 @@ jobs:
         working-directory: private-hive
         run: node ops/queen/agents/fabric-router.mjs --self-test
 
-      - name: Detect already sealed static degraded proof
+      - name: Detect already sealed fresh V1 proof
         id: static
         working-directory: private-hive
         shell: bash
@@ -118,14 +118,15 @@ jobs:
             const deferred=(r.agents||[]).filter(a=>a.enrollment==='deferred'&&a.enabled===false&&a.certified===false).map(a=>a.id);
             if((r.agents||[]).length!==10||active.length!==8||!exact(deferred,['kimi','meta'])) process.exit(1);
             if(l.status!=='HIVE_INTEGRATED_DEGRADED'||l.managed_agent_count!==8||l.slot_count!==10||l.deferred_agent_count!==2||!exact(l.deferred_agent_ids,['kimi','meta'])||l.strict_10_of_10_gate_preserved!==true) process.exit(1);
+            if(l.proof_level!=='fresh-live'||l.fresh_live_gate!==true||l.live_refresh_pending!==false||l.v1_release_target!==8) process.exit(1);
           } catch { process.exit(1); }
           NODE
           then
             echo 'static_ready=true' >> "$GITHUB_OUTPUT"
-            echo 'STATIC_DEGRADED_PROOF=ALREADY_SEALED'
+            echo 'FRESH_V1_PROOF=ALREADY_SEALED'
           else
             echo 'static_ready=false' >> "$GITHUB_OUTPUT"
-            echo 'STATIC_DEGRADED_PROOF=REQUIRES_LIVE_GATE'
+            echo 'FRESH_V1_PROOF=REQUIRES_LIVE_GATE'
           fi
 
       - name: Validate live bridge for required Queen gate
@@ -135,7 +136,11 @@ jobs:
           set -euo pipefail
           [[ "$HIVE_AGENT_BRIDGE_URL" == https://* ]] || { echo 'HIVE_AGENT_BRIDGE_URL missing/invalid'; exit 2; }
           [[ ${#HIVE_AGENT_BRIDGE_TOKEN} -ge 32 ]] || { echo 'HIVE_AGENT_BRIDGE_TOKEN secret missing/invalid'; exit 2; }
-          curl -fsS --max-time 15 "$HIVE_AGENT_BRIDGE_URL/health" >/dev/null
+          args=(-fsS --max-time 15)
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          fi
+          curl "${args[@]}" "$HIVE_AGENT_BRIDGE_URL/health" | jq -e '.ok == true and .protocol == "async-job-v1"' >/dev/null
           echo 'PUBLIC_BRIDGE_HEALTH=PASS'
 
       - name: Live Queen to bridge gate for 8 active providers
@@ -167,6 +172,7 @@ jobs:
           if(active.some(a=>a.transport!=='agent-bridge'||a.max_authority!==1||a.cost_mode==='paid'))throw new Error('active managed registry contract invalid');
           const lock=JSON.parse(fs.readFileSync('ops/queen/agents/PROOF_LOCK.json','utf8'));
           if(lock.status!=='HIVE_INTEGRATED_DEGRADED'||lock.managed_agent_count!==8||lock.slot_count!==10||lock.deferred_agent_count!==2||!exact(lock.deferred_agent_ids,['kimi','meta'])||lock.strict_10_of_10_gate_preserved!==true)throw new Error('degraded proof lock invalid');
+          if(lock.proof_level!=='fresh-live'||lock.fresh_live_gate!==true||lock.live_refresh_pending!==false||lock.v1_release_target!==8)throw new Error('fresh V1 proof contract invalid');
           console.log('QUEEN_MANAGED_REGISTRY=8/10_ACTIVE');
           console.log('QUEEN_DEFERRED_AGENTS=kimi,meta');
           console.log('STRICT_10_OF_10_GATE_PRESERVED=true');
@@ -214,15 +220,26 @@ jobs:
             deferred_agent_ids:['kimi','meta'],
             capability:'hive.ai.general',
             strict_10_of_10_gate_preserved:true,
+            proof_level:'fresh-live',
+            fresh_live_gate:true,
+            live_refresh_pending:false,
+            v1_release_target:8,
             source_sha:process.env.HIVE_PRIVATE_SOURCE_SHA,
             synced_at:new Date().toISOString()
           };
           fs.writeFileSync('ops/queen/runtime/RUNTIME_SYNC_LOCK.json',JSON.stringify(out,null,2)+'\n');
+          const policy=JSON.parse(fs.readFileSync('ops/queen/agents/V1_RELEASE_POLICY.json','utf8'));
+          policy.status='CLOSED';
+          policy.closed_at=out.synced_at;
+          policy.fresh_live_proof='8/8';
+          policy.runtime_sync='PASS';
+          policy.queen_operational=true;
+          fs.writeFileSync('ops/queen/agents/V1_RELEASE_POLICY.json',JSON.stringify(policy,null,2)+'\n');
           NODE
-          git add ops/queen/runtime/RUNTIME_SYNC_LOCK.json
+          git add ops/queen/runtime/RUNTIME_SYNC_LOCK.json ops/queen/agents/V1_RELEASE_POLICY.json
           git config user.name 'HIVE Queen Public Runner'
           git config user.email 'hive-queen@users.noreply.github.com'
-          git commit -m 'feat(queen): seal 8-agent degraded runtime synchronization'
+          git commit -m 'feat(queen): close v1 on fresh-live 8-agent runtime'
           git push origin HEAD:main
 
       - name: Publish authoritative integration evidence
@@ -250,5 +267,8 @@ jobs:
           echo 'MAX_AUTHORITY=L1'
           echo 'FAIL_CLOSED=true'
           echo 'STRICT_10_OF_10_GATE_PRESERVED=true'
-          echo 'RUNTIME_DATA_PLANE_SYNC=8/10_MANAGED_KIMI_META_DEFERRED'
-          echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
+          echo 'RUNTIME_DATA_PLANE_SYNC=8/8_V1'
+          echo 'FRESH_LIVE_PROOF=8/8'
+          echo 'HIVE_QUEEN_V1=CLOSED'
+          echo 'QUEEN_OPERATIONAL=true'
+          echo 'ENTRYPOINT_RESULT=HIVE_QUEEN_V1_CLOSED'
