@@ -8,6 +8,8 @@ required=(
   ops/agent-gateway/README.md
   ops/agent-gateway/install.sh
   ops/agent-gateway/healthcheck.sh
+  ops/agent-gateway/go-live.sh
+  ops/agent-gateway/live-proof-managed.sh
   ops/agent-gateway/migrate-browser-state.sh
   ops/agent-gateway/gateway.env.example
   ops/agent-gateway/cloudflare.env.example
@@ -23,9 +25,15 @@ done
 
 bash -n ops/agent-gateway/install.sh
 bash -n ops/agent-gateway/healthcheck.sh
+bash -n ops/agent-gateway/go-live.sh
+bash -n ops/agent-gateway/live-proof-managed.sh
 bash -n ops/agent-gateway/migrate-browser-state.sh
 node --check ops/agent-lab/bridge/server.mjs
 node --check ops/agent-lab/standard/agents.mjs
+
+# Managed live proof must preserve the authoritative 8/10 degraded set.
+grep -q 'ACTIVE_SET=claude,gemini,deepseek,qwen,mistral,perplexity,copilot,duck' ops/agent-gateway/live-proof-managed.sh
+grep -q 'DEFERRED_SET=kimi,meta' ops/agent-gateway/live-proof-managed.sh
 
 # Permanent gateway must bind the bridge locally and must not ship real secrets.
 grep -q '^HIVE_AGENT_BRIDGE_HOST=127\.0\.0\.1$' ops/agent-gateway/gateway.env.example
