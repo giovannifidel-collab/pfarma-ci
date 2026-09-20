@@ -64,6 +64,33 @@ sudo bash ops/agent-gateway/install.sh \
 
 The Cloudflare hostname itself must be configured to target `http://127.0.0.1:9240` and protected by Cloudflare Access / Service Auth.
 
+## One-shot go-live
+
+The physical migration can be driven with one fail-closed wrapper instead of a long manual sequence:
+
+```bash
+sudo bash ops/agent-gateway/go-live.sh \\
+  --token-file /path/to/protected/bridge-token \\
+  --cloudflare-token-file /path/to/protected/cloudflare-tunnel-token \\
+  --browser-state /path/to/exported/.hive-agent-lab
+```
+
+The wrapper performs package validation, installation/update, optional browser-profile migration, local authenticated health, service/autostart checks, and localhost-only network-boundary checks. It never generates or prints the stable bridge token and never reboots the machine automatically.
+
+After the controlled reboot, run:
+
+```bash
+sudo bash /opt/hive/pfarma-ci/ops/agent-gateway/go-live.sh --post-reboot --live-proof
+```
+
+The post-reboot mode proves autostart and then makes fresh calls only against the authoritative managed set:
+
+```text
+claude, gemini, deepseek, qwen, mistral, perplexity, copilot, duck
+```
+
+`kimi` and `meta` remain explicitly deferred. The live proof writes a sanitized JSON artifact under `/var/lib/hive-agent-gateway/proofs/`, prints its SHA-256, and does not persist provider response bodies or secrets.
+
 ## Browser sessions
 
 The service user is `hive`; its `HOME` is `/var/lib/hive-agent-gateway`. Existing Agent Lab scripts therefore persist browser profiles under:
