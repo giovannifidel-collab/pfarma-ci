@@ -1,4 +1,4 @@
-name: HIVE Queen Autonomous Completion
+name: HIVE Queen V1 Autonomous Completion
 
 on:
   workflow_dispatch:
@@ -13,18 +13,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: hive-queen-autonomous-completion
+  group: hive-queen-v1-autonomous-completion
   cancel-in-progress: false
 
 jobs:
   complete:
-    name: Wake control plane and drive Queen to terminal proof
+    name: Drive Queen V1 to fresh-live terminal proof
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: pfarma-ci-trusted
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-      CODESPACE_NAME: glorious-fishstick-vpp99jqr55xvh967
       PUBLIC_REPO: giovannifidel-collab/pfarma-ci
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
       ADAPTER_BRANCH: hive-cloud-computer-v0
@@ -37,7 +36,7 @@ jobs:
           gh api "repos/$PRIVATE_REPO" --jq '.full_name' >/dev/null
           echo 'AUTONOMOUS_CONTROLLER_AUTH=READY'
 
-      - name: Inspect authoritative completion state
+      - name: Inspect authoritative V1 completion state
         id: state
         shell: bash
         run: |
@@ -49,81 +48,24 @@ jobs:
           PROOF="$(read_json ops/queen/agents/PROOF_LOCK.json)"
           REGISTRY="$(read_json ops/queen/runtime/AGENT_REGISTRY.json)"
           RUNTIME="$(read_json ops/queen/runtime/RUNTIME_SYNC_LOCK.json)"
+          POLICY="$(read_json ops/queen/agents/V1_RELEASE_POLICY.json)"
 
-          static_ready=false
           full_ready=false
-          if [[ -n "$PROOF" && -n "$REGISTRY" ]] && \
-             jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true' <<<"$PROOF" >/dev/null 2>&1 && \
-             jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==8 and ([.agents[]|select(.enrollment=="deferred" and .enabled==false and .certified==false)|.id]|sort)==["kimi","meta"]' <<<"$REGISTRY" >/dev/null 2>&1; then
-            static_ready=true
-          fi
-          if [[ "$static_ready" == true && -n "$RUNTIME" ]] && \
-             jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true' <<<"$RUNTIME" >/dev/null 2>&1; then
+          if [[ -n "$PROOF" && -n "$REGISTRY" && -n "$RUNTIME" && -n "$POLICY" ]] &&              jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true and .proof_level=="fresh-live" and .fresh_live_gate==true and .live_refresh_pending==false and .v1_release_target==8' <<<"$PROOF" >/dev/null 2>&1 &&              jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==8 and ([.agents[]|select(.enrollment=="deferred" and .enabled==false and .certified==false)|.id]|sort)==["kimi","meta"]' <<<"$REGISTRY" >/dev/null 2>&1 &&              jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true and .proof_level=="fresh-live" and .fresh_live_gate==true and .live_refresh_pending==false and .v1_release_target==8' <<<"$RUNTIME" >/dev/null 2>&1 &&              jq -e '.release=="HIVE_QUEEN_V1" and .release_target.managed_required==8 and .status=="CLOSED" and .fresh_live_proof=="8/8" and .runtime_sync=="PASS" and .queen_operational==true' <<<"$POLICY" >/dev/null 2>&1; then
             full_ready=true
           fi
-          echo "static_ready=$static_ready" >> "$GITHUB_OUTPUT"
           echo "full_ready=$full_ready" >> "$GITHUB_OUTPUT"
-          echo "STATIC_DEGRADED_READY=$static_ready"
-          echo "FULL_RUNTIME_READY=$full_ready"
+          echo "HIVE_QUEEN_V1_READY=$full_ready"
 
       - name: Terminal success already sealed
         if: steps.state.outputs.full_ready == 'true'
         run: |
-          echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
-          echo 'MANAGED_AGENTS=8/10'
+          echo 'HIVE_QUEEN_V1=CLOSED'
+          echo 'MANAGED_AGENTS=8/8_V1'
           echo 'DEFERRED_AGENTS=kimi,meta'
-          echo 'STRICT_10_OF_10_GATE_PRESERVED=true'
+          echo 'FRESH_LIVE_PROOF=8/8'
+          echo 'QUEEN_OPERATIONAL=true'
           echo 'AUTONOMOUS_COMPLETION=ALREADY_DONE'
-
-      - name: Start Codespace only when live bridge is still required
-        id: wake
-        if: steps.state.outputs.full_ready != 'true' && steps.state.outputs.static_ready != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          CURRENT="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state')"
-          echo "CODESPACE_INITIAL_STATE=$CURRENT"
-          if [[ "$CURRENT" == 'Available' ]]; then
-            echo 'started_by_controller=false' >> "$GITHUB_OUTPUT"
-          else
-            echo 'started_by_controller=true' >> "$GITHUB_OUTPUT"
-            set +e
-            gh api -X POST "/user/codespaces/$CODESPACE_NAME/start" >/dev/null 2>&1
-            RC=$?
-            set -e
-            if [[ "$RC" -ne 0 ]]; then
-              AFTER="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)"
-              [[ "$AFTER" == 'Available' || "$AFTER" == 'Starting' ]] || { echo 'CODESPACE_START_FAILED'; exit "$RC"; }
-            fi
-          fi
-          for _ in {1..60}; do
-            STATE="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state' 2>/dev/null || true)"
-            [[ "$STATE" == 'Available' ]] && break
-            sleep 5
-          done
-          STATE="$(gh api "/user/codespaces/$CODESPACE_NAME" --jq '.state')"
-          echo "CODESPACE_FINAL_STATE=$STATE"
-          [[ "$STATE" == 'Available' ]] || { echo 'CODESPACE_NOT_AVAILABLE'; exit 3; }
-
-      - name: Wait for self-healed bearer-protected bridge
-        id: bridge
-        if: steps.state.outputs.full_ready != 'true' && steps.state.outputs.static_ready != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          URL=''
-          for _ in {1..72}; do
-            CONTENT="$(gh api "repos/$PUBLIC_REPO/contents/ops/agent-lab/bridge/runtime-public-endpoint.json?ref=$ADAPTER_BRANCH" --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null || true)"
-            CANDIDATE="$(jq -r '.url // empty' <<<"$CONTENT" 2>/dev/null || true)"
-            if [[ "$CANDIDATE" == https://* ]] && curl -fsS --max-time 10 "$CANDIDATE/health" >/dev/null 2>&1; then
-              URL="$CANDIDATE"
-              break
-            fi
-            sleep 5
-          done
-          [[ "$URL" == https://* ]] || { echo 'PUBLIC_BRIDGE_RECOVERY_TIMEOUT'; exit 4; }
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
-          echo 'PUBLIC_BRIDGE_RECOVERED=PASS'
 
       - name: Resolve exact source commits
         id: refs
@@ -157,11 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           PREV="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
-          ARGS=(workflow run hive-queen-public-runner.yml -R "$PUBLIC_REPO" --ref main -f "adapter_sha=${{ steps.refs.outputs.adapter_sha }}" -f "hive_private_sha=${{ steps.refs.outputs.private_sha }}")
-          if [[ "${{ steps.state.outputs.static_ready }}" != 'true' ]]; then
-            ARGS+=( -f "bridge_url=${{ steps.bridge.outputs.url }}" )
-          fi
-          gh "${ARGS[@]}"
+          gh workflow run hive-queen-public-runner.yml -R "$PUBLIC_REPO" --ref main             -f "adapter_sha=${{ steps.refs.outputs.adapter_sha }}"             -f "hive_private_sha=${{ steps.refs.outputs.private_sha }}"
           RUN_ID=''
           for _ in {1..30}; do
             CANDIDATE="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
@@ -182,7 +120,7 @@ jobs:
           [[ -n "$RUN_ID" ]] || { echo 'QUEEN_RUN_ID_MISSING'; exit 6; }
           gh run watch "$RUN_ID" -R "$PUBLIC_REPO" --exit-status
 
-      - name: Verify terminal Queen proof from private source of truth
+      - name: Verify terminal fresh-live Queen proof
         if: steps.state.outputs.full_ready != 'true'
         shell: bash
         run: |
@@ -194,18 +132,16 @@ jobs:
           PROOF="$(read_json ops/queen/agents/PROOF_LOCK.json)"
           REGISTRY="$(read_json ops/queen/runtime/AGENT_REGISTRY.json)"
           RUNTIME="$(read_json ops/queen/runtime/RUNTIME_SYNC_LOCK.json)"
-          jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true' <<<"$PROOF" >/dev/null
-          jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==8 and ([.agents[]|select(.enrollment=="deferred" and .enabled==false and .certified==false)|.id]|sort)==["kimi","meta"]' <<<"$REGISTRY" >/dev/null
-          jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true' <<<"$RUNTIME" >/dev/null
-          echo 'ENTRYPOINT_RESULT=HIVE_INTEGRATED_DEGRADED'
-          echo 'MANAGED_AGENTS=8/10'
-          echo 'DEFERRED_AGENTS=kimi,meta'
-          echo 'STRICT_10_OF_10_GATE_PRESERVED=true'
-          echo 'RUNTIME_DATA_PLANE_SYNC=PASS'
+          POLICY="$(read_json ops/queen/agents/V1_RELEASE_POLICY.json)"
 
-      - name: Stop controller-started Codespace to conserve free quota
-        if: always() && steps.wake.outputs.started_by_controller == 'true'
-        shell: bash
-        run: |
-          gh api -X POST "/user/codespaces/$CODESPACE_NAME/stop" >/dev/null 2>&1 || true
-          echo 'CODESPACE_AUTOMATION_STOP_REQUESTED=true'
+          jq -e '.status=="HIVE_INTEGRATED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true and .proof_level=="fresh-live" and .fresh_live_gate==true and .live_refresh_pending==false and .v1_release_target==8' <<<"$PROOF" >/dev/null
+          jq -e '(.agents|length)==10 and ([.agents[]|select(.enrollment=="managed" and .certified==true and .enabled==true)]|length)==8 and ([.agents[]|select(.enrollment=="deferred" and .enabled==false and .certified==false)|.id]|sort)==["kimi","meta"]' <<<"$REGISTRY" >/dev/null
+          jq -e '.status=="HIVE_RUNTIME_SYNCED_DEGRADED" and .managed_agent_count==8 and .slot_count==10 and .deferred_agent_count==2 and (.deferred_agent_ids|sort)==["kimi","meta"] and .strict_10_of_10_gate_preserved==true and .proof_level=="fresh-live" and .fresh_live_gate==true and .live_refresh_pending==false and .v1_release_target==8' <<<"$RUNTIME" >/dev/null
+          jq -e '.release=="HIVE_QUEEN_V1" and .release_target.managed_required==8 and .status=="CLOSED" and .fresh_live_proof=="8/8" and .runtime_sync=="PASS" and .queen_operational==true' <<<"$POLICY" >/dev/null
+
+          echo 'HIVE_QUEEN_V1=CLOSED'
+          echo 'MANAGED_AGENTS=8/8_V1'
+          echo 'DEFERRED_AGENTS=kimi,meta'
+          echo 'FRESH_LIVE_PROOF=8/8'
+          echo 'RUNTIME_DATA_PLANE_SYNC=PASS'
+          echo 'QUEEN_OPERATIONAL=true'
