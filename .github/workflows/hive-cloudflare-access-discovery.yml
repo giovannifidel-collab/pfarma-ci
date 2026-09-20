@@ -105,6 +105,20 @@ jobs:
               ' /tmp/apps.json
             fi
 
+          echo "=== DNS ZONES ==="
+          ZONES_HTTP="$(
+            curl -sS \
+              -H "$AUTH" \
+              -o /tmp/zones.json \
+              -w '%{http_code}' \
+              "https://api.cloudflare.com/client/v4/zones?account.id=$(jq -r '.result[0].id' /tmp/accounts.json)&per_page=50"
+          )"
+          echo "CF_ZONES_HTTP=$ZONES_HTTP"
+          if [[ "$ZONES_HTTP" == 200 ]]; then
+            echo "CF_ZONE_COUNT=$(jq '.result | length' /tmp/zones.json)"
+            jq -r '.result[]? | "CF_ZONE_NAME=" + (.name // "") + " ID=" + (.id // "") + " STATUS=" + (.status // "")' /tmp/zones.json
+          fi
+
           done
 
           echo '=== DISCOVERY COMPLETE ==='
