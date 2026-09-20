@@ -2,6 +2,10 @@ name: HIVE Cloudflare Access Discovery
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-cloudflare-access-discovery.yml'
 
 permissions:
   contents: read
@@ -59,6 +63,25 @@ jobs:
                 .result[]? |
                 "SERVICE_TOKEN_CLIENT_ID=" + (.client_id // "")
               ' /tmp/st.json
+            fi
+
+            TUN_HTTP="$(
+              curl -sS \
+                -H "$AUTH" \
+                -o /tmp/tunnels.json \
+                -w '%{http_code}' \
+                "https://api.cloudflare.com/client/v4/accounts/$ID/cfd_tunnel?is_deleted=false"
+            )"
+
+            echo "CF_TUNNELS_HTTP=$TUN_HTTP"
+            if [[ "$TUN_HTTP" == 200 ]]; then
+              echo "CF_TUNNEL_COUNT=$(jq '.result | length' /tmp/tunnels.json)"
+              jq -r '
+                .result[]? |
+                "CF_TUNNEL_NAME=" + (.name // "") +
+                " ID=" + (.id // "") +
+                " STATUS=" + (.status // "")
+              ' /tmp/tunnels.json
             fi
 
             APPS_HTTP="$(
