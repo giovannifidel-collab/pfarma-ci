@@ -77,7 +77,7 @@ echo "=== HIVE AGENT GATEWAY v1 INSTALL ==="
 echo "[1/7] Installing base OS dependencies..."
 apt-get update -y
 apt-get install -y --no-install-recommends \
-  ca-certificates curl git gnupg jq openssl rsync util-linux \
+  ca-certificates curl git gnupg iproute2 jq openssl rsync util-linux \
   xvfb openbox x11vnc novnc websockify dbus-x11 x11-utils
 
 NODE_MAJOR=0
