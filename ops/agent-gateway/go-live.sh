@@ -116,6 +116,17 @@ runtime_proof(){
 
 preflight
 
+existing_token_len=0
+if [[ -f /etc/hive-agent-gateway/gateway.env ]]; then
+  existing_token_len="$(awk -F= '$1=="HIVE_AGENT_BRIDGE_TOKEN" {sub(/^[^=]*=/,""); print length($0); exit}' /etc/hive-agent-gateway/gateway.env)"
+  existing_token_len="${existing_token_len:-0}"
+fi
+if [[ "$POST_REBOOT" != "1" && -z "$BRIDGE_TOKEN_FILE" && "$existing_token_len" -lt 32 ]]; then
+  echo "BRIDGE_TOKEN_SOURCE_REQUIRED=true" >&2
+  echo "ACTION=provide --token-file with the existing stable bridge token; do not paste it into logs or chat" >&2
+  exit 12
+fi
+
 if [[ "$POST_REBOOT" == "1" ]]; then
   [[ -d "$APP_DIR/.git" ]] || { echo "POST_REBOOT_CHECKOUT=NOT_FOUND" >&2; exit 20; }
   echo "PHASE=post_reboot_proof"
