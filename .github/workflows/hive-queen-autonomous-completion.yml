@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           PREV="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
-          gh workflow run hive-queen-public-runner.yml -R "$PUBLIC_REPO" --ref main             -f "adapter_sha=${{ steps.refs.outputs.adapter_sha }}"             -f "hive_private_sha=${{ steps.refs.outputs.private_sha }}"
+          gh workflow run hive-queen-public-runner.yml -R "$PUBLIC_REPO" --ref main             -f "adapter_sha=${{ steps.refs.outputs.adapter_sha }}"             -f "hive_private_sha=${{ steps.refs.outputs.private_sha }}"             -f "bridge_url=https://desktop-4tapaao.tail46e861.ts.net"
           RUN_ID=''
           for _ in {1..30}; do
             CANDIDATE="$(gh run list -R "$PUBLIC_REPO" --workflow hive-queen-public-runner.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
