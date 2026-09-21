@@ -1,0 +1,68 @@
+name: HIVE FIELD Core Metric Inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-field-core-metric-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Require private repository token
+        shell: bash
+        env:
+          TOKEN_A: ${{ secrets.HIVE_FIELD_SOURCE_TOKEN }}
+          TOKEN_B: ${{ secrets.HIVE_SOURCE_TOKEN }}
+          TOKEN_C: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${TOKEN_A:-${TOKEN_B:-${TOKEN_C:-}}}"
+          test -n "$token"
+          echo "PRIVATE_REPO_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Extract only visit-average source fragment
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://hive-field-v8.vercel.app/?metric_inspect=$GITHUB_RUN_ID" -o /tmp/hive.html
+          node <<'NODE'
+          const fs=require('fs'),zlib=require('zlib');
+          const html=fs.readFileSync('/tmp/hive.html','utf8');
+          const m=html.match(/const APP_B64='([^']+)'/);
+          if(!m) throw new Error('APP_B64 missing');
+          const core=zlib.gunzipSync(Buffer.from(m[1],'base64')).toString('utf8');
+          const needles=[/Media visite/ig,/visite\s*\/\s*mese/ig,/media.{0,80}mese/ig,/mese.{0,80}visite/ig];
+          const ranges=[];
+          for(const re of needles){
+            let x;
+            while((x=re.exec(core))&&ranges.length<24){
+              ranges.push([Math.max(0,x.index-2600),Math.min(core.length,x.index+4200)]);
+            }
+          }
+          ranges.sort((a,b)=>a[0]-b[0]);
+          const merged=[];
+          for(const r of ranges){
+            const last=merged.at(-1);
+            if(last&&r[0]<=last[1]) last[1]=Math.max(last[1],r[1]);
+            else merged.push([...r]);
+          }
+          if(!merged.length) throw new Error('metric source fragment not found');
+          const out=merged.map((r,i)=>'--- FRAGMENT '+(i+1)+' ---\n'+core.slice(r[0],r[1])).join('\n\n');
+          fs.writeFileSync('/tmp/metric-snippet.txt',out);
+          NODE
+
+      - name: Store diagnostic fragment privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(base64 -w0 /tmp/metric-snippet.txt)"
+          jq -n --arg msg "Temporary HIVE metric diagnostic" --arg content "$body" --arg branch "diagnostic-core-inspect"             '{message:$msg,content:$content,branch:$branch}' >/tmp/payload.json
+          curl -fsSL -X PUT             -H "Authorization: Bearer $PRIVATE_REPO_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/giovannifidel-collab/hive-field/contents/diagnostics/core-metric-snippet.txt"             --data-binary @/tmp/payload.json >/dev/null
