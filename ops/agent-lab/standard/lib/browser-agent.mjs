@@ -1,4 +1,5 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import crypto from 'node:crypto';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -51,13 +52,48 @@ export class BrowserAgent {
     return null;
   }
 
+  startBrowserWindows() {
+    const local = process.env.LOCALAPPDATA || process.env.USERPROFILE || '';
+    const pf = process.env.PROGRAMFILES || '';
+    const pf86 = process.env['PROGRAMFILES(X86)'] || '';
+    const candidates = [
+      process.env.HIVE_BROWSER_BIN,
+      pf && `${pf}\\Google\\Chrome\\Application\\chrome.exe`,
+      pf86 && `${pf86}\\Google\\Chrome\\Application\\chrome.exe`,
+      local && `${local}\\Google\\Chrome\\Application\\chrome.exe`,
+      pf && `${pf}\\Microsoft\\Edge\\Application\\msedge.exe`,
+      pf86 && `${pf86}\\Microsoft\\Edge\\Application\\msedge.exe`
+    ].filter(Boolean);
+    const browser = candidates.find(p => existsSync(p));
+    if (!browser) throw new Error('WINDOWS_BROWSER_NOT_FOUND');
+    const profileRoot = process.env.HIVE_AGENT_BROWSER_PROFILE_ROOT || `${local}\\HIVE-Agent-Lab`;
+    const profile = `${profileRoot}\\${this.id}-profile`;
+    const args = [
+      '--remote-debugging-address=127.0.0.1',
+      `--remote-debugging-port=${this.config.port}`,
+      '--remote-allow-origins=*',
+      '--disable-features=SigninIntercept',
+      `--user-data-dir=${profile}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+      this.config.homeUrl
+    ].filter(Boolean);
+    const child = spawn(browser, args, { detached:true, stdio:'ignore', windowsHide:false, env:process.env });
+    child.unref();
+    return true;
+  }
+
   async ensureBrowser() {
     let found = await this.discoverExistingPort();
-    if (!found && this.config.startScript) {
-      const script = `${this.rootDir}/${this.config.startScript}`;
-      const r = spawnSync('bash', [script], { stdio: 'inherit', cwd: this.rootDir, env: process.env });
-      if (r.error) throw new Error(`START_BROWSER_ERROR:${r.error.message}`);
-      if (r.status !== 0) throw new Error(`START_BROWSER_EXIT_${r.status}`);
+    if (!found) {
+      if (process.platform === 'win32') {
+        this.startBrowserWindows();
+      } else if (this.config.startScript) {
+        const script = `${this.rootDir}/${this.config.startScript}`;
+        const r = spawnSync('bash', [script], { stdio: 'inherit', cwd: this.rootDir, env: process.env });
+        if (r.error) throw new Error(`START_BROWSER_ERROR:${r.error.message}`);
+        if (r.status !== 0) throw new Error(`START_BROWSER_EXIT_${r.status}`);
+      }
       const deadline = now() + 30000;
       while (now() < deadline && !found) {
         found = await this.discoverExistingPort();
