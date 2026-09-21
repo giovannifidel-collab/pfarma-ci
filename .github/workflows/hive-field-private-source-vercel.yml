@@ -1,0 +1,162 @@
+name: HIVE FIELD Private Source Vercel Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'hive-field-source-ref.txt'
+      - '.github/workflows/hive-field-private-source-vercel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-field-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public CI transport
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate exact HIVE FIELD source SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < hive-field-source-ref.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid HIVE FIELD source SHA.' >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require private-source token
+        shell: bash
+        env:
+          TOKEN_A: ${{ secrets.HIVE_FIELD_SOURCE_TOKEN }}
+          TOKEN_B: ${{ secrets.HIVE_SOURCE_TOKEN }}
+          TOKEN_C: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${TOKEN_A:-${TOKEN_B:-${TOKEN_C:-}}}"
+          test -n "$token" || { echo 'HIVE_FIELD_SOURCE_TOKEN_MISSING' >&2; exit 78; }
+          echo "PRIVATE_SOURCE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out exact private HIVE FIELD commit
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-field
+          ref: ${{ steps.source.outputs.sha }}
+          token: ${{ env.PRIVATE_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact private commit
+        shell: bash
+        run: test "$(git -C private-source rev-parse HEAD)" = '${{ steps.source.outputs.sha }}'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: HIVE FIELD source checks
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check
+
+      - name: HIVE FIELD local production preflight build
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          test -s dist/index.html
+          test -s dist/health.json
+          test -s dist/hf-v91113.js
+          cmp -s patch-v9.11.13.js dist/hf-v91113.js
+          node -e "const h=require('./dist/health.json'); if(h.version!=='v9.11.13-20260921'||h.coreBytes!==42072||!h.coreInvariant||!h.structuralPreflight) process.exit(1)"
+
+      - name: Verify live baseline is still v9.11.12
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://hive-field-v8.vercel.app/health.json?predeploy=${GITHUB_RUN_ID}" -o /tmp/pre-health.json
+          node -e "const h=require('/tmp/pre-health.json'); if(h.version!=='v9.11.12-20260917'||h.coreBytes!==42072) process.exit(1)"
+
+      - name: Require Vercel deploy token
+        shell: bash
+        env:
+          TOKEN_A: ${{ secrets.HIVE_FIELD_VERCEL_TOKEN }}
+          TOKEN_B: ${{ secrets.VERCEL_TOKEN }}
+          TOKEN_C: ${{ secrets.VERCEL_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${TOKEN_A:-${TOKEN_B:-${TOKEN_C:-}}}"
+          test -n "$token" || { echo 'HIVE_FIELD_VERCEL_TOKEN_MISSING' >&2; exit 78; }
+          echo "VERCEL_DEPLOY_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Link exact Vercel project
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '%s\n' '{"orgId":"team_5NxsW979cwrtjUVw3DBBlqhk","projectId":"prj_mMm949u81TrcbXwBRMoCPeQxID6v"}' > .vercel/project.json
+
+      - name: Single production deployment
+        id: vercel
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="$(npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_DEPLOY_TOKEN")"
+          printf 'deployment_url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+          printf 'Deployment URL: %s\n' "$url"
+
+      - name: Verify production alias and v9.11.13 health
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsSL "https://hive-field-v8.vercel.app/health.json?verify=${GITHUB_RUN_ID}-$i" -o /tmp/hive-field-health.json; then
+              if node -e "const h=require('/tmp/hive-field-health.json'); if(h.version!=='v9.11.13-20260921'||h.coreBytes!==42072||!h.coreInvariant||!h.structuralPreflight||!h.doctorFormScheduleAddFixed||!h.dedicatedHoursMorningAfternoon||!h.doctorNamesAlwaysClickable||!h.availabilitySchemaPreserved) process.exit(1)"; then
+                ok=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+          test "$ok" = 1 || { echo 'Production alias did not reach verified v9.11.13.' >&2; exit 1; }
+          curl -fsSL "https://hive-field-v8.vercel.app/hf-v91113.js?v=9.11.13&verify=${GITHUB_RUN_ID}" -o /tmp/hf-v91113.js
+          cmp -s patch-v9.11.13.js /tmp/hf-v91113.js
+
+      - name: Deployment summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## HIVE FIELD v9.11.13 production'
+            echo '- private source: giovannifidel-collab/hive-field'
+            echo "- exact SHA: ${{ steps.source.outputs.sha }}"
+            echo "- Vercel project: hive-field-v8"
+            echo "- production alias verified: https://hive-field-v8.vercel.app"
+            echo '- health verified: v9.11.13-20260921'
+            echo '- patch asset verified byte-for-byte'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove private source checkout
+        if: always()
+        shell: bash
+        run: rm -rf private-source
