@@ -1,0 +1,6 @@
+{
+  "hive_private_sha": "7d1d1dfb5e836fdd3c55e89d3ee28ac24139f707",
+  "mode": "degraded-explicit",
+  "managed_agents": 9,
+  "deferred_agent": "meta"
+}

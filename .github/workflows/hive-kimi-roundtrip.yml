@@ -1,0 +1,48 @@
+name: HIVE Kimi Roundtrip Validator
+
+on:
+  pull_request:
+    branches: [hive-cloud-computer-v0]
+    paths:
+      - 'hive-kimi-lab/result-HIVE-KIMI-0001.json'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate HIVE result envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'hive-kimi-lab/result-HIVE-KIMI-0001.json';
+          if (!fs.existsSync(path)) throw new Error('missing result file');
+          const doc = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const r = doc.hive_result;
+          if (!r || typeof r !== 'object') throw new Error('missing hive_result');
+          const expected = {
+            task_id: 'HIVE-KIMI-0001',
+            status: 'needs_review',
+            agent: 'KIMI',
+            handoff_to: 'GPT',
+            message: 'KIMI_CONNECTED_TO_HIVE'
+          };
+          for (const [k, v] of Object.entries(expected)) {
+            if (r[k] !== v) throw new Error(`${k}: expected ${v}, got ${r[k]}`);
+          }
+          if (!r.source_ref || typeof r.source_ref !== 'string') throw new Error('source_ref required');
+          if (!Array.isArray(r.changed_files) || !r.changed_files.includes(path)) throw new Error('changed_files must include result path');
+          if (!Array.isArray(r.tests)) throw new Error('tests must be an array');
+          if (!Array.isArray(r.risks)) throw new Error('risks must be an array');
+          console.log('HIVE_KIMI_ROUNDTRIP_PASS');
+          NODE
