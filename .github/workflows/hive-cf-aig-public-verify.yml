@@ -1,0 +1,40 @@
+name: HIVE Public Cloudflare AI Fabric Verify
+
+on:
+  push:
+    branches:
+      - queen-universal-fabric-vnext
+    paths:
+      - ".github/workflows/hive-cf-aig-public-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Cloudflare AI Fabric credentials
+        shell: bash
+        env:
+          CF_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CF_TOKEN" || { echo "TOKEN_MISSING"; exit 10; }
+          test -n "$CF_ACCOUNT" || { echo "ACCOUNT_ID_MISSING"; exit 11; }
+
+          AIG_HTTP="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/ai-gateway/gateways")"
+          echo "AI_GATEWAY_HTTP=$AIG_HTTP"
+          test "$AIG_HTTP" = "200" || exit 20
+
+          WAI_HTTP="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/ai/models/search?per_page=1&hide_experimental=true")"
+          echo "WORKERS_AI_HTTP=$WAI_HTTP"
+          test "$WAI_HTTP" = "200" || exit 30
+
+          echo "PUBLIC_CLOUDFLARE_AI_FABRIC=PASS"
