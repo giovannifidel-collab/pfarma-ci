@@ -12,7 +12,7 @@ function fail(message, code = 1, metadata = {}) {
       error: message,
       provider: 'cloudflare-workers-ai',
       transport: 'https',
-      route: 'cloudflare.ai.v1.chat.completions',
+      route: 'cloudflare.ai.run.model_path',
       gateway: GATEWAY_ID,
       paid_fallback: false,
       ...metadata
@@ -50,6 +50,18 @@ function parseArgs() {
   }
 }
 
+function extractText(body) {
+  const result = body?.result;
+  const candidates = [
+    result?.response,
+    result?.choices?.[0]?.message?.content,
+    body?.response,
+    body?.choices?.[0]?.message?.content,
+    typeof result === 'string' ? result : null
+  ];
+  return candidates.find((value) => typeof value === 'string' && value.length > 0) || null;
+}
+
 async function run() {
   if (!ACCOUNT_ID) fail('missing_account_id', 20);
   if (!API_TOKEN) fail('missing_api_token', 21);
@@ -57,14 +69,13 @@ async function run() {
   const input = parseArgs();
   const cfg = configForRole(input.role);
   const started = Date.now();
-
   const messages = [];
   if (input.system) messages.push({ role: 'system', content: String(input.system) });
   messages.push({ role: 'user', content: input.task });
 
   let response;
   try {
-    response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/v1/chat/completions`, {
+    response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/${cfg.model}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${API_TOKEN}`,
@@ -72,7 +83,6 @@ async function run() {
         'cf-aig-gateway-id': GATEWAY_ID
       },
       body: JSON.stringify({
-        model: cfg.model,
         messages,
         temperature: input.temperature ?? 0,
         max_tokens: input.max_tokens ?? 512,
@@ -92,7 +102,7 @@ async function run() {
     fail('non_json_response', 31, { http_status: response.status, latency_ms, ...cfg });
   }
 
-  if (!response.ok) {
+  if (!response.ok || body?.success === false) {
     fail('upstream_http_error', 32, {
       http_status: response.status,
       latency_ms,
@@ -101,12 +111,21 @@ async function run() {
     });
   }
 
-  const envelope = body?.result ?? body;
-  const text = envelope?.choices?.[0]?.message?.content ?? envelope?.response ?? body?.result?.response;
-  if (!text || typeof text !== 'string') {
-    fail('missing_model_text', 33, { http_status: response.status, latency_ms, ...cfg });
+  const text = extractText(body);
+  if (!text) {
+    fail('missing_model_text', 33, {
+      http_status: response.status,
+      latency_ms,
+      response_shape: {
+        top_level: body && typeof body === 'object' ? Object.keys(body) : [],
+        result_type: Array.isArray(body?.result) ? 'array' : typeof body?.result,
+        result_keys: body?.result && typeof body.result === 'object' && !Array.isArray(body.result) ? Object.keys(body.result) : []
+      },
+      ...cfg
+    });
   }
 
+  const usage = body?.result?.usage ?? body?.usage ?? null;
   process.stdout.write(JSON.stringify({
     status: 'ok',
     text,
@@ -116,11 +135,11 @@ async function run() {
       model_family: cfg.model_family,
       independence_group: cfg.independence_group,
       transport: 'https',
-      route: 'cloudflare.ai.v1.chat.completions',
+      route: 'cloudflare.ai.run.model_path',
       gateway: GATEWAY_ID,
       latency_ms,
       http_status: response.status,
-      usage: envelope?.usage ?? body?.usage ?? null,
+      usage,
       paid_fallback: false,
       role: input.role
     }
