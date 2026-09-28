@@ -1,0 +1,102 @@
+name: Queen Event-Driven AI Fabric
+
+on:
+  push:
+    branches:
+      - queen-universal-fabric-vnext
+    paths:
+      - "ops/queen-vnext/agent-run.mjs"
+      - ".github/workflows/queen-event-fabric.yml"
+  repository_dispatch:
+    types:
+      - queen-intent
+      - queen-school-cycle
+      - queen-verify
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task for hive.ai.general"
+        required: false
+        default: "Reply with exactly HIVE_EVENT_OK"
+      model:
+        description: "Workers AI @cf/ model"
+        required: false
+        default: "@cf/moonshotai/kimi-k2.6"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-event-fabric-${{ github.event.client_payload.event_id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout public execution fabric
+        uses: actions/checkout@v4
+
+      - name: Resolve event envelope
+        shell: bash
+        env:
+          EVENT_TASK: ${{ github.event.client_payload.task }}
+          EVENT_MODEL: ${{ github.event.client_payload.model }}
+          EVENT_ID: ${{ github.event.client_payload.event_id }}
+          MANUAL_TASK: ${{ inputs.task }}
+          MANUAL_MODEL: ${{ inputs.model }}
+        run: |
+          set -euo pipefail
+          TASK="${EVENT_TASK:-${MANUAL_TASK:-Reply with exactly HIVE_EVENT_OK}}"
+          MODEL="${EVENT_MODEL:-${MANUAL_MODEL:-@cf/moonshotai/kimi-k2.6}}"
+          EVENT="${EVENT_ID:-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
+          printf 'HIVE_TASK<<EOF\n%s\nEOF\n' "$TASK" >> "$GITHUB_ENV"
+          printf 'HIVE_MODEL=%s\n' "$MODEL" >> "$GITHUB_ENV"
+          printf 'HIVE_EVENT_ID=%s\n' "$EVENT" >> "$GITHUB_ENV"
+
+      - name: Execute hive.ai.general event
+        shell: bash
+        env:
+          HIVE_CF_AIG_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+          HIVE_CF_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node ops/queen-vnext/agent-run.mjs | tee /tmp/queen-agent-result.json
+
+      - name: Verify normalized agent.run contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw = fs.readFileSync('/tmp/queen-agent-result.json', 'utf8').trim();
+          const result = JSON.parse(raw.split('\n').at(-1));
+          if (result.status !== 'ok') throw new Error(`status=${result.status}`);
+          if (typeof result.text !== 'string' || !result.text.trim()) throw new Error('text missing');
+          const m = result.metadata || {};
+          for (const key of ['capability','provider','model','model_family','independence_group','transport','route_id','event_id']) {
+            if (!m[key]) throw new Error(`metadata.${key} missing`);
+          }
+          if (m.capability !== 'hive.ai.general') throw new Error('wrong capability');
+          if (m.certified !== false) throw new Error('candidate route must not self-certify');
+          console.log('AGENT_RUN_CONTRACT=PASS');
+          console.log(`EVENT_ID=${m.event_id}`);
+          console.log(`MODEL=${m.model}`);
+          console.log(`LATENCY_MS=${m.latency_ms}`);
+          NODE
+
+      - name: Enforce deterministic smoke proof on code push
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw = fs.readFileSync('/tmp/queen-agent-result.json', 'utf8').trim();
+          const result = JSON.parse(raw.split('\n').at(-1));
+          if (result.text.trim() !== 'HIVE_EVENT_OK') {
+            throw new Error(`unexpected smoke response: ${result.text}`);
+          }
+          console.log('EVENT_DRIVEN_LIVE_PROOF=PASS');
+          NODE
