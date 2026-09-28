@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0.0",
+  "status": "candidate_live_proof",
+  "generated_at": "2026-09-28T16:30:00Z",
+  "scope": "queen-vnext-universal-ai-fabric",
+  "execution": {
+    "repository": "giovannifidel-collab/pfarma-ci",
+    "branch": "queen-universal-fabric-vnext",
+    "path": "public-first",
+    "event_driven": true,
+    "scheduled_dependency": false,
+    "paid_fallback": false
+  },
+  "contract": "agent.run(task)->{status,text,metadata}",
+  "capability": "hive.ai.general",
+  "proofs": [
+    {
+      "type": "single_worker_live",
+      "run_id": 36454987424,
+      "job_id": 109038939529,
+      "result": "PASS",
+      "worker": {
+        "provider": "cloudflare-workers-ai",
+        "model": "@cf/zai-org/glm-4.7-flash",
+        "independence_group": "zai-org/glm-4.7-flash",
+        "transport": "cloudflare-worker-ai-binding"
+      },
+      "gates": ["AGENT_RUN_CONTRACT=PASS", "EVENT_DRIVEN_LIVE_PROOF=PASS"]
+    },
+    {
+      "type": "worker_plus_independent_verifier_live",
+      "run_id": 36455265225,
+      "job_id": 109039882227,
+      "result": "PASS",
+      "worker": {
+        "provider": "cloudflare-workers-ai",
+        "upstream_vendor": "zai-org",
+        "model": "@cf/zai-org/glm-4.7-flash",
+        "independence_group": "zai-org/glm-4.7-flash"
+      },
+      "verifier": {
+        "provider": "cloudflare-workers-ai",
+        "upstream_vendor": "google",
+        "model": "@cf/google/gemma-4-26b-a4b-it",
+        "independence_group": "google/gemma-4-26b-a4b-it"
+      },
+      "independence_verified": true,
+      "gates": ["ROUTE_MESH=PASS", "AGENT_RUN_CONTRACT=PASS", "INDEPENDENT_VERIFICATION=PASS", "EVENT_DRIVEN_LIVE_PROOF=PASS"]
+    }
+  ],
+  "certification": {
+    "managed": false,
+    "school_teacher_certified": false,
+    "school_verifier_certified": false,
+    "note": "Live transport/execution proof only. School competency certification remains a separate evidence-gated process."
+  },
+  "superseded_paths": [
+    {
+      "path": "direct-workers-ai-rest",
+      "reason": "Current Cloudflare token lacks Workers AI Edit required for direct REST inference; Workers AI binding path is live and avoids additional owner action."
+    }
+  ],
+  "v1_lock_policy": "untouched"
+}
