@@ -1,0 +1,138 @@
+name: HIVE Queen Event Ingress
+
+on:
+  repository_dispatch:
+    types:
+      - verification-result
+      - school-verified
+      - world-state-changed
+      - queen-cycle
+
+permissions:
+  contents: write
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    env:
+      HIVE_ACTION: ${{ github.event.action }}
+      HIVE_CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+    steps:
+      - name: Checkout Queen public execution code
+        uses: actions/checkout@v4
+        with:
+          ref: queen-universal-fabric-vnext
+
+      - name: Validate event envelope
+        id: envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCHEMA="$(printf '%s' "$HIVE_CLIENT_PAYLOAD" | jq -r '.schema // empty')"
+          CORRELATION="$(printf '%s' "$HIVE_CLIENT_PAYLOAD" | jq -r '.correlation_id // empty')"
+          HOP="$(printf '%s' "$HIVE_CLIENT_PAYLOAD" | jq -r '.hop // empty')"
+          MAX_HOPS="$(printf '%s' "$HIVE_CLIENT_PAYLOAD" | jq -r '.max_hops // empty')"
+          test "$SCHEMA" = "hive.event.v1" || { echo 'INVALID_SCHEMA'; exit 10; }
+          [[ "$CORRELATION" =~ ^[A-Za-z0-9._-]{1,100}$ ]] || { echo 'INVALID_CORRELATION_ID'; exit 11; }
+          [[ "$HOP" =~ ^[0-9]+$ ]] || { echo 'INVALID_HOP'; exit 12; }
+          [[ "$MAX_HOPS" =~ ^[0-9]+$ ]] || { echo 'INVALID_MAX_HOPS'; exit 13; }
+          test "$HOP" -ge 1 -a "$HOP" -le "$MAX_HOPS" -a "$MAX_HOPS" -le 8 || { echo 'HOP_GUARD_REJECTED'; exit 14; }
+
+          case "$HIVE_ACTION" in
+            verification-result) TYPE='verification.result.ready' ;;
+            school-verified) TYPE='school.experience.verified' ;;
+            world-state-changed) TYPE='world.state.changed' ;;
+            queen-cycle) TYPE='queen.cycle.continue' ;;
+            *) echo 'UNSUPPORTED_EVENT'; exit 15 ;;
+          esac
+
+          DATA="$(printf '%s' "$HIVE_CLIENT_PAYLOAD" | jq -c '.data // {}')"
+          EVENT="$(jq -cn \
+            --arg id "$CORRELATION-$HOP" \
+            --arg type "$TYPE" \
+            --arg source 'github.repository_dispatch' \
+            --arg occurred_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson payload "$DATA" \
+            '{version:"1",id:$id,type:$type,source:$source,occurred_at:$occurred_at,payload:$payload}')"
+
+          echo "event_b64=$(printf '%s' "$EVENT" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          echo "correlation=$CORRELATION" >> "$GITHUB_OUTPUT"
+          echo "hop=$HOP" >> "$GITHUB_OUTPUT"
+          echo "max_hops=$MAX_HOPS" >> "$GITHUB_OUTPUT"
+          echo "data_b64=$(printf '%s' "$DATA" | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Route Queen event
+        id: route
+        shell: bash
+        env:
+          EVENT_B64: ${{ steps.envelope.outputs.event_b64 }}
+        run: |
+          set -euo pipefail
+          export HIVE_EVENT_JSON="$(printf '%s' "$EVENT_B64" | base64 -d)"
+          ROUTE="$(node ops/queen/event-loop/dispatcher.mjs)"
+          printf '%s' "$ROUTE" | jq -e '.accepted == true' >/dev/null
+          echo "route_b64=$(printf '%s' "$ROUTE" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          echo "QUEEN_EVENT_ROUTE=PASS"
+          printf '%s' "$ROUTE" | jq .
+
+      - name: Dispatch next event immediately
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROUTE_B64: ${{ steps.route.outputs.route_b64 }}
+          DATA_B64: ${{ steps.envelope.outputs.data_b64 }}
+          CORRELATION: ${{ steps.envelope.outputs.correlation }}
+          HOP: ${{ steps.envelope.outputs.hop }}
+          MAX_HOPS: ${{ steps.envelope.outputs.max_hops }}
+        run: |
+          set -euo pipefail
+          ROUTE="$(printf '%s' "$ROUTE_B64" | base64 -d)"
+          DATA="$(printf '%s' "$DATA_B64" | base64 -d)"
+          NEXT="$(printf '%s' "$ROUTE" | jq -r '.next_event // empty')"
+
+          case "$NEXT" in
+            '') echo 'QUEEN_EVENT_CHAIN=COMPLETE'; exit 0 ;;
+            school.experience.verified) EVENT_TYPE='school-verified' ;;
+            world.state.changed) EVENT_TYPE='world-state-changed' ;;
+            queen.cycle.continue) EVENT_TYPE='queen-cycle' ;;
+            *) echo "UNROUTABLE_NEXT_EVENT=$NEXT"; exit 20 ;;
+          esac
+
+          NEXT_HOP=$((HOP + 1))
+          test "$NEXT_HOP" -le "$MAX_HOPS" || { echo 'MAX_HOPS_REACHED'; exit 21; }
+
+          BODY="$(jq -cn \
+            --arg event_type "$EVENT_TYPE" \
+            --arg schema 'hive.event.v1' \
+            --arg correlation_id "$CORRELATION" \
+            --argjson hop "$NEXT_HOP" \
+            --argjson max_hops "$MAX_HOPS" \
+            --argjson data "$DATA" \
+            '{event_type:$event_type,client_payload:{schema:$schema,correlation_id:$correlation_id,hop:$hop,max_hops:$max_hops,data:$data}}')"
+
+          HTTP="$(curl -sS -o /tmp/dispatch-response -w '%{http_code}' \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/dispatches" \
+            -d "$BODY")"
+          test "$HTTP" = '204' || { echo "NEXT_DISPATCH_FAILED_HTTP=$HTTP"; exit 22; }
+          echo "NEXT_EVENT=$EVENT_TYPE"
+          echo "NEXT_HOP=$NEXT_HOP"
+          echo 'NEXT_DISPATCH=PASS'
+
+      - name: Event chain summary
+        if: always()
+        shell: bash
+        env:
+          CORRELATION: ${{ steps.envelope.outputs.correlation }}
+          HOP: ${{ steps.envelope.outputs.hop }}
+        run: |
+          {
+            echo '## HIVE Queen event-driven chain'
+            echo "- correlation: ${CORRELATION:-unavailable}"
+            echo "- hop: ${HOP:-unavailable}"
+            echo "- trigger: repository_dispatch"
+            echo "- schedule/cron: none"
+          } >> "$GITHUB_STEP_SUMMARY"
