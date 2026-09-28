@@ -17,7 +17,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   closed-loop:
@@ -117,12 +117,45 @@ jobs:
           echo "QUEEN_EVENT_ROUTE=PASS"
           printf '%s' "$ROUTE" | jq .
 
+      - name: Start event-driven post-verification chain
+        id: chain
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT_B64: ${{ steps.gate.outputs.verdict_b64 }}
+          WORKER_HASH: ${{ steps.worker.outputs.worker_hash }}
+        run: |
+          set -euo pipefail
+          VERDICT="$(printf '%s' "$VERDICT_B64" | base64 -d)"
+          CORRELATION="proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          DATA="$(jq -cn \
+            --arg response_hash "$WORKER_HASH" \
+            --argjson verdict "$VERDICT" \
+            '{verified:$verdict.verified,score:$verdict.score,response_hash:$response_hash,verification_metadata:$verdict.metadata}')"
+          BODY="$(jq -cn \
+            --arg event_type 'verification-result' \
+            --arg schema 'hive.event.v1' \
+            --arg correlation_id "$CORRELATION" \
+            --argjson data "$DATA" \
+            '{event_type:$event_type,client_payload:{schema:$schema,correlation_id:$correlation_id,hop:1,max_hops:4,data:$data}}')"
+          HTTP="$(curl -sS -o /tmp/dispatch-response -w '%{http_code}' \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/dispatches" \
+            -d "$BODY")"
+          test "$HTTP" = '204' || { echo "EVENT_CHAIN_START_FAILED_HTTP=$HTTP"; exit 40; }
+          echo "correlation=$CORRELATION" >> "$GITHUB_OUTPUT"
+          echo 'EVENT_CHAIN_START=PASS'
+
       - name: Closed-loop proof summary
         shell: bash
         env:
           VERDICT_B64: ${{ steps.gate.outputs.verdict_b64 }}
           ROUTE_B64: ${{ steps.school_event.outputs.route_b64 }}
           WORKER_HASH: ${{ steps.worker.outputs.worker_hash }}
+          CORRELATION: ${{ steps.chain.outputs.correlation }}
         run: |
           set -euo pipefail
           VERDICT="$(printf '%s' "$VERDICT_B64" | base64 -d)"
@@ -138,5 +171,7 @@ jobs:
             echo "- Verification score: $(printf '%s' "$VERDICT" | jq -r '.score')"
             echo "- Next action: $(printf '%s' "$ROUTE" | jq -r '.action')"
             echo "- Next event: $(printf '%s' "$ROUTE" | jq -r '.next_event')"
+            echo "- Event chain correlation: $CORRELATION"
+            echo "- schedule/cron: none"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "QUEEN_VNEXT_CLOSED_LOOP=PASS"
