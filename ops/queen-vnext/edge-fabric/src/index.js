@@ -5,15 +5,54 @@ function json(data, status = 200) {
   });
 }
 
-function textFromResult(result) {
-  if (typeof result === "string") return result;
-  if (typeof result?.response === "string") return result.response;
-  const content = result?.choices?.[0]?.message?.content;
+function contentToText(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
-    return content.map((part) => part?.text || "").join("").trim();
+    return content.map((part) => {
+      if (typeof part === "string") return part;
+      return part?.text || part?.content || part?.value || "";
+    }).join("").trim();
+  }
+  if (content && typeof content === "object") {
+    return content.text || content.content || content.value || "";
   }
   return "";
+}
+
+function textFromResult(result) {
+  if (typeof result === "string") return result;
+  const candidates = [
+    result?.response,
+    result?.response?.text,
+    result?.response?.content,
+    result?.output_text,
+    result?.text,
+    result?.choices?.[0]?.message?.content,
+    result?.choices?.[0]?.text,
+    result?.result?.response,
+    result?.result?.text,
+    result?.result?.choices?.[0]?.message?.content
+  ];
+  for (const candidate of candidates) {
+    const text = contentToText(candidate);
+    if (text) return text;
+  }
+  if (Array.isArray(result?.output)) {
+    const text = result.output.flatMap((item) => item?.content || []).map((part) => part?.text || "").join("").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function resultShape(result) {
+  if (!result || typeof result !== "object") return { type: typeof result };
+  return {
+    keys: Object.keys(result).slice(0, 20),
+    choice_keys: Object.keys(result?.choices?.[0] || {}).slice(0, 20),
+    message_keys: Object.keys(result?.choices?.[0]?.message || {}).slice(0, 20),
+    response_type: typeof result?.response,
+    output_is_array: Array.isArray(result?.output)
+  };
 }
 
 function familyFromModel(model) {
@@ -24,12 +63,11 @@ function familyFromModel(model) {
 }
 
 function safeAiError(error) {
-  const safe = {
+  return {
     name: String(error?.name || "Error").slice(0, 120),
     code: error?.code == null ? null : String(error.code).slice(0, 120),
     message: String(error?.message || "").slice(0, 500)
   };
-  return safe;
 }
 
 export default {
@@ -72,13 +110,17 @@ export default {
       const result = await env.AI.run(
         model,
         {
-          prompt: [
-            "You are a HIVE execution backend.",
-            "Follow the task exactly.",
-            "Return only the direct task result unless an explanation is explicitly requested.",
-            "TASK:",
-            task
-          ].join("\n")
+          messages: [
+            {
+              role: "system",
+              content: "You are a HIVE execution backend. Follow the task exactly. Return only the direct task result unless an explanation is explicitly requested."
+            },
+            { role: "user", content: task }
+          ],
+          stream: false,
+          temperature: 0,
+          max_completion_tokens: 256,
+          reasoning_effort: "low"
         },
         {
           gateway: {
@@ -114,7 +156,8 @@ export default {
             event_id: eventId,
             latency_ms: Date.now() - started,
             gateway_log_id: env.AI.aiGatewayLogId || null,
-            error: "empty_model_response"
+            error: "empty_model_response",
+            response_shape: resultShape(result)
           }
         }, 502);
       }
