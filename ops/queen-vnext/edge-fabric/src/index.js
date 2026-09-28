@@ -29,7 +29,6 @@ function safeAiError(error) {
     code: error?.code == null ? null : String(error.code).slice(0, 120),
     message: String(error?.message || "").slice(0, 500)
   };
-  // Never serialize headers, request objects, stack traces or tokens.
   return safe;
 }
 
@@ -60,7 +59,7 @@ export default {
     }
 
     const task = String(input?.task || "").trim();
-    const model = String(input?.model || "@cf/meta/llama-3.1-8b-instruct").trim();
+    const model = String(input?.model || "@cf/zai-org/glm-4.7-flash").trim();
     const eventId = String(input?.event_id || crypto.randomUUID());
 
     if (!task) return json({ status: "error", error: "task_required" }, 400);
