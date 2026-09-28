@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "hive-queen-ai-fabric-dev",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-28",
+  "ai": {
+    "binding": "AI"
+  },
+  "vars": {
+    "HIVE_RUNTIME_MODE": "ephemeral-event"
+  }
+}
