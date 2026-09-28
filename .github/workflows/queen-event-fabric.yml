@@ -6,6 +6,7 @@ on:
       - queen-universal-fabric-vnext
     paths:
       - "ops/queen-vnext/edge-fabric/**"
+      - "ops/queen-vnext/AI_ROUTES.json"
       - ".github/workflows/queen-event-fabric.yml"
   repository_dispatch:
     types:
@@ -19,7 +20,7 @@ on:
         required: false
         default: "Reply with exactly HIVE_EVENT_OK"
       model:
-        description: "Workers AI @cf/ model"
+        description: "Workers AI @cf/ worker model"
         required: false
         default: "@cf/zai-org/glm-4.7-flash"
 
@@ -33,15 +34,40 @@ concurrency:
 jobs:
   execute:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      HIVE_VERIFIER_MODEL: "@cf/google/gemma-4-26b-a4b-it"
     steps:
       - name: Checkout public execution fabric
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Validate route mesh and independence policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const mesh = JSON.parse(fs.readFileSync('ops/queen-vnext/AI_ROUTES.json', 'utf8'));
+          if (mesh.capability !== 'hive.ai.general') throw new Error('single aggregate capability missing');
+          if (mesh.policy?.paid_fallback !== false) throw new Error('paid fallback must remain disabled');
+          if (mesh.policy?.scheduled_dependency !== false) throw new Error('scheduled dependency must remain disabled');
+          const routes = mesh.routes || [];
+          const ids = new Set(routes.map(r => r.id));
+          if (ids.size !== routes.length) throw new Error('duplicate route ids');
+          const worker = routes.find(r => r.model === '@cf/zai-org/glm-4.7-flash');
+          const verifier = routes.find(r => r.model === '@cf/google/gemma-4-26b-a4b-it');
+          if (!worker || !verifier) throw new Error('worker/verifier route missing');
+          if (worker.independence_group === verifier.independence_group) throw new Error('worker and verifier are not independent');
+          if (worker.cost_mode !== 'free-tier' || verifier.cost_mode !== 'free-tier') throw new Error('non-free route rejected');
+          if (worker.certified !== false || verifier.certified !== false) throw new Error('candidate route self-certified');
+          console.log('ROUTE_MESH=PASS');
+          console.log(`WORKER_GROUP=${worker.independence_group}`);
+          console.log(`VERIFIER_GROUP=${verifier.independence_group}`);
+          NODE
 
       - name: Resolve event envelope
         shell: bash
@@ -94,7 +120,7 @@ jobs:
           node -e "const h=require('/tmp/queen-health.json'); if(h.status!=='ok'||h.event_driven!==true||h.scheduled_dependency!==false) process.exit(1)"
           echo 'EPHEMERAL_EVENT_RUNTIME=READY'
 
-      - name: Execute hive.ai.general event
+      - name: Execute worker event
         shell: bash
         run: |
           set -euo pipefail
@@ -114,9 +140,9 @@ jobs:
             -H 'content-type: application/json' \
             --data-binary @/tmp/queen-event.json \
             http://127.0.0.1:8787/run)"
-          echo "EVENT_HTTP=$HTTP"
+          echo "WORKER_HTTP=$HTTP"
           cat /tmp/queen-agent-result.json
-          test "$HTTP" = 200 || { echo 'AI binding event failed' >&2; cat /tmp/queen-wrangler.log >&2 || true; exit 30; }
+          test "$HTTP" = 200 || { echo 'worker event failed' >&2; cat /tmp/queen-wrangler.log >&2 || true; exit 30; }
 
       - name: Verify normalized agent.run contract
         shell: bash
@@ -138,6 +164,62 @@ jobs:
           console.log(`EVENT_ID=${m.event_id}`);
           console.log(`MODEL=${m.model}`);
           console.log(`LATENCY_MS=${m.latency_ms}`);
+          NODE
+
+      - name: Execute independent verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' >/tmp/queen-verifier-event.json
+          import fs from 'node:fs';
+          const primary = JSON.parse(fs.readFileSync('/tmp/queen-agent-result.json', 'utf8'));
+          const verifierTask = [
+            'Act as an independent verifier.',
+            'Evaluate whether the candidate answer correctly satisfies the original task.',
+            'Reply with exactly VERIFIED if it is correct and sufficient.',
+            'Otherwise reply with REJECTED followed by a short reason.',
+            '',
+            'ORIGINAL TASK:',
+            process.env.HIVE_TASK,
+            '',
+            'CANDIDATE ANSWER:',
+            primary.text
+          ].join('\n');
+          process.stdout.write(JSON.stringify({
+            task: verifierTask,
+            model: process.env.HIVE_VERIFIER_MODEL,
+            event_id: `${process.env.HIVE_EVENT_ID}:verify`
+          }));
+          NODE
+
+          HTTP="$(curl -sS \
+            -o /tmp/queen-verifier-result.json \
+            -w '%{http_code}' \
+            -X POST \
+            -H 'content-type: application/json' \
+            --data-binary @/tmp/queen-verifier-event.json \
+            http://127.0.0.1:8787/run)"
+          echo "VERIFIER_HTTP=$HTTP"
+          cat /tmp/queen-verifier-result.json
+          test "$HTTP" = 200 || { echo 'independent verifier failed' >&2; cat /tmp/queen-wrangler.log >&2 || true; exit 40; }
+
+      - name: Enforce verifier independence and verdict
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const worker = JSON.parse(fs.readFileSync('/tmp/queen-agent-result.json', 'utf8'));
+          const verifier = JSON.parse(fs.readFileSync('/tmp/queen-verifier-result.json', 'utf8'));
+          if (verifier.status !== 'ok') throw new Error('verifier status not ok');
+          if (worker.metadata.independence_group === verifier.metadata.independence_group) {
+            throw new Error('self/same-family verification rejected');
+          }
+          const verdict = verifier.text.trim().toUpperCase();
+          if (!verdict.startsWith('VERIFIED')) throw new Error(`verifier rejected result: ${verifier.text}`);
+          console.log('INDEPENDENT_VERIFICATION=PASS');
+          console.log(`WORKER_GROUP=${worker.metadata.independence_group}`);
+          console.log(`VERIFIER_GROUP=${verifier.metadata.independence_group}`);
           NODE
 
       - name: Enforce deterministic smoke proof on code push
