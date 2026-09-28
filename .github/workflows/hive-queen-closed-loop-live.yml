@@ -1,0 +1,141 @@
+name: HIVE Queen Closed Loop Live
+
+on:
+  push:
+    branches:
+      - queen-universal-fabric-vnext
+    paths:
+      - "ops/queen/ai-fabric/**"
+      - "ops/queen/event-loop/**"
+      - ".github/workflows/hive-queen-closed-loop-live.yml"
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task for the live Queen/Fabric proof"
+        required: false
+        default: "Compute 19 + 23. Answer exactly: HIVE_RESULT=42"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  closed-loop:
+    runs-on: ubuntu-latest
+    env:
+      HIVE_CF_AIG_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      HIVE_CF_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      HIVE_CF_GATEWAY_ID: default
+    steps:
+      - name: Checkout public execution branch
+        uses: actions/checkout@v4
+        with:
+          ref: queen-universal-fabric-vnext
+
+      - name: Resolve Queen task
+        id: task
+        shell: bash
+        env:
+          INPUT_TASK: ${{ inputs.task }}
+        run: |
+          set -euo pipefail
+          TASK="${INPUT_TASK:-Compute 19 + 23. Answer exactly: HIVE_RESULT=42}"
+          echo "task_b64=$(printf '%s' "$TASK" | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Universal AI Fabric - worker agent.run
+        id: worker
+        shell: bash
+        env:
+          TASK_B64: ${{ steps.task.outputs.task_b64 }}
+        run: |
+          set -euo pipefail
+          TASK="$(printf '%s' "$TASK_B64" | base64 -d)"
+          export HIVE_AGENT_INPUT="$(jq -cn --arg task "$TASK" '{role:"worker",task:$task,system:"Follow the task exactly. Be concise.",temperature:0,max_tokens:128}')"
+          RESULT="$(node ops/queen/ai-fabric/cloudflare-agent.mjs)"
+          printf '%s' "$RESULT" | jq -e '.status == "ok" and (.text|type == "string") and (.metadata.paid_fallback == false)' >/dev/null
+          HASH="$(printf '%s' "$RESULT" | jq -r '.text' | sha256sum | awk '{print $1}')"
+          echo "worker_b64=$(printf '%s' "$RESULT" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          echo "worker_hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "WORKER_AGENT_RUN=PASS"
+          printf '%s' "$RESULT" | jq '{status,metadata:{provider:.metadata.provider,model:.metadata.model,model_family:.metadata.model_family,independence_group:.metadata.independence_group,transport:.metadata.transport,route:.metadata.route,gateway:.metadata.gateway,http_status:.metadata.http_status,paid_fallback:.metadata.paid_fallback}}'
+
+      - name: Universal AI Fabric - independent verifier agent.run
+        id: verifier
+        shell: bash
+        env:
+          TASK_B64: ${{ steps.task.outputs.task_b64 }}
+          WORKER_B64: ${{ steps.worker.outputs.worker_b64 }}
+        run: |
+          set -euo pipefail
+          TASK="$(printf '%s' "$TASK_B64" | base64 -d)"
+          WORKER_RESULT="$(printf '%s' "$WORKER_B64" | base64 -d)"
+          ANSWER="$(printf '%s' "$WORKER_RESULT" | jq -r '.text')"
+          VERIFY_TASK="$(jq -rn --arg task "$TASK" --arg answer "$ANSWER" '"Independently verify whether the candidate correctly satisfies the original task. Original task: " + $task + "\nCandidate answer: " + $answer + "\nReturn ONLY valid JSON with exactly these keys: {\"verified\":boolean,\"score\":number between 0 and 1,\"reason\":string}. A correct exact answer should score at least 0.95."')"
+          export HIVE_AGENT_INPUT="$(jq -cn --arg task "$VERIFY_TASK" '{role:"verifier",task:$task,system:"You are an independent verification engine. Judge correctness, not style. Output JSON only.",temperature:0,max_tokens:192}')"
+          RESULT="$(node ops/queen/ai-fabric/cloudflare-agent.mjs)"
+          printf '%s' "$RESULT" | jq -e '.status == "ok" and (.metadata.independence_group == "qwen")' >/dev/null
+          echo "verifier_b64=$(printf '%s' "$RESULT" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          echo "VERIFIER_AGENT_RUN=PASS"
+          printf '%s' "$RESULT" | jq '{status,metadata:{provider:.metadata.provider,model:.metadata.model,model_family:.metadata.model_family,independence_group:.metadata.independence_group,transport:.metadata.transport,route:.metadata.route,gateway:.metadata.gateway,http_status:.metadata.http_status,paid_fallback:.metadata.paid_fallback}}'
+
+      - name: Enforce independent verification gate
+        id: gate
+        shell: bash
+        env:
+          WORKER_B64: ${{ steps.worker.outputs.worker_b64 }}
+          VERIFIER_B64: ${{ steps.verifier.outputs.verifier_b64 }}
+        run: |
+          set -euo pipefail
+          export HIVE_WORKER_RESULT="$(printf '%s' "$WORKER_B64" | base64 -d)"
+          export HIVE_VERIFIER_RESULT="$(printf '%s' "$VERIFIER_B64" | base64 -d)"
+          VERDICT="$(node ops/queen/ai-fabric/independent-verifier.mjs)"
+          printf '%s' "$VERDICT" | jq -e '.verified == true and .metadata.model_family_independence == true' >/dev/null
+          echo "verdict_b64=$(printf '%s' "$VERDICT" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          echo "INDEPENDENT_VERIFICATION=PASS"
+          printf '%s' "$VERDICT" | jq .
+
+      - name: Emit verified experience into Queen event loop
+        id: school_event
+        shell: bash
+        env:
+          VERDICT_B64: ${{ steps.gate.outputs.verdict_b64 }}
+          WORKER_HASH: ${{ steps.worker.outputs.worker_hash }}
+        run: |
+          set -euo pipefail
+          VERDICT="$(printf '%s' "$VERDICT_B64" | base64 -d)"
+          EVENT="$(jq -cn \
+            --arg id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-verified" \
+            --arg occurred_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg response_hash "$WORKER_HASH" \
+            --argjson verdict "$VERDICT" \
+            '{version:"1",id:$id,type:"verification.result.ready",source:"queen.closed-loop-live",occurred_at:$occurred_at,payload:{verified:$verdict.verified,score:$verdict.score,response_hash:$response_hash,verification_metadata:$verdict.metadata}}')"
+          export HIVE_EVENT_JSON="$EVENT"
+          ROUTE="$(node ops/queen/event-loop/dispatcher.mjs)"
+          printf '%s' "$ROUTE" | jq -e '.accepted == true and .action == "school.record_verified_experience" and .next_event == "school.experience.verified"' >/dev/null
+          echo "route_b64=$(printf '%s' "$ROUTE" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          echo "QUEEN_EVENT_ROUTE=PASS"
+          printf '%s' "$ROUTE" | jq .
+
+      - name: Closed-loop proof summary
+        shell: bash
+        env:
+          VERDICT_B64: ${{ steps.gate.outputs.verdict_b64 }}
+          ROUTE_B64: ${{ steps.school_event.outputs.route_b64 }}
+          WORKER_HASH: ${{ steps.worker.outputs.worker_hash }}
+        run: |
+          set -euo pipefail
+          VERDICT="$(printf '%s' "$VERDICT_B64" | base64 -d)"
+          ROUTE="$(printf '%s' "$ROUTE_B64" | base64 -d)"
+          {
+            echo '## Queen vNext live closed-loop proof'
+            echo ''
+            echo "- Universal AI Fabric worker: PASS"
+            echo "- Independent verifier: PASS"
+            echo "- Independence group gate: PASS"
+            echo "- paid_fallback: false"
+            echo "- Response SHA-256: $WORKER_HASH"
+            echo "- Verification score: $(printf '%s' "$VERDICT" | jq -r '.score')"
+            echo "- Next action: $(printf '%s' "$ROUTE" | jq -r '.action')"
+            echo "- Next event: $(printf '%s' "$ROUTE" | jq -r '.next_event')"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "QUEEN_VNEXT_CLOSED_LOOP=PASS"
