@@ -23,6 +23,16 @@ function familyFromModel(model) {
   return `${vendor}/${family}`;
 }
 
+function safeAiError(error) {
+  const safe = {
+    name: String(error?.name || "Error").slice(0, 120),
+    code: error?.code == null ? null : String(error.code).slice(0, 120),
+    message: String(error?.message || "").slice(0, 500)
+  };
+  // Never serialize headers, request objects, stack traces or tokens.
+  return safe;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -131,6 +141,8 @@ export default {
         }
       });
     } catch (error) {
+      const diagnostic = safeAiError(error);
+      console.error("AI_BINDING_ERROR", JSON.stringify(diagnostic));
       return json({
         status: "error",
         text: "",
@@ -149,7 +161,9 @@ export default {
           event_id: eventId,
           latency_ms: Date.now() - started,
           error: "ai_binding_execution_failed",
-          error_name: error?.name || "Error"
+          error_name: diagnostic.name,
+          error_code: diagnostic.code,
+          error_message: diagnostic.message
         }
       }, 502);
     }
