@@ -70,10 +70,11 @@ jobs:
           TASK="$(printf '%s' "$TASK_B64" | base64 -d)"
           WORKER_RESULT="$(printf '%s' "$WORKER_B64" | base64 -d)"
           ANSWER="$(printf '%s' "$WORKER_RESULT" | jq -r '.text')"
+          WORKER_GROUP="$(printf '%s' "$WORKER_RESULT" | jq -r '.metadata.independence_group')"
           VERIFY_TASK="$(jq -rn --arg task "$TASK" --arg answer "$ANSWER" '"Independently verify whether the candidate correctly satisfies the original task. Original task: " + $task + "\nCandidate answer: " + $answer + "\nReturn ONLY valid JSON with exactly these keys: {\"verified\":boolean,\"score\":number between 0 and 1,\"reason\":string}. A correct exact answer should score at least 0.95."')"
           export HIVE_AGENT_INPUT="$(jq -cn --arg task "$VERIFY_TASK" '{role:"verifier",task:$task,system:"You are an independent verification engine. Judge correctness, not style. Output JSON only.",temperature:0,max_tokens:192}')"
           RESULT="$(node ops/queen/ai-fabric/cloudflare-agent.mjs)"
-          printf '%s' "$RESULT" | jq -e '.status == "ok" and (.metadata.independence_group == "qwen")' >/dev/null
+          printf '%s' "$RESULT" | jq -e --arg worker_group "$WORKER_GROUP" '.status == "ok" and (.metadata.independence_group|type == "string") and (.metadata.independence_group != $worker_group)' >/dev/null
           echo "verifier_b64=$(printf '%s' "$RESULT" | base64 -w0)" >> "$GITHUB_OUTPUT"
           echo "VERIFIER_AGENT_RUN=PASS"
           printf '%s' "$RESULT" | jq '{status,metadata:{provider:.metadata.provider,model:.metadata.model,model_family:.metadata.model_family,independence_group:.metadata.independence_group,transport:.metadata.transport,route:.metadata.route,gateway:.metadata.gateway,http_status:.metadata.http_status,paid_fallback:.metadata.paid_fallback}}'
