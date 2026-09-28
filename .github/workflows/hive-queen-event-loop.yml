@@ -1,6 +1,12 @@
 name: HIVE Queen Event Loop
 
 on:
+  push:
+    branches:
+      - queen-universal-fabric-vnext
+    paths:
+      - '.github/workflows/hive-queen-event-loop.yml'
+      - 'ops/queen/event-loop/**'
   repository_dispatch:
     types:
       - queen-task
@@ -40,6 +46,14 @@ jobs:
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             EVENT_JSON="$MANUAL_EVENT_JSON"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            EVENT_JSON="$(jq -cn \
+              --arg id '${{ github.run_id }}-${{ github.run_attempt }}' \
+              --arg type 'queen.cycle.continue' \
+              --arg source 'github.push.selftest' \
+              --arg occurred_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --arg sha '${{ github.sha }}' \
+              '{version:"1",id:$id,type:$type,source:$source,occurred_at:$occurred_at,payload:{sha:$sha,self_test:true}}')"
           else
             case "$DISPATCH_EVENT" in
               queen-task) TYPE='queen.task.requested' ;;
