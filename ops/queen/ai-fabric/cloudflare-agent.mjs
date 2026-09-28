@@ -24,7 +24,7 @@ function fail(message, code = 1, metadata = {}) {
 function configForRole(role) {
   if (role === 'verifier') {
     return {
-      model: process.env.HIVE_VERIFIER_MODEL || '@cf/qwen/qwen3-30b-a3b-fp8',
+      model: process.env.HIVE_VERIFIER_MODEL || '@cf/qwen/qwen2.5-coder-32b-instruct',
       model_family: 'qwen',
       independence_group: 'qwen'
     };
