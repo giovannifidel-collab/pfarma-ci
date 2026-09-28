@@ -1,0 +1,84 @@
+name: HIVE Queen Event Loop
+
+on:
+  repository_dispatch:
+    types:
+      - queen-task
+      - fabric-result
+      - verifier-result
+      - school-verified
+      - world-state-changed
+      - queen-cycle
+  workflow_dispatch:
+    inputs:
+      event_json:
+        description: 'HIVE event envelope JSON'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    env:
+      DISPATCH_EVENT: ${{ github.event.action }}
+      CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+      MANUAL_EVENT_JSON: ${{ inputs.event_json }}
+    steps:
+      - name: Checkout public execution branch
+        uses: actions/checkout@v4
+        with:
+          ref: queen-universal-fabric-vnext
+
+      - name: Build HIVE event envelope
+        id: envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            EVENT_JSON="$MANUAL_EVENT_JSON"
+          else
+            case "$DISPATCH_EVENT" in
+              queen-task) TYPE='queen.task.requested' ;;
+              fabric-result) TYPE='fabric.result.ready' ;;
+              verifier-result) TYPE='verification.result.ready' ;;
+              school-verified) TYPE='school.experience.verified' ;;
+              world-state-changed) TYPE='world.state.changed' ;;
+              queen-cycle) TYPE='queen.cycle.continue' ;;
+              *) echo 'UNSUPPORTED_DISPATCH_EVENT'; exit 20 ;;
+            esac
+            EVENT_JSON="$(jq -cn \
+              --arg id '${{ github.run_id }}-${{ github.run_attempt }}' \
+              --arg type "$TYPE" \
+              --arg source 'github.repository_dispatch' \
+              --arg occurred_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              --argjson payload "$CLIENT_PAYLOAD" \
+              '{version:"1",id:$id,type:$type,source:$source,occurred_at:$occurred_at,payload:$payload}')"
+          fi
+          echo "event_json<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$EVENT_JSON" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch event
+        id: dispatch
+        env:
+          HIVE_EVENT_JSON: ${{ steps.envelope.outputs.event_json }}
+        run: |
+          set -euo pipefail
+          RESULT="$(node ops/queen/event-loop/dispatcher.mjs)"
+          echo "$RESULT" | jq .
+          echo "result<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESULT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Publish event summary
+        run: |
+          {
+            echo '### HIVE Queen Event Loop'
+            echo '```json'
+            echo '${{ steps.dispatch.outputs.result }}' | jq .
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
