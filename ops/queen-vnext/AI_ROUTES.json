@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0.0",
+  "capability": "hive.ai.general",
+  "policy": {
+    "provider_independent": true,
+    "single_aggregated_capability": true,
+    "paid_fallback": false,
+    "managed_execution_requires_certification": true,
+    "independent_verification_required": true,
+    "execution_path": "pfarma-ci-public",
+    "scheduled_dependency": false
+  },
+  "routes": [
+    {
+      "id": "workers-ai-glm-4.7-flash",
+      "provider": "cloudflare-workers-ai",
+      "upstream_vendor": "zai-org",
+      "model": "@cf/zai-org/glm-4.7-flash",
+      "model_family": "zai-org/glm-4.7-flash",
+      "independence_group": "zai-org/glm-4.7-flash",
+      "transport": "cloudflare-worker-ai-binding",
+      "cost_mode": "free-tier",
+      "enrollment": "candidate",
+      "certified": false,
+      "roles": ["worker", "teacher-candidate"]
+    },
+    {
+      "id": "workers-ai-gemma-4-26b",
+      "provider": "cloudflare-workers-ai",
+      "upstream_vendor": "google",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "model_family": "google/gemma-4-26b-a4b-it",
+      "independence_group": "google/gemma-4-26b-a4b-it",
+      "transport": "cloudflare-worker-ai-binding",
+      "cost_mode": "free-tier",
+      "enrollment": "candidate",
+      "certified": false,
+      "roles": ["verifier-candidate", "worker"]
+    }
+  ]
+}
