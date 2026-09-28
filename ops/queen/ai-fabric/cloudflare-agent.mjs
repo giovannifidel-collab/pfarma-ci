@@ -30,7 +30,7 @@ function configForRole(role) {
     };
   }
   return {
-    model: process.env.HIVE_WORKER_MODEL || '@cf/meta/llama-3.1-8b-instruct',
+    model: process.env.HIVE_WORKER_MODEL || '@cf/meta/llama-3.1-8b-instruct-fp8',
     model_family: 'meta-llama',
     independence_group: 'meta-llama'
   };
@@ -45,8 +45,7 @@ function parseArgs() {
     if (!input.task || typeof input.task !== 'string') fail('missing_task', 12);
     const role = input.role === 'verifier' ? 'verifier' : 'worker';
     return { ...input, role };
-  } catch (error) {
-    if (error?.message === 'missing_task') throw error;
+  } catch {
     fail('invalid_json', 13);
   }
 }
