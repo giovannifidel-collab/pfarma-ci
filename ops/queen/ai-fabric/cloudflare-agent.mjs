@@ -24,15 +24,17 @@ function fail(message, code = 1, metadata = {}) {
 function configForRole(role) {
   if (role === 'verifier') {
     return {
-      model: process.env.HIVE_VERIFIER_MODEL || '@cf/qwen/qwen2.5-coder-32b-instruct',
-      model_family: 'qwen',
-      independence_group: 'qwen'
+      model: process.env.HIVE_VERIFIER_MODEL || '@cf/google/gemma-4-26b-a4b-it',
+      model_family: 'google-gemma',
+      independence_group: 'google-gemma',
+      disable_thinking: true
     };
   }
   return {
     model: process.env.HIVE_WORKER_MODEL || '@cf/meta/llama-3.1-8b-instruct-fp8',
     model_family: 'meta-llama',
-    independence_group: 'meta-llama'
+    independence_group: 'meta-llama',
+    disable_thinking: false
   };
 }
 
@@ -59,7 +61,7 @@ function extractText(body) {
     body?.choices?.[0]?.message?.content,
     typeof result === 'string' ? result : null
   ];
-  return candidates.find((value) => typeof value === 'string' && value.length > 0) || null;
+  return candidates.find((value) => typeof value === 'string' && value.trim().length > 0) || null;
 }
 
 async function run() {
@@ -73,6 +75,16 @@ async function run() {
   if (input.system) messages.push({ role: 'system', content: String(input.system) });
   messages.push({ role: 'user', content: input.task });
 
+  const requestBody = {
+    messages,
+    temperature: input.temperature ?? 0,
+    max_tokens: input.max_tokens ?? 512,
+    stream: false
+  };
+  if (cfg.disable_thinking) {
+    requestBody.chat_template_kwargs = { enable_thinking: false };
+  }
+
   let response;
   try {
     response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/ai/run/${cfg.model}`, {
@@ -82,12 +94,7 @@ async function run() {
         'Content-Type': 'application/json',
         'cf-aig-gateway-id': GATEWAY_ID
       },
-      body: JSON.stringify({
-        messages,
-        temperature: input.temperature ?? 0,
-        max_tokens: input.max_tokens ?? 512,
-        stream: false
-      })
+      body: JSON.stringify(requestBody)
     });
   } catch (error) {
     fail('transport_error', 30, { detail: String(error?.message || error), ...cfg });
