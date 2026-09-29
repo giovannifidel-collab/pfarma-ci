@@ -22,7 +22,7 @@ jobs:
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
     steps:
-      - name: Probe durable Queen state endpoint
+      - name: Read back durable Queen state
         shell: bash
         run: |
           set -euo pipefail
@@ -35,18 +35,26 @@ jobs:
           if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
             args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
           fi
-
-          CODE=000
-          for attempt in 1 2 3 4 5 6; do
-            CODE="$(curl "${args[@]}" "$BASE/api/queen-state" || true)"
-            if [[ "$CODE" == "200" ]] && jq -e '.ok == true' /tmp/body >/dev/null 2>&1; then
-              echo 'QUEEN_STATE_ENDPOINT=PASS'
-              jq '{ok,state_present:(.state|type=="object")}' /tmp/body
-              exit 0
-            fi
-            echo "QUEEN_STATE_ENDPOINT_WAIT attempt=$attempt http=$CODE"
-            sleep 10
-          done
-          echo "QUEEN_STATE_ENDPOINT=FAIL http=$CODE"
-          if jq -e . /tmp/body >/dev/null 2>&1; then jq '{ok,error}' /tmp/body; fi
-          exit 3
+          CODE="$(curl "${args[@]}" "$BASE/api/queen-state")"
+          test "$CODE" = '200' || { echo "QUEEN_STATE_HTTP=$CODE"; exit 3; }
+          jq -e '
+            .ok == true and
+            .state.school.value.verified == true and
+            (.state.school.value.score >= 0.7) and
+            .state.school.value.event_id != null and
+            .state.world.value.freshness == "fresh" and
+            .state.world.value.event_id != null and
+            .state.cognitive.value.state == "LISTENING" and
+            .state.cognitive.value.decision == "await_event" and
+            .state.cognitive.value.paid_fallback == false and
+            .state.cognitive.value.event_id != null and
+            (.state.school.value.correlation_id == .state.world.value.correlation_id) and
+            (.state.world.value.correlation_id == .state.cognitive.value.correlation_id)
+          ' /tmp/body >/dev/null
+          echo 'QUEEN_DURABLE_READBACK=PASS'
+          jq '{
+            school:{verified:.state.school.value.verified,score:.state.school.value.score,event_id:.state.school.value.event_id},
+            world:{freshness:.state.world.value.freshness,event_id:.state.world.value.event_id},
+            cognitive:{state:.state.cognitive.value.state,decision:.state.cognitive.value.decision,event_id:.state.cognitive.value.event_id,paid_fallback:.state.cognitive.value.paid_fallback},
+            correlation:.state.cognitive.value.correlation_id
+          }' /tmp/body
