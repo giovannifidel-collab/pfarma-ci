@@ -1,0 +1,60 @@
+{
+  "schema": "hive.queen.vnext.durable-proof.v1",
+  "status": "PASS",
+  "date": "2026-09-29",
+  "execution_policy": "public-first",
+  "execution_repo": "giovannifidel-collab/pfarma-ci",
+  "authority_repo": "giovannifidel-collab/hive-alveare",
+  "event_driven": true,
+  "cron_required": false,
+  "paid_fallback": false,
+  "closed_loop": {
+    "workflow_run_id": 36609073295,
+    "attempt": 2,
+    "job_id": 109547095262,
+    "result": "success",
+    "worker_model_family": "meta-llama",
+    "verifier_model_family": "google-gemma",
+    "model_family_independence": true,
+    "transport_independence": false
+  },
+  "durable_event_chain": {
+    "correlation_id": "proof-36609073295-2",
+    "verification_result_run": 36609555696,
+    "queen_cycle_run": 36609610520,
+    "result": "success"
+  },
+  "durable_state": {
+    "storage_path": "Cloudflare Access -> HIVE Pages Function -> Neon Data API",
+    "school": {
+      "current_state_key": "hive.school.runtime",
+      "history_event": "hive.school.experience.verified",
+      "result": "persisted"
+    },
+    "world_model": {
+      "current_state_key": "hive.world.runtime",
+      "history_event": "hive.world.state.persisted",
+      "source": "live HIVE World Model",
+      "result": "persisted"
+    },
+    "cognitive_core": {
+      "current_state_key": "hive.queen.cognitive.runtime",
+      "history_event": "queen.cognitive.cycle.completed",
+      "state": "LISTENING",
+      "decision": "await_event",
+      "fingerprint": "21b8147a92c17cd8741e2ba899b8fdeecc609b3602040922d5801315db51b841",
+      "result": "persisted"
+    }
+  },
+  "durable_readback": {
+    "workflow_run_id": 36609785526,
+    "job_id": 109547945583,
+    "result": "success"
+  },
+  "specialized_school_schema_017_status": "unverified_not_required_for_runtime_closure",
+  "notes": [
+    "This proof closes the runtime persistence gap using existing durable HIVE events and hive_meta state.",
+    "The normalized db/017_hive_school_v1.sql migration remains a separate schema enhancement and is not claimed as applied.",
+    "Queen V1 release locks were not modified."
+  ]
+}
