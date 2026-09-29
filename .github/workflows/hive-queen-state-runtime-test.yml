@@ -1,0 +1,52 @@
+name: HIVE Queen State Runtime Test
+
+on:
+  push:
+    branches:
+      - queen-universal-fabric-vnext
+    paths:
+      - ".github/workflows/hive-queen-state-runtime-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+    steps:
+      - name: Probe durable Queen state endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          BASE="${BASE%/}"
+          args=(-sS --max-time 25 -o /tmp/body -w '%{http_code}')
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          fi
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+            args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          fi
+
+          CODE=000
+          for attempt in 1 2 3 4 5 6; do
+            CODE="$(curl "${args[@]}" "$BASE/api/queen-state" || true)"
+            if [[ "$CODE" == "200" ]] && jq -e '.ok == true' /tmp/body >/dev/null 2>&1; then
+              echo 'QUEEN_STATE_ENDPOINT=PASS'
+              jq '{ok,state_present:(.state|type=="object")}' /tmp/body
+              exit 0
+            fi
+            echo "QUEEN_STATE_ENDPOINT_WAIT attempt=$attempt http=$CODE"
+            sleep 10
+          done
+          echo "QUEEN_STATE_ENDPOINT=FAIL http=$CODE"
+          if jq -e . /tmp/body >/dev/null 2>&1; then jq '{ok,error}' /tmp/body; fi
+          exit 3
