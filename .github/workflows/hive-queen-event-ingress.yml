@@ -14,9 +14,14 @@ permissions:
 jobs:
   route:
     runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
     env:
       HIVE_ACTION: ${{ github.event.action }}
       HIVE_CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
     steps:
       - name: Checkout Queen public execution code
         uses: actions/checkout@v4
@@ -74,6 +79,56 @@ jobs:
           echo "route_b64=$(printf '%s' "$ROUTE" | base64 -w0)" >> "$GITHUB_OUTPUT"
           echo "QUEEN_EVENT_ROUTE=PASS"
           printf '%s' "$ROUTE" | jq .
+
+      - name: Execute durable Queen action
+        id: durable
+        shell: bash
+        env:
+          ROUTE_B64: ${{ steps.route.outputs.route_b64 }}
+          DATA_B64: ${{ steps.envelope.outputs.data_b64 }}
+          CORRELATION: ${{ steps.envelope.outputs.correlation }}
+        run: |
+          set -euo pipefail
+          ROUTE="$(printf '%s' "$ROUTE_B64" | base64 -d)"
+          DATA="$(printf '%s' "$DATA_B64" | base64 -d)"
+          ACTION="$(printf '%s' "$ROUTE" | jq -r '.action')"
+
+          case "$ACTION" in
+            school.record_verified_experience|world.update|queen.cognitive_cycle) ;;
+            queen.evaluate_goals)
+              echo 'DURABLE_ACTION=DEFERRED_TO_QUEEN_COGNITIVE_CYCLE'
+              exit 0
+              ;;
+            queen.replan)
+              echo 'DURABLE_ACTION=FAIL_CLOSED_REPLAN'
+              exit 0
+              ;;
+            *)
+              echo "DURABLE_ACTION_UNSUPPORTED=$ACTION"
+              exit 30
+              ;;
+          esac
+
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          BASE="${BASE%/}"
+          BODY="$(jq -cn --arg action "$ACTION" --arg correlation_id "$CORRELATION" --argjson data "$DATA" '{action:$action,correlation_id:$correlation_id,data:$data}')"
+          args=(-sS --max-time 30 -o /tmp/queen-state-body -w '%{http_code}' -X POST -H 'Content-Type: application/json')
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          fi
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+            args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          fi
+          CODE="$(curl "${args[@]}" "$BASE/api/queen-state" -d "$BODY")"
+          test "$CODE" = '200' || { echo "DURABLE_ACTION_HTTP=$CODE"; jq '{ok,error}' /tmp/queen-state-body 2>/dev/null || true; exit 31; }
+          jq -e '.ok == true' /tmp/queen-state-body >/dev/null
+          echo "DURABLE_ACTION=$ACTION"
+          echo 'DURABLE_PERSISTENCE=PASS'
+          if [[ "$ACTION" == 'queen.cognitive_cycle' ]]; then
+            jq '{ok,action,cognitive_state:.state.state,decision:.state.decision,paid_fallback:.state.paid_fallback,next_task:.state.next_task,fingerprint:.state.fingerprint}' /tmp/queen-state-body
+          else
+            jq '{ok,action,event_id}' /tmp/queen-state-body
+          fi
 
       - name: Dispatch next event immediately
         shell: bash
@@ -134,5 +189,6 @@ jobs:
             echo "- correlation: ${CORRELATION:-unavailable}"
             echo "- hop: ${HOP:-unavailable}"
             echo "- trigger: repository_dispatch"
+            echo "- durable state: Cloudflare -> Neon Data API"
             echo "- schedule/cron: none"
           } >> "$GITHUB_STEP_SUMMARY"
