@@ -1,0 +1,41 @@
+name: HIVE Queen Pages Capability
+
+on:
+  push:
+    branches:
+      - queen-universal-fabric-vnext
+    paths:
+      - ".github/workflows/hive-queen-pages-capability.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+    steps:
+      - name: Test existing Cloudflare token against original Pages project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_TOKEN"
+          test -n "$CF_ACCOUNT"
+          CODE="$(curl -sS -o /tmp/pages -w '%{http_code}' \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            -H 'Content-Type: application/json' \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/hive-alveare")"
+          echo "PAGES_PROJECT_HTTP=$CODE"
+          if [[ "$CODE" == '200' ]]; then
+            jq -e '.success == true' /tmp/pages >/dev/null
+            jq '{success,result:{name:.result.name,production_branch:.result.production_branch,source_type:.result.source.type,latest_stage:.result.latest_deployment.latest_stage.name,latest_status:.result.latest_deployment.latest_stage.status}}' /tmp/pages
+            echo 'PAGES_API=PASS'
+          else
+            jq '{success,errors}' /tmp/pages 2>/dev/null || true
+            echo 'PAGES_API=DENIED'
+            exit 20
+          fi
