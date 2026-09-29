@@ -1,0 +1,104 @@
+name: HIVE Queen Original Site Realignment Test
+
+on:
+  push:
+    branches:
+      - queen-universal-fabric-vnext
+    paths:
+      - ".github/workflows/hive-queen-original-site-realignment-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+    steps:
+      - name: Wait for original Queen site deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          BASE="${BASE%/}"
+          auth=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          for attempt in $(seq 1 12); do
+            CODE="$(curl -sS --max-time 25 -o /tmp/state -w '%{http_code}' "${auth[@]}" "$BASE/api/queen-state" || true)"
+            if [[ "$CODE" == "200" ]] && jq -e '.ok==true and .state.canonical.cognitive_version=="0.1.0" and .state.canonical.school_version=="1.0.0"' /tmp/state >/dev/null 2>&1; then
+              echo 'CANONICAL_RUNTIME=PASS'
+              exit 0
+            fi
+            echo "WAIT_DEPLOY attempt=$attempt http=$CODE"
+            sleep 10
+          done
+          echo 'CANONICAL_RUNTIME=FAIL'
+          cat /tmp/state || true
+          exit 10
+
+      - name: Verify original UI is wired to aligned command endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          BASE="${BASE%/}"
+          curl -sS --max-time 25 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$BASE/queen-brain.js?v=queen-brain-v5-aligned-20260929" >/tmp/brain.js
+          grep -q '/api/queen-command' /tmp/brain.js
+          grep -q 'verified closed loop' /tmp/brain.js
+          echo 'ORIGINAL_UI_BRIDGE=PASS'
+
+      - name: Verify Queen conversational API
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          BASE="${BASE%/}"
+          CODE="$(curl -sS --max-time 45 -o /tmp/query -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$BASE/api/queen" \
+            -d '{"message":"Dimmi in una frase che il canale Queen è operativo.","context":{"test":"realignment"}}')"
+          test "$CODE" = '200'
+          jq -e '.ok==true and (.reply|type=="string") and (.reply|length>0)' /tmp/query >/dev/null
+          echo 'QUEEN_QUERY=PASS'
+
+      - name: Execute one harmless command through original Queen site
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          BASE="${BASE%/}"
+          CODE="$(curl -sS --max-time 90 -o /tmp/command -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$BASE/api/queen-command" \
+            -d '{"message":"Verifica lo stato HIVE corrente e restituisci una sintesi di una frase senza modificare sistemi esterni.","project_slug":"hive","source":"realignment-live-test"}')"
+          echo "QUEEN_COMMAND_HTTP=$CODE"
+          if [[ "$CODE" != '200' ]]; then jq '{ok,error,task_id,verification}' /tmp/command 2>/dev/null || cat /tmp/command; exit 20; fi
+          jq -e '.ok==true and .mode=="queen-vnext-aligned" and .verification.verified==true and .verification.independence_group_pass==true and .paid_fallback==false' /tmp/command >/dev/null
+          jq '{ok,task_id,correlation_id,verification,school,world,cognitive,paid_fallback}' /tmp/command
+          echo 'ORIGINAL_SITE_CLOSED_LOOP=PASS'
+
+      - name: Durable readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          BASE="${BASE%/}"
+          curl -sS --max-time 25 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$BASE/api/queen-state" >/tmp/readback
+          jq -e '.ok==true and .state.school.value.schema_version==1 and .state.school.value.school_version=="1.0.0" and (.state.school.value.mastery|type=="object") and .state.world.value.schema_version==1 and .state.cognitive.value.cognitive_version=="0.1.0"' /tmp/readback >/dev/null
+          jq '{school_version:.state.school.value.school_version,school_last:.state.school.value.last_experience.competency,world_freshness:.state.world.value.freshness,cognitive_state:.state.cognitive.value.meta.state,cognitive_decision:.state.cognitive.value.decision,mesh_version:.state.canonical.mesh_version}' /tmp/readback
+          echo 'CANONICAL_DURABLE_READBACK=PASS'
