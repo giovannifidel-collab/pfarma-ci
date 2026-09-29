@@ -1,0 +1,2 @@
+queen_vnext_durable_e2e=2026-09-29
+purpose=trigger_live_closed_loop_after_durable_state_wiring
