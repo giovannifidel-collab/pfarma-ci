@@ -1,6 +1,18 @@
 name: HIVE Field Execution Dispatcher
 
 on:
+  workflow_call:
+    inputs:
+      goal:
+        required: true
+        type: string
+      task_id:
+        required: false
+        type: string
+      mode:
+        required: false
+        type: string
+        default: ai
   workflow_dispatch:
     inputs:
       goal:
@@ -11,6 +23,12 @@ on:
         description: Queen task identifier
         required: false
         type: string
+      mode:
+        description: Execution mode
+        required: false
+        type: choice
+        default: ai
+        options: [ai, proof]
   repository_dispatch:
     types: [hive_field_execute]
   push:
@@ -47,6 +65,7 @@ jobs:
           DISPATCH_MODE: ${{ github.event.client_payload.mode }}
           INPUT_GOAL: ${{ inputs.goal }}
           INPUT_TASK: ${{ inputs.task_id }}
+          INPUT_MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -56,7 +75,7 @@ jobs:
           else
             goal="${DISPATCH_GOAL:-${INPUT_GOAL:-}}"
             task="${DISPATCH_TASK:-${INPUT_TASK:-exec-${GITHUB_RUN_ID}}}"
-            requested_mode="${DISPATCH_MODE:-ai}"
+            requested_mode="${DISPATCH_MODE:-${INPUT_MODE:-ai}}"
             case "$requested_mode" in
               ai|proof) mode="$requested_mode" ;;
               *) echo 'EXECUTOR_REQUEST=REJECTED_MODE'; exit 2 ;;
