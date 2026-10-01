@@ -140,8 +140,9 @@ jobs:
           done
           body="$(jq -nc --arg m 'Completa il collegamento operativo di HIVE Field verificando il dispatcher senza modificare applicazione.' '{message:$m,project_slug:"hive-field",source:"post-deploy-execution-gate"}')"
           code="$(curl -sS --max-time 120 -o /tmp/exec -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
-          test "$code" = 200
-          jq -e '.ok == true and .verification.verified == true and .execution.dispatched == true and .execution.status == "queued" and .execution.mode == "proof" and .paid_fallback == false' /tmp/exec >/dev/null
+          echo "QUEEN_EXECUTION_HTTP=$code"
+          if [[ "$code" != 200 ]]; then jq '{ok,error,task_id,verification,execution}' /tmp/exec 2>/dev/null || cat /tmp/exec; exit 1; fi
+          if ! jq -e '.ok == true and .verification.verified == true and .execution.dispatched == true and .execution.status == "queued" and .execution.mode == "proof" and .paid_fallback == false' /tmp/exec >/dev/null; then jq '{ok,error,task_id,verification,execution}' /tmp/exec; exit 1; fi
           echo 'QUEEN_EXECUTION_DISPATCH_GATE=PASS'
           echo 'QUEEN_POST_DEPLOY_GATE=PASS'
 
