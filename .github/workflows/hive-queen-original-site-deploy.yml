@@ -14,7 +14,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
-    timeout-minutes: 15
+    timeout-minutes: 35
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
@@ -120,21 +120,47 @@ jobs:
           jq -e '.ok == true and .state.canonical.source_lock.school_core_blob != null and .state.canonical.source_lock.cognitive_core_blob != null' /tmp/state >/dev/null
           echo 'QUEEN_CANONICAL_RUNTIME=PASS'
 
-      - name: Execute owner-command proof through original Queen site
+      - name: Run 20 consecutive real Queen cycles
         shell: bash
         run: |
           set -euo pipefail
           BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; BASE="${BASE%/}"
-          BODY='{"message":"Verifica lo stato operativo HIVE usando soltanto il World Model fornito e restituisci un riepilogo conciso. Non eseguire azioni esterne o distruttive.","project_slug":"hive","source":"alignment-live-proof"}'
-          args=(-sS --max-time 90 -o /tmp/command -w '%{http_code}' -X POST -H 'Content-Type: application/json')
-          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"); fi
-          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN"); fi
-          code="$(curl "${args[@]}" "$BASE/api/queen-command" -d "$BODY")"
-          echo "QUEEN_COMMAND_HTTP=$code"
-          if [[ "$code" != '200' ]]; then jq '{ok,error,task_id,verification}' /tmp/command 2>/dev/null || true; exit 30; fi
-          jq -e '.ok == true and .mode == "queen-vnext-aligned" and .verification.verified == true and .verification.independence_group_pass == true and .verification.evidence_grounded == true and .paid_fallback == false' /tmp/command >/dev/null
-          jq '{ok,mode,task_id,verification,school:{competency:.school.competency,mastery:.school.mastery},world:{freshness:.world.freshness},cognitive:{state:.cognitive.state,decision:.cognitive.decision},paid_fallback}' /tmp/command
-          echo 'QUEEN_ORIGINAL_SITE_E2E=PASS'
+          headers=(-H 'Content-Type: application/json')
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            headers+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          fi
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then headers+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN"); fi
+
+          prompts=(
+            'Verifica lo stato operativo HIVE usando soltanto il World Model fornito e restituisci un riepilogo conciso. Non eseguire azioni esterne.'
+            'Controlla il World Model HIVE e indica in modo conciso eventuali blind spot o limiti di visibilità, senza inventare dati.'
+            'Analizza lo stato HIVE disponibile e indica il prossimo controllo operativo sensato basandoti soltanto sulle evidenze fornite.'
+            'Verifica coerenza e disponibilità delle informazioni operative HIVE nel World Model e riassumi ciò che è effettivamente noto.'
+            'Fornisci un controllo sintetico dello stato HIVE distinguendo fatti osservati da ciò che non è verificabile nel World Model.'
+          )
+
+          passes=0
+          for i in $(seq 1 20); do
+            idx=$(( (i-1) % ${#prompts[@]} ))
+            msg="${prompts[$idx]}"
+            body="$(jq -nc --arg m "$msg" --arg s "stability-gate-$i" '{message:$m,project_slug:"hive",source:$s}')"
+            code="$(curl -sS --max-time 120 -o "/tmp/queen-$i" -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
+            if [[ "$code" != '200' ]]; then
+              echo "CYCLE=$i HTTP=$code FAIL"
+              jq '{ok,error,task_id,verification}' "/tmp/queen-$i" 2>/dev/null || true
+              exit 20
+            fi
+            jq -e '.ok == true and .mode == "queen-vnext-aligned" and .verification.verified == true and .verification.independence_group_pass == true and .verification.evidence_grounded == true and .verification.score >= 0.70 and .paid_fallback == false and (.school.event_id != null) and (.world.event_id != null) and (.cognitive.event_id != null)' "/tmp/queen-$i" >/dev/null
+            score="$(jq -r '.verification.score' "/tmp/queen-$i")"
+            state="$(jq -r '.cognitive.state' "/tmp/queen-$i")"
+            passes=$((passes+1))
+            echo "CYCLE=$i PASS score=$score cognitive=$state"
+            sleep 1
+          done
+
+          test "$passes" = '20'
+          echo "QUEEN_STABILITY_CONSECUTIVE_PASS=$passes"
+          echo 'QUEEN_20X_STABILITY_GATE=PASS'
 
       - name: Remove private source checkout
         if: always()
