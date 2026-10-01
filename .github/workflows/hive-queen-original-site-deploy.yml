@@ -31,9 +31,7 @@ jobs:
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
-          code="$(curl -sS -o /tmp/project -w '%{http_code}' \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/hive-alveare")"
+          code="$(curl -sS -o /tmp/project -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/hive-alveare")"
           echo "PAGES_PREFLIGHT_HTTP=$code"
           test "$code" = '200'
           jq -e '.success == true and .result.name == "hive-alveare"' /tmp/project >/dev/null
@@ -53,14 +51,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          actual="$(git -C private-source rev-parse HEAD)"
-          test "$actual" = "$PRIVATE_SHA"
+          test "$(git -C private-source rev-parse HEAD)" = "$PRIVATE_SHA"
           test -f private-source/cloudflare/functions/api/queen-command.js
           test -f private-source/cloudflare/functions/_lib/queen-runtime.js
           test -f private-source/cloudflare/public/queen-brain.js
           grep -q '/api/queen-command' private-source/cloudflare/public/queen-brain.js
-          grep -q "COMPETENCY_MODEL" private-source/cloudflare/functions/_lib/queen-runtime.js
-          grep -q "CAPABILITY_MESH" private-source/cloudflare/functions/_lib/queen-runtime.js
+          grep -q 'COMPETENCY_MODEL' private-source/cloudflare/functions/_lib/queen-runtime.js
+          grep -q 'CAPABILITY_MESH' private-source/cloudflare/functions/_lib/queen-runtime.js
           echo 'QUEEN_ALIGNMENT_SOURCE=PASS'
 
       - name: Set up Node
@@ -68,7 +65,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Pull production Pages configuration and add AI binding
+      - name: Pull Pages config and bind Workers AI in production
         working-directory: private-source/cloudflare
         shell: bash
         run: |
@@ -76,83 +73,58 @@ jobs:
           rm -f wrangler.toml wrangler.json wrangler.jsonc
           npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/wrangler-download.log 2>&1
           config=''
-          for f in wrangler.jsonc wrangler.json wrangler.toml; do
-            if [[ -f "$f" ]]; then config="$f"; break; fi
-          done
-          test -n "$config" || { echo 'WRANGLER_CONFIG_NOT_GENERATED'; cat /tmp/wrangler-download.log; exit 40; }
+          for f in wrangler.jsonc wrangler.json wrangler.toml; do [[ -f "$f" ]] && { config="$f"; break; }; done
+          test -n "$config" || { cat /tmp/wrangler-download.log; exit 40; }
           echo "WRANGLER_CONFIG=$config"
           if [[ "$config" == *.toml ]]; then
-            if ! grep -Eq '^\s*\[ai\]\s*$' "$config"; then
-              printf '\n[ai]\nbinding = "AI"\n' >> "$config"
-            fi
-            if grep -Eq '^\s*\[env\.production\]' "$config" && ! grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config"; then
-              printf '\n[env.production.ai]\nbinding = "AI"\n' >> "$config"
-            fi
+            grep -Eq '^\s*\[ai\]\s*$' "$config" || printf '\n[ai]\nbinding = "AI"\n' >> "$config"
+            grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config" || printf '\n[env.production.ai]\nbinding = "AI"\n' >> "$config"
+            grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config"
           else
-            python3 -c 'from pathlib import Path; import sys,re; p=Path(sys.argv[1]); s=p.read_text(); i=s.find("{"); assert i>=0; s=s if re.search(r"(?m)^\s*[\"\x27]ai[\"\x27]\s*:",s) else s[:i+1]+"\n  \"ai\": {\"binding\": \"AI\"},"+s[i+1:]; p.write_text(s)' "$config"
-          fi
-          if [[ "$config" == *.toml ]]; then
-            grep -Eq '^\s*\[ai\]\s*$' "$config" && grep -Eq '^\s*binding\s*=\s*"AI"\s*$' "$config"
-            if grep -Eq '^\s*\[env\.production\]' "$config"; then grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config"; fi
-          else
-            grep -Eq '"ai"\s*:' "$config" && grep -Eq '"binding"\s*:\s*"AI"' "$config"
+            python3 -c 'from pathlib import Path; import sys,re,json; p=Path(sys.argv[1]); s=p.read_text(); i=s.find("{"); assert i>=0; s=s if re.search(r"(?m)^\s*[\"\x27]ai[\"\x27]\s*:",s) else s[:i+1]+"\n  \"ai\": {\"binding\": \"AI\"},"+s[i+1:]; p.write_text(s)' "$config"
+            grep -Eq '"ai"\s*:' "$config"
           fi
           rm -f /tmp/wrangler-download.log
           echo 'WORKERS_AI_BINDING_CONFIGURED=PASS'
 
-      - name: Deploy original HIVE Pages project with preserved config
+      - name: Deploy original HIVE Pages project
         working-directory: private-source/cloudflare
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes wrangler@4 pages deploy public \
-            --project-name hive-alveare \
-            --branch main
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main
           echo 'QUEEN_ORIGINAL_SITE_DEPLOY=PASS'
 
-      - name: Wait for production propagation
+      - name: Wait for propagation
         shell: bash
         run: sleep 15
 
-      - name: Verify aligned runtime is live
+      - name: Verify canonical runtime
         shell: bash
         run: |
           set -euo pipefail
-          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
-          BASE="${BASE%/}"
-          args=(-sS --max-time 30 -o /tmp/state -D /tmp/state-headers -w '%{http_code}')
-          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
-            args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
-          fi
-          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
-            args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
-          fi
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; BASE="${BASE%/}"
+          args=(-sS --max-time 30 -o /tmp/state -w '%{http_code}')
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"); fi
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN"); fi
           code="$(curl "${args[@]}" "$BASE/api/queen-state")"
           echo "QUEEN_STATE_HTTP=$code"
           test "$code" = '200'
           jq -e '.ok == true and .state.canonical.source_lock.school_core_blob != null and .state.canonical.source_lock.cognitive_core_blob != null' /tmp/state >/dev/null
           echo 'QUEEN_CANONICAL_RUNTIME=PASS'
 
-      - name: Execute harmless owner-command proof through original Queen site
+      - name: Execute owner-command proof through original Queen site
         shell: bash
         run: |
           set -euo pipefail
-          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
-          BASE="${BASE%/}"
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; BASE="${BASE%/}"
           BODY='{"message":"Verifica lo stato operativo HIVE e restituisci un riepilogo conciso. Non eseguire azioni esterne o distruttive.","project_slug":"hive","source":"alignment-live-proof"}'
           args=(-sS --max-time 90 -o /tmp/command -w '%{http_code}' -X POST -H 'Content-Type: application/json')
-          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
-            args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
-          fi
-          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
-            args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
-          fi
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"); fi
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN"); fi
           code="$(curl "${args[@]}" "$BASE/api/queen-command" -d "$BODY")"
           echo "QUEEN_COMMAND_HTTP=$code"
-          if [[ "$code" != '200' ]]; then
-            jq '{ok,error,task_id}' /tmp/command 2>/dev/null || true
-            exit 30
-          fi
+          if [[ "$code" != '200' ]]; then jq '{ok,error,task_id}' /tmp/command 2>/dev/null || true; exit 30; fi
           jq -e '.ok == true and .mode == "queen-vnext-aligned" and .verification.verified == true and .verification.independence_group_pass == true and .paid_fallback == false' /tmp/command >/dev/null
           jq '{ok,mode,task_id,verification,school:{competency:.school.competency,mastery:.school.mastery},world:{freshness:.world.freshness},cognitive:{state:.cognitive.state,decision:.cognitive.decision},paid_fallback}' /tmp/command
           echo 'QUEEN_ORIGINAL_SITE_E2E=PASS'
