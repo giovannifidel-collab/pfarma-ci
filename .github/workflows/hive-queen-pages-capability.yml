@@ -2,10 +2,8 @@ name: HIVE Queen Pages Capability
 
 on:
   push:
-    branches:
-      - queen-universal-fabric-vnext
-    paths:
-      - ".github/workflows/hive-queen-pages-capability.yml"
+    branches: [queen-universal-fabric-vnext]
+    paths: [".github/workflows/hive-queen-pages-capability.yml"]
   workflow_dispatch:
 
 permissions:
@@ -17,27 +15,21 @@ jobs:
     timeout-minutes: 5
     env:
       CF_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
-      HIVE_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
-      LEGACY_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
     steps:
-      - name: Select existing token with Pages access
+      - name: Diagnose Cloudflare account scopes
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$CF_ACCOUNT"
-          SELECTED=''
-          for pair in HIVE_TOKEN LEGACY_TOKEN; do
-            token="${!pair:-}"
-            [[ -n "$token" ]] || continue
-            code="$(curl -sS -o "/tmp/${pair}.json" -w '%{http_code}' \
-              -H "Authorization: Bearer $token" \
-              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects")"
-            echo "$pair:PAGES_LIST_HTTP=$code"
-            if [[ "$code" == '200' ]] && jq -e '.success==true' "/tmp/${pair}.json" >/dev/null 2>&1; then
-              SELECTED="$pair"
-              break
-            fi
+          test -n "$CF_ACCOUNT"; test -n "$CF_TOKEN"
+          for item in account aig pages; do
+            case "$item" in
+              account) url="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT" ;;
+              aig) url="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/ai-gateway/gateways" ;;
+              pages) url="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects" ;;
+            esac
+            code="$(curl -sS -o "/tmp/$item" -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" "$url")"
+            echo "${item^^}_HTTP=$code"
+            if [[ "$item" == account && "$code" == 200 ]]; then jq '{success,account_name:.result.name}' /tmp/account; fi
+            if [[ "$code" != 200 ]]; then jq '{success,errors}' "/tmp/$item" 2>/dev/null || true; fi
           done
-          [[ -n "$SELECTED" ]] || { echo 'NO_PAGES_CAPABLE_TOKEN'; exit 20; }
-          echo "SELECTED_TOKEN_NAME=$SELECTED"
-          echo 'PAGES_API=PASS'
