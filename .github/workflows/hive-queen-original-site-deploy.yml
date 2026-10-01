@@ -23,7 +23,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
-      PRIVATE_SHA: 15687328410940328a5513ecdd0156d76d8e628c
+      PRIVATE_SHA: 9dda82f2e873431e92c356804049f16ba3d71204
     steps:
       - name: Preflight Cloudflare Pages authority
         shell: bash
@@ -47,7 +47,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify authority source and aligned runtime
+      - name: Verify authority source and stable Queen UI
         shell: bash
         run: |
           set -euo pipefail
@@ -55,11 +55,15 @@ jobs:
           test -f private-source/cloudflare/functions/api/queen-command.js
           test -f private-source/cloudflare/functions/_lib/queen-runtime.js
           test -f private-source/cloudflare/public/queen-brain.js
+          test -f private-source/cloudflare/public/queen-ui-stability.js
           grep -q '/api/queen-command' private-source/cloudflare/public/queen-brain.js
           grep -q 'COMPETENCY_MODEL' private-source/cloudflare/functions/_lib/queen-runtime.js
           grep -q 'CAPABILITY_MESH' private-source/cloudflare/functions/_lib/queen-runtime.js
           grep -q 'enable_thinking:false' private-source/cloudflare/functions/api/queen-command.js
-          echo 'QUEEN_ALIGNMENT_SOURCE=PASS'
+          grep -q 'queen-ui-stability.js' private-source/cloudflare/public/queen-loader.js
+          ! grep -q "import('./queen-top.js" private-source/cloudflare/public/runtime-health.js
+          ! grep -q "import('./queen-brain.js" private-source/cloudflare/public/runtime-health.js
+          echo 'QUEEN_UI_SINGLE_LOAD=PASS'
 
       - name: Set up Node
         uses: actions/setup-node@v4
