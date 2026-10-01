@@ -23,7 +23,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
-      PRIVATE_SHA: 9dda82f2e873431e92c356804049f16ba3d71204
+      PRIVATE_SHA: 83b1961fc6ca880924c24a0af5765b078587946b
     steps:
       - name: Preflight Cloudflare Pages authority
         shell: bash
@@ -57,13 +57,15 @@ jobs:
           test -f private-source/cloudflare/public/queen-brain.js
           test -f private-source/cloudflare/public/queen-ui-stability.js
           grep -q '/api/queen-command' private-source/cloudflare/public/queen-brain.js
+          grep -q 'fetchLiveWorld' private-source/cloudflare/functions/api/queen-command.js
+          grep -q 'evidence_grounded:true' private-source/cloudflare/functions/api/queen-command.js
           grep -q 'COMPETENCY_MODEL' private-source/cloudflare/functions/_lib/queen-runtime.js
           grep -q 'CAPABILITY_MESH' private-source/cloudflare/functions/_lib/queen-runtime.js
-          grep -q 'enable_thinking:false' private-source/cloudflare/functions/api/queen-command.js
           grep -q 'queen-ui-stability.js' private-source/cloudflare/public/queen-loader.js
           ! grep -q "import('./queen-top.js" private-source/cloudflare/public/runtime-health.js
           ! grep -q "import('./queen-brain.js" private-source/cloudflare/public/runtime-health.js
           echo 'QUEEN_UI_SINGLE_LOAD=PASS'
+          echo 'QUEEN_GROUNDED_VERIFIER_SOURCE=PASS'
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -123,14 +125,14 @@ jobs:
         run: |
           set -euo pipefail
           BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; BASE="${BASE%/}"
-          BODY='{"message":"Verifica lo stato operativo HIVE e restituisci un riepilogo conciso. Non eseguire azioni esterne o distruttive.","project_slug":"hive","source":"alignment-live-proof"}'
+          BODY='{"message":"Verifica lo stato operativo HIVE usando soltanto il World Model fornito e restituisci un riepilogo conciso. Non eseguire azioni esterne o distruttive.","project_slug":"hive","source":"alignment-live-proof"}'
           args=(-sS --max-time 90 -o /tmp/command -w '%{http_code}' -X POST -H 'Content-Type: application/json')
           if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"); fi
           if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN"); fi
           code="$(curl "${args[@]}" "$BASE/api/queen-command" -d "$BODY")"
           echo "QUEEN_COMMAND_HTTP=$code"
-          if [[ "$code" != '200' ]]; then jq '{ok,error,task_id}' /tmp/command 2>/dev/null || true; exit 30; fi
-          jq -e '.ok == true and .mode == "queen-vnext-aligned" and .verification.verified == true and .verification.independence_group_pass == true and .paid_fallback == false' /tmp/command >/dev/null
+          if [[ "$code" != '200' ]]; then jq '{ok,error,task_id,verification}' /tmp/command 2>/dev/null || true; exit 30; fi
+          jq -e '.ok == true and .mode == "queen-vnext-aligned" and .verification.verified == true and .verification.independence_group_pass == true and .verification.evidence_grounded == true and .paid_fallback == false' /tmp/command >/dev/null
           jq '{ok,mode,task_id,verification,school:{competency:.school.competency,mastery:.school.mastery},world:{freshness:.world.freshness},cognitive:{state:.cognitive.state,decision:.cognitive.decision},paid_fallback}' /tmp/command
           echo 'QUEEN_ORIGINAL_SITE_E2E=PASS'
 
