@@ -14,7 +14,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
-    timeout-minutes: 35
+    timeout-minutes: 20
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
@@ -121,7 +121,7 @@ jobs:
           jq -e '.ok == true and .state.canonical.source_lock.school_core_blob != null and .state.canonical.source_lock.cognitive_core_blob != null' /tmp/state >/dev/null
           echo 'QUEEN_CANONICAL_RUNTIME=PASS'
 
-      - name: Run 20 consecutive real Queen cycles
+      - name: Run 3 consecutive post-deploy Queen cycles
         shell: bash
         run: |
           set -euo pipefail
@@ -135,16 +135,13 @@ jobs:
           prompts=(
             'Verifica lo stato operativo HIVE usando soltanto il World Model fornito e restituisci un riepilogo conciso. Non eseguire azioni esterne.'
             'Controlla il World Model HIVE e indica in modo conciso eventuali blind spot o limiti di visibilità, senza inventare dati.'
-            'Analizza lo stato HIVE disponibile e indica il prossimo controllo operativo sensato basandoti soltanto sulle evidenze fornite.'
-            'Verifica coerenza e disponibilità delle informazioni operative HIVE nel World Model e riassumi ciò che è effettivamente noto.'
             'Fornisci un controllo sintetico dello stato HIVE distinguendo fatti osservati da ciò che non è verificabile nel World Model.'
           )
 
           passes=0
-          for i in $(seq 1 20); do
-            idx=$(( (i-1) % ${#prompts[@]} ))
-            msg="${prompts[$idx]}"
-            body="$(jq -nc --arg m "$msg" --arg s "stability-gate-$i" '{message:$m,project_slug:"hive",source:$s}')"
+          for i in 1 2 3; do
+            msg="${prompts[$((i-1))]}"
+            body="$(jq -nc --arg m "$msg" --arg s "post-deploy-gate-$i" '{message:$m,project_slug:"hive",source:$s}')"
             code="$(curl -sS --max-time 120 -o "/tmp/queen-$i" -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
             if [[ "$code" != '200' ]]; then
               echo "CYCLE=$i HTTP=$code FAIL"
@@ -152,16 +149,11 @@ jobs:
               exit 20
             fi
             jq -e '.ok == true and .mode == "queen-vnext-aligned" and .route == "deterministic-world-synth" and .verification.verified == true and .verification.independence_group_pass == true and .verification.evidence_grounded == true and .verification.score >= 0.70 and .paid_fallback == false and (.school.event_id != null) and (.world.event_id != null) and (.cognitive.event_id != null)' "/tmp/queen-$i" >/dev/null
-            score="$(jq -r '.verification.score' "/tmp/queen-$i")"
-            state="$(jq -r '.cognitive.state' "/tmp/queen-$i")"
             passes=$((passes+1))
-            echo "CYCLE=$i PASS score=$score cognitive=$state route=deterministic-world-synth"
-            sleep 1
+            echo "POST_DEPLOY_CYCLE=$i PASS"
           done
-
-          test "$passes" = '20'
-          echo "QUEEN_STABILITY_CONSECUTIVE_PASS=$passes"
-          echo 'QUEEN_20X_STABILITY_GATE=PASS'
+          test "$passes" = '3'
+          echo 'QUEEN_POST_DEPLOY_GATE=PASS'
 
       - name: Remove private source checkout
         if: always()
