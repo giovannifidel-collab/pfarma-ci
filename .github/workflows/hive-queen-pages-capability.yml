@@ -16,47 +16,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      CF_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CF_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      HIVE_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      LEGACY_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - name: Verify account token and Pages scope
+      - name: Select existing token with Pages access
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$CF_TOKEN"
           test -n "$CF_ACCOUNT"
-
-          VERIFY_HTTP="$(curl -sS -o /tmp/verify -w '%{http_code}' \
-            -H "Authorization: Bearer $CF_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify")"
-          echo "ACCOUNT_TOKEN_VERIFY_HTTP=$VERIFY_HTTP"
-          if [[ "$VERIFY_HTTP" == '200' ]]; then
-            jq -e '.success == true' /tmp/verify >/dev/null
-            echo 'ACCOUNT_TOKEN_VERIFY=PASS'
-          else
-            jq '{success,errors}' /tmp/verify 2>/dev/null || true
-            echo 'ACCOUNT_TOKEN_VERIFY=FAIL'
-          fi
-
-          LIST_HTTP="$(curl -sS -o /tmp/projects -w '%{http_code}' \
-            -H "Authorization: Bearer $CF_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects")"
-          echo "PAGES_LIST_HTTP=$LIST_HTTP"
-          if [[ "$LIST_HTTP" == '200' ]]; then
-            jq -e '.success == true' /tmp/projects >/dev/null
-            jq '{success,projects:[.result[]|{name,production_branch,source_type:(.source.type // null)}]}' /tmp/projects
-            echo 'PAGES_LIST=PASS'
-          else
-            jq '{success,errors}' /tmp/projects 2>/dev/null || true
-            echo 'PAGES_LIST=FAIL'
-            exit 20
-          fi
-
-          PROJECT_HTTP="$(curl -sS -o /tmp/pages -w '%{http_code}' \
-            -H "Authorization: Bearer $CF_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/hive-alveare")"
-          echo "PAGES_PROJECT_HTTP=$PROJECT_HTTP"
-          test "$PROJECT_HTTP" = '200' || { jq '{success,errors}' /tmp/pages 2>/dev/null || true; exit 21; }
-          jq -e '.success == true' /tmp/pages >/dev/null
-          jq '{success,result:{name:.result.name,production_branch:.result.production_branch,source_type:(.result.source.type // null),latest_stage:(.result.latest_deployment.latest_stage.name // null),latest_status:(.result.latest_deployment.latest_stage.status // null)}}' /tmp/pages
+          SELECTED=''
+          for pair in HIVE_TOKEN LEGACY_TOKEN; do
+            token="${!pair:-}"
+            [[ -n "$token" ]] || continue
+            code="$(curl -sS -o "/tmp/${pair}.json" -w '%{http_code}' \
+              -H "Authorization: Bearer $token" \
+              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects")"
+            echo "$pair:PAGES_LIST_HTTP=$code"
+            if [[ "$code" == '200' ]] && jq -e '.success==true' "/tmp/${pair}.json" >/dev/null 2>&1; then
+              SELECTED="$pair"
+              break
+            fi
+          done
+          [[ -n "$SELECTED" ]] || { echo 'NO_PAGES_CAPABLE_TOKEN'; exit 20; }
+          echo "SELECTED_TOKEN_NAME=$SELECTED"
           echo 'PAGES_API=PASS'
