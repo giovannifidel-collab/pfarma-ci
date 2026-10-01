@@ -86,18 +86,7 @@ jobs:
               printf '\n[ai]\nbinding = "AI"\n' >> "$config"
             fi
           else
-            python3 - "$config" <<'PY'
-from pathlib import Path
-import sys,re
-p=Path(sys.argv[1])
-s=p.read_text()
-if not re.search(r'(?m)^\s*["\x27]ai["\x27]\s*:', s):
-    i=s.find('{')
-    if i < 0:
-        raise SystemExit('invalid Wrangler JSON/JSONC')
-    s=s[:i+1]+'\n  "ai": {"binding": "AI"},'+s[i+1:]
-    p.write_text(s)
-PY
+            python3 -c 'from pathlib import Path; import sys,re; p=Path(sys.argv[1]); s=p.read_text(); i=s.find("{"); assert i>=0; s=s if re.search(r"(?m)^\s*[\"\x27]ai[\"\x27]\s*:",s) else s[:i+1]+"\n  \"ai\": {\"binding\": \"AI\"},"+s[i+1:]; p.write_text(s)' "$config"
           fi
           if [[ "$config" == *.toml ]]; then
             grep -Eq '^\s*\[ai\]\s*$' "$config" && grep -Eq '^\s*binding\s*=\s*"AI"\s*$' "$config"
