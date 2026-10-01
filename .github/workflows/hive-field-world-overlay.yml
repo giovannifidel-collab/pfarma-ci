@@ -70,11 +70,10 @@ jobs:
           async function probe(url,role='primary'){
             const started=Date.now();
             try{
-              const r=await fetch(url,{headers:{'user-agent':'HIVE-Queen-Field-Overlay','accept':'application/json'},redirect:'manual',signal:AbortSignal.timeout(9000)});
-              let summary=null;
-              if(r.ok){try{const j=await r.json();summary={status:j.status??j.ok??null,version:j.version??null}}catch{}}
-              else{try{await r.body?.cancel()}catch{}}
-              return {url,role,reachable:r.status<500,http_status:r.status,latency_ms:Date.now()-started,summary,observed_at:now};
+              const r=await fetch(url,{headers:{'user-agent':'HIVE-Queen-Field-Overlay','accept':'text/html,application/json'},redirect:'manual',signal:AbortSignal.timeout(9000)});
+              const reachable=r.status>=200&&r.status<400;
+              try{await r.body?.cancel()}catch{}
+              return {url,role,reachable,http_status:r.status,latency_ms:Date.now()-started,observed_at:now};
             }catch(error){return {url,role,reachable:false,http_status:null,latency_ms:Date.now()-started,error:String(error?.message||error).slice(0,160),observed_at:now}}
           }
 
@@ -92,7 +91,7 @@ jobs:
                 progress,
                 provenance:ok?'AUTHENTICATED_PRIVATE_CHECKOUT':'SOURCE_UNAVAILABLE'
               },
-              runtime:[await probe('https://hive-field-v8.vercel.app/api/health','primary')],
+              runtime:[await probe('https://hive-field-v8.vercel.app/','primary')],
               sync_depth:'source+runtime+field-control-state'
             };
             world.generated_at=now;
@@ -120,11 +119,11 @@ jobs:
             echo 'HIVE_FIELD_WORLD_OVERLAY=UNCHANGED'
             exit 0
           fi
-          git commit -m 'state(hive): add HIVE Field authoritative world state'
+          git commit -m 'state(hive): refresh HIVE Field authoritative world state'
           git push
           echo 'HIVE_FIELD_WORLD_OVERLAY=PASS'
 
       - name: Verify overlay
         shell: bash
         run: |
-          node -e "const s=require('./hive-world-state.json'); const p=s.projects?.['hive-field']; if(!p) process.exit(2); console.log('HIVE_FIELD_SOURCE_AVAILABLE='+p.source.available); console.log('HIVE_FIELD_SHA='+(p.source.sha||'none')); console.log('HIVE_FIELD_RUNTIME_REACHABLE='+(p.runtime?.[0]?.reachable??false));"
+          node -e "const s=require('./hive-world-state.json'); const p=s.projects?.['hive-field']; if(!p) process.exit(2); console.log('HIVE_FIELD_SOURCE_AVAILABLE='+p.source.available); console.log('HIVE_FIELD_SHA='+(p.source.sha||'none')); console.log('HIVE_FIELD_RUNTIME_HTTP='+(p.runtime?.[0]?.http_status??'none')); console.log('HIVE_FIELD_RUNTIME_REACHABLE='+(p.runtime?.[0]?.reachable??false));"
