@@ -1,0 +1,41 @@
+name: HIVE Runtime Bridge Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [queen-universal-fabric-vnext]
+    paths:
+      - .github/workflows/hive-runtime-bridge-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
+      HIVE_BASE_URL: https://hive-alveare.pages.dev
+    steps:
+      - name: Test existing bridge token against Queen runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${BRIDGE_TOKEN:-}" ] || { echo 'BRIDGE_TOKEN=MISSING'; exit 2; }
+          body="$(mktemp)"
+          code="$(curl -sS --max-time 20 -o "$body" -w '%{http_code}' \
+            -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
+            "${HIVE_BASE_URL}/api/health")"
+          echo "HIVE_RUNTIME_BRIDGE_HTTP=${code}"
+          if [ "$code" = 200 ] && python3 - "$body" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1],encoding='utf-8'))
+          raise SystemExit(0 if d.get('ok') is True else 1)
+          PY
+          then
+            echo 'HIVE_RUNTIME_BRIDGE_AUTH=PASS'
+          else
+            echo 'HIVE_RUNTIME_BRIDGE_AUTH=FAIL'
+            exit 3
+          fi
