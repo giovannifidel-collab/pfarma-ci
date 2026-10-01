@@ -1,0 +1,53 @@
+{
+  "schema": "hive.queen.original-site-alignment-proof.v1",
+  "date": "2026-10-01",
+  "status": "PASS",
+  "original_site": "hive-alveare.pages.dev",
+  "authority_repo": "giovannifidel-collab/hive-alveare",
+  "authority_commit": "15687328410940328a5513ecdd0156d76d8e628c",
+  "execution_repo": "giovannifidel-collab/pfarma-ci",
+  "execution_branch": "queen-universal-fabric-vnext",
+  "workflow_run_id": 36878007871,
+  "workflow_job_id": 110422317346,
+  "cloudflare_pages": {
+    "preflight": "PASS",
+    "deploy": "PASS",
+    "workers_ai_binding": "PASS",
+    "production_environment_binding": "AI"
+  },
+  "canonical_runtime": {
+    "state_endpoint_http": 200,
+    "source_lock": "PASS",
+    "school_core": "canonical",
+    "cognitive_core": "canonical",
+    "world_model": "live"
+  },
+  "owner_command_e2e": {
+    "http": 200,
+    "mode": "queen-vnext-aligned",
+    "task_id": "b17342d7-8d91-43c6-9760-2d40e9944ee5",
+    "verification": {
+      "verified": true,
+      "score": 1,
+      "independence_group_pass": true
+    },
+    "school": {
+      "competency": "criticism",
+      "mastery": 0.25
+    },
+    "world": {
+      "freshness": "fresh"
+    },
+    "cognitive": {
+      "state": "LISTENING",
+      "decision": "await_event"
+    },
+    "paid_fallback": false
+  },
+  "ui": {
+    "original_queen_chat": "preserved",
+    "orders_endpoint": "/api/queen-command",
+    "questions_endpoint": "/api/queen"
+  },
+  "queen_v1_locks_modified": false
+}
