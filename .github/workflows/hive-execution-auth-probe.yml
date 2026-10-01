@@ -1,0 +1,29 @@
+name: HIVE Execution Auth Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [queen-universal-fabric-vnext]
+    paths:
+      - .github/workflows/hive-execution-auth-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      HIVE_AGENT_BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
+    steps:
+      - name: Check execution auth material without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          for n in CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET HIVE_RUNTIME_BEARER_TOKEN HIVE_AGENT_BRIDGE_TOKEN; do
+            if [ -n "${!n:-}" ]; then echo "$n=PRESENT"; else echo "$n=MISSING"; fi
+          done
