@@ -1,0 +1,54 @@
+name: HIVE Workers AI Inference Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [queen-universal-fabric-vnext]
+    paths:
+      - .github/workflows/hive-workers-ai-inference-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CF_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      MODEL: '@cf/meta/llama-3.1-8b-instruct-fp8'
+    steps:
+      - name: Run minimal Workers AI inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${CF_TOKEN:-}" ] && [ -n "${CF_ACCOUNT:-}" ] || { echo 'CLOUDFLARE_AUTH=MISSING'; exit 2; }
+          body="$(mktemp)"
+          code="$(curl -sS -o "$body" -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data '{"messages":[{"role":"user","content":"Reply with exactly HIVE_AI_OK"}],"max_tokens":16,"temperature":0}' \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/ai/run/${MODEL}")"
+          echo "WORKERS_AI_INFERENCE_HTTP=${code}"
+          if [ "$code" != "200" ]; then
+            python3 - "$body" <<'PY'
+          import json,sys
+          try:
+              d=json.load(open(sys.argv[1],encoding='utf-8'))
+              errs=d.get('errors') or []
+              print('WORKERS_AI_ERROR_CODES=' + ','.join(str(x.get('code','')) for x in errs if isinstance(x,dict)))
+          except Exception:
+              pass
+          PY
+            exit 3
+          fi
+          python3 - "$body" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1],encoding='utf-8'))
+          text=str((d.get('result') or {}).get('response') or '').strip()
+          if 'HIVE_AI_OK' not in text:
+              raise SystemExit('WORKERS_AI_INFERENCE=BAD_RESPONSE')
+          print('WORKERS_AI_INFERENCE=PASS')
+          PY
