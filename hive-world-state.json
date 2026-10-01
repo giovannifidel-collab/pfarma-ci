@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-01T16:57:05.810Z",
+  "generated_at": "2026-10-01T17:03:17.587Z",
   "policy": "authoritative-source-first",
   "privacy": "sanitized allowlist; gio-OS private source never materialized in global HIVE sync; no credentials or user data published",
   "cadence_minutes": 15,
@@ -219,20 +219,19 @@
         "ref": "main",
         "available": true,
         "sha": "eb495e9a4a80eaf009519935d0267bd1b9630101",
-        "observed_at": "2026-10-01T16:57:05.810Z",
+        "observed_at": "2026-10-01T17:03:17.587Z",
         "version": "9.0.0",
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
       },
       "runtime": [
         {
-          "url": "https://hive-field-v8.vercel.app/api/health",
+          "url": "https://hive-field-v8.vercel.app/",
           "role": "primary",
           "reachable": true,
-          "http_status": 404,
-          "latency_ms": 432,
-          "summary": null,
-          "observed_at": "2026-10-01T16:57:05.810Z"
+          "http_status": 200,
+          "latency_ms": 471,
+          "observed_at": "2026-10-01T17:03:17.587Z"
         }
       ],
       "sync_depth": "source+runtime+field-control-state"
