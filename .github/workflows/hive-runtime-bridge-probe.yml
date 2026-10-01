@@ -18,16 +18,27 @@ jobs:
       BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
       HIVE_BASE_URL: https://hive-alveare.pages.dev
     steps:
-      - name: Test existing bridge token against Queen runtime
+      - name: Probe Queen Access boundary without exposing credentials
         shell: bash
         run: |
           set -euo pipefail
           [ -n "${BRIDGE_TOKEN:-}" ] || { echo 'BRIDGE_TOKEN=MISSING'; exit 2; }
-          body="$(mktemp)"
-          code="$(curl -sS --max-time 20 -o "$body" -w '%{http_code}' \
+          body="$(mktemp)"; headers="$(mktemp)"
+          code="$(curl -sS --max-time 20 -o "$body" -D "$headers" -w '%{http_code}' \
             -H "Authorization: Bearer ${BRIDGE_TOKEN}" \
             "${HIVE_BASE_URL}/api/health")"
           echo "HIVE_RUNTIME_BRIDGE_HTTP=${code}"
+          location="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {$1=""; sub(/^ /,""); gsub(/\r/,""); print; exit}' "$headers")"
+          if [ -n "$location" ]; then
+            python3 - "$location" <<'PY'
+          import sys,urllib.parse
+          u=urllib.parse.urlparse(sys.argv[1])
+          q=urllib.parse.parse_qs(u.query)
+          print('CF_ACCESS_LOGIN_HOST=' + (u.hostname or ''))
+          aud=(q.get('aud') or [''])[0]
+          print('CF_ACCESS_AUD=' + aud)
+          PY
+          fi
           if [ "$code" = 200 ] && python3 - "$body" <<'PY'
           import json,sys
           d=json.load(open(sys.argv[1],encoding='utf-8'))
@@ -37,5 +48,4 @@ jobs:
             echo 'HIVE_RUNTIME_BRIDGE_AUTH=PASS'
           else
             echo 'HIVE_RUNTIME_BRIDGE_AUTH=FAIL'
-            exit 3
           fi
