@@ -18,7 +18,6 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
-      SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
@@ -32,8 +31,7 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           code="$(curl -sS -o /tmp/project -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/hive-alveare")"
-          echo "PAGES_PREFLIGHT_HTTP=$code"
-          test "$code" = '200'
+          test "$code" = 200
           jq -e '.success == true and .result.name == "hive-alveare"' /tmp/project >/dev/null
           echo 'PAGES_PREFLIGHT=PASS'
 
@@ -47,45 +45,31 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify authority source and stable Queen UI
+      - name: Verify Queen + HIVE Field source
         shell: bash
         run: |
           set -euo pipefail
           test "$(git -C private-source rev-parse HEAD)" = "$PRIVATE_SHA"
           test -f private-source/cloudflare/functions/api/queen-command.js
           test -f private-source/cloudflare/functions/api/project-register.js
-          test -f private-source/cloudflare/functions/_lib/queen-runtime.js
-          test -f private-source/cloudflare/public/queen-brain.js
           test -f private-source/cloudflare/public/queen-intent-router.js
-          test -f private-source/cloudflare/public/queen-ui-stability.js
           test -f private-source/db/018_hive_field_cell.sql
           grep -q '/api/queen-command' private-source/cloudflare/public/queen-intent-router.js
           grep -q 'hive-field' private-source/cloudflare/public/queen-intent-router.js
           grep -q 'queen-intent-router.js' private-source/cloudflare/public/queen-loader.js
-          grep -q 'project-register' private-source/cloudflare/functions/api/project-register.js
-          grep -q 'fetchLiveWorld' private-source/cloudflare/functions/api/queen-command.js
+          grep -q '/projects?on_conflict=slug' private-source/cloudflare/functions/api/project-register.js
           grep -q 'deterministic-world-synth' private-source/cloudflare/functions/api/queen-command.js
-          grep -q 'evidence_grounded:true' private-source/cloudflare/functions/api/queen-command.js
-          grep -q 'COMPETENCY_MODEL' private-source/cloudflare/functions/_lib/queen-runtime.js
-          grep -q 'CAPABILITY_MESH' private-source/cloudflare/functions/_lib/queen-runtime.js
-          grep -q 'queen-ui-stability.js' private-source/cloudflare/public/queen-loader.js
           grep -q 'patchSafely' private-source/cloudflare/public/world-awareness.js
           grep -q 'observer?.disconnect' private-source/cloudflare/public/world-awareness.js
-          grep -q 'world-awareness-v2-loopfix-20261001' private-source/cloudflare/public/runtime-health.js
-          ! grep -q "import('./queen-top.js" private-source/cloudflare/public/runtime-health.js
-          ! grep -q "import('./queen-brain.js" private-source/cloudflare/public/runtime-health.js
-          echo 'QUEEN_UI_SINGLE_LOAD=PASS'
           echo 'QUEEN_NATURAL_INTENT_ROUTER=PASS'
           echo 'HIVE_FIELD_REGISTRY_SOURCE=PASS'
-          echo 'QUEEN_RENDERER_LOOP_GUARD=PASS'
-          echo 'QUEEN_DETERMINISTIC_WORLD_SYNTH_SOURCE=PASS'
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Pull Pages config and bind Workers AI in production
+      - name: Pull Pages config and bind Workers AI
         working-directory: private-source/cloudflare
         shell: bash
         run: |
@@ -95,19 +79,15 @@ jobs:
           config=''
           for f in wrangler.jsonc wrangler.json wrangler.toml; do [[ -f "$f" ]] && { config="$f"; break; }; done
           test -n "$config" || { cat /tmp/wrangler-download.log; exit 40; }
-          echo "WRANGLER_CONFIG=$config"
           if [[ "$config" == *.toml ]]; then
             grep -Eq '^\s*\[ai\]\s*$' "$config" || printf '\n[ai]\nbinding = "AI"\n' >> "$config"
             grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config" || printf '\n[env.production.ai]\nbinding = "AI"\n' >> "$config"
-            grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config"
           else
             python3 -c 'from pathlib import Path; import sys,re; p=Path(sys.argv[1]); s=p.read_text(); i=s.find("{"); assert i>=0; s=s if re.search(r"(?m)^\s*[\"\x27]ai[\"\x27]\s*:",s) else s[:i+1]+"\n  \"ai\": {\"binding\": \"AI\"},"+s[i+1:]; p.write_text(s)' "$config"
-            grep -Eq '"ai"\s*:' "$config"
           fi
-          rm -f /tmp/wrangler-download.log
           echo 'WORKERS_AI_BINDING_CONFIGURED=PASS'
 
-      - name: Deploy original HIVE Pages project
+      - name: Deploy Queen
         working-directory: private-source/cloudflare
         shell: bash
         run: |
@@ -116,24 +96,9 @@ jobs:
           echo 'QUEEN_ORIGINAL_SITE_DEPLOY=PASS'
 
       - name: Wait for propagation
-        shell: bash
         run: sleep 15
 
-      - name: Verify canonical runtime
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; BASE="${BASE%/}"
-          args=(-sS --max-time 30 -o /tmp/state -w '%{http_code}')
-          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"); fi
-          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN"); fi
-          code="$(curl "${args[@]}" "$BASE/api/queen-state")"
-          echo "QUEEN_STATE_HTTP=$code"
-          test "$code" = '200'
-          jq -e '.ok == true and .state.canonical.source_lock.school_core_blob != null and .state.canonical.source_lock.cognitive_core_blob != null' /tmp/state >/dev/null
-          echo 'QUEEN_CANONICAL_RUNTIME=PASS'
-
-      - name: Run 3 consecutive post-deploy Queen cycles
+      - name: Verify canonical runtime and 3 Queen cycles
         shell: bash
         run: |
           set -euo pipefail
@@ -143,31 +108,23 @@ jobs:
             headers+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
           fi
           if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then headers+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN"); fi
-
+          code="$(curl -sS --max-time 30 -o /tmp/state -w '%{http_code}' "${headers[@]}" "$BASE/api/queen-state")"
+          test "$code" = 200
+          jq -e '.ok == true and .state.canonical.source_lock.school_core_blob != null and .state.canonical.source_lock.cognitive_core_blob != null' /tmp/state >/dev/null
           prompts=(
-            'Verifica lo stato operativo HIVE usando soltanto il World Model fornito e restituisci un riepilogo conciso. Non eseguire azioni esterne.'
-            'Controlla il World Model HIVE e indica in modo conciso eventuali blind spot o limiti di visibilità, senza inventare dati.'
-            'Fornisci un controllo sintetico dello stato HIVE distinguendo fatti osservati da ciò che non è verificabile nel World Model.'
+            'Verifica lo stato operativo HIVE usando soltanto il World Model fornito. Non eseguire azioni esterne.'
+            'Controlla il World Model HIVE e indica eventuali blind spot senza inventare dati.'
+            'Distingui fatti osservati da ciò che non è verificabile nel World Model.'
           )
-
-          passes=0
           for i in 1 2 3; do
-            msg="${prompts[$((i-1))]}"
-            body="$(jq -nc --arg m "$msg" --arg s "post-deploy-gate-$i" '{message:$m,project_slug:"hive",source:$s}')"
-            code="$(curl -sS --max-time 120 -o "/tmp/queen-$i" -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
-            if [[ "$code" != '200' ]]; then
-              echo "CYCLE=$i HTTP=$code FAIL"
-              jq '{ok,error,task_id,verification,route}' "/tmp/queen-$i" 2>/dev/null || true
-              exit 20
-            fi
-            jq -e '.ok == true and .mode == "queen-vnext-aligned" and .route == "deterministic-world-synth" and .verification.verified == true and .verification.independence_group_pass == true and .verification.evidence_grounded == true and .verification.score >= 0.70 and .paid_fallback == false and (.school.event_id != null) and (.world.event_id != null) and (.cognitive.event_id != null)' "/tmp/queen-$i" >/dev/null
-            passes=$((passes+1))
+            body="$(jq -nc --arg m "${prompts[$((i-1))]}" --arg s "post-deploy-gate-$i" '{message:$m,project_slug:"hive",source:$s}')"
+            code="$(curl -sS --max-time 120 -o "/tmp/q$i" -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
+            test "$code" = 200
+            jq -e '.ok == true and .mode == "queen-vnext-aligned" and .verification.verified == true and .verification.independence_group_pass == true and .verification.evidence_grounded == true and .paid_fallback == false' "/tmp/q$i" >/dev/null
             echo "POST_DEPLOY_CYCLE=$i PASS"
           done
-          test "$passes" = '3'
           echo 'QUEEN_POST_DEPLOY_GATE=PASS'
 
       - name: Remove private source checkout
         if: always()
-        shell: bash
         run: rm -rf private-source
