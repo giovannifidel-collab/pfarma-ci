@@ -23,7 +23,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
-      PRIVATE_SHA: 1e3a77d079f4fa21564c552fd1acd33939cea621
+      PRIVATE_SHA: 15687328410940328a5513ecdd0156d76d8e628c
     steps:
       - name: Preflight Cloudflare Pages authority
         shell: bash
@@ -58,6 +58,7 @@ jobs:
           grep -q '/api/queen-command' private-source/cloudflare/public/queen-brain.js
           grep -q 'COMPETENCY_MODEL' private-source/cloudflare/functions/_lib/queen-runtime.js
           grep -q 'CAPABILITY_MESH' private-source/cloudflare/functions/_lib/queen-runtime.js
+          grep -q 'enable_thinking:false' private-source/cloudflare/functions/api/queen-command.js
           echo 'QUEEN_ALIGNMENT_SOURCE=PASS'
 
       - name: Set up Node
@@ -81,7 +82,7 @@ jobs:
             grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config" || printf '\n[env.production.ai]\nbinding = "AI"\n' >> "$config"
             grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config"
           else
-            python3 -c 'from pathlib import Path; import sys,re,json; p=Path(sys.argv[1]); s=p.read_text(); i=s.find("{"); assert i>=0; s=s if re.search(r"(?m)^\s*[\"\x27]ai[\"\x27]\s*:",s) else s[:i+1]+"\n  \"ai\": {\"binding\": \"AI\"},"+s[i+1:]; p.write_text(s)' "$config"
+            python3 -c 'from pathlib import Path; import sys,re; p=Path(sys.argv[1]); s=p.read_text(); i=s.find("{"); assert i>=0; s=s if re.search(r"(?m)^\s*[\"\x27]ai[\"\x27]\s*:",s) else s[:i+1]+"\n  \"ai\": {\"binding\": \"AI\"},"+s[i+1:]; p.write_text(s)' "$config"
             grep -Eq '"ai"\s*:' "$config"
           fi
           rm -f /tmp/wrangler-download.log
