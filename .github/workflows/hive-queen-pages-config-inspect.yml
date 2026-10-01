@@ -1,0 +1,46 @@
+name: HIVE Queen Pages Config Inspect
+
+on:
+  push:
+    branches: [queen-universal-fabric-vnext]
+    paths: ['.github/workflows/hive-queen-pages-config-inspect.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+    steps:
+      - name: Download current Pages config without printing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/hive-pages-config
+          cd /tmp/hive-pages-config
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/download.log 2>&1
+          config=''
+          for f in wrangler.jsonc wrangler.json wrangler.toml; do
+            if [[ -f "$f" ]]; then config="$f"; break; fi
+          done
+          test -n "$config"
+          echo "CONFIG_FILE=$config"
+          if [[ "$config" == *.toml ]]; then
+            grep -E '^\[[A-Za-z0-9_.-]+\]' "$config" | sed -E 's/^\[([^]]+)\]$/CONFIG_SECTION=\1/' || true
+            grep -Eq '^\[ai\]' "$config" && echo 'AI_BINDING_PRESENT=YES' || echo 'AI_BINDING_PRESENT=NO'
+          else
+            node - "$config" <<'NODE'
+const fs=require('fs');
+let s=fs.readFileSync(process.argv[2],'utf8');
+s=s.replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
+const o=JSON.parse(s);
+console.log('CONFIG_KEYS='+Object.keys(o).sort().join(','));
+console.log('AI_BINDING_PRESENT='+(o.ai?.binding?'YES':'NO'));
+NODE
+          fi
+          rm -rf /tmp/hive-pages-config /tmp/download.log
