@@ -203,15 +203,19 @@ jobs:
         working-directory: /tmp/hive-field
         run: |
           set -euo pipefail
-          if git diff --quiet -- .; then
+          status="$(git status --porcelain=v1 --untracked-files=all)"
+          if [ -z "$status" ]; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
             echo 'MUTATION_POLICY=NO_CHANGE'
             exit 0
           fi
-          mapfile -t files < <(git diff --name-only --diff-filter=ACM)
+          mapfile -t tracked < <(git diff --name-only --diff-filter=ACM)
+          mapfile -t untracked < <(git ls-files --others --exclude-standard)
+          files=("${tracked[@]}" "${untracked[@]}")
           deleted="$(git diff --name-only --diff-filter=D)"
           [ -z "$deleted" ] || { echo 'MUTATION_POLICY=REJECT_DELETE'; exit 5; }
           for f in "${files[@]}"; do
+            [ -n "$f" ] || continue
             case "$f" in
               .hive/execution-dispatcher.json|README.md|*.js|*.mjs|*.css|api/*.js) ;;
               *) echo "MUTATION_POLICY=REJECT_PATH:$f"; exit 5 ;;
