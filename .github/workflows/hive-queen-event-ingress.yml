@@ -7,12 +7,23 @@ on:
       - school-verified
       - world-state-changed
       - queen-cycle
+      - hive_field_execute
 
 permissions:
   contents: write
 
 jobs:
+  field-execute:
+    if: github.event.action == 'hive_field_execute'
+    uses: giovannifidel-collab/pfarma-ci/.github/workflows/hive-field-execution-dispatch.yml@queen-universal-fabric-vnext
+    with:
+      goal: ${{ github.event.client_payload.goal }}
+      task_id: ${{ github.event.client_payload.task_id }}
+      mode: ${{ github.event.client_payload.mode }}
+    secrets: inherit
+
   route:
+    if: github.event.action != 'hive_field_execute'
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     env:
