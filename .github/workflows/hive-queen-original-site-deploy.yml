@@ -68,7 +68,46 @@ jobs:
         with:
           node-version: 22
 
-      - name: Deploy original HIVE Pages project
+      - name: Pull production Pages configuration and add AI binding
+        working-directory: private-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/wrangler-download.log 2>&1
+          config=''
+          for f in wrangler.jsonc wrangler.json wrangler.toml; do
+            if [[ -f "$f" ]]; then config="$f"; break; fi
+          done
+          test -n "$config" || { echo 'WRANGLER_CONFIG_NOT_GENERATED'; cat /tmp/wrangler-download.log; exit 40; }
+          echo "WRANGLER_CONFIG=$config"
+          if [[ "$config" == *.toml ]]; then
+            if ! grep -Eq '^\s*\[ai\]\s*$' "$config"; then
+              printf '\n[ai]\nbinding = "AI"\n' >> "$config"
+            fi
+          else
+            python3 - "$config" <<'PY'
+from pathlib import Path
+import sys,re
+p=Path(sys.argv[1])
+s=p.read_text()
+if not re.search(r'(?m)^\s*["\x27]ai["\x27]\s*:', s):
+    i=s.find('{')
+    if i < 0:
+        raise SystemExit('invalid Wrangler JSON/JSONC')
+    s=s[:i+1]+'\n  "ai": {"binding": "AI"},'+s[i+1:]
+    p.write_text(s)
+PY
+          fi
+          if [[ "$config" == *.toml ]]; then
+            grep -Eq '^\s*\[ai\]\s*$' "$config" && grep -Eq '^\s*binding\s*=\s*"AI"\s*$' "$config"
+          else
+            grep -Eq '"ai"\s*:' "$config" && grep -Eq '"binding"\s*:\s*"AI"' "$config"
+          fi
+          rm -f /tmp/wrangler-download.log
+          echo 'WORKERS_AI_BINDING_CONFIGURED=PASS'
+
+      - name: Deploy original HIVE Pages project with preserved config
         working-directory: private-source/cloudflare
         shell: bash
         run: |
