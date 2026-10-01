@@ -23,7 +23,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
-      PRIVATE_SHA: 83b1961fc6ca880924c24a0af5765b078587946b
+      PRIVATE_SHA: aee297f67bdd3879cdbb29c89b81ea41b8a2093b
     steps:
       - name: Preflight Cloudflare Pages authority
         shell: bash
@@ -58,6 +58,7 @@ jobs:
           test -f private-source/cloudflare/public/queen-ui-stability.js
           grep -q '/api/queen-command' private-source/cloudflare/public/queen-brain.js
           grep -q 'fetchLiveWorld' private-source/cloudflare/functions/api/queen-command.js
+          grep -q 'deterministic-world-synth' private-source/cloudflare/functions/api/queen-command.js
           grep -q 'evidence_grounded:true' private-source/cloudflare/functions/api/queen-command.js
           grep -q 'COMPETENCY_MODEL' private-source/cloudflare/functions/_lib/queen-runtime.js
           grep -q 'CAPABILITY_MESH' private-source/cloudflare/functions/_lib/queen-runtime.js
@@ -65,7 +66,7 @@ jobs:
           ! grep -q "import('./queen-top.js" private-source/cloudflare/public/runtime-health.js
           ! grep -q "import('./queen-brain.js" private-source/cloudflare/public/runtime-health.js
           echo 'QUEEN_UI_SINGLE_LOAD=PASS'
-          echo 'QUEEN_GROUNDED_VERIFIER_SOURCE=PASS'
+          echo 'QUEEN_DETERMINISTIC_WORLD_SYNTH_SOURCE=PASS'
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -147,14 +148,14 @@ jobs:
             code="$(curl -sS --max-time 120 -o "/tmp/queen-$i" -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
             if [[ "$code" != '200' ]]; then
               echo "CYCLE=$i HTTP=$code FAIL"
-              jq '{ok,error,task_id,verification}' "/tmp/queen-$i" 2>/dev/null || true
+              jq '{ok,error,task_id,verification,route}' "/tmp/queen-$i" 2>/dev/null || true
               exit 20
             fi
-            jq -e '.ok == true and .mode == "queen-vnext-aligned" and .verification.verified == true and .verification.independence_group_pass == true and .verification.evidence_grounded == true and .verification.score >= 0.70 and .paid_fallback == false and (.school.event_id != null) and (.world.event_id != null) and (.cognitive.event_id != null)' "/tmp/queen-$i" >/dev/null
+            jq -e '.ok == true and .mode == "queen-vnext-aligned" and .route == "deterministic-world-synth" and .verification.verified == true and .verification.independence_group_pass == true and .verification.evidence_grounded == true and .verification.score >= 0.70 and .paid_fallback == false and (.school.event_id != null) and (.world.event_id != null) and (.cognitive.event_id != null)' "/tmp/queen-$i" >/dev/null
             score="$(jq -r '.verification.score' "/tmp/queen-$i")"
             state="$(jq -r '.cognitive.state' "/tmp/queen-$i")"
             passes=$((passes+1))
-            echo "CYCLE=$i PASS score=$score cognitive=$state"
+            echo "CYCLE=$i PASS score=$score cognitive=$state route=deterministic-world-synth"
             sleep 1
           done
 
