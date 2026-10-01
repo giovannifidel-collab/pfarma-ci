@@ -19,23 +19,44 @@ jobs:
       CF_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CF_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
     steps:
-      - name: Test existing Cloudflare token against original Pages project
+      - name: Verify account token and Pages scope
         shell: bash
         run: |
           set -euo pipefail
           test -n "$CF_TOKEN"
           test -n "$CF_ACCOUNT"
-          CODE="$(curl -sS -o /tmp/pages -w '%{http_code}' \
+
+          VERIFY_HTTP="$(curl -sS -o /tmp/verify -w '%{http_code}' \
             -H "Authorization: Bearer $CF_TOKEN" \
-            -H 'Content-Type: application/json' \
-            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/hive-alveare")"
-          echo "PAGES_PROJECT_HTTP=$CODE"
-          if [[ "$CODE" == '200' ]]; then
-            jq -e '.success == true' /tmp/pages >/dev/null
-            jq '{success,result:{name:.result.name,production_branch:.result.production_branch,source_type:.result.source.type,latest_stage:.result.latest_deployment.latest_stage.name,latest_status:.result.latest_deployment.latest_stage.status}}' /tmp/pages
-            echo 'PAGES_API=PASS'
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify")"
+          echo "ACCOUNT_TOKEN_VERIFY_HTTP=$VERIFY_HTTP"
+          if [[ "$VERIFY_HTTP" == '200' ]]; then
+            jq -e '.success == true' /tmp/verify >/dev/null
+            echo 'ACCOUNT_TOKEN_VERIFY=PASS'
           else
-            jq '{success,errors}' /tmp/pages 2>/dev/null || true
-            echo 'PAGES_API=DENIED'
+            jq '{success,errors}' /tmp/verify 2>/dev/null || true
+            echo 'ACCOUNT_TOKEN_VERIFY=FAIL'
+          fi
+
+          LIST_HTTP="$(curl -sS -o /tmp/projects -w '%{http_code}' \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects")"
+          echo "PAGES_LIST_HTTP=$LIST_HTTP"
+          if [[ "$LIST_HTTP" == '200' ]]; then
+            jq -e '.success == true' /tmp/projects >/dev/null
+            jq '{success,projects:[.result[]|{name,production_branch,source_type:(.source.type // null)}]}' /tmp/projects
+            echo 'PAGES_LIST=PASS'
+          else
+            jq '{success,errors}' /tmp/projects 2>/dev/null || true
+            echo 'PAGES_LIST=FAIL'
             exit 20
           fi
+
+          PROJECT_HTTP="$(curl -sS -o /tmp/pages -w '%{http_code}' \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/hive-alveare")"
+          echo "PAGES_PROJECT_HTTP=$PROJECT_HTTP"
+          test "$PROJECT_HTTP" = '200' || { jq '{success,errors}' /tmp/pages 2>/dev/null || true; exit 21; }
+          jq -e '.success == true' /tmp/pages >/dev/null
+          jq '{success,result:{name:.result.name,production_branch:.result.production_branch,source_type:(.result.source.type // null),latest_stage:(.result.latest_deployment.latest_stage.name // null),latest_status:(.result.latest_deployment.latest_stage.status // null)}}' /tmp/pages
+          echo 'PAGES_API=PASS'
