@@ -1,0 +1,279 @@
+name: HIVE Field Execution Dispatcher
+
+on:
+  workflow_dispatch:
+    inputs:
+      goal:
+        description: Owner goal for HIVE Field
+        required: true
+        type: string
+      task_id:
+        description: Queen task identifier
+        required: false
+        type: string
+  repository_dispatch:
+    types: [hive_field_execute]
+  push:
+    branches: [queen-universal-fabric-vnext]
+    paths:
+      - .github/workflows/hive-field-execution-dispatch.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-field-execution-dispatch
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      MODEL: '@cf/meta/llama-3.1-8b-instruct-fp8'
+      TARGET_REPO: giovannifidel-collab/hive-field
+      TARGET_BRANCH: main
+      PROD_URL: https://hive-field-v8.vercel.app
+    steps:
+      - name: Resolve trusted execution request
+        id: request
+        shell: bash
+        env:
+          DISPATCH_GOAL: ${{ github.event.client_payload.goal }}
+          DISPATCH_TASK: ${{ github.event.client_payload.task_id }}
+          INPUT_GOAL: ${{ inputs.goal }}
+          INPUT_TASK: ${{ inputs.task_id }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            goal='Install the HIVE Execution Dispatcher proof manifest without changing application behaviour.'
+            task="proof-${GITHUB_RUN_ID}"
+            mode='proof'
+          else
+            goal="${DISPATCH_GOAL:-${INPUT_GOAL:-}}"
+            task="${DISPATCH_TASK:-${INPUT_TASK:-exec-${GITHUB_RUN_ID}}}"
+            mode='ai'
+          fi
+          [ -n "$goal" ] || { echo 'EXECUTOR_REQUEST=REJECTED_EMPTY_GOAL'; exit 2; }
+          [ ${#goal} -le 4000 ] || { echo 'EXECUTOR_REQUEST=REJECTED_OVERSIZE'; exit 2; }
+          safe_task="$(printf '%s' "$task" | tr -cd 'A-Za-z0-9._-' | cut -c1-80)"
+          [ -n "$safe_task" ] || safe_task="exec-${GITHUB_RUN_ID}"
+          printf 'goal<<__HIVE_GOAL__\n%s\n__HIVE_GOAL__\n' "$goal" >> "$GITHUB_OUTPUT"
+          echo "task_id=$safe_task" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "EXECUTOR_REQUEST=ACCEPTED"
+          echo "EXECUTOR_MODE=$mode"
+
+      - name: Validate execution credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${SOURCE_TOKEN:-}" ] || { echo 'SOURCE_TOKEN=MISSING'; exit 3; }
+          [ -n "${CF_TOKEN:-}" ] || { echo 'CF_TOKEN=MISSING'; exit 3; }
+          [ -n "${CF_ACCOUNT:-}" ] || { echo 'CF_ACCOUNT=MISSING'; exit 3; }
+          echo 'EXECUTOR_CREDENTIALS=PASS'
+
+      - name: Clone authoritative private source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/hive-askpass <<'EOF'
+          #!/usr/bin/env bash
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$SOURCE_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 /tmp/hive-askpass
+          export GIT_ASKPASS=/tmp/hive-askpass GIT_TERMINAL_PROMPT=0
+          git clone --quiet --depth=1 --branch "$TARGET_BRANCH" "https://github.com/${TARGET_REPO}.git" /tmp/hive-field
+          cd /tmp/hive-field
+          git rev-parse HEAD >/tmp/hive-base-sha
+          echo "TARGET_BASE_SHA=$(cat /tmp/hive-base-sha)"
+          echo 'PRIVATE_SOURCE_CLONE=PASS'
+
+      - name: Baseline quality gate
+        shell: bash
+        working-directory: /tmp/hive-field
+        run: |
+          set -euo pipefail
+          npm run check
+          npm run build
+          git reset --hard HEAD >/dev/null
+          git clean -fd >/dev/null
+          echo 'BASELINE_GATE=PASS'
+
+      - name: Produce candidate change
+        shell: bash
+        env:
+          GOAL: ${{ steps.request.outputs.goal }}
+          TASK_ID: ${{ steps.request.outputs.task_id }}
+          MODE: ${{ steps.request.outputs.mode }}
+        working-directory: /tmp/hive-field
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "proof" ]; then
+            mkdir -p .hive
+            cat >.hive/execution-dispatcher.json <<'JSON'
+          {
+            "schema_version": 1,
+            "project": "hive-field",
+            "executor": "hive-public-execution-dispatcher",
+            "source_repo": "giovannifidel-collab/hive-field",
+            "quality_gates": ["npm run check", "npm run build"],
+            "deployment": "vercel-git-main",
+            "policy": {
+              "fail_closed": true,
+              "optimistic_concurrency": true,
+              "paid_fallback": false,
+              "secret_commit": false
+            }
+          }
+          JSON
+            echo 'CANDIDATE_SOURCE=DETERMINISTIC_PROOF'
+            exit 0
+          fi
+
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path('.')
+          names=['README.md','package.json','build.mjs','test.mjs','enhancements.js','enhancements.css','api/hf-geocode.js','patch-v9.11.18.js']
+          parts=[]
+          total=0
+          for name in names:
+              p=root/name
+              if not p.is_file():
+                  continue
+              text=p.read_text(encoding='utf-8', errors='replace')
+              cap=24000 if name=='patch-v9.11.18.js' else 18000
+              text=text[:cap]
+              block=f'\n===== FILE: {name} =====\n{text}\n'
+              if total+len(block)>70000:
+                  break
+              parts.append(block); total+=len(block)
+          goal=os.environ['GOAL']
+          system=(
+              'You are the coding worker inside HIVE Execution Dispatcher. '
+              'Return ONLY a unified git diff that can be applied with git apply, or exactly NO_CHANGE. '
+              'Make one small, high-confidence, backwards-compatible improvement that advances the owner goal. '
+              'Never modify package.json, vercel.json, .github, .hive, lockfiles, credentials, secrets, auth, billing, or deployment configuration. '
+              'Never delete files. Prefer an existing JS/MJS/CSS/test/README file. Do not claim tests passed; they run after your patch.'
+          )
+          user='OWNER GOAL:\n'+goal+'\n\nREPOSITORY CONTEXT:'+''.join(parts)
+          req={'messages':[{'role':'system','content':system},{'role':'user','content':user}], 'max_tokens':1800, 'temperature':0.05}
+          Path('/tmp/hive-ai-request.json').write_text(json.dumps(req),encoding='utf-8')
+          PY
+          response=/tmp/hive-ai-response.json
+          code="$(curl -sS -o "$response" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/hive-ai-request.json \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/ai/run/${MODEL}")"
+          echo "AI_PATCH_HTTP=$code"
+          [ "$code" = 200 ] || { echo 'CANDIDATE_SOURCE=AI_FAILED'; exit 4; }
+          python3 - "$response" <<'PY'
+          import json,re,sys
+          from pathlib import Path
+          d=json.load(open(sys.argv[1],encoding='utf-8'))
+          text=str((d.get('result') or {}).get('response') or '').strip()
+          text=re.sub(r'^```(?:diff)?\s*','',text,flags=re.I)
+          text=re.sub(r'\s*```$','',text)
+          if not text:
+              raise SystemExit('empty AI patch')
+          if text.strip()=='NO_CHANGE':
+              Path('/tmp/hive-no-change').write_text('1')
+          else:
+              Path('/tmp/hive-candidate.diff').write_text(text+'\n',encoding='utf-8')
+          PY
+          if [ -f /tmp/hive-no-change ]; then
+            echo 'CANDIDATE_SOURCE=AI_NO_CHANGE'
+            exit 0
+          fi
+          git apply --check /tmp/hive-candidate.diff
+          git apply /tmp/hive-candidate.diff
+          echo 'CANDIDATE_SOURCE=AI_PATCH'
+
+      - name: Enforce mutation policy
+        id: policy
+        shell: bash
+        working-directory: /tmp/hive-field
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- .; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'MUTATION_POLICY=NO_CHANGE'
+            exit 0
+          fi
+          mapfile -t files < <(git diff --name-only --diff-filter=ACM)
+          deleted="$(git diff --name-only --diff-filter=D)"
+          [ -z "$deleted" ] || { echo 'MUTATION_POLICY=REJECT_DELETE'; exit 5; }
+          for f in "${files[@]}"; do
+            case "$f" in
+              .hive/execution-dispatcher.json|README.md|*.js|*.mjs|*.css|api/*.js) ;;
+              *) echo "MUTATION_POLICY=REJECT_PATH:$f"; exit 5 ;;
+            esac
+            case "$f" in
+              package.json|vercel.json|.github/*|*.lock|package-lock.json) echo "MUTATION_POLICY=REJECT_SENSITIVE_PATH:$f"; exit 5 ;;
+            esac
+          done
+          [ ${#files[@]} -le 4 ] || { echo 'MUTATION_POLICY=REJECT_TOO_MANY_FILES'; exit 5; }
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+          echo "MUTATION_FILES=${#files[@]}"
+          echo 'MUTATION_POLICY=PASS'
+
+      - name: Post-change quality gate
+        if: steps.policy.outputs.changed == 'true'
+        shell: bash
+        working-directory: /tmp/hive-field
+        run: |
+          set -euo pipefail
+          npm run check
+          npm run build
+          echo 'POST_CHANGE_GATE=PASS'
+
+      - name: Commit and publish only verified change
+        if: steps.policy.outputs.changed == 'true'
+        shell: bash
+        env:
+          TASK_ID: ${{ steps.request.outputs.task_id }}
+        working-directory: /tmp/hive-field
+        run: |
+          set -euo pipefail
+          export GIT_ASKPASS=/tmp/hive-askpass GIT_TERMINAL_PROMPT=0
+          base="$(cat /tmp/hive-base-sha)"
+          remote="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | awk '{print $1}')"
+          [ "$remote" = "$base" ] || { echo 'OPTIMISTIC_CONCURRENCY=REJECTED'; exit 6; }
+          git config user.name 'HIVE Execution Dispatcher'
+          git config user.email 'hive-executor@users.noreply.github.com'
+          git add -A
+          git commit -m "hive(exec): verified Queen task ${TASK_ID}" >/dev/null
+          commit="$(git rev-parse HEAD)"
+          git push --quiet origin "HEAD:${TARGET_BRANCH}"
+          echo "TARGET_COMMIT_SHA=$commit"
+          echo 'VERIFIED_PUSH=PASS'
+
+      - name: Production smoke gate
+        if: steps.policy.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in 1 2 3 4 5 6; do
+            code="$(curl -L -sS -o /dev/null -w '%{http_code}' --max-time 20 "$PROD_URL" || true)"
+            if [ "$code" = 200 ]; then ok=1; break; fi
+            sleep 10
+          done
+          echo "PRODUCTION_HTTP=${code:-000}"
+          [ "$ok" = 1 ] || { echo 'PRODUCTION_SMOKE=FAIL'; exit 7; }
+          echo 'PRODUCTION_SMOKE=PASS'
+
+      - name: Final proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'HIVE_EXECUTION_DISPATCHER=PASS'
+          echo 'PAID_FALLBACK=false'
