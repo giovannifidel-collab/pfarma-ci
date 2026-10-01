@@ -14,22 +14,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      CF_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
-      CF_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      NEW_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      LEGACY_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CONFIGURED_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
     steps:
-      - name: Discover account visible to runtime token
+      - name: Discover Cloudflare accounts and Pages ownership
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$CF_ACCOUNT"; test -n "$CF_TOKEN"
-          code="$(curl -sS -o /tmp/accounts -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" 'https://api.cloudflare.com/client/v4/accounts?per_page=50')"
-          echo "ACCOUNTS_HTTP=$code"
-          if [[ "$code" == 200 ]]; then
-            jq '{success,accounts:[.result[]|{id,name}]}' /tmp/accounts
-          else
-            jq '{success,errors}' /tmp/accounts 2>/dev/null || true
-          fi
-          verify="$(curl -sS -o /tmp/verify -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify")"
-          pages="$(curl -sS -o /tmp/pages -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects")"
-          echo "CONFIGURED_ACCOUNT_TOKEN_VERIFY_HTTP=$verify"
-          echo "CONFIGURED_ACCOUNT_PAGES_HTTP=$pages"
+          for label in NEW_TOKEN LEGACY_TOKEN; do
+            token="${!label:-}"
+            [[ -n "$token" ]] || continue
+            code="$(curl -sS -o "/tmp/${label}-accounts" -w '%{http_code}' -H "Authorization: Bearer $token" 'https://api.cloudflare.com/client/v4/accounts?per_page=50')"
+            echo "$label:ACCOUNTS_HTTP=$code"
+            if [[ "$code" == 200 ]]; then
+              jq -r '.result[]|"ACCOUNT name=\(.name) id=\(.id)"' "/tmp/${label}-accounts"
+              while IFS= read -r account; do
+                pcode="$(curl -sS -o /tmp/pages -w '%{http_code}' -H "Authorization: Bearer $token" "https://api.cloudflare.com/client/v4/accounts/$account/pages/projects")"
+                echo "$label:ACCOUNT=$account:PAGES_HTTP=$pcode"
+                if [[ "$pcode" == 200 ]]; then jq -r '.result[]?.name|"PAGE_PROJECT="+.' /tmp/pages; fi
+              done < <(jq -r '.result[].id' "/tmp/${label}-accounts")
+            fi
+          done
+          echo 'DISCOVERY_DONE=1'
