@@ -85,11 +85,15 @@ jobs:
             if ! grep -Eq '^\s*\[ai\]\s*$' "$config"; then
               printf '\n[ai]\nbinding = "AI"\n' >> "$config"
             fi
+            if grep -Eq '^\s*\[env\.production\]' "$config" && ! grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config"; then
+              printf '\n[env.production.ai]\nbinding = "AI"\n' >> "$config"
+            fi
           else
             python3 -c 'from pathlib import Path; import sys,re; p=Path(sys.argv[1]); s=p.read_text(); i=s.find("{"); assert i>=0; s=s if re.search(r"(?m)^\s*[\"\x27]ai[\"\x27]\s*:",s) else s[:i+1]+"\n  \"ai\": {\"binding\": \"AI\"},"+s[i+1:]; p.write_text(s)' "$config"
           fi
           if [[ "$config" == *.toml ]]; then
             grep -Eq '^\s*\[ai\]\s*$' "$config" && grep -Eq '^\s*binding\s*=\s*"AI"\s*$' "$config"
+            if grep -Eq '^\s*\[env\.production\]' "$config"; then grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config"; fi
           else
             grep -Eq '"ai"\s*:' "$config" && grep -Eq '"binding"\s*:\s*"AI"' "$config"
           fi
