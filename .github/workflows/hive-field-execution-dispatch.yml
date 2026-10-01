@@ -44,6 +44,7 @@ jobs:
         env:
           DISPATCH_GOAL: ${{ github.event.client_payload.goal }}
           DISPATCH_TASK: ${{ github.event.client_payload.task_id }}
+          DISPATCH_MODE: ${{ github.event.client_payload.mode }}
           INPUT_GOAL: ${{ inputs.goal }}
           INPUT_TASK: ${{ inputs.task_id }}
         run: |
@@ -55,7 +56,11 @@ jobs:
           else
             goal="${DISPATCH_GOAL:-${INPUT_GOAL:-}}"
             task="${DISPATCH_TASK:-${INPUT_TASK:-exec-${GITHUB_RUN_ID}}}"
-            mode='ai'
+            requested_mode="${DISPATCH_MODE:-ai}"
+            case "$requested_mode" in
+              ai|proof) mode="$requested_mode" ;;
+              *) echo 'EXECUTOR_REQUEST=REJECTED_MODE'; exit 2 ;;
+            esac
           fi
           [ -n "$goal" ] || { echo 'EXECUTOR_REQUEST=REJECTED_EMPTY_GOAL'; exit 2; }
           [ ${#goal} -le 4000 ] || { echo 'EXECUTOR_REQUEST=REJECTED_OVERSIZE'; exit 2; }
