@@ -1,0 +1,130 @@
+name: HIVE Field World Model Overlay
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["HIVE Queen Global World Sync"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hive-field-world-overlay.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hive-field-world-overlay
+  cancel-in-progress: true
+
+jobs:
+  overlay:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Check out public world relay
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Check out HIVE Field authoritative source
+        id: field_source
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-field
+          ref: main
+          token: ${{ secrets.GIOCHEM_SOURCE_TOKEN || secrets.PFARMA_SOURCE_TOKEN }}
+          path: _sources/hive-field
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Merge HIVE Field into sanitized world state
+        shell: bash
+        env:
+          FIELD_OUTCOME: ${{ steps.field_source.outcome }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const cp=require('child_process');
+          const file='hive-world-state.json';
+          const world=JSON.parse(fs.readFileSync(file,'utf8'));
+          const dir='_sources/hive-field';
+          const now=new Date().toISOString();
+          const git=(args)=>{try{return cp.execFileSync('git',['-C',dir,...args],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim()}catch{return null}};
+          const readJson=(p)=>{try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return null}};
+          const ok=process.env.FIELD_OUTCOME==='success' && git(['rev-parse','--is-inside-work-tree'])==='true';
+          const pkg=ok?readJson(`${dir}/package.json`):null;
+          const progressRaw=ok?(readJson(`${dir}/project/progress.json`)||readJson(`${dir}/progress.json`)):null;
+          const progress=progressRaw?{
+            phase:progressRaw.phase??null,
+            overall_percent:Number.isFinite(Number(progressRaw.overall_percent))?Number(progressRaw.overall_percent):null,
+            software_implementation_percent:Number.isFinite(Number(progressRaw.software_implementation_percent))?Number(progressRaw.software_implementation_percent):null,
+            release_eligible:typeof progressRaw.release_eligible==='boolean'?progressRaw.release_eligible:null
+          }:null;
+
+          async function probe(url,role='primary'){
+            const started=Date.now();
+            try{
+              const r=await fetch(url,{headers:{'user-agent':'HIVE-Queen-Field-Overlay','accept':'application/json'},redirect:'manual',signal:AbortSignal.timeout(9000)});
+              let summary=null;
+              if(r.ok){try{const j=await r.json();summary={status:j.status??j.ok??null,version:j.version??null}}catch{}}
+              else{try{await r.body?.cancel()}catch{}}
+              return {url,role,reachable:r.status<500,http_status:r.status,latency_ms:Date.now()-started,summary,observed_at:now};
+            }catch(error){return {url,role,reachable:false,http_status:null,latency_ms:Date.now()-started,error:String(error?.message||error).slice(0,160),observed_at:now}}
+          }
+
+          (async()=>{
+            world.projects=world.projects||{};
+            world.projects['hive-field']={
+              source:{
+                kind:'github-private',
+                repo:'giovannifidel-collab/hive-field',
+                ref:'main',
+                available:ok,
+                sha:ok?git(['rev-parse','HEAD']):null,
+                observed_at:now,
+                version:pkg?.version||null,
+                progress,
+                provenance:ok?'AUTHENTICATED_PRIVATE_CHECKOUT':'SOURCE_UNAVAILABLE'
+              },
+              runtime:[await probe('https://hive-field-v8.vercel.app/api/health','primary')],
+              sync_depth:'source+runtime+field-control-state'
+            };
+            world.generated_at=now;
+            const values=Object.values(world.projects);
+            const sourceBacked=values.filter(x=>!!x.source?.repo).length;
+            const sourceAvailable=values.filter(x=>!!x.source?.repo&&x.source.available).length;
+            const checks=values.flatMap(x=>x.runtime||[]).filter(x=>typeof x.reachable==='boolean');
+            world.coverage={source_backed_projects:sourceBacked,source_available:sourceAvailable,runtime_checks:checks.length,runtimes_reachable:checks.filter(x=>x.reachable).length};
+            fs.writeFileSync(file,JSON.stringify(world,null,2)+'\n');
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
+
+      - name: Remove private checkout
+        if: always()
+        run: rm -rf _sources
+
+      - name: Publish overlay only when changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'HIVE Queen Field Overlay'
+          git config user.email 'hive-queen@users.noreply.github.com'
+          git add hive-world-state.json
+          if git diff --cached --quiet; then
+            echo 'HIVE_FIELD_WORLD_OVERLAY=UNCHANGED'
+            exit 0
+          fi
+          git commit -m 'state(hive): add HIVE Field authoritative world state'
+          git push
+          echo 'HIVE_FIELD_WORLD_OVERLAY=PASS'
+
+      - name: Verify overlay
+        shell: bash
+        run: |
+          node -e "const s=require('./hive-world-state.json'); const p=s.projects?.['hive-field']; if(!p) process.exit(2); console.log('HIVE_FIELD_SOURCE_AVAILABLE='+p.source.available); console.log('HIVE_FIELD_SHA='+(p.source.sha||'none')); console.log('HIVE_FIELD_RUNTIME_REACHABLE='+(p.runtime?.[0]?.reachable??false));"
