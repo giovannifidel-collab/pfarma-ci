@@ -23,7 +23,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
-      PRIVATE_SHA: aee297f67bdd3879cdbb29c89b81ea41b8a2093b
+      PRIVATE_SHA: 72cc58c8519a8659cab7608d8500391976a6d8f6
     steps:
       - name: Preflight Cloudflare Pages authority
         shell: bash
@@ -63,9 +63,13 @@ jobs:
           grep -q 'COMPETENCY_MODEL' private-source/cloudflare/functions/_lib/queen-runtime.js
           grep -q 'CAPABILITY_MESH' private-source/cloudflare/functions/_lib/queen-runtime.js
           grep -q 'queen-ui-stability.js' private-source/cloudflare/public/queen-loader.js
+          grep -q 'patchSafely' private-source/cloudflare/public/world-awareness.js
+          grep -q 'observer?.disconnect' private-source/cloudflare/public/world-awareness.js
+          grep -q 'world-awareness-v2-loopfix-20261001' private-source/cloudflare/public/runtime-health.js
           ! grep -q "import('./queen-top.js" private-source/cloudflare/public/runtime-health.js
           ! grep -q "import('./queen-brain.js" private-source/cloudflare/public/runtime-health.js
           echo 'QUEEN_UI_SINGLE_LOAD=PASS'
+          echo 'QUEEN_RENDERER_LOOP_GUARD=PASS'
           echo 'QUEEN_DETERMINISTIC_WORLD_SYNTH_SOURCE=PASS'
 
       - name: Set up Node
