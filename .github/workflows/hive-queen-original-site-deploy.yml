@@ -22,7 +22,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
-      PRIVATE_SHA: b4bff6c12c8408629506b8c608b124465d65d505
+      PRIVATE_SHA: f03c9cf434d59966cabfc2d16a36244aca3d09fa
     steps:
       - name: Preflight Cloudflare Pages authority
         shell: bash
@@ -56,12 +56,16 @@ jobs:
           test -f private-source/db/018_hive_field_cell.sql
           grep -q '/api/queen-command' private-source/cloudflare/public/queen-intent-router.js
           grep -q 'hive-field' private-source/cloudflare/public/queen-intent-router.js
+          grep -q 'dispatcher avviato' private-source/cloudflare/public/queen-intent-router.js
           grep -q 'queen-intent-router.js' private-source/cloudflare/public/queen-loader.js
           grep -q '/projects?on_conflict=slug' private-source/cloudflare/functions/api/project-register.js
           grep -q 'deterministic-world-synth' private-source/cloudflare/functions/api/queen-command.js
+          grep -q 'HIVE_GITHUB_DISPATCH_TOKEN' private-source/cloudflare/functions/api/queen-command.js
+          grep -q 'hive_field_execute' private-source/cloudflare/functions/api/queen-command.js
           grep -q 'patchSafely' private-source/cloudflare/public/world-awareness.js
           grep -q 'observer?.disconnect' private-source/cloudflare/public/world-awareness.js
           echo 'QUEEN_NATURAL_INTENT_ROUTER=PASS'
+          echo 'QUEEN_EXECUTION_DISPATCH_SOURCE=PASS'
           echo 'HIVE_FIELD_REGISTRY_SOURCE=PASS'
 
       - name: Set up Node
@@ -87,6 +91,17 @@ jobs:
           fi
           echo 'WORKERS_AI_BINDING_CONFIGURED=PASS'
 
+      - name: Bind Queen GitHub dispatcher secret
+        working-directory: private-source/cloudflare
+        shell: bash
+        env:
+          HIVE_GITHUB_DISPATCH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$HIVE_GITHUB_DISPATCH_TOKEN"
+          printf '%s' "$HIVE_GITHUB_DISPATCH_TOKEN" | npx --yes wrangler@4 pages secret put HIVE_GITHUB_DISPATCH_TOKEN --project-name hive-alveare >/tmp/pages-secret.log 2>&1
+          echo 'QUEEN_GITHUB_DISPATCH_SECRET=PASS'
+
       - name: Deploy Queen
         working-directory: private-source/cloudflare
         shell: bash
@@ -98,7 +113,7 @@ jobs:
       - name: Wait for propagation
         run: sleep 15
 
-      - name: Verify canonical runtime and 3 Queen cycles
+      - name: Verify canonical runtime, Queen cycles and dispatcher handoff
         shell: bash
         run: |
           set -euo pipefail
@@ -123,6 +138,11 @@ jobs:
             jq -e '.ok == true and .mode == "queen-vnext-aligned" and .verification.verified == true and .verification.independence_group_pass == true and .verification.evidence_grounded == true and .paid_fallback == false' "/tmp/q$i" >/dev/null
             echo "POST_DEPLOY_CYCLE=$i PASS"
           done
+          body="$(jq -nc --arg m 'Completa il collegamento operativo di HIVE Field verificando il dispatcher senza modificare applicazione.' '{message:$m,project_slug:"hive-field",source:"post-deploy-execution-gate"}')"
+          code="$(curl -sS --max-time 120 -o /tmp/exec -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
+          test "$code" = 200
+          jq -e '.ok == true and .verification.verified == true and .execution.dispatched == true and .execution.status == "queued" and .execution.mode == "proof" and .paid_fallback == false' /tmp/exec >/dev/null
+          echo 'QUEEN_EXECUTION_DISPATCH_GATE=PASS'
           echo 'QUEEN_POST_DEPLOY_GATE=PASS'
 
       - name: Remove private source checkout
