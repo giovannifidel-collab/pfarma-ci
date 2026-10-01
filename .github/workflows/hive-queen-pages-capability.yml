@@ -17,19 +17,19 @@ jobs:
       CF_ACCOUNT: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
       CF_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
     steps:
-      - name: Diagnose Cloudflare account scopes
+      - name: Discover account visible to runtime token
         shell: bash
         run: |
           set -euo pipefail
           test -n "$CF_ACCOUNT"; test -n "$CF_TOKEN"
-          for item in account aig pages; do
-            case "$item" in
-              account) url="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT" ;;
-              aig) url="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/ai-gateway/gateways" ;;
-              pages) url="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects" ;;
-            esac
-            code="$(curl -sS -o "/tmp/$item" -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" "$url")"
-            echo "${item^^}_HTTP=$code"
-            if [[ "$item" == account && "$code" == 200 ]]; then jq '{success,account_name:.result.name}' /tmp/account; fi
-            if [[ "$code" != 200 ]]; then jq '{success,errors}' "/tmp/$item" 2>/dev/null || true; fi
-          done
+          code="$(curl -sS -o /tmp/accounts -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" 'https://api.cloudflare.com/client/v4/accounts?per_page=50')"
+          echo "ACCOUNTS_HTTP=$code"
+          if [[ "$code" == 200 ]]; then
+            jq '{success,accounts:[.result[]|{id,name}]}' /tmp/accounts
+          else
+            jq '{success,errors}' /tmp/accounts 2>/dev/null || true
+          fi
+          verify="$(curl -sS -o /tmp/verify -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify")"
+          pages="$(curl -sS -o /tmp/pages -w '%{http_code}' -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects")"
+          echo "CONFIGURED_ACCOUNT_TOKEN_VERIFY_HTTP=$verify"
+          echo "CONFIGURED_ACCOUNT_PAGES_HTTP=$pages"
