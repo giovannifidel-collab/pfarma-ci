@@ -22,7 +22,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
-      PRIVATE_SHA: f03c9cf434d59966cabfc2d16a36244aca3d09fa
+      PRIVATE_SHA: 9fc1a17ba0943cbae573a5584a3f59d2b2e98018
     steps:
       - name: Preflight Cloudflare Pages authority
         shell: bash
@@ -60,6 +60,7 @@ jobs:
           grep -q 'queen-intent-router.js' private-source/cloudflare/public/queen-loader.js
           grep -q '/projects?on_conflict=slug' private-source/cloudflare/functions/api/project-register.js
           grep -q 'deterministic-world-synth' private-source/cloudflare/functions/api/queen-command.js
+          grep -q 'deterministic-execution-preflight' private-source/cloudflare/functions/api/queen-command.js
           grep -q 'HIVE_GITHUB_DISPATCH_TOKEN' private-source/cloudflare/functions/api/queen-command.js
           grep -q 'hive_field_execute' private-source/cloudflare/functions/api/queen-command.js
           grep -q 'patchSafely' private-source/cloudflare/public/world-awareness.js
@@ -142,7 +143,7 @@ jobs:
           code="$(curl -sS --max-time 120 -o /tmp/exec -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
           echo "QUEEN_EXECUTION_HTTP=$code"
           if [[ "$code" != 200 ]]; then jq '{ok,error,task_id,verification,execution}' /tmp/exec 2>/dev/null || cat /tmp/exec; exit 1; fi
-          if ! jq -e '.ok == true and .verification.verified == true and .execution.dispatched == true and .execution.status == "queued" and .execution.mode == "proof" and .paid_fallback == false' /tmp/exec >/dev/null; then jq '{ok,error,task_id,verification,execution}' /tmp/exec; exit 1; fi
+          if ! jq -e '.ok == true and .route == "deterministic-execution-preflight" and .verification.verified == true and .execution.dispatched == true and .execution.status == "queued" and .execution.mode == "proof" and .paid_fallback == false' /tmp/exec >/dev/null; then jq '{ok,error,task_id,route,verification,execution}' /tmp/exec; exit 1; fi
           echo 'QUEEN_EXECUTION_DISPATCH_GATE=PASS'
           echo 'QUEEN_POST_DEPLOY_GATE=PASS'
 
