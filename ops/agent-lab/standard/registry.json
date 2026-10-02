@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "phase": "B_STANDARDIZATION",
+  "certified_count": 10,
+  "ready_for_hive_count": 10,
+  "standardized_count": 0,
+  "hive_integrated_count": 0,
+  "agents": [
+    {"id":"kimi","product":"Kimi Web","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-KIMI-STRESS-0005"},
+    {"id":"claude","product":"Claude Web","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-CLAUDE-STRESS-0001"},
+    {"id":"gemini","product":"Gemini Web","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-GEMINI-STRESS-0003"},
+    {"id":"deepseek","product":"DeepSeek Web","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-DEEPSEEK-STRESS-0001"},
+    {"id":"qwen","product":"Qwen Web / Qwen3.7-Plus observed at certification","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-QWEN-STRESS-0001"},
+    {"id":"mistral","product":"Mistral Vibe Web / Fast","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-MISTRAL-STRESS-0001"},
+    {"id":"perplexity","product":"Perplexity Web","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-PERPLEXITY-STRESS-0001"},
+    {"id":"copilot","product":"Microsoft Copilot Web / Standard chat","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-COPILOT-STRESS-0005-FRESH"},
+    {"id":"meta","product":"Meta AI Web / Instant","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-META-STRESS-0001-FRESH"},
+    {"id":"duck","product":"Duck.ai Web / Free / Fast","certified":true,"ready_for_hive":true,"standardized":false,"hive_integrated":false,"certification_test_id":"HIVE-DUCK-STRESS-0003-FRESH"}
+  ],
+  "non_certified": [
+    {"id":"grok-fast","product":"Grok Fast Web","connected":true,"tested":true,"certified":false,"ready_for_hive":false}
+  ]
+}

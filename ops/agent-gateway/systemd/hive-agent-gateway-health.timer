@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic HIVE Agent Gateway health watchdog
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=120s
+AccuracySec=15s
+Persistent=true
+Unit=hive-agent-gateway-health.service
+
+[Install]
+WantedBy=timers.target

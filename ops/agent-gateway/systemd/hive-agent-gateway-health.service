@@ -1,0 +1,7 @@
+[Unit]
+Description=HIVE Agent Gateway health watchdog
+After=hive-agent-gateway.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/hive/pfarma-ci/ops/agent-gateway/healthcheck.sh --repair
