@@ -22,7 +22,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
-      PRIVATE_SHA: 9fc1a17ba0943cbae573a5584a3f59d2b2e98018
+      PRIVATE_SHA: 023d29d33dd5a4cef7d94410c976497106ebd99a
     steps:
       - name: Preflight Cloudflare Pages authority
         shell: bash
@@ -56,7 +56,7 @@ jobs:
           test -f private-source/db/018_hive_field_cell.sql
           grep -q '/api/queen-command' private-source/cloudflare/public/queen-intent-router.js
           grep -q 'hive-field' private-source/cloudflare/public/queen-intent-router.js
-          grep -q 'dispatcher avviato' private-source/cloudflare/public/queen-intent-router.js
+          grep -q 'esecuzione verificata' private-source/cloudflare/public/queen-intent-router.js
           grep -q 'queen-intent-router.js' private-source/cloudflare/public/queen-loader.js
           grep -q '/projects?on_conflict=slug' private-source/cloudflare/functions/api/project-register.js
           grep -q 'deterministic-world-synth' private-source/cloudflare/functions/api/queen-command.js
@@ -140,10 +140,11 @@ jobs:
             echo "POST_DEPLOY_CYCLE=$i PASS"
           done
           body="$(jq -nc --arg m 'Completa il collegamento operativo di HIVE Field verificando il dispatcher senza modificare applicazione.' '{message:$m,project_slug:"hive-field",source:"post-deploy-execution-gate"}')"
-          code="$(curl -sS --max-time 120 -o /tmp/exec -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
+          code="$(curl -sS --max-time 180 -o /tmp/exec -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
           echo "QUEEN_EXECUTION_HTTP=$code"
           if [[ "$code" != 200 ]]; then jq '{ok,error,task_id,verification,execution}' /tmp/exec 2>/dev/null || cat /tmp/exec; exit 1; fi
-          if ! jq -e '.ok == true and .route == "deterministic-execution-preflight" and .verification.verified == true and .execution.dispatched == true and .execution.status == "queued" and .execution.mode == "proof" and .paid_fallback == false' /tmp/exec >/dev/null; then jq '{ok,error,task_id,route,verification,execution}' /tmp/exec; exit 1; fi
+          if ! jq -e '.ok == true and .route == "verified-execution-dispatch" and .verification.verified == true and .execution.dispatched == true and .execution.status == "verified" and .execution.conclusion == "success" and .execution.mode == "proof" and .execution.changed == true and .execution.target_commit_sha != null and .execution.production_http == 200 and .execution.production_smoke == "PASS" and .paid_fallback == false' /tmp/exec >/dev/null; then jq '{ok,error,task_id,route,verification,execution}' /tmp/exec; exit 1; fi
+          jq -r '"QUEEN_EXECUTION_RUN=\(.execution.run_id) COMMIT=\(.execution.target_commit_sha) HTTP=\(.execution.production_http)"' /tmp/exec
           echo 'QUEEN_EXECUTION_DISPATCH_GATE=PASS'
           echo 'QUEEN_POST_DEPLOY_GATE=PASS'
 

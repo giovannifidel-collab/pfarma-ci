@@ -1,4 +1,5 @@
 name: HIVE Field Execution Dispatcher
+run-name: HIVE Field 37366017106
 
 on:
   workflow_call:
@@ -141,22 +142,16 @@ jobs:
           set -euo pipefail
           if [ "$MODE" = "proof" ]; then
             mkdir -p .hive
-            cat >.hive/execution-dispatcher.json <<'JSON'
-          {
-            "schema_version": 1,
-            "project": "hive-field",
-            "executor": "hive-public-execution-dispatcher",
-            "source_repo": "giovannifidel-collab/hive-field",
-            "quality_gates": ["npm run check", "npm run build"],
-            "deployment": "vercel-git-main",
-            "policy": {
-              "fail_closed": true,
-              "optimistic_concurrency": true,
-              "paid_fallback": false,
-              "secret_commit": false
-            }
-          }
-          JSON
+            jq -n --arg task "$TASK_ID" --arg run "$GITHUB_RUN_ID" '{
+              schema_version: 1,
+              project: "hive-field",
+              executor: "hive-public-execution-dispatcher",
+              source_repo: "giovannifidel-collab/hive-field",
+              quality_gates: ["npm run check", "npm run build"],
+              deployment: "vercel-git-main",
+              proof: {task_id: $task, run_id: $run},
+              policy: {fail_closed: true, optimistic_concurrency: true, paid_fallback: false, secret_commit: false}
+            }' >.hive/execution-dispatcher.json
             echo 'CANDIDATE_SOURCE=DETERMINISTIC_PROOF'
             exit 0
           fi
@@ -285,7 +280,6 @@ jobs:
           echo 'VERIFIED_PUSH=PASS'
 
       - name: Production smoke gate
-        if: steps.policy.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
