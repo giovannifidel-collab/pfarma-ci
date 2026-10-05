@@ -36,11 +36,14 @@ jobs:
           if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then headers+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN"); fi
           start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "start=$start" >> "$GITHUB_OUTPUT"
-          body="$(jq -nc --arg m 'Verifica il collegamento operativo HIVE Field senza modificare il comportamento applicativo.' '{message:$m,project_slug:"hive-field",source:"post-deploy-execution-gate"}')"
+          body="$(jq -nc --arg m 'Completa il collegamento operativo di HIVE Field verificando il dispatcher senza modificare il comportamento applicativo.' '{message:$m,project_slug:"hive-field",source:"post-deploy-execution-gate"}')"
           code="$(curl -sS --max-time 120 -o /tmp/queen-exec -w '%{http_code}' -X POST "${headers[@]}" "$BASE/api/queen-command" -d "$body")"
           echo "QUEEN_EXECUTION_HTTP=$code"
-          test "$code" = 200
-          jq -e '.ok == true and .route == "deterministic-execution-preflight" and .verification.verified == true and .execution.dispatched == true and .execution.status == "queued" and .execution.mode == "proof" and .paid_fallback == false' /tmp/queen-exec >/dev/null
+          if [[ "$code" != 200 ]]; then jq '{ok,error,task_id,route,verification,execution}' /tmp/queen-exec 2>/dev/null || cat /tmp/queen-exec; exit 1; fi
+          if ! jq -e '.ok == true and .route == "deterministic-execution-preflight" and .verification.verified == true and .execution.dispatched == true and .execution.status == "queued" and .execution.mode == "proof" and .paid_fallback == false' /tmp/queen-exec >/dev/null; then
+            jq '{ok,error,task_id,route,verification,execution,paid_fallback}' /tmp/queen-exec
+            exit 1
+          fi
           task="$(jq -r '.task_id' /tmp/queen-exec)"
           test -n "$task" -a "$task" != null
           echo "task_id=$task" >> "$GITHUB_OUTPUT"
