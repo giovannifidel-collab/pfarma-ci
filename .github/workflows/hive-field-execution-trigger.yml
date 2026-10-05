@@ -1,0 +1,17 @@
+name: HIVE Field Queen Dispatch Bridge
+
+on:
+  repository_dispatch:
+    types: [hive_field_execute]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    uses: giovannifidel-collab/pfarma-ci/.github/workflows/hive-field-execution-dispatch.yml@queen-universal-fabric-vnext
+    with:
+      goal: ${{ github.event.client_payload.goal }}
+      task_id: ${{ github.event.client_payload.task_id }}
+      mode: ${{ github.event.client_payload.mode || 'ai' }}
+    secrets: inherit
