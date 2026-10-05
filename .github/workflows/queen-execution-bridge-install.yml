@@ -1,0 +1,282 @@
+name: Queen Verified Execution Bridge Installer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/queen-execution-bridge-install.yml
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      PUBLIC_REPO: giovannifidel-collab/pfarma-ci
+      PUBLIC_BRANCH: queen-universal-fabric-vnext
+      PRIVATE_REPO: giovannifidel-collab/hive-alveare
+      PRIVATE_BRANCH: main
+    steps:
+      - name: Check out public execution authority
+        uses: actions/checkout@v4
+        with:
+          ref: queen-universal-fabric-vnext
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prepare trusted Git transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_TOKEN"
+          cat >/tmp/hive-askpass <<'EOF'
+          #!/usr/bin/env bash
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *Password*) printf '%s\n' "$SOURCE_TOKEN" ;;
+          esac
+          EOF
+          chmod 700 /tmp/hive-askpass
+          echo 'TRUSTED_GIT_TRANSPORT=PASS'
+
+      - name: Patch private Queen execution bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          export GIT_ASKPASS=/tmp/hive-askpass GIT_TERMINAL_PROMPT=0
+          git clone --quiet --depth=1 --branch "$PRIVATE_BRANCH" "https://github.com/${PRIVATE_REPO}.git" /tmp/hive-alveare
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root=Path('/tmp/hive-alveare')
+          p=root/'cloudflare/functions/api/queen-command.js'
+          s=p.read_text()
+
+          bridge=r'''async function githubJson(token,url,options={}){
+            const response=await fetch(url,{
+              ...options,
+              headers:{
+                accept:'application/vnd.github+json',
+                authorization:`Bearer ${token}`,
+                'user-agent':'HIVE-Queen-Execution-Dispatcher',
+                'x-github-api-version':'2022-11-28',
+                ...(options.headers||{})
+              }
+            });
+            const text=await response.text();
+            if(!response.ok){
+              const error=new Error(`github HTTP ${response.status}${text?`: ${text.slice(0,300)}`:''}`);
+              error.status=502;
+              throw error;
+            }
+            return text?JSON.parse(text):null;
+          }
+          const sleep=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
+          async function githubHead(token,repo,branch='main'){
+            const data=await githubJson(token,`https://api.github.com/repos/${repo}/branches/${encodeURIComponent(branch)}`);
+            const sha=String(data?.commit?.sha||'');
+            if(!sha)throw new Error('execution_target_head_unavailable');
+            return sha;
+          }
+          async function locateDispatchRun(token,taskId,startedAt){
+            const floor=startedAt-5000;
+            for(let attempt=1;attempt<=16;attempt++){
+              const data=await githubJson(token,'https://api.github.com/repos/giovannifidel-collab/pfarma-ci/actions/workflows/hive-field-execution-dispatch.yml/runs?event=repository_dispatch&per_page=20');
+              const run=(data?.workflow_runs||[]).find(r=>{
+                const title=`${r?.display_title||''} ${r?.name||''}`;
+                const created=Date.parse(r?.created_at||0);
+                return title.includes(String(taskId))&&Number.isFinite(created)&&created>=floor;
+              });
+              if(run)return run;
+              await sleep(1500);
+            }
+            const error=new Error('execution_dispatch_run_not_found');
+            error.status=504;
+            throw error;
+          }
+          async function waitDispatchRun(token,run){
+            let current=run;
+            for(let attempt=1;attempt<=46;attempt++){
+              current=await githubJson(token,current.url);
+              if(current?.status==='completed')return current;
+              await sleep(2000);
+            }
+            const error=new Error('execution_dispatch_timeout');
+            error.status=504;
+            throw error;
+          }
+          function requireStep(steps,name,allowed=['success']){
+            const step=steps.find(item=>item?.name===name);
+            if(!step||!allowed.includes(step.conclusion))throw new Error(`execution_proof_missing:${name}:${step?.conclusion||'missing'}`);
+            return step;
+          }
+          async function dispatchExecution(env,{message,taskId,source,projectSlug}){
+            const dispatchToken=String(env.HIVE_GITHUB_DISPATCH_TOKEN||'').trim();
+            if(!dispatchToken){
+              const error=new Error('execution_dispatch_unavailable');
+              error.status=503;
+              throw error;
+            }
+            const mode=source==='post-deploy-execution-gate'?'proof':'ai';
+            const preHead=await githubHead(dispatchToken,'giovannifidel-collab/hive-field','main');
+            const startedAt=Date.now();
+            const response=await fetch('https://api.github.com/repos/giovannifidel-collab/pfarma-ci/dispatches',{
+              method:'POST',
+              headers:{accept:'application/vnd.github+json',authorization:`Bearer ${dispatchToken}`,'content-type':'application/json','user-agent':'HIVE-Queen-Execution-Dispatcher','x-github-api-version':'2022-11-28'},
+              body:JSON.stringify({event_type:'hive_field_execute',client_payload:{goal:message,task_id:String(taskId),project_slug:projectSlug,source,mode}})
+            });
+            if(response.status!==204){
+              const detail=(await response.text().catch(()=>'' )).slice(0,300);
+              const error=new Error(`execution dispatch HTTP ${response.status}${detail?`: ${detail}`:''}`);
+              error.status=502;
+              throw error;
+            }
+            const found=await locateDispatchRun(dispatchToken,taskId,startedAt);
+            const run=await waitDispatchRun(dispatchToken,found);
+            if(run?.conclusion!=='success'){
+              const error=new Error(`execution_dispatch_failed:${run?.conclusion||'unknown'}`);
+              error.status=502;
+              throw error;
+            }
+            const jobs=await githubJson(dispatchToken,`https://api.github.com/repos/giovannifidel-collab/pfarma-ci/actions/runs/${run.id}/jobs?per_page=20`);
+            const job=(jobs?.jobs||[]).find(item=>item?.name==='execute')||(jobs?.jobs||[])[0];
+            if(!job||job.conclusion!=='success')throw new Error('execution_job_not_verified');
+            const steps=job.steps||[];
+            requireStep(steps,'Resolve trusted execution request');
+            requireStep(steps,'Validate execution credentials');
+            requireStep(steps,'Clone authoritative private source');
+            requireStep(steps,'Baseline quality gate');
+            requireStep(steps,'Produce candidate change');
+            requireStep(steps,'Enforce mutation policy');
+            const post=requireStep(steps,'Post-change quality gate',['success','skipped']);
+            const publish=requireStep(steps,'Commit and publish only verified change',['success','skipped']);
+            requireStep(steps,'Production smoke gate');
+            requireStep(steps,'Final proof');
+            const changed=publish.conclusion==='success';
+            if(changed&&post.conclusion!=='success')throw new Error('execution_post_change_gate_missing');
+            if(mode==='proof'&&!changed)throw new Error('execution_proof_no_mutation');
+            if(mode==='ai'&&!changed){const error=new Error('execution_no_change');error.status=409;throw error;}
+            const postHead=await githubHead(dispatchToken,'giovannifidel-collab/hive-field','main');
+            if(changed&&postHead===preHead)throw new Error('execution_commit_not_observed');
+            const prod=await fetch(`https://hive-field-v8.vercel.app/?queen_verify=${encodeURIComponent(taskId)}`,{headers:{'cache-control':'no-cache'}});
+            if(prod.status!==200)throw new Error(`execution_production_http_${prod.status}`);
+            return {dispatched:true,status:'verified',dispatcher:'github-actions',event_type:'hive_field_execute',project_slug:projectSlug,mode,run_id:run.id,run_url:run.html_url,conclusion:run.conclusion,changed,target_commit_sha:postHead,baseline_gate:'PASS',post_change_gate:changed?'PASS':'SKIPPED',production_http:prod.status,production_smoke:'PASS',paid_fallback:false};
+          }
+          async function claimSpecificTask'''
+
+          pattern=r"async function dispatchExecution\(env,\{message,taskId,source,projectSlug\}\)\{.*?\n\}\nasync function claimSpecificTask"
+          s,n=re.subn(pattern,bridge,s,count=1,flags=re.S)
+          assert n==1, f'dispatch bridge replacement count={n}'
+          old="const responseHash=await sha256(workerText);"
+          assert old in s
+          s=s.replace(old,"let responseHash=await sha256(workerText);",1)
+          old_block="""    let execution=null;\n    if(executionIntent){\n      execution=await dispatchExecution(env,{message,taskId,source,projectSlug});\n      await appendEvent(env,token,'execution.dispatch.accepted',{task_id:taskId,correlation_id:correlationId,...execution});\n    }\n\n    const school=await recordVerifiedExperience(env,token,correlationId,{"""
+          new_block="""    let execution=null;\n    let finalVerificationMetadata=verificationMetadata;\n    if(executionIntent){\n      execution=await dispatchExecution(env,{message,taskId,source,projectSlug});\n      await appendEvent(env,token,'execution.result.verified',{task_id:taskId,correlation_id:correlationId,...execution});\n      workerText=`Esecuzione reale verificata per ${projectSlug}: workflow ${execution.run_id} PASS, test/build PASS, commit ${execution.target_commit_sha.slice(0,12)}, produzione HTTP ${execution.production_http}, paid_fallback:false.`;\n      responseHash=await sha256(workerText);\n      route='verified-execution-dispatch';\n      finalVerificationMetadata={...verificationMetadata,route,execution_verified:true,execution_run_id:execution.run_id,execution_commit_sha:execution.target_commit_sha,production_http:execution.production_http,paid_fallback:false};\n    }\n\n    const school=await recordVerifiedExperience(env,token,correlationId,{"""
+          assert old_block in s
+          s=s.replace(old_block,new_block,1)
+          old="verification_method:'independent-model-family',verification_metadata:verificationMetadata"
+          new="verification_method:executionIntent?'independent-model-family+verified-dispatcher-proof':'independent-model-family',verification_metadata:finalVerificationMetadata"
+          assert old in s
+          s=s.replace(old,new,1)
+          p.write_text(s)
+
+          ui=root/'cloudflare/public/queen-intent-router.js'
+          u=ui.read_text()
+          old="const execution=result?.execution?.dispatched===true?' · dispatcher avviato':'';"
+          new="const execution=result?.execution?.status==='verified'?' · esecuzione verificata':'';"
+          assert old in u
+          ui.write_text(u.replace(old,new,1))
+          PY
+          cd /tmp/hive-alveare
+          git diff --check
+          git config user.name 'HIVE Queen Bridge Installer'
+          git config user.email 'hive-queen@users.noreply.github.com'
+          git add cloudflare/functions/api/queen-command.js cloudflare/public/queen-intent-router.js
+          git commit -m 'feat(queen): verify execution dispatcher outcome' >/dev/null
+          git push --quiet origin HEAD:main
+          git rev-parse HEAD >/tmp/private-sha
+          echo "PRIVATE_BRIDGE_SHA=$(cat /tmp/private-sha)"
+          echo 'PRIVATE_QUEEN_BRIDGE=PASS'
+
+      - name: Patch public dispatcher and Queen deploy gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          wf=Path('.github/workflows/hive-field-execution-dispatch.yml')
+          s=wf.read_text()
+          if 'run-name: HIVE Field' not in s:
+              s=s.replace('name: HIVE Field Execution Dispatcher\n','name: HIVE Field Execution Dispatcher\nrun-name: HIVE Field ${{ github.event.client_payload.task_id || inputs.task_id || github.run_id }}\n',1)
+          old="""          if [ \"$MODE\" = \"proof\" ]; then\n            mkdir -p .hive\n            cat >.hive/execution-dispatcher.json <<'JSON'\n          {\n            \"schema_version\": 1,\n            \"project\": \"hive-field\",\n            \"executor\": \"hive-public-execution-dispatcher\",\n            \"source_repo\": \"giovannifidel-collab/hive-field\",\n            \"quality_gates\": [\"npm run check\", \"npm run build\"],\n            \"deployment\": \"vercel-git-main\",\n            \"policy\": {\n              \"fail_closed\": true,\n              \"optimistic_concurrency\": true,\n              \"paid_fallback\": false,\n              \"secret_commit\": false\n            }\n          }\n          JSON\n            echo 'CANDIDATE_SOURCE=DETERMINISTIC_PROOF'\n            exit 0\n          fi"""
+          new="""          if [ \"$MODE\" = \"proof\" ]; then\n            mkdir -p .hive\n            jq -n --arg task \"$TASK_ID\" --arg run \"$GITHUB_RUN_ID\" '{schema_version:1,project:\"hive-field\",executor:\"hive-public-execution-dispatcher\",source_repo:\"giovannifidel-collab/hive-field\",quality_gates:[\"npm run check\",\"npm run build\"],deployment:\"vercel-git-main\",proof:{task_id:$task,run_id:$run},policy:{fail_closed:true,optimistic_concurrency:true,paid_fallback:false,secret_commit:false}}' >.hive/execution-dispatcher.json\n            echo 'CANDIDATE_SOURCE=DETERMINISTIC_PROOF'\n            exit 0\n          fi"""
+          assert old in s
+          s=s.replace(old,new,1)
+          s=s.replace("      - name: Production smoke gate\n        if: steps.policy.outputs.changed == 'true'\n","      - name: Production smoke gate\n",1)
+          wf.write_text(s)
+
+          dep=Path('.github/workflows/hive-queen-original-site-deploy.yml')
+          d=dep.read_text()
+          private_sha=Path('/tmp/private-sha').read_text().strip()
+          d,n=re.subn(r'PRIVATE_SHA: [0-9a-f]{40}',f'PRIVATE_SHA: {private_sha}',d,count=1)
+          assert n==1
+          d=d.replace("grep -q 'dispatcher avviato' private-source/cloudflare/public/queen-intent-router.js","grep -q 'esecuzione verificata' private-source/cloudflare/public/queen-intent-router.js",1)
+          d=d.replace("code=\"$(curl -sS --max-time 120 -o /tmp/exec","code=\"$(curl -sS --max-time 180 -o /tmp/exec",1)
+          old_jq=".ok == true and .route == \"deterministic-execution-preflight\" and .verification.verified == true and .execution.dispatched == true and .execution.status == \"queued\" and .execution.mode == \"proof\" and .paid_fallback == false"
+          new_jq=".ok == true and .route == \"verified-execution-dispatch\" and .verification.verified == true and .execution.dispatched == true and .execution.status == \"verified\" and .execution.conclusion == \"success\" and .execution.mode == \"proof\" and .execution.changed == true and .execution.target_commit_sha != null and .execution.production_http == 200 and .execution.production_smoke == \"PASS\" and .paid_fallback == false"
+          assert old_jq in d
+          d=d.replace(old_jq,new_jq,1)
+          d=d.replace("echo 'QUEEN_EXECUTION_DISPATCH_GATE=PASS'","jq -r '\"QUEEN_EXECUTION_RUN=\(.execution.run_id) COMMIT=\(.execution.target_commit_sha) HTTP=\(.execution.production_http)\"' /tmp/exec\n          echo 'QUEEN_EXECUTION_DISPATCH_GATE=PASS'",1)
+          dep.write_text(d)
+          PY
+          git diff --check
+          private_sha="$(cat /tmp/private-sha)"
+          grep -q "PRIVATE_SHA: $private_sha" .github/workflows/hive-queen-original-site-deploy.yml
+          echo 'PUBLIC_BRIDGE_PATCH=PASS'
+
+      - name: Publish public bridge update
+        shell: bash
+        run: |
+          set -euo pipefail
+          export GIT_ASKPASS=/tmp/hive-askpass GIT_TERMINAL_PROMPT=0
+          git config user.name 'HIVE Queen Bridge Installer'
+          git config user.email 'hive-queen@users.noreply.github.com'
+          git add .github/workflows/hive-field-execution-dispatch.yml .github/workflows/hive-queen-original-site-deploy.yml
+          git commit -m 'feat(queen): await and verify dispatcher execution' >/dev/null
+          git rev-parse HEAD >/tmp/public-sha
+          git push --quiet origin "HEAD:${PUBLIC_BRANCH}"
+          echo "PUBLIC_BRIDGE_SHA=$(cat /tmp/public-sha)"
+          echo 'PUBLIC_BRIDGE_PUBLISH=PASS'
+
+      - name: Wait for Queen deploy end-to-end proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(cat /tmp/public-sha)"
+          headers=(-H "Authorization: Bearer $SOURCE_TOKEN" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28')
+          run_id=''
+          for i in $(seq 1 30); do
+            curl -sS "${headers[@]}" "https://api.github.com/repos/${PUBLIC_REPO}/actions/runs?head_sha=${sha}&per_page=50" >/tmp/runs.json
+            run_id="$(jq -r '.workflow_runs[] | select(.name=="HIVE Queen Original Site Deploy") | .id' /tmp/runs.json | head -1)"
+            [ -n "$run_id" ] && [ "$run_id" != null ] && break
+            sleep 2
+          done
+          [ -n "$run_id" ] && [ "$run_id" != null ] || { echo 'QUEEN_DEPLOY_RUN=NOT_FOUND'; exit 20; }
+          echo "QUEEN_DEPLOY_RUN=$run_id"
+          conclusion=''
+          for i in $(seq 1 120); do
+            curl -sS "${headers[@]}" "https://api.github.com/repos/${PUBLIC_REPO}/actions/runs/${run_id}" >/tmp/run.json
+            status="$(jq -r '.status' /tmp/run.json)"
+            conclusion="$(jq -r '.conclusion // empty' /tmp/run.json)"
+            [ "$status" = completed ] && break
+            sleep 3
+          done
+          [ "$conclusion" = success ] || { jq '{id,status,conclusion,html_url}' /tmp/run.json; exit 21; }
+          echo 'QUEEN_DEPLOY_E2E=PASS'
+          echo 'PAID_FALLBACK=false'
