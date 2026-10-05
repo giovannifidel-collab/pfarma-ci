@@ -12,7 +12,6 @@ permissions:
 jobs:
   install:
     runs-on: ubuntu-latest
-    environment: pfarma-ci-trusted
     timeout-minutes: 25
     env:
       SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
