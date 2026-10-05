@@ -63,12 +63,12 @@ jobs:
               -H 'Accept: application/vnd.github+json' \
               -H 'X-GitHub-Api-Version: 2022-11-28' \
               "$api" > /tmp/runs.json
-            found="$(jq -r --arg start "$START" '.workflow_runs[] | select(.name=="HIVE Field Queen Dispatch Bridge" and .created_at >= $start) | .id' /tmp/runs.json | head -n1)"
+            found="$(jq -r --arg start "$START" '.workflow_runs[] | select(.path==".github/workflows/hive-field-execution-dispatch.yml" and .created_at >= $start) | .id' /tmp/runs.json | head -n1)"
             [[ -n "$found" ]] && break
             sleep 5
           done
           test -n "$found"
-          echo "BRIDGE_RUN_ID=$found"
+          echo "DISPATCH_RUN_ID=$found"
           for i in $(seq 1 60); do
             curl -fsS \
               -H "Authorization: Bearer $GH_DISPATCH_TOKEN" \
@@ -78,7 +78,7 @@ jobs:
             status="$(jq -r '.status' /tmp/run.json)"
             conclusion="$(jq -r '.conclusion // ""' /tmp/run.json)"
             if [[ "$status" == completed ]]; then
-              echo "BRIDGE_CONCLUSION=$conclusion"
+              echo "DISPATCH_CONCLUSION=$conclusion"
               test "$conclusion" = success
               echo 'QUEEN_TO_EXECUTOR_E2E=PASS'
               exit 0
