@@ -81,18 +81,17 @@ jobs:
           npm run build
           test -s dist/index.html
           test -s dist/health.json
-          test -s dist/hf-v91119.js
-          cmp -s patch-v9.11.19.js dist/hf-v91119.js
-          node -e "const h=require('./dist/health.json'); if(h.version!=='v9.11.20-20261005'||h.coreBytes!==42072||!h.coreInvariant||!h.structuralPreflight||!h.cloudSaveReturnsPromise||!h.cloudSaveRetries||!h.cloudPendingRecovery||!h.cloudPendingSurvivesReload||!h.visitSaveAwaitsCloud||!h.visitRetryIdempotent||!h.visitLocalDuplicateGuard||!h.legacyLocalVisitRecovery||!h.legacyLocalRecoveryNewerThanCloudOnly||!h.legacyLocalRecoveryDeduplicatesById||!h.allVisitEntryPointsUnified) process.exit(1)"
-          grep -q 'hfLegacyLocalBeforeCloud' dist/index.html
-          grep -q 'HIVE FIELD recovered recent local-only interactions' dist/index.html
+          test -s dist/hf-v91121.js
+          cmp -s patch-v9.11.21.js dist/hf-v91121.js
+          node -e "const h=require('./dist/health.json'); if(h.version!=='v9.11.21-20261005'||h.coreBytes!==42072||!h.coreInvariant||!h.structuralPreflight||!h.cloudSaveReturnsPromise||!h.cloudSaveRetries||!h.cloudPendingRecovery||!h.cloudPendingSurvivesReload||!h.visitSaveAwaitsCloud||!h.visitRetryIdempotent||!h.visitLocalDuplicateGuard||!h.legacyLocalVisitRecovery||!h.legacyLocalRecoveryNewerThanCloudOnly||!h.legacyLocalRecoveryDeduplicatesById||!h.allVisitEntryPointsUnified||!h.homePresentNowClearsStaleSearch||!h.homePresentNowClearsStaleFilters||!h.homePresentNowPreservesPresentMode||!h.homePresentNowRouteFix) process.exit(1)"
+          grep -q 'hf-field-patch-v91121' dist/index.html
 
-      - name: Verify live baseline is still v9.11.19
+      - name: Verify live baseline is still v9.11.20
         shell: bash
         run: |
           set -euo pipefail
           curl -fsSL "https://hive-field-v8.vercel.app/health.json?predeploy=${GITHUB_RUN_ID}" -o /tmp/pre-health.json
-          node -e "const h=require('/tmp/pre-health.json'); if(h.version!=='v9.11.19-20261005'||h.coreBytes!==42072) process.exit(1)"
+          node -e "const h=require('/tmp/pre-health.json'); if(h.version!=='v9.11.20-20261005'||h.coreBytes!==42072) process.exit(1)"
 
       - name: Require Vercel deploy token
         shell: bash
@@ -124,7 +123,7 @@ jobs:
           printf 'deployment_url=%s\n' "$url" >> "$GITHUB_OUTPUT"
           printf 'Deployment URL: %s\n' "$url"
 
-      - name: Verify production alias and v9.11.20 health
+      - name: Verify production alias and v9.11.21 health
         working-directory: private-source
         shell: bash
         run: |
@@ -132,39 +131,39 @@ jobs:
           ok=0
           for i in $(seq 1 30); do
             if curl -fsSL "https://hive-field-v8.vercel.app/health.json?verify=${GITHUB_RUN_ID}-$i" -o /tmp/hive-field-health.json; then
-              if node -e "const h=require('/tmp/hive-field-health.json'); if(h.version!=='v9.11.20-20261005'||h.coreBytes!==42072||!h.coreInvariant||!h.structuralPreflight||!h.cloudSaveReturnsPromise||!h.cloudSaveRetries||!h.cloudPendingRecovery||!h.cloudPendingSurvivesReload||!h.visitSaveAwaitsCloud||!h.visitRetryIdempotent||!h.visitLocalDuplicateGuard||!h.legacyLocalVisitRecovery||!h.legacyLocalRecoveryNewerThanCloudOnly||!h.legacyLocalRecoveryDeduplicatesById||!h.allVisitEntryPointsUnified) process.exit(1)"; then
+              if node -e "const h=require('/tmp/hive-field-health.json'); if(h.version!=='v9.11.21-20261005'||h.coreBytes!==42072||!h.coreInvariant||!h.structuralPreflight||!h.cloudSaveReturnsPromise||!h.cloudSaveRetries||!h.cloudPendingRecovery||!h.cloudPendingSurvivesReload||!h.visitSaveAwaitsCloud||!h.visitRetryIdempotent||!h.visitLocalDuplicateGuard||!h.legacyLocalVisitRecovery||!h.legacyLocalRecoveryNewerThanCloudOnly||!h.legacyLocalRecoveryDeduplicatesById||!h.allVisitEntryPointsUnified||!h.homePresentNowClearsStaleSearch||!h.homePresentNowClearsStaleFilters||!h.homePresentNowPreservesPresentMode||!h.homePresentNowRouteFix) process.exit(1)"; then
                 ok=1
                 break
               fi
             fi
             sleep 5
           done
-          test "$ok" = 1 || { echo 'Production alias did not reach verified v9.11.20.' >&2; exit 1; }
+          test "$ok" = 1 || { echo 'Production alias did not reach verified v9.11.21.' >&2; exit 1; }
           asset_ok=0
           for i in $(seq 1 12); do
-            if curl -fsSL "https://hive-field-v8.vercel.app/hf-v91119.js?v=9.11.19&verify=${GITHUB_RUN_ID}-$i" -o /tmp/hf-v91119.js; then
-              if cmp -s patch-v9.11.19.js /tmp/hf-v91119.js; then
+            if curl -fsSL "https://hive-field-v8.vercel.app/hf-v91121.js?v=9.11.21&verify=${GITHUB_RUN_ID}-$i" -o /tmp/hf-v91121.js; then
+              if cmp -s patch-v9.11.21.js /tmp/hf-v91121.js; then
                 asset_ok=1
                 break
               fi
             fi
             sleep 2
           done
-          test "$asset_ok" = 1 || { echo 'v9.11.19 visit-save asset changed unexpectedly.' >&2; exit 1; }
+          test "$asset_ok" = 1 || { echo 'v9.11.21 asset did not propagate byte-for-byte.' >&2; exit 1; }
 
       - name: Deployment summary
         if: success()
         shell: bash
         run: |
           {
-            echo '## HIVE FIELD v9.11.20 production'
+            echo '## HIVE FIELD v9.11.21 production'
             echo '- private source: giovannifidel-collab/hive-field'
             echo "- exact SHA: ${{ steps.source.outputs.sha }}"
             echo '- Vercel project: hive-field-v8'
             echo '- production alias verified: https://hive-field-v8.vercel.app'
-            echo '- health verified: v9.11.20-20261005'
-            echo '- pre-v9.11.19 local-only visit recovery verified structurally'
-            echo '- visit cloud save/retry protections preserved'
+            echo '- health verified: v9.11.21-20261005'
+            echo '- Home Presenti adesso clears stale search/filter state'
+            echo '- Presenti ora mode preserved'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove private source checkout
