@@ -2,8 +2,6 @@ name: HIVE Field World Model Overlay
 
 on:
   workflow_dispatch:
-  repository_dispatch:
-    types: [hive_field_execute]
   workflow_run:
     workflows: ["HIVE Queen Global World Sync"]
     types: [completed]
@@ -21,39 +19,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  dispatch-execution:
-    if: github.event_name == 'repository_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - name: Relay Queen order to HIVE Field executor
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GOAL: ${{ github.event.client_payload.goal }}
-          TASK_ID: ${{ github.event.client_payload.task_id }}
-          MODE: ${{ github.event.client_payload.mode }}
-          PROJECT_SLUG: ${{ github.event.client_payload.project_slug }}
-        run: |
-          set -euo pipefail
-          [ "$PROJECT_SLUG" = 'hive-field' ] || { echo 'EXECUTION_BRIDGE=REJECT_PROJECT'; exit 2; }
-          [ -n "$GOAL" ] || { echo 'EXECUTION_BRIDGE=REJECT_EMPTY_GOAL'; exit 2; }
-          mode="${MODE:-ai}"
-          case "$mode" in ai|proof) ;; *) echo 'EXECUTION_BRIDGE=REJECT_MODE'; exit 2 ;; esac
-          task="${TASK_ID:-exec-${GITHUB_RUN_ID}}"
-          jq -nc --arg ref 'queen-universal-fabric-vnext' --arg goal "$GOAL" --arg task "$task" --arg mode "$mode" \
-            '{ref:$ref,inputs:{goal:$goal,task_id:$task,mode:$mode}}' >/tmp/dispatch.json
-          code="$(curl -sS -o /tmp/dispatch-response -w '%{http_code}' -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            -H 'Content-Type: application/json' \
-            --data-binary @/tmp/dispatch.json \
-            'https://api.github.com/repos/giovannifidel-collab/pfarma-ci/actions/workflows/372396850/dispatches')"
-          echo "EXECUTOR_WORKFLOW_DISPATCH_HTTP=$code"
-          [ "$code" = 204 ] || { cat /tmp/dispatch-response; exit 3; }
-          echo 'HIVE_FIELD_EXECUTION_BRIDGE=PASS'
-
   overlay:
     if: github.event_name != 'repository_dispatch' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
