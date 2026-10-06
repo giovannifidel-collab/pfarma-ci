@@ -1,4 +1,5 @@
 name: HIVE Field Execution Dispatcher
+run-name: HIVE Field ${{ github.event.client_payload.task_id || inputs.task_id || github.run_id }}
 
 on:
   workflow_call:
