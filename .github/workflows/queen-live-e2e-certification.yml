@@ -28,6 +28,8 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 6f6de52331e398c395d3de97c83011cd
     steps:
       - name: Validate trusted certification credentials
         shell: bash
@@ -64,6 +66,22 @@ jobs:
           grep -q "post-deploy-execution-gate" private-hive/cloudflare/functions/api/queen-command.js
           grep -q "hive_field_execute" private-hive/cloudflare/functions/api/queen-command.js
           echo 'QUEEN_EXECUTION_BRIDGE_SOURCE=PASS'
+
+      - name: Deploy exact authoritative Queen source to Cloudflare Pages
+        shell: bash
+        working-directory: private-hive/cloudflare
+        run: |
+          set -euo pipefail
+          TOKEN="${CF_TOKEN:-${CF_TOKEN_FALLBACK:-}}"
+          [[ -n "$TOKEN" ]] || { echo 'CLOUDFLARE_DEPLOY_TOKEN=MISSING'; exit 2; }
+          echo "QUEEN_DEPLOY_SOURCE_SHA=$QUEEN_SOURCE_SHA"
+          CLOUDFLARE_API_TOKEN="$TOKEN" \
+            CLOUDFLARE_ACCOUNT_ID="$CLOUDFLARE_ACCOUNT_ID" \
+            npx --yes wrangler@4.123.0 pages deploy public \
+              --project-name hive-alveare \
+              --branch main \
+              --commit-hash "$QUEEN_SOURCE_SHA"
+          echo 'QUEEN_CLOUDFLARE_DEPLOY=PASS'
 
       - name: Inspect Cloudflare production deployment identity
         shell: bash
