@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-06T16:46:14.417Z",
+  "generated_at": "2026-10-06T20:11:55.220Z",
   "policy": "authoritative-source-first",
   "privacy": "sanitized allowlist; gio-OS private source never materialized in global HIVE sync; no credentials or user data published",
   "cadence_minutes": 15,
@@ -218,8 +218,8 @@
         "repo": "giovannifidel-collab/hive-field",
         "ref": "main",
         "available": true,
-        "sha": "0de0e70ebcbc1c4f547cc7c383715acefc85ff14",
-        "observed_at": "2026-10-06T16:46:14.417Z",
+        "sha": "d3b9e9cfea69914f8544ec48ad3eed2516dd1556",
+        "observed_at": "2026-10-06T20:11:55.220Z",
         "version": "9.0.0",
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -230,8 +230,8 @@
           "role": "primary",
           "reachable": true,
           "http_status": 200,
-          "latency_ms": 268,
-          "observed_at": "2026-10-06T16:46:14.417Z"
+          "latency_ms": 196,
+          "observed_at": "2026-10-06T20:11:55.220Z"
         }
       ],
       "sync_depth": "source+runtime+field-control-state"
