@@ -34,8 +34,12 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "${SOURCE_TOKEN:-}" ]] || { echo 'PFARMA_SOURCE_TOKEN=MISSING'; exit 2; }
-          [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]] || { echo 'HIVE_RUNTIME_BEARER_TOKEN=MISSING'; exit 2; }
           [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]] || { echo 'CLOUDFLARE_SERVICE_AUTH=MISSING'; exit 2; }
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+            echo 'QUEEN_ORIGIN_AUTH=BEARER_PLUS_CLOUDFLARE'
+          else
+            echo 'QUEEN_ORIGIN_AUTH=CLOUDFLARE_ASSERTION'
+          fi
           echo 'QUEEN_E2E_TRUSTED_CREDENTIALS=READY'
 
       - name: Check out authoritative Queen source
@@ -102,11 +106,13 @@ jobs:
           set -euo pipefail
           BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
           BASE="${BASE%/}"
-          CODE="$(curl -sS --max-time 30 -o /tmp/health.json -w '%{http_code}' \
-            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
-            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
-            -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN" \
-            "$BASE/api/health")"
+          CURL_ARGS=(-sS --max-time 30 -o /tmp/health.json -w '%{http_code}'
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+            CURL_ARGS+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          fi
+          CODE="$(curl "${CURL_ARGS[@]}" "$BASE/api/health")"
           echo "QUEEN_LIVE_HEALTH_HTTP=$CODE"
           [[ "$CODE" == 200 ]]
           jq -e '.ok == true' /tmp/health.json >/dev/null
@@ -136,14 +142,15 @@ jobs:
             project_slug:"hive-field",
             source:"post-deploy-execution-gate"
           }' > /tmp/queen-request.json
-          CODE="$(curl -sS --max-time 420 -o /tmp/queen-response.json -w '%{http_code}' \
-            -X POST \
-            -H 'Content-Type: application/json' \
-            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
-            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
-            -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN" \
-            --data-binary @/tmp/queen-request.json \
-            "$BASE/api/queen-command")"
+          CURL_ARGS=(-sS --max-time 420 -o /tmp/queen-response.json -w '%{http_code}'
+            -X POST
+            -H 'Content-Type: application/json'
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+            CURL_ARGS+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          fi
+          CODE="$(curl "${CURL_ARGS[@]}" --data-binary @/tmp/queen-request.json "$BASE/api/queen-command")"
           echo "QUEEN_COMMAND_HTTP=$CODE"
           jq '{ok,task_id,correlation_id,reply,route,verification,execution,cognitive,paid_fallback,error}' /tmp/queen-response.json
           [[ "$CODE" == 200 ]]
