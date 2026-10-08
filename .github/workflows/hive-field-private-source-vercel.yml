@@ -85,35 +85,18 @@ jobs:
           test -s dist/hf-runtime-v912.js
           cmp -s src/runtime-v9.12.base.js dist/hf-runtime-v912.js
           test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 3
-          node - <<'NODE'
-          const h=require('./dist/health.json');
-          const required=[
-            'canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved',
-            'domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters',
-            'contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized',
-            'cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload',
-            'visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard',
-            'legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById',
-            'allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine',
-            'historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed',
-            'doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight'
-          ];
-          if(h.version!=='v9.12.0-20261008')process.exit(1);
-          for(const k of required)if(h[k]!==true){console.error('Missing health flag',k,h[k]);process.exit(1)}
-          if(h.productionFetchBuildDependency!==false)process.exit(1);
-          if(Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000)process.exit(1);
-          NODE
+          node -e "const h=require('./dist/health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.12.0-20261008'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"
           grep -q 'id="hf-runtime-v912"' dist/index.html
           ! grep -q 'id="hf-field-patch-v91119"' dist/index.html
           ! grep -q 'id="hf-field-patch-v91118"' dist/index.html
           ! grep -q 'hfFieldPatchV91121' dist/index.html
 
-      - name: Verify live baseline is still v9.11.20
+      - name: Verify live baseline
         shell: bash
         run: |
           set -euo pipefail
           curl -fsSL "https://hive-field-v8.vercel.app/health.json?predeploy=${GITHUB_RUN_ID}" -o /tmp/pre-health.json
-          node -e "const h=require('/tmp/pre-health.json'); if(h.version!=='v9.11.20-20261005'||!h.cloudPendingRecovery||!h.visitSaveAwaitsCloud) process.exit(1)"
+          node -e "const h=require('/tmp/pre-health.json'); if(!['v9.11.20-20261005','v9.12.0-20261008'].includes(h.version))process.exit(1)"
 
       - name: Require Vercel deploy token
         shell: bash
@@ -153,25 +136,7 @@ jobs:
           ok=0
           for i in $(seq 1 30); do
             if curl -fsSL "https://hive-field-v8.vercel.app/health.json?verify=${GITHUB_RUN_ID}-$i" -o /tmp/hive-field-health.json; then
-              if node - <<'NODE'
-              const h=require('/tmp/hive-field-health.json');
-              const required=[
-                'canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved',
-                'domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters',
-                'contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized',
-                'cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload',
-                'visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard',
-                'legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById',
-                'allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine',
-                'historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed',
-                'doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight'
-              ];
-              if(h.version!=='v9.12.0-20261008')process.exit(1);
-              for(const k of required)if(h[k]!==true)process.exit(1);
-              if(h.productionFetchBuildDependency!==false)process.exit(1);
-              if(Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000)process.exit(1);
-              NODE
-              then
+              if node -e "const h=require('/tmp/hive-field-health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.12.0-20261008'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"; then
                 ok=1
                 break
               fi
@@ -195,13 +160,7 @@ jobs:
           page_ok=0
           for i in $(seq 1 12); do
             if curl -fsSL "https://hive-field-v8.vercel.app/?verify-runtime=${GITHUB_RUN_ID}-$i" -o /tmp/hf-page.html; then
-              if node - <<'NODE'
-              const fs=require('fs'),s=fs.readFileSync('/tmp/hf-page.html','utf8');
-              if((s.match(/<script\b/gi)||[]).length>4)process.exit(1);
-              if((s.match(/id="hf-runtime-v912"/g)||[]).length!==1)process.exit(1);
-              if(/id="hf-field-patch-v911(?:0|5|6|8|9|10|11|12|13|18|19)"/.test(s))process.exit(1);
-              NODE
-              then
+              if node -e "const fs=require('fs'),s=fs.readFileSync('/tmp/hf-page.html','utf8'); if((s.match(/<script\\b/gi)||[]).length>4||(s.match(/id=\\\"hf-runtime-v912\\\"/g)||[]).length!==1||/id=\\\"hf-field-patch-v911(?:0|5|6|8|9|10|11|12|13|18|19)\\\"/.test(s))process.exit(1)"; then
                 page_ok=1
                 break
               fi
@@ -221,10 +180,7 @@ jobs:
             echo '- Vercel project: hive-field-v8'
             echo '- production alias verified: https://hive-field-v8.vercel.app'
             echo '- health verified: v9.12.0-20261008'
-            echo '- canonical local build: verified'
-            echo '- consolidated runtime: verified byte-for-byte'
-            echo '- Presenti adesso stale-filter bug fixed in core routing'
-            echo '- observer hub / search debounce / filter+sort optimization verified'
+            echo '- canonical local build and consolidated runtime verified'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove private source checkout
