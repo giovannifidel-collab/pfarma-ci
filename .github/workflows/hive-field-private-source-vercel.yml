@@ -73,25 +73,47 @@ jobs:
           set -euo pipefail
           npm run check
 
-      - name: HIVE FIELD local production preflight build
+      - name: HIVE FIELD canonical production build
         working-directory: private-source
         shell: bash
         run: |
           set -euo pipefail
           npm run build
+          npm test
           test -s dist/index.html
           test -s dist/health.json
-          test -s dist/hf-v91121.js
-          cmp -s patch-v9.11.21.js dist/hf-v91121.js
-          node -e "const h=require('./dist/health.json'); if(h.version!=='v9.11.21-20261005'||h.coreBytes!==42072||!h.coreInvariant||!h.structuralPreflight||!h.cloudSaveReturnsPromise||!h.cloudSaveRetries||!h.cloudPendingRecovery||!h.cloudPendingSurvivesReload||!h.visitSaveAwaitsCloud||!h.visitRetryIdempotent||!h.visitLocalDuplicateGuard||!h.legacyLocalVisitRecovery||!h.legacyLocalRecoveryNewerThanCloudOnly||!h.legacyLocalRecoveryDeduplicatesById||!h.allVisitEntryPointsUnified||!h.homePresentNowClearsStaleSearch||!h.homePresentNowClearsStaleFilters||!h.homePresentNowPreservesPresentMode||!h.homePresentNowRouteFix) process.exit(1)"
-          grep -q 'hf-field-patch-v91121' dist/index.html
+          test -s dist/hf-runtime-v912.js
+          cmp -s src/runtime-v9.12.base.js dist/hf-runtime-v912.js
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 3
+          node - <<'NODE'
+          const h=require('./dist/health.json');
+          const required=[
+            'canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved',
+            'domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters',
+            'contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized',
+            'cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload',
+            'visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard',
+            'legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById',
+            'allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine',
+            'historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed',
+            'doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight'
+          ];
+          if(h.version!=='v9.12.0-20261008')process.exit(1);
+          for(const k of required)if(h[k]!==true){console.error('Missing health flag',k,h[k]);process.exit(1)}
+          if(h.productionFetchBuildDependency!==false)process.exit(1);
+          if(Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000)process.exit(1);
+          NODE
+          grep -q 'id="hf-runtime-v912"' dist/index.html
+          ! grep -q 'id="hf-field-patch-v91119"' dist/index.html
+          ! grep -q 'id="hf-field-patch-v91118"' dist/index.html
+          ! grep -q 'hfFieldPatchV91121' dist/index.html
 
       - name: Verify live baseline is still v9.11.20
         shell: bash
         run: |
           set -euo pipefail
           curl -fsSL "https://hive-field-v8.vercel.app/health.json?predeploy=${GITHUB_RUN_ID}" -o /tmp/pre-health.json
-          node -e "const h=require('/tmp/pre-health.json'); if(h.version!=='v9.11.20-20261005'||h.coreBytes!==42072) process.exit(1)"
+          node -e "const h=require('/tmp/pre-health.json'); if(h.version!=='v9.11.20-20261005'||!h.cloudPendingRecovery||!h.visitSaveAwaitsCloud) process.exit(1)"
 
       - name: Require Vercel deploy token
         shell: bash
@@ -123,7 +145,7 @@ jobs:
           printf 'deployment_url=%s\n' "$url" >> "$GITHUB_OUTPUT"
           printf 'Deployment URL: %s\n' "$url"
 
-      - name: Verify production alias and v9.11.21 health
+      - name: Verify production alias and v9.12 health
         working-directory: private-source
         shell: bash
         run: |
@@ -131,39 +153,78 @@ jobs:
           ok=0
           for i in $(seq 1 30); do
             if curl -fsSL "https://hive-field-v8.vercel.app/health.json?verify=${GITHUB_RUN_ID}-$i" -o /tmp/hive-field-health.json; then
-              if node -e "const h=require('/tmp/hive-field-health.json'); if(h.version!=='v9.11.21-20261005'||h.coreBytes!==42072||!h.coreInvariant||!h.structuralPreflight||!h.cloudSaveReturnsPromise||!h.cloudSaveRetries||!h.cloudPendingRecovery||!h.cloudPendingSurvivesReload||!h.visitSaveAwaitsCloud||!h.visitRetryIdempotent||!h.visitLocalDuplicateGuard||!h.legacyLocalVisitRecovery||!h.legacyLocalRecoveryNewerThanCloudOnly||!h.legacyLocalRecoveryDeduplicatesById||!h.allVisitEntryPointsUnified||!h.homePresentNowClearsStaleSearch||!h.homePresentNowClearsStaleFilters||!h.homePresentNowPreservesPresentMode||!h.homePresentNowRouteFix) process.exit(1)"; then
+              if node - <<'NODE'
+              const h=require('/tmp/hive-field-health.json');
+              const required=[
+                'canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved',
+                'domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters',
+                'contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized',
+                'cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload',
+                'visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard',
+                'legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById',
+                'allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine',
+                'historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed',
+                'doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight'
+              ];
+              if(h.version!=='v9.12.0-20261008')process.exit(1);
+              for(const k of required)if(h[k]!==true)process.exit(1);
+              if(h.productionFetchBuildDependency!==false)process.exit(1);
+              if(Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000)process.exit(1);
+              NODE
+              then
                 ok=1
                 break
               fi
             fi
             sleep 5
           done
-          test "$ok" = 1 || { echo 'Production alias did not reach verified v9.11.21.' >&2; exit 1; }
+          test "$ok" = 1 || { echo 'Production alias did not reach verified v9.12.0.' >&2; exit 1; }
+
           asset_ok=0
           for i in $(seq 1 12); do
-            if curl -fsSL "https://hive-field-v8.vercel.app/hf-v91121.js?v=9.11.21&verify=${GITHUB_RUN_ID}-$i" -o /tmp/hf-v91121.js; then
-              if cmp -s patch-v9.11.21.js /tmp/hf-v91121.js; then
+            if curl -fsSL "https://hive-field-v8.vercel.app/hf-runtime-v912.js?v=9.12.0&verify=${GITHUB_RUN_ID}-$i" -o /tmp/hf-runtime-v912.js; then
+              if cmp -s src/runtime-v9.12.base.js /tmp/hf-runtime-v912.js; then
                 asset_ok=1
                 break
               fi
             fi
             sleep 2
           done
-          test "$asset_ok" = 1 || { echo 'v9.11.21 asset did not propagate byte-for-byte.' >&2; exit 1; }
+          test "$asset_ok" = 1 || { echo 'v9.12 runtime asset did not propagate byte-for-byte.' >&2; exit 1; }
+
+          page_ok=0
+          for i in $(seq 1 12); do
+            if curl -fsSL "https://hive-field-v8.vercel.app/?verify-runtime=${GITHUB_RUN_ID}-$i" -o /tmp/hf-page.html; then
+              if node - <<'NODE'
+              const fs=require('fs'),s=fs.readFileSync('/tmp/hf-page.html','utf8');
+              if((s.match(/<script\b/gi)||[]).length>4)process.exit(1);
+              if((s.match(/id="hf-runtime-v912"/g)||[]).length!==1)process.exit(1);
+              if(/id="hf-field-patch-v911(?:0|5|6|8|9|10|11|12|13|18|19)"/.test(s))process.exit(1);
+              NODE
+              then
+                page_ok=1
+                break
+              fi
+            fi
+            sleep 2
+          done
+          test "$page_ok" = 1 || { echo 'Production page did not expose consolidated v9.12 runtime.' >&2; exit 1; }
 
       - name: Deployment summary
         if: success()
         shell: bash
         run: |
           {
-            echo '## HIVE FIELD v9.11.21 production'
+            echo '## HIVE FIELD v9.12.0 production'
             echo '- private source: giovannifidel-collab/hive-field'
             echo "- exact SHA: ${{ steps.source.outputs.sha }}"
             echo '- Vercel project: hive-field-v8'
             echo '- production alias verified: https://hive-field-v8.vercel.app'
-            echo '- health verified: v9.11.21-20261005'
-            echo '- Home Presenti adesso clears stale search/filter state'
-            echo '- Presenti ora mode preserved'
+            echo '- health verified: v9.12.0-20261008'
+            echo '- canonical local build: verified'
+            echo '- consolidated runtime: verified byte-for-byte'
+            echo '- Presenti adesso stale-filter bug fixed in core routing'
+            echo '- observer hub / search debounce / filter+sort optimization verified'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove private source checkout
