@@ -1,0 +1,130 @@
+name: Queen Project Archaeology Certification
+
+on:
+  push:
+    branches:
+      - audit/queen-project-archaeology-v1
+    paths:
+      - '.github/workflows/queen-project-archaeology-certification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: queen-project-archaeology-certification
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    env:
+      PRIVATE_REPO: giovannifidel-collab/hive-alveare
+      PRIVATE_AUDIT_REF: audit/queen-project-archaeology-v1
+      PRIVATE_BASE_SHA: 7affc33249efd1ba66f59e4bfaf9db5663f03611
+      SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Validate trusted audit credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${SOURCE_TOKEN:-}" ]] || { echo 'SOURCE_TOKEN=MISSING'; exit 2; }
+          echo 'TRUSTED_AUDIT_CREDENTIALS=PASS'
+
+      - name: Check out private Queen archaeology
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: audit/queen-project-archaeology-v1
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-audit
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Enforce audit-only branch
+        working-directory: queen-audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${PRIVATE_BASE_SHA}^{commit}"
+          changed="$(git diff --name-only "${PRIVATE_BASE_SHA}..HEAD")"
+          printf '%s\n' "$changed"
+          bad="$(printf '%s\n' "$changed" | grep -v '^docs/queen-archaeology/' || true)"
+          if [[ -n "$bad" ]]; then
+            echo 'RUNTIME_OR_NON_AUDIT_CHANGE_DETECTED'
+            printf '%s\n' "$bad"
+            exit 10
+          fi
+          echo 'AUDIT_ONLY_DIFF=PASS'
+
+      - name: Run no-loss archaeology gate
+        working-directory: queen-audit
+        run: node docs/queen-archaeology/validate.mjs
+
+      - name: Verify historical proof anchors still resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          check_run () {
+            local repo="$1" id="$2" expected="$3"
+            conclusion="$(gh api "repos/$repo/actions/runs/$id" --jq '.conclusion')"
+            [[ "$conclusion" == "$expected" ]] || { echo "RUN_PROOF_FAIL $repo $id $conclusion"; exit 20; }
+            echo "RUN_PROOF_PASS $repo $id $conclusion"
+          }
+          check_run giovannifidel-collab/pfarma-ci 36455265225 success
+          check_run giovannifidel-collab/pfarma-ci 36609073295 success
+          check_run giovannifidel-collab/pfarma-ci 36609555696 success
+          check_run giovannifidel-collab/pfarma-ci 36609610520 success
+          check_run giovannifidel-collab/pfarma-ci 36609785526 success
+          check_run giovannifidel-collab/pfarma-ci 37522287227 success
+          check_run giovannifidel-collab/pfarma-ci 37524676969 success
+          check_run giovannifidel-collab/hive-compute-node-00 33337184479 success
+          echo 'HISTORICAL_PROOF_ANCHORS=PASS'
+
+      - name: Verify preserved branch assets exist
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          for ref in             queen-universal-fabric-vnext             hive-cloud-computer-v0             hive-kimi-dispatcher-v0; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/branches/$ref" >/dev/null
+            echo "PUBLIC_BRANCH_PRESENT=$ref"
+          done
+          for ref in             feat/github-stateless-dispatch-v1             hive-collective-intelligence-v0; do
+            gh api "repos/giovannifidel-collab/hive-alveare/branches/$ref" >/dev/null
+            echo "PRIVATE_BRANCH_PRESENT=$ref"
+          done
+          state="$(gh api repos/giovannifidel-collab/hive-alveare/pulls/14 --jq '.state')"
+          [[ "$state" == open ]] || { echo "COMPUTE_PR14_STATE=$state"; exit 21; }
+          echo 'PRESERVED_BRANCH_ASSETS=PASS'
+
+      - name: Verify certified Queen V1 locks
+        working-directory: queen-audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const release=JSON.parse(fs.readFileSync('ops/queen/agents/V1_RELEASE_POLICY.json','utf8'));
+          const proof=JSON.parse(fs.readFileSync('ops/queen/agents/PROOF_LOCK.json','utf8'));
+          const runtime=JSON.parse(fs.readFileSync('ops/queen/runtime/RUNTIME_SYNC_LOCK.json','utf8'));
+          if(release.status!=='CLOSED') throw new Error('Queen V1 release not CLOSED');
+          if(proof.managed_agent_count!==8 || proof.fresh_live_gate!==true) throw new Error('Queen V1 fresh-live proof drift');
+          if(runtime.managed_agent_count!==8 || runtime.fresh_live_gate!==true) throw new Error('Queen V1 runtime-sync drift');
+          console.log('QUEEN_V1_LOCKS=PASS');
+          NODE
+
+      - name: Final archaeology certification
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'QUEEN_PROJECT_ARCHAEOLOGY_CERTIFICATION=PASS'
+          echo 'RUNTIME_CHANGED=false'
+          echo 'UNACCOUNTED_UNIQUE_CAPABILITIES=0'
+          echo 'TARGET_ARCHITECTURE_ALLOWED=true'
