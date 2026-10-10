@@ -1,0 +1,14 @@
+[Unit]
+Description=HIVE Agent Gateway Cloudflare Named Tunnel
+After=network-online.target hive-agent-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/hive-agent-gateway/cloudflare.env
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token ${HIVE_CLOUDFLARE_TUNNEL_TOKEN}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

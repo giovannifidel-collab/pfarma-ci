@@ -1,0 +1,168 @@
+name: HIVE Cloud Computer Pilot
+
+# Experimental cloud-only workstation for HIVE Collective Intelligence.
+# This workflow exists only on the isolated hive-cloud-computer-v0 branch.
+# It is not a daemon and must not be used as permanent generic compute.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: HIVE task identifier
+        required: true
+        type: string
+      target_project:
+        description: Authoritative private project
+        required: true
+        type: choice
+        options:
+          - hive-alveare
+          - family-cloud
+          - gio-OS
+          - project-giovanni
+      target_sha:
+        description: Exact 40-character source commit SHA
+        required: true
+        type: string
+      mode:
+        description: Validation mode
+        required: true
+        default: verify-only
+        type: choice
+        options:
+          - verify-only
+          - node-quality
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hive-cloud-computer-${{ inputs.task_id }}
+  cancel-in-progress: false
+
+jobs:
+  workstation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pfarma-ci-trusted
+
+    steps:
+      - name: Check out public transport repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate immutable task inputs
+        id: target
+        shell: bash
+        env:
+          PROJECT: ${{ inputs.target_project }}
+          SHA: ${{ inputs.target_sha }}
+          TASK_ID: ${{ inputs.task_id }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'target_sha must be a canonical 40-character SHA' >&2; exit 1; }
+          [[ "$TASK_ID" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo 'task_id contains unsupported characters' >&2; exit 1; }
+
+          case "$PROJECT" in
+            hive-alveare) REPO='giovannifidel-collab/hive-alveare' ;;
+            family-cloud) REPO='giovannifidel-collab/family-cloud' ;;
+            gio-OS) REPO='giovannifidel-collab/gio-OS' ;;
+            project-giovanni) REPO='giovannifidel-collab/project-giovanni' ;;
+            *) echo 'project not allow-listed' >&2; exit 1 ;;
+          esac
+
+          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Fail closed unless trusted private-source credential exists
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: test -n "$SOURCE_TOKEN"
+
+      - name: Materialize exact private project workspace
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.target.outputs.repo }}
+          ref: ${{ steps.target.outputs.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: workspace
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prove exact source checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C workspace rev-parse HEAD)"
+          test "$actual" = '${{ steps.target.outputs.sha }}'
+          {
+            echo "task_id=${{ inputs.task_id }}"
+            echo "repository=${{ steps.target.outputs.repo }}"
+            echo "source_sha=$actual"
+            echo "runner=$RUNNER_NAME"
+            echo "os=$RUNNER_OS"
+            echo "arch=$RUNNER_ARCH"
+          } | tee hive-cloud-computer-evidence.txt
+
+      - name: Set up Node 22
+        if: inputs.mode == 'node-quality'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Node dependencies without lifecycle scripts
+        if: inputs.mode == 'node-quality'
+        working-directory: workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f package.json || { echo 'package.json not present' >&2; exit 1; }
+          if test -f package-lock.json; then
+            npm ci --ignore-scripts --no-audit --no-fund
+          else
+            npm install --ignore-scripts --no-audit --no-fund
+          fi
+
+      - name: Typecheck if project defines it
+        if: inputs.mode == 'node-quality'
+        working-directory: workspace
+        shell: bash
+        run: npm run typecheck --if-present
+
+      - name: Test if project defines it
+        if: inputs.mode == 'node-quality'
+        working-directory: workspace
+        shell: bash
+        run: npm test --if-present
+
+      - name: Record final workspace state
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo
+            echo '--- final status ---'
+            echo "task_id=${{ inputs.task_id }}"
+            echo "source_sha=${{ steps.target.outputs.sha }}"
+            echo "mode=${{ inputs.mode }}"
+            if test -d workspace/.git; then
+              echo "workspace_head=$(git -C workspace rev-parse HEAD)"
+              echo "workspace_dirty=$(test -n "$(git -C workspace status --porcelain)" && echo true || echo false)"
+            fi
+          } >> hive-cloud-computer-evidence.txt
+
+      - name: Upload short-lived execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-cloud-computer-${{ inputs.task_id }}
+          path: hive-cloud-computer-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Destroy private workspace
+        if: always()
+        shell: bash
+        run: rm -rf workspace
