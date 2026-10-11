@@ -1,0 +1,47 @@
+name: Preparatore V2 · Incident State Diagnosis
+run-name: Preparatore incident status · ${{ inputs.job_id || '2026-10-05' }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/preparatore-v2-incident-diagnostics.yml'
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Preparatore V2 job UUID to inspect
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: photo-ai-private
+    steps:
+      - name: Read sanitized job lifecycle evidence
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          REQUESTED_JOB_ID: ${{ inputs.job_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const jobId = process.env.REQUESTED_JOB_ID || 'b0b42575-fca1-4be0-b135-fa21fb39e26a';
+          if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(jobId)) throw Error('Invalid job ID');
+          const base = process.env.SUPABASE_URL?.replace(/\/$/, '');
+          const token = process.env.SUPABASE_SERVICE_ROLE_KEY;
+          if (!base || !token) throw Error('Missing configured Supabase credentials');
+          const select = 'id,status,error_code,created_at,updated_at,started_at,completed_at,expires_at,attempt_count';
+          const url = `${base}/rest/v1/preparatore_v2_jobs?id=eq.${encodeURIComponent(jobId)}&select=${select}&limit=1`;
+          const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, apikey: token }, signal: AbortSignal.timeout(15000) });
+          if (!r.ok) throw Error(`Database read returned HTTP ${r.status}`);
+          const rows = await r.json();
+          if (!rows.length) throw Error('Incident job not found');
+          const job = rows[0];
+          console.log('INCIDENT_JOB_LIFECYCLE=' + JSON.stringify(job));
+          NODE
