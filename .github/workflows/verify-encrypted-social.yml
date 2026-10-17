@@ -1,0 +1,95 @@
+name: PFarma Social Encrypted CI
+
+# PUBLIC TRANSPORT ONLY. Secrets never on forks/PRs.
+on:
+  push:
+    branches: [main]
+    paths:
+      - bundle/pfarma-social.bundle.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfarma-social-encrypted-ci
+  cancel-in-progress: false
+
+jobs:
+  social-verify:
+    # Never checkout or decrypt untrusted pull_request contents.
+    if: github.repository == 'giovannifidel-collab/pfarma-ci' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-social-trusted
+    timeout-minutes: 15
+    env:
+      PFARMA_CI_BUNDLE_KEY: ${{ secrets.PFARMA_SOCIAL_BUNDLE_KEY }}
+    steps:
+      - name: Checkout owner-controlled public bridge
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate public repo boundaries
+        run: python tools/validate_public_repo.py
+      - name: Install audited AES-256-GCM dependency
+        run: python -m pip install --disable-pip-version-check 'cryptography==46.0.4'
+      - name: Decrypt social code into ephemeral trusted runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PFARMA_CI_BUNDLE_KEY"
+          test -s bundle/pfarma-social.bundle.json
+          mkdir -p "$RUNNER_TEMP/pfarma-social"
+          python tools/public_ci_bundle.py unpack --bundle bundle/pfarma-social.bundle.json --destination "$RUNNER_TEMP/pfarma-social"
+      - name: Run complete offline PFarma Social quality gates
+        working-directory: ${{ runner.temp }}/pfarma-social
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q social
+          python -m unittest discover -s social/buffer -p 'test_*.py' -v
+          python -m unittest discover -s social/meta -p 'test_*.py' -v
+          python social/buffer/buffer_bridge.py validate
+      - name: Write sanitized, source-bound verification receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime, hashlib, json
+          from pathlib import Path
+          raw=Path("bundle/pfarma-social.bundle.json").read_bytes()
+          payload=json.loads(raw)
+          ref=payload["source_ref"]
+          if len(ref)!=40 or any(c not in "0123456789abcdef" for c in ref):
+              raise SystemExit("Untrusted social source ref")
+          receipt={
+              "version":1,"project":"pfarma-social",
+              "source_ref":ref,
+              "bundle_sha256":hashlib.sha256(raw).hexdigest(),
+              "result":"passed",
+              "checked_at":datetime.datetime.now(datetime.timezone.utc).isoformat()
+          }
+          Path("receipts").mkdir(exist_ok=True)
+          Path("receipts/pfarma-social-ci.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          PY
+          git config user.name "pfarma-social-ci[bot]"
+          git config user.email "pfarma-social-ci@users.noreply.github.com"
+          git add receipts/pfarma-social-ci.json
+          if git diff --cached --quiet; then
+            echo "Same receipt already present"
+            exit 0
+          fi
+          git commit -m "ci: PFarma Social encrypted source verified"
+          for retry in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then exit 0; fi
+          done
+          exit 1
+      - name: Wipe decrypted sources
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/pfarma-social"
