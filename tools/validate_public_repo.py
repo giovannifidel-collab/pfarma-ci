@@ -23,6 +23,7 @@ ALLOWED_TOP_LEVEL = {
 ALLOWED_EXACT = {
     PurePosixPath("bundle/README.md"),
     PurePosixPath("bundle/pfarma-ci.bundle.json"),
+    PurePosixPath("bundle/pfarma-social.bundle.json"),
     PurePosixPath("razzo/__init__.py"),
     PurePosixPath("razzo/super-factory.json"),
     PurePosixPath("razzo/projects.json"),
@@ -168,6 +169,22 @@ def main() -> None:
     if unexpected:
         raise SystemExit("Unexpected public-repository files rejected: " + ", ".join(unexpected))
     _validate_bundle()
+    # PFarma Social must use the SAME authenticated ciphertext format, never plaintext.
+    social_bundle = ROOT / "bundle" / "pfarma-social.bundle.json"
+    if social_bundle.exists():
+        try:
+            b = json.loads(social_bundle.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SystemExit("PFarma Social encrypted bundle is invalid JSON") from exc
+        if not isinstance(b, dict) or set(b) != BUNDLE_REQUIRED_FIELDS:
+            raise SystemExit("PFarma Social bundle has invalid schema")
+        if b.get("format") != "PFARMA_CI_BUNDLE_V2" or b.get("algorithm") != "AES-256-GCM":
+            raise SystemExit("PFarma Social bundle must use authenticated AES-256-GCM")
+        if not isinstance(b.get("ciphertext_b64"), str) or len(b["ciphertext_b64"]) < 24:
+            raise SystemExit("PFarma Social ciphertext is missing")
+        ref = b.get("source_ref")
+        if not isinstance(ref, str) or len(ref) != 40 or any(c not in "0123456789abcdef" for c in ref):
+            raise SystemExit("PFarma Social source_ref must be a full lowercase commit SHA")
     for filename in REF_FILES:
         _validate_ref_file(filename)
     print(f"PASS: public repository policy contains {len(files)} approved files; runtime JSON is sanitized.")
