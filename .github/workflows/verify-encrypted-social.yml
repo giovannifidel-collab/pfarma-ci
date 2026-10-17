@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - bundle/pfarma-social.bundle.json
+      - .github/workflows/verify-encrypted-social.yml
+      - tools/validate_social_bundle.py
+      - tools/test_validate_social_bundle.py
   workflow_dispatch:
 
 permissions:
@@ -34,8 +37,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Validate public repo boundaries
-        run: python tools/validate_public_repo.py
+      - name: Validate scoped social-only public ciphertext boundary
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tools -p 'test_validate_social_bundle.py' -v
+          python tools/validate_social_bundle.py
       - name: Install audited AES-256-GCM dependency
         run: python -m pip install --disable-pip-version-check 'cryptography==46.0.4'
       - name: Decrypt social code into ephemeral trusted runner
