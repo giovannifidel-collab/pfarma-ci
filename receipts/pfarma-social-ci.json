@@ -1,8 +1,8 @@
 {
   "version": 1,
   "project": "pfarma-social",
-  "source_ref": "0e1bff98390f72a4e204334b6f05dc1d71f48091",
-  "bundle_sha256": "f14f291288009f2dd108a8baedab566b041f4346eab089145c55afa8cf873dd4",
+  "source_ref": "ae25794ed3c26326bc81775d83dd6475cef44224",
+  "bundle_sha256": "ab69846ff772bccd8a3499ddb75eeb57fbb4003db18da8157dc58d6a03a20443",
   "result": "passed",
-  "checked_at": "2026-10-17T17:13:19.569136+00:00"
+  "checked_at": "2026-10-17T17:14:12.497943+00:00"
 }
