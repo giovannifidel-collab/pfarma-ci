@@ -54,6 +54,7 @@ jobs:
           python -m compileall -q social
           python -m unittest discover -s social/buffer -p 'test_*.py' -v
           python -m unittest discover -s social/meta -p 'test_*.py' -v
+          python -m unittest discover -s tools -p 'test_*.py' -v
           python social/buffer/buffer_bridge.py validate
       - name: Write sanitized, source-bound verification receipt
         shell: bash
