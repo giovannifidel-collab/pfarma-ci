@@ -1,0 +1,14 @@
+{
+  "name": "hive-agent-lab-claude",
+  "private": true,
+  "type": "module",
+  "version": "0.2.0",
+  "description": "Standalone zero-cost Claude.ai connectivity and certification lab for HIVE.",
+  "dependencies": {
+    "playwright": "^1.55.0"
+  },
+  "scripts": {
+    "browser:install": "playwright install chromium",
+    "certify": "node certify.mjs"
+  }
+}

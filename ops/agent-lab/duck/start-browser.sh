@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+PROFILE="${DUCK_LAB_PROFILE_DIR:-$HOME/.hive-agent-lab/duck-profile}"
+PORT="${DUCK_LAB_CDP_PORT:-9233}"
+DISK_CACHE_BYTES="${DUCK_LAB_DISK_CACHE_BYTES:-134217728}"
+MEDIA_CACHE_BYTES="${DUCK_LAB_MEDIA_CACHE_BYTES:-33554432}"
+SHARED_HOST="$ROOT/../browser-host/ensure-desktop.sh"
+mkdir -p "$PROFILE"
+
+playwright_browser(){
+  [[ -d node_modules/playwright ]] || return 1
+  local candidate
+  candidate="$(node --input-type=module -e "import { chromium } from 'playwright'; process.stdout.write(chromium.executablePath())" 2>/dev/null || true)"
+  if [[ -n "$candidate" && -x "$candidate" ]]; then printf '%s\n' "$candidate"; return 0; fi
+  return 1
+}
+
+find_browser(){
+  if [[ -n "${DUCK_LAB_BROWSER_BIN:-}" && -x "${DUCK_LAB_BROWSER_BIN}" ]]; then printf '%s\n' "$DUCK_LAB_BROWSER_BIN"; return 0; fi
+  for bin in google-chrome-stable google-chrome chromium chromium-browser; do
+    if command -v "$bin" >/dev/null 2>&1; then command -v "$bin"; return 0; fi
+  done
+  playwright_browser && return 0
+  return 1
+}
+
+if curl -fsS "http://127.0.0.1:${PORT}/json/version" >/dev/null 2>&1; then
+  echo "DUCK LAB BROWSER READY"
+  echo "CDP=http://127.0.0.1:${PORT}"
+  echo "PROFILE=$PROFILE"
+  exit 0
+fi
+
+if [[ ! -d node_modules/playwright ]]; then
+  echo "DUCK LAB: installazione dipendenze Node..."
+  npm install
+fi
+
+BROWSER="$(find_browser || true)"
+if [[ -z "$BROWSER" ]]; then
+  echo "DUCK LAB: Chromium non presente; bootstrap Playwright Chromium..."
+  npx playwright install chromium
+  BROWSER="$(find_browser || true)"
+fi
+[[ -n "$BROWSER" ]] || { echo "ERROR: Chromium non disponibile."; exit 1; }
+
+if [[ ! -S "/tmp/.X11-unix/X1" ]]; then
+  [[ -f "$SHARED_HOST" ]] || { echo "ERROR: shared browser host missing"; exit 3; }
+  bash "$SHARED_HOST"
+fi
+export DISPLAY=":1"
+
+rm -rf "$PROFILE/Default/Cache" "$PROFILE/Default/Code Cache" "$PROFILE/Default/GPUCache" "$PROFILE/ShaderCache" "$PROFILE/GrShaderCache" 2>/dev/null || true
+
+nohup "$BROWSER" \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port="$PORT" \
+  --user-data-dir="$PROFILE" \
+  --disk-cache-size="$DISK_CACHE_BYTES" \
+  --media-cache-size="$MEDIA_CACHE_BYTES" \
+  --no-first-run \
+  --no-default-browser-check \
+  --disable-dev-shm-usage \
+  --no-sandbox \
+  "https://duck.ai/" \
+  >"$PROFILE/chrome.log" 2>&1 &
+
+echo $! > "$PROFILE/chrome.pid"
+for _ in $(seq 1 75); do
+  if curl -fsS "http://127.0.0.1:${PORT}/json/version" >/dev/null 2>&1; then
+    echo "DUCK LAB BROWSER READY"
+    echo "CDP=http://127.0.0.1:${PORT}"
+    echo "PROFILE=$PROFILE"
+    echo "CACHE_CAP=$((DISK_CACHE_BYTES/1024/1024))MiB disk + $((MEDIA_CACHE_BYTES/1024/1024))MiB media"
+    exit 0
+  fi
+  sleep 0.4
+done
+
+echo "ERROR: Chromium avviato ma CDP non raggiungibile."
+tail -n 40 "$PROFILE/chrome.log" 2>/dev/null || true
+exit 1

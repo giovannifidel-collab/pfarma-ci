@@ -1,0 +1,19 @@
+[Unit]
+Description=HIVE Agent Gateway bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hive
+Group=hive
+WorkingDirectory=/opt/hive/pfarma-ci
+EnvironmentFile=/etc/hive-agent-gateway/gateway.env
+Environment=HOME=/var/lib/hive-agent-gateway
+ExecStart=/usr/bin/node /opt/hive/pfarma-ci/ops/agent-lab/bridge/server.mjs
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
