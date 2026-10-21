@@ -83,9 +83,11 @@ jobs:
           test -s dist/index.html
           test -s dist/health.json
           test -s dist/hf-runtime-v912.js
+          test -s dist/data-v2-adapter.js
           cmp -s src/runtime-v9.12.base.js dist/hf-runtime-v912.js
-          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 3
-          node -e "const h=require('./dist/health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','visitContextUsesExplicitDoctor','legacyVisitHandlersDeferred','visitRouteHashCannotOverrideDifferentFormDoctor','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.12.1-20261021'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"
+          cmp -s src/data-v2-adapter.js dist/data-v2-adapter.js
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 4
+          node -e "const h=require('./dist/health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','visitContextUsesExplicitDoctor','legacyVisitHandlersDeferred','visitRouteHashCannotOverrideDifferentFormDoctor','dataEngineV2','dataV2TransactionalRpc','dataV2LegacyTableReadDisabled','dataV2OptimisticConcurrency','dataV2PendingRecoveryPreserved','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.13.0-20261021'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"
           grep -q 'id="hf-runtime-v912"' dist/index.html
           ! grep -q 'id="hf-field-patch-v91119"' dist/index.html
           ! grep -q 'id="hf-field-patch-v91118"' dist/index.html
@@ -96,7 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL "https://hive-field-v8.vercel.app/health.json?predeploy=${GITHUB_RUN_ID}" -o /tmp/pre-health.json
-          node -e "const h=require('/tmp/pre-health.json'); if(!['v9.12.0-20261008','v9.12.1-20261021'].includes(h.version))process.exit(1)"
+          node -e "const h=require('/tmp/pre-health.json'); if(!['v9.12.1-20261021','v9.13.0-20261021'].includes(h.version))process.exit(1)"
 
       - name: Require Vercel deploy token
         shell: bash
@@ -128,7 +130,7 @@ jobs:
           printf 'deployment_url=%s\n' "$url" >> "$GITHUB_OUTPUT"
           printf 'Deployment URL: %s\n' "$url"
 
-      - name: Verify production alias and v9.12.1 health
+      - name: Verify production alias and v9.13.0 Data V2 health
         working-directory: private-source
         shell: bash
         run: |
@@ -136,18 +138,18 @@ jobs:
           ok=0
           for i in $(seq 1 30); do
             if curl -fsSL "https://hive-field-v8.vercel.app/health.json?verify=${GITHUB_RUN_ID}-$i" -o /tmp/hive-field-health.json; then
-              if node -e "const h=require('/tmp/hive-field-health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','visitContextUsesExplicitDoctor','legacyVisitHandlersDeferred','visitRouteHashCannotOverrideDifferentFormDoctor','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.12.1-20261021'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"; then
+              if node -e "const h=require('/tmp/hive-field-health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','visitContextUsesExplicitDoctor','legacyVisitHandlersDeferred','visitRouteHashCannotOverrideDifferentFormDoctor','dataEngineV2','dataV2TransactionalRpc','dataV2LegacyTableReadDisabled','dataV2OptimisticConcurrency','dataV2PendingRecoveryPreserved','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.13.0-20261021'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"; then
                 ok=1
                 break
               fi
             fi
             sleep 5
           done
-          test "$ok" = 1 || { echo 'Production alias did not reach verified v9.12.1.' >&2; exit 1; }
+          test "$ok" = 1 || { echo 'Production alias did not reach verified v9.13.0.' >&2; exit 1; }
 
           asset_ok=0
           for i in $(seq 1 12); do
-            if curl -fsSL "https://hive-field-v8.vercel.app/hf-runtime-v912.js?v=9.12.1&verify=${GITHUB_RUN_ID}-$i" -o /tmp/hf-runtime-v912.js; then
+            if curl -fsSL "https://hive-field-v8.vercel.app/hf-runtime-v912.js?v=9.13.0&verify=${GITHUB_RUN_ID}-$i" -o /tmp/hf-runtime-v912.js; then
               if cmp -s src/runtime-v9.12.base.js /tmp/hf-runtime-v912.js; then
                 asset_ok=1
                 break
@@ -156,6 +158,18 @@ jobs:
             sleep 2
           done
           test "$asset_ok" = 1 || { echo 'v9.12 runtime asset did not propagate byte-for-byte.' >&2; exit 1; }
+
+          adapter_ok=0
+          for i in $(seq 1 12); do
+            if curl -fsSL "https://hive-field-v8.vercel.app/data-v2-adapter.js?v=9.13.0&verify=${GITHUB_RUN_ID}-$i" -o /tmp/data-v2-adapter.js; then
+              if cmp -s src/data-v2-adapter.js /tmp/data-v2-adapter.js; then
+                adapter_ok=1
+                break
+              fi
+            fi
+            sleep 2
+          done
+          test "$adapter_ok" = 1 || { echo 'Data V2 adapter did not propagate byte-for-byte.' >&2; exit 1; }
 
           page_ok=0
           for i in $(seq 1 12); do
@@ -174,12 +188,12 @@ jobs:
         shell: bash
         run: |
           {
-            echo '## HIVE FIELD v9.12.1 production'
+            echo '## HIVE FIELD v9.13.0 Data V2 production'
             echo '- private source: giovannifidel-collab/hive-field'
             echo "- exact SHA: ${{ steps.source.outputs.sha }}"
             echo '- Vercel project: hive-field-v8'
             echo '- production alias verified: https://hive-field-v8.vercel.app'
-            echo '- health verified: v9.12.1-20261021'
+            echo '- health verified: v9.13.0-20261021'
             echo '- canonical local build and consolidated runtime verified'
           } >> "$GITHUB_STEP_SUMMARY"
 
