@@ -86,7 +86,7 @@ jobs:
           test -s dist/data-v2-adapter.js
           cmp -s src/data-v2-adapter.js dist/data-v2-adapter.js
           test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 4
-          node -e "const h=require('./dist/health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','visitContextUsesExplicitDoctor','legacyVisitHandlersDeferred','visitRouteHashCannotOverrideDifferentFormDoctor','dataEngineV2','dataV2TransactionalRpc','dataV2LegacyTableReadDisabled','dataV2OptimisticConcurrency','dataV2PendingRecoveryPreserved','dataV2SafeCrossDeviceMerge','dataV2SerializedSaves','dataV2NoBackgroundStaleFlush','dataV2VisitCloudAckById','atomicVisitRpc','atomicVisitServerVerified','atomicVisitReplayIdempotent','atomicVisitPendingRecovery','visitModalDedicatedAtomicRpc','visitPickerDedupesById','masterStructures','structureLocationLink','structurePicker','structureCoordinatesReuse','territoryView','territoryToday','territoryWeek','territoryStructures','territoryStructureDrilldown','territorySevenDaySchedule','territoryIndexedAvailability','territorySameMunicipalityGuard','territoryLegacyWeekdayAlignment','territoryModernWeekdayPreserved','territoryFixedScrollLayout','territoryResponsiveStructureGrid','territoryGPSProvenance','territoryCanonicalGPSFallback','territoryAllDoctorLocations','locationModalSharedStructurePicker','locationModalStructureIdPersisted','doctorFirstSiteAlwaysPrimary','territoryZones','territoryDoctorLinks','unlinkedLocationsPreserved','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.14.10-20261027'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"
+          node -e "const h=require('./dist/health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','visitContextUsesExplicitDoctor','legacyVisitHandlersDeferred','visitRouteHashCannotOverrideDifferentFormDoctor','dataEngineV2','dataV2TransactionalRpc','dataV2LegacyTableReadDisabled','dataV2OptimisticConcurrency','dataV2PendingRecoveryPreserved','dataV2SafeCrossDeviceMerge','dataV2SerializedSaves','dataV2NoBackgroundStaleFlush','dataV2VisitCloudAckById','atomicVisitRpc','atomicVisitServerVerified','atomicVisitReplayIdempotent','atomicVisitPendingRecovery','visitModalDedicatedAtomicRpc','visitPickerDedupesById','masterStructures','structureLocationLink','structurePicker','structureCoordinatesReuse','territoryView','territoryToday','territoryWeek','territoryStructures','territoryStructureDrilldown','territorySevenDaySchedule','territoryIndexedAvailability','territorySameMunicipalityGuard','territoryLegacyWeekdayAlignment','territoryModernWeekdayPreserved','territoryFixedScrollLayout','territoryResponsiveStructureGrid','territoryGPSProvenance','territoryCanonicalGPSFallback','territoryAllDoctorLocations','explicitVisitDeleteRpc','explicitVisitDeleteVerified','explicitVisitTombstoneReplayGuard','visitDeletionArchiveProtected','locationModalSharedStructurePicker','locationModalStructureIdPersisted','doctorFirstSiteAlwaysPrimary','territoryZones','territoryDoctorLinks','unlinkedLocationsPreserved','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.14.11-20261028'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"
           grep -q 'id="hf-runtime-v912"' dist/index.html
           ! grep -q 'id="hf-field-patch-v91119"' dist/index.html
           ! grep -q 'id="hf-field-patch-v91118"' dist/index.html
@@ -97,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL "https://hive-field-v8.vercel.app/health.json?predeploy=${GITHUB_RUN_ID}" -o /tmp/pre-health.json
-          node -e "const h=require('/tmp/pre-health.json'); if(!['v9.13.1-20261023','v9.14.0-20261023','v9.14.2-20261026','v9.14.4-20261027','v9.14.5-20261027','v9.14.6-20261027','v9.14.7-20261027','v9.14.8-20261027','v9.14.9-20261027','v9.14.10-20261027'].includes(h.version))process.exit(1)"
+          node -e "const h=require('/tmp/pre-health.json'); if(!['v9.13.1-20261023','v9.14.0-20261023','v9.14.2-20261026','v9.14.4-20261027','v9.14.5-20261027','v9.14.6-20261027','v9.14.7-20261027','v9.14.8-20261027','v9.14.9-20261027','v9.14.10-20261027','v9.14.11-20261028'].includes(h.version))process.exit(1)"
 
       - name: Require Vercel deploy token
         shell: bash
@@ -129,7 +129,7 @@ jobs:
           printf 'deployment_url=%s\n' "$url" >> "$GITHUB_OUTPUT"
           printf 'Deployment URL: %s\n' "$url"
 
-      - name: Verify production alias and v9.14.10 structure layout and GPS provenance
+      - name: Verify production alias and v9.14.11 explicit audited deletion and tombstone anti-replay
         working-directory: private-source
         shell: bash
         run: |
@@ -137,7 +137,7 @@ jobs:
           ok=0
           for i in $(seq 1 30); do
             if curl -fsSL "https://hive-field-v8.vercel.app/health.json?verify=${GITHUB_RUN_ID}-$i" -o /tmp/hive-field-health.json; then
-              if node -e "const h=require('/tmp/hive-field-health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','visitContextUsesExplicitDoctor','legacyVisitHandlersDeferred','visitRouteHashCannotOverrideDifferentFormDoctor','dataEngineV2','dataV2TransactionalRpc','dataV2LegacyTableReadDisabled','dataV2OptimisticConcurrency','dataV2PendingRecoveryPreserved','dataV2SafeCrossDeviceMerge','dataV2SerializedSaves','dataV2NoBackgroundStaleFlush','dataV2VisitCloudAckById','atomicVisitRpc','atomicVisitServerVerified','atomicVisitReplayIdempotent','atomicVisitPendingRecovery','visitModalDedicatedAtomicRpc','visitPickerDedupesById','masterStructures','structureLocationLink','structurePicker','structureCoordinatesReuse','territoryView','territoryToday','territoryWeek','territoryStructures','territoryStructureDrilldown','territorySevenDaySchedule','territoryIndexedAvailability','territorySameMunicipalityGuard','territoryLegacyWeekdayAlignment','territoryModernWeekdayPreserved','territoryFixedScrollLayout','territoryResponsiveStructureGrid','territoryGPSProvenance','territoryCanonicalGPSFallback','territoryAllDoctorLocations','locationModalSharedStructurePicker','locationModalStructureIdPersisted','doctorFirstSiteAlwaysPrimary','territoryZones','territoryDoctorLinks','unlinkedLocationsPreserved','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.14.10-20261027'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"; then
+              if node -e "const h=require('/tmp/hive-field-health.json'); const req=['canonicalLocalSource','canonicalRuntimeSource','runtimeBundleConsolidated','oldPatchScriptTagsRemoved','domObserverHub','homePresentNowDirectRouteFix','homeStatsClearStaleContactFilters','contactsSearchDebounced','dueFilterPrecomputed','contactSortMemoized','visitContextUsesExplicitDoctor','legacyVisitHandlersDeferred','visitRouteHashCannotOverrideDifferentFormDoctor','dataEngineV2','dataV2TransactionalRpc','dataV2LegacyTableReadDisabled','dataV2OptimisticConcurrency','dataV2PendingRecoveryPreserved','dataV2SafeCrossDeviceMerge','dataV2SerializedSaves','dataV2NoBackgroundStaleFlush','dataV2VisitCloudAckById','atomicVisitRpc','atomicVisitServerVerified','atomicVisitReplayIdempotent','atomicVisitPendingRecovery','visitModalDedicatedAtomicRpc','visitPickerDedupesById','masterStructures','structureLocationLink','structurePicker','structureCoordinatesReuse','territoryView','territoryToday','territoryWeek','territoryStructures','territoryStructureDrilldown','territorySevenDaySchedule','territoryIndexedAvailability','territorySameMunicipalityGuard','territoryLegacyWeekdayAlignment','territoryModernWeekdayPreserved','territoryFixedScrollLayout','territoryResponsiveStructureGrid','territoryGPSProvenance','territoryCanonicalGPSFallback','territoryAllDoctorLocations','explicitVisitDeleteRpc','explicitVisitDeleteVerified','explicitVisitTombstoneReplayGuard','visitDeletionArchiveProtected','locationModalSharedStructurePicker','locationModalStructureIdPersisted','doctorFirstSiteAlwaysPrimary','territoryZones','territoryDoctorLinks','unlinkedLocationsPreserved','cloudSaveReturnsPromise','cloudSaveRetries','cloudPendingRecovery','cloudPendingSurvivesReload','visitSaveAwaitsCloud','visitRetryIdempotent','visitLocalDuplicateGuard','legacyLocalVisitRecovery','legacyLocalRecoveryNewerThanCloudOnly','legacyLocalRecoveryDeduplicatesById','allVisitEntryPointsUnified','contactVisitUsesUnifiedEngine','statusSeenUsesUnifiedEngine','historyVisitUsesUnifiedEngine','doctorInlineVisitUsesUnifiedEngine','doctorFormMobileLayoutFixed','doctorScheduleRootCorrect','doctorInlineVisitUsable','visitStatsDrillDown','structuralPreflight']; if(h.version!=='v9.14.11-20261028'||h.productionFetchBuildDependency!==false||Number(h.scriptTagCount)>4||Number(h.inlineScriptBytes)>70000||req.some(k=>h[k]!==true))process.exit(1)"; then
                 ok=1
                 break
               fi
@@ -148,7 +148,7 @@ jobs:
 
           asset_ok=0
           for i in $(seq 1 12); do
-            if curl -fsSL "https://hive-field-v8.vercel.app/hf-runtime-v912.js?v=9.14.10&verify=${GITHUB_RUN_ID}-$i" -o /tmp/hf-runtime-v912.js; then
+            if curl -fsSL "https://hive-field-v8.vercel.app/hf-runtime-v912.js?v=9.14.11&verify=${GITHUB_RUN_ID}-$i" -o /tmp/hf-runtime-v912.js; then
               if cmp -s dist/hf-runtime-v912.js /tmp/hf-runtime-v912.js; then
                 asset_ok=1
                 break
@@ -160,7 +160,7 @@ jobs:
 
           adapter_ok=0
           for i in $(seq 1 12); do
-            if curl -fsSL "https://hive-field-v8.vercel.app/data-v2-adapter.js?v=9.14.10&verify=${GITHUB_RUN_ID}-$i" -o /tmp/data-v2-adapter.js; then
+            if curl -fsSL "https://hive-field-v8.vercel.app/data-v2-adapter.js?v=9.14.11&verify=${GITHUB_RUN_ID}-$i" -o /tmp/data-v2-adapter.js; then
               if cmp -s src/data-v2-adapter.js /tmp/data-v2-adapter.js; then
                 adapter_ok=1
                 break
@@ -187,14 +187,14 @@ jobs:
         shell: bash
         run: |
           {
-            echo '## HIVE FIELD v9.14.10 production'
+            echo '## HIVE FIELD v9.14.11 production'
             echo '- private source: giovannifidel-collab/hive-field'
             echo "- exact SHA: ${{ steps.source.outputs.sha }}"
             echo '- Vercel project: hive-field-v8'
             echo '- production alias verified: https://hive-field-v8.vercel.app'
-            echo '- health verified: v9.14.10-20261027'
+            echo '- health verified: v9.14.11-20261028'
             echo '- canonical local build and consolidated runtime verified'
-            echo '- Responsive territory + GPS provenance/fallback + atomic visits preserved'
+            echo '- Audited single-visit deletion verified; no stale-device replay; existing cloud guards preserved'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove private source checkout
