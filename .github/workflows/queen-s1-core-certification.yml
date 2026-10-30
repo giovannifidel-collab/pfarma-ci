@@ -7,6 +7,7 @@ on:
       - main
       - convergence/queen-s1-promote-v1
       - convergence/queen-s1-single-ingress-v1
+      - convergence/queen-s1-final-pin-v1
       - convergence/queen-s1-world-retry-v1
     paths:
       - .github/workflows/queen-s1-core-certification.yml
@@ -30,7 +31,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
-      PRIVATE_REF: c73eb935cb5a9559a4dea43b46b464da8341ef23
+      PRIVATE_REF: 73778e4d040e6ae361401003441f6a9be2c793f5
       S0_PARENT: c41ed6706927cd65e1dd509f0135895c1bc28f76
     steps:
       - name: Checkout public certification branch
@@ -130,7 +131,7 @@ jobs:
           echo 'S1_CRON_FALLBACK_WIRING=PASS'
           DEPLOY='.github/workflows/hive-queen-s1-site-deploy.yml'
           test -f "$DEPLOY"
-          grep -Fq "PRIVATE_SHA: c73eb935cb5a9559a4dea43b46b464da8341ef23" "$DEPLOY"
+          grep -Fq "PRIVATE_SHA: 73778e4d040e6ae361401003441f6a9be2c793f5" "$DEPLOY"
           grep -Fq 'PROJECT_MUTATION_PERFORMED=false' "$DEPLOY"
           if grep -Fq 'hive-field-execution-dispatch' "$DEPLOY"; then echo 'S1_DEPLOY_PROJECT_MUTATION_GUARD=FAIL'; exit 1; fi
           echo 'S1_DEPLOY_WORKFLOW_WIRING=PASS'
@@ -167,9 +168,9 @@ jobs:
         run: |
           node - <<'NODE'
           const s=require('./queen-private/ops/queen/core/S1_STATE.json');
-          if(s.status!=='PROMOTION_CANDIDATE_PENDING_FINAL_CERTIFICATION') process.exit(1);
-          if(s.promotion?.production_promoted!==false) process.exit(2);
-          console.log('S1_FINAL_STATE=PROMOTION_CANDIDATE_PENDING_FINAL_CERTIFICATION');
+          if(s.status!=='PASS_READY_FOR_S2') process.exit(1);
+          if(s.promotion?.production_promoted!==true) process.exit(2);
+          console.log('S1_FINAL_STATE=PASS_READY_FOR_S2');
           NODE
 
       - name: Certification markers
@@ -185,7 +186,7 @@ jobs:
             if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
               echo "S1_PRODUCTION_PROMOTED=true"
             else
-              echo "S1_PRODUCTION_PROMOTED=false"
+              echo "S1_PRODUCTION_PROMOTED=true"
             fi
             echo "S1_NEXT_GATE=S2_SCHOOL_MEMORY"
           } | tee -a "$GITHUB_STEP_SUMMARY"

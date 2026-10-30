@@ -6,6 +6,7 @@ on:
       - main
       - convergence/queen-s1-promote-v1
       - convergence/queen-s1-single-ingress-v1
+      - convergence/queen-s1-final-pin-v1
     paths:
       - '.github/workflows/queen-s1-event-ingress.yml'
   repository_dispatch:
@@ -38,7 +39,7 @@ jobs:
     environment: pfarma-ci-trusted
     env:
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
-      PRIVATE_REF: c73eb935cb5a9559a4dea43b46b464da8341ef23
+      PRIVATE_REF: 73778e4d040e6ae361401003441f6a9be2c793f5
       DISPATCH_ACTION: ${{ github.event.action }}
       CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
       MANUAL_EVENT_JSON: ${{ inputs.event_json }}
