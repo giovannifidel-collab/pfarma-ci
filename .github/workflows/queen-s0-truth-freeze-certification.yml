@@ -22,7 +22,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
-      PRIVATE_REF: 31e8ac1a044ad78e35e6ed90180377f6c98adbc0
+      PRIVATE_REF: e786c91d991a425d8f02536bfdddd83aee7879b4
       PRIVATE_BASE: 7affc33249efd1ba66f59e4bfaf9db5663f03611
     steps:
       - name: Checkout public certification branch
@@ -129,6 +129,11 @@ jobs:
           path: /tmp/s0-current-refs.json
           retention-days: 30
 
+      - name: Confirm S0 final state
+        shell: bash
+        run: |
+          node -e "const s=require('./queen-private/ops/queen/governance/S0_STATE.json'); if(s.status!=='PASS_READY_FOR_S1') process.exit(1); console.log('S0_FINAL_STATE=PASS_READY_FOR_S1')"
+
       - name: Certification markers
         shell: bash
         run: |
@@ -136,5 +141,5 @@ jobs:
             echo "QUEEN_S0_CERTIFICATION_BRANCH=PASS"
             echo "S0_RUNTIME_CHANGED=false"
             echo "S0_DEFAULT_MUTATION_POLICY=DENY"
-            echo "S0_NEXT_GATE=trigger-isolation-and-status-reconciliation"
+            echo "S0_NEXT_GATE=S1_QUEEN_CORE_CONVERGENCE"
           } | tee -a "$GITHUB_STEP_SUMMARY"
