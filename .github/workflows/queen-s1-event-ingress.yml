@@ -35,7 +35,7 @@ jobs:
     environment: pfarma-ci-trusted
     env:
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
-      PRIVATE_REF: 0ea7820a0af1973b638fd3d4e226db4e3f375ca5
+      PRIVATE_REF: 889a8190f175ea8c4c763f68f9cd3ff243a77224
       DISPATCH_ACTION: ${{ github.event.action }}
       CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
       MANUAL_EVENT_JSON: ${{ inputs.event_json }}
