@@ -4,11 +4,13 @@ name: Queen S1 Core Certification
 on:
   push:
     branches:
+      - main
       - convergence/queen-s1-promote-v1
     paths:
       - .github/workflows/queen-s1-core-certification.yml
       - .github/workflows/queen-s1-event-ingress.yml
       - .github/workflows/hive-world-sync.yml
+      - .github/workflows/hive-queen-s1-site-deploy.yml
   workflow_dispatch:
 
 permissions:
@@ -25,7 +27,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
-      PRIVATE_REF: 4b59dee0d35a14616e744df414d95c94de68f420
+      PRIVATE_REF: c73eb935cb5a9559a4dea43b46b464da8341ef23
       S0_PARENT: c41ed6706927cd65e1dd509f0135895c1bc28f76
     steps:
       - name: Checkout public certification branch
@@ -123,6 +125,12 @@ jobs:
           echo 'S1_EVENT_INGRESS_WIRING=PASS'
           echo 'S1_WORLD_SEMANTIC_WAKE_WIRING=PASS'
           echo 'S1_CRON_FALLBACK_WIRING=PASS'
+          DEPLOY='.github/workflows/hive-queen-s1-site-deploy.yml'
+          test -f "$DEPLOY"
+          grep -Fq "PRIVATE_SHA: c73eb935cb5a9559a4dea43b46b464da8341ef23" "$DEPLOY"
+          grep -Fq 'PROJECT_MUTATION_PERFORMED=false' "$DEPLOY"
+          if grep -Fq 'hive-field-execution-dispatch' "$DEPLOY"; then echo 'S1_DEPLOY_PROJECT_MUTATION_GUARD=FAIL'; exit 1; fi
+          echo 'S1_DEPLOY_WORKFLOW_WIRING=PASS'
 
       - name: Recheck preserved live proof anchors
         shell: bash
