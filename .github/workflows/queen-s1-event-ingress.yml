@@ -1,0 +1,159 @@
+name: Queen S1 Event Ingress
+
+on:
+  push:
+    branches:
+      - convergence/queen-s1-core-v1
+    paths:
+      - '.github/workflows/queen-s1-event-ingress.yml'
+  repository_dispatch:
+    types:
+      - queen-task
+      - fabric-result
+      - verifier-result
+      - school-verified
+      - world-state-changed
+      - queen-cycle
+  workflow_dispatch:
+    inputs:
+      event_json:
+        description: 'Canonical hive.event.v1 envelope; optional for self-test'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s1-event-ingress-${{ github.event.client_payload.correlation_id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: pfarma-ci-trusted
+    env:
+      PRIVATE_REPO: giovannifidel-collab/hive-alveare
+      PRIVATE_REF: 0ea7820a0af1973b638fd3d4e226db4e3f375ca5
+      DISPATCH_ACTION: ${{ github.event.action }}
+      CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+      MANUAL_EVENT_JSON: ${{ inputs.event_json }}
+    steps:
+      - name: Checkout public relay
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact private Queen Core
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_REPO }}
+          ref: ${{ env.PRIVATE_REF }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-private
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Build canonical event envelope
+        id: event
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${MANUAL_EVENT_JSON:-}" ]; then
+            EVENT_JSON="$MANUAL_EVENT_JSON"
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            case "$DISPATCH_ACTION" in
+              queen-task) TYPE='queen.task.requested' ;;
+              fabric-result) TYPE='fabric.result.ready' ;;
+              verifier-result) TYPE='verification.result.ready' ;;
+              school-verified) TYPE='school.experience.verified' ;;
+              world-state-changed) TYPE='world.state.changed' ;;
+              queen-cycle) TYPE='queen.cycle.continue' ;;
+              *) echo "S1_UNSUPPORTED_DISPATCH_ACTION=$DISPATCH_ACTION"; exit 20 ;;
+            esac
+
+            EVENT_JSON="$(jq -cn               --arg id "${{ github.run_id }}-${{ github.run_attempt }}"               --arg type "$TYPE"               --arg source "github.repository_dispatch"               --arg occurred_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"               --argjson client "$CLIENT_PAYLOAD"               '{
+                version:"1",
+                id:$id,
+                type:$type,
+                source:$source,
+                occurred_at:$occurred_at,
+                correlation_id:($client.correlation_id // $id),
+                hop:($client.hop // 0),
+                max_hops:($client.max_hops // 8),
+                payload:($client.data // {})
+              }')"
+          else
+            EVENT_JSON="$(jq -cn               --arg id "s1-selftest-${{ github.run_id }}-${{ github.run_attempt }}"               --arg occurred_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"               '{
+                version:"1",
+                id:$id,
+                type:"queen.cycle.continue",
+                source:"queen.s1.ingress.selftest",
+                occurred_at:$occurred_at,
+                correlation_id:$id,
+                hop:0,
+                max_hops:8,
+                payload:{self_test:true}
+              }')"
+          fi
+
+          jq -e '
+            .version=="1" and
+            (.id|type=="string") and
+            (.correlation_id|type=="string") and
+            (.hop|type=="number") and
+            (.max_hops|type=="number") and
+            (.payload|type=="object")
+          ' <<<"$EVENT_JSON" >/dev/null
+
+          {
+            echo 'json<<EOF'
+            echo "$EVENT_JSON"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Route through exact private canonical event router
+        id: route
+        shell: bash
+        env:
+          HIVE_EVENT_JSON: ${{ steps.event.outputs.json }}
+        run: |
+          set -euo pipefail
+          RESULT="$(node queen-private/ops/queen/core/event-router.mjs)"
+          jq -e '.accepted == true and (.action|type=="string")' <<<"$RESULT" >/dev/null
+          echo "$RESULT" | jq .
+          {
+            echo 'json<<EOF'
+            echo "$RESULT"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Enforce router-only boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const result=JSON.parse(process.env.ROUTE);
+          if ('execution_result' in result) throw new Error('Ingress may not fabricate execution');
+          if ('verified' in result) throw new Error('Ingress may not fabricate verification');
+          if ('project_write' in result) throw new Error('Ingress may not write projects');
+          if (result.next_event && result.continue_allowed !== true && result.next_hop !== null) {
+            throw new Error('bounded continuation mismatch');
+          }
+          console.log('S1_ROUTER_ONLY_BOUNDARY=PASS');
+          NODE
+        env:
+          ROUTE: ${{ steps.route.outputs.json }}
+
+      - name: S1 ingress proof
+        shell: bash
+        run: |
+          {
+            echo "QUEEN_S1_EVENT_INGRESS=PASS"
+            echo "PRIVATE_SOURCE_SHA=$PRIVATE_REF"
+            echo "SCHEDULE_DEPENDENCY=false"
+            echo "PROJECT_MUTATION=false"
+            echo "NEXT_EVENT_IS_DECLARATIVE_ONLY=true"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
