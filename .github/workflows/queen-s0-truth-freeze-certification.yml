@@ -22,7 +22,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
-      PRIVATE_REF: convergence/s0-truth-freeze-v1
+      PRIVATE_REF: 31e8ac1a044ad78e35e6ed90180377f6c98adbc0
       PRIVATE_BASE: 7affc33249efd1ba66f59e4bfaf9db5663f03611
     steps:
       - name: Checkout public certification branch
@@ -62,6 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           node queen-private/ops/queen/governance/validate-project-authority.mjs
+          node queen-private/ops/queen/governance/validate-s0-truth.mjs
 
       - name: Snapshot current authoritative refs
         shell: bash
