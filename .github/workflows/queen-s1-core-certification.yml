@@ -6,6 +6,8 @@ on:
       - convergence/queen-s1-core-v1
     paths:
       - .github/workflows/queen-s1-core-certification.yml
+      - .github/workflows/queen-s1-event-ingress.yml
+      - .github/workflows/hive-world-sync.yml
   workflow_dispatch:
 
 permissions:
@@ -22,7 +24,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
-      PRIVATE_REF: ebf8cd3ac90a8e254439740e5251c1a257359747
+      PRIVATE_REF: 889a8190f175ea8c4c763f68f9cd3ff243a77224
       S0_PARENT: e786c91d991a425d8f02536bfdddd83aee7879b4
     steps:
       - name: Checkout public certification branch
@@ -52,7 +54,7 @@ jobs:
           printf '%s\n' "${changed[@]}"
           for f in "${changed[@]}"; do
             case "$f" in
-              ops/queen/cognitive/cognitive-core.mjs|              ops/queen/cognitive/cognitive-engine.mjs|              ops/queen/core/*|              ops/queen/runtime/config.json|              ops/queen/runtime/queen-runtime.mjs|              cloudflare/functions/_lib/queen-runtime.js) ;;
+              .github/workflows/queen-cognitive-core.yml|              .github/workflows/queen-runtime.yml|              ops/queen/cognitive/cognitive-core.mjs|              ops/queen/cognitive/cognitive-engine.mjs|              ops/queen/core/*|              ops/queen/runtime/config.json|              ops/queen/runtime/queen-runtime.mjs|              cloudflare/functions/_lib/queen-runtime.js) ;;
               *) echo "S1_UNEXPECTED_DIFF=$f"; exit 1 ;;
             esac
           done
@@ -91,6 +93,59 @@ jobs:
           fi
           echo "S1_MUTABLE_VNEXT_DEPENDENCY=NONE"
 
+      - name: Verify event-driven public wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          INGRESS='.github/workflows/queen-s1-event-ingress.yml'
+          WORLD='.github/workflows/hive-world-sync.yml'
+
+          grep -q "PRIVATE_REF: $PRIVATE_REF" "$INGRESS"
+          grep -q 'repository_dispatch:' "$INGRESS"
+          grep -q 'world-state-changed' "$INGRESS"
+          grep -q 'steps.durable.outputs.complete' "$INGRESS"
+          grep -q 'SCHEDULE_DEPENDENCY=false' "$INGRESS"
+          if grep -Eq '^[[:space:]]+schedule:' "$INGRESS"; then
+            echo 'S1_EVENT_INGRESS_SCHEDULE_DEPENDENCY=FAIL'
+            exit 1
+          fi
+
+          grep -q 'state_fingerprint' "$WORLD"
+          grep -q 'WORLD_SEMANTIC_CHANGE=false' "$WORLD"
+          grep -q "github.ref == 'refs/heads/main'" "$WORLD"
+          grep -q 'world-state-changed' "$WORLD"
+          grep -q 'steps.publish.outputs.changed' "$WORLD"
+
+          grep -q "cron: '17 */6 * * *'" queen-private/.github/workflows/queen-cognitive-core.yml
+          grep -q "cron: '47 */6 * * *'" queen-private/.github/workflows/queen-runtime.yml
+
+          echo 'S1_EVENT_INGRESS_WIRING=PASS'
+          echo 'S1_WORLD_SEMANTIC_WAKE_WIRING=PASS'
+          echo 'S1_CRON_FALLBACK_WIRING=PASS'
+
+      - name: Recheck preserved live proof anchors
+        shell: bash
+        env:
+          PUBLIC_REPO: giovannifidel-collab/pfarma-ci
+        run: |
+          set -euo pipefail
+          for RUN_ID in 36455265225 36609073295 36609555696 36609610520 36609785526 37522287227; do
+            CONCLUSION="$(gh api "repos/$PUBLIC_REPO/actions/runs/$RUN_ID" --jq '.conclusion')"
+            test "$CONCLUSION" = 'success' || { echo "S1_HISTORICAL_PROOF_FAILED=$RUN_ID:$CONCLUSION"; exit 1; }
+            echo "S1_PRESERVED_PROOF=$RUN_ID:success"
+          done
+          echo 'S1_PRESERVED_LIVE_PROOFS=PASS'
+
+      - name: Confirm final S1 private state
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const s=require('./queen-private/ops/queen/core/S1_STATE.json');
+          if(s.status!=='PASS_READY_FOR_S2_PENDING_SAFE_PROMOTION') process.exit(1);
+          if(s.promotion?.production_promoted!==false) process.exit(2);
+          console.log('S1_FINAL_STATE=PASS_READY_FOR_S2_PENDING_SAFE_PROMOTION');
+          NODE
+
       - name: Certification markers
         shell: bash
         run: |
@@ -100,5 +155,7 @@ jobs:
             echo "S1_RUNTIME_PATH_SINGLE_PLANNER=true"
             echo "S1_V1_AGENT_FABRIC_REBUILT=false"
             echo "S1_PROJECT_MUTATION=false"
-            echo "S1_NEXT_GATE=EVENT_DRIVEN_INGRESS"
+            echo "S1_EVENT_DRIVEN_PRIMARY=true"
+            echo "S1_PRODUCTION_PROMOTED=false"
+            echo "S1_NEXT_GATE=S2_SCHOOL_MEMORY"
           } | tee -a "$GITHUB_STEP_SUMMARY"
