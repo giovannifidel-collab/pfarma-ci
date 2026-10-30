@@ -22,7 +22,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: queen-s1-event-ingress-${{ github.event.client_payload.correlation_id || github.run_id }}
@@ -146,6 +146,99 @@ jobs:
           NODE
         env:
           ROUTE: ${{ steps.route.outputs.json }}
+
+      - name: Execute durable action only after repository_dispatch
+        if: github.event_name == 'repository_dispatch'
+        id: durable
+        shell: bash
+        env:
+          ROUTE: ${{ steps.route.outputs.json }}
+          EVENT_JSON: ${{ steps.event.outputs.json }}
+          HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+        run: |
+          set -euo pipefail
+          ACTION="$(jq -r '.action' <<<"$ROUTE")"
+          CORRELATION="$(jq -r '.correlation_id // .id' <<<"$EVENT_JSON")"
+          DATA="$(jq -c '.payload // {}' <<<"$EVENT_JSON")"
+
+          case "$ACTION" in
+            school.record_verified_experience|world.update|queen.cognitive_cycle)
+              BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+              BASE="${BASE%/}"
+              BODY="$(jq -cn                 --arg action "$ACTION"                 --arg correlation_id "$CORRELATION"                 --argjson data "$DATA"                 '{action:$action,correlation_id:$correlation_id,data:$data}')"
+              args=(-sS --max-time 30 -o /tmp/queen-durable-body -w '%{http_code}' -X POST -H 'Content-Type: application/json')
+              if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+                args+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+              fi
+              if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+                args+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+              fi
+              CODE="$(curl "${args[@]}" "$BASE/api/queen-state" -d "$BODY")"
+              test "$CODE" = '200' || { echo "S1_DURABLE_ACTION_HTTP=$CODE"; cat /tmp/queen-durable-body || true; exit 30; }
+              jq -e '.ok == true' /tmp/queen-durable-body >/dev/null
+              echo "S1_DURABLE_ACTION=$ACTION"
+              ;;
+            queen.evaluate_goals|queen.replan)
+              # The canonical cognitive cycle performs goal evaluation/replanning.
+              # This deterministic transition is complete once routed; the next
+              # queen-cycle event performs the actual cognitive work.
+              echo "S1_INTERNAL_TRANSITION=$ACTION"
+              ;;
+            fabric.execute|verification.execute)
+              echo "S1_ACTION_NOT_YET_CANONICAL=$ACTION"
+              echo "S1_FAIL_CLOSED=delegation/verification execution belongs to later convergence gates"
+              exit 40
+              ;;
+            *)
+              echo "S1_UNSUPPORTED_ACTION=$ACTION"
+              exit 41
+              ;;
+          esac
+          echo "complete=true" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch next event only after completed action
+        if: github.event_name == 'repository_dispatch' && steps.durable.outputs.complete == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROUTE: ${{ steps.route.outputs.json }}
+          EVENT_JSON: ${{ steps.event.outputs.json }}
+        run: |
+          set -euo pipefail
+          NEXT="$(jq -r '.next_event // empty' <<<"$ROUTE")"
+          CONTINUE="$(jq -r '.continue_allowed // false' <<<"$ROUTE")"
+          NEXT_HOP="$(jq -r '.next_hop // empty' <<<"$ROUTE")"
+          MAX_HOPS="$(jq -r '.max_hops' <<<"$ROUTE")"
+          CORRELATION="$(jq -r '.correlation_id' <<<"$ROUTE")"
+          DATA="$(jq -c '.payload // {}' <<<"$EVENT_JSON")"
+
+          if [ -z "$NEXT" ]; then
+            echo "S1_EVENT_CHAIN=COMPLETE"
+            exit 0
+          fi
+          test "$CONTINUE" = 'true' || { echo "S1_EVENT_CHAIN=CHECKPOINT_REQUIRED"; exit 0; }
+          test -n "$NEXT_HOP"
+          test "$NEXT_HOP" -le "$MAX_HOPS"
+
+          case "$NEXT" in
+            fabric.result.ready) EVENT_TYPE='fabric-result' ;;
+            verification.result.ready) EVENT_TYPE='verifier-result' ;;
+            school.experience.verified) EVENT_TYPE='school-verified' ;;
+            world.state.changed) EVENT_TYPE='world-state-changed' ;;
+            queen.cycle.continue) EVENT_TYPE='queen-cycle' ;;
+            *) echo "S1_UNROUTABLE_NEXT_EVENT=$NEXT"; exit 50 ;;
+          esac
+
+          BODY="$(jq -cn             --arg event_type "$EVENT_TYPE"             --arg correlation_id "$CORRELATION"             --argjson hop "$NEXT_HOP"             --argjson max_hops "$MAX_HOPS"             --argjson data "$DATA"             '{event_type:$event_type,client_payload:{schema:"hive.event.v1",correlation_id:$correlation_id,hop:$hop,max_hops:$max_hops,data:$data}}')"
+
+          HTTP="$(curl -sS -o /tmp/s1-next-dispatch -w '%{http_code}'             -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2026-03-10"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/dispatches"             -d "$BODY")"
+          test "$HTTP" = '204' || { echo "S1_NEXT_DISPATCH_FAILED_HTTP=$HTTP"; exit 51; }
+          echo "S1_NEXT_EVENT=$EVENT_TYPE"
+          echo "S1_NEXT_HOP=$NEXT_HOP"
+          echo "S1_NEXT_DISPATCH=PASS"
 
       - name: S1 ingress proof
         shell: bash
