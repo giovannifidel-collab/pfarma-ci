@@ -1,0 +1,104 @@
+name: Queen S1 Core Certification
+
+on:
+  push:
+    branches:
+      - convergence/queen-s1-core-v1
+    paths:
+      - .github/workflows/queen-s1-core-certification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s1-core-certification
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      PRIVATE_REPO: giovannifidel-collab/hive-alveare
+      PRIVATE_REF: ebf8cd3ac90a8e254439740e5251c1a257359747
+      S0_PARENT: e786c91d991a425d8f02536bfdddd83aee7879b4
+    steps:
+      - name: Checkout public certification branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact private S1 source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_REPO }}
+          ref: ${{ env.PRIVATE_REF }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-private
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact S1 source and bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd queen-private
+          test "$(git rev-parse HEAD)" = "$PRIVATE_REF"
+          git cat-file -e "${S0_PARENT}^{commit}"
+          mapfile -t changed < <(git diff --name-only "${S0_PARENT}...HEAD")
+          test "${#changed[@]}" -gt 0
+          printf '%s\n' "${changed[@]}"
+          for f in "${changed[@]}"; do
+            case "$f" in
+              ops/queen/cognitive/cognitive-core.mjs|              ops/queen/cognitive/cognitive-engine.mjs|              ops/queen/core/*|              ops/queen/runtime/config.json|              ops/queen/runtime/queen-runtime.mjs|              cloudflare/functions/_lib/queen-runtime.js) ;;
+              *) echo "S1_UNEXPECTED_DIFF=$f"; exit 1 ;;
+            esac
+          done
+          echo "S1_BOUNDED_DIFF=PASS"
+
+      - name: Syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd queen-private
+          node --check ops/queen/cognitive/cognitive-engine.mjs
+          node --check ops/queen/cognitive/cognitive-core.mjs
+          node --check ops/queen/core/event-router.mjs
+          node --check ops/queen/core/validate-s1-core.mjs
+          node --check ops/queen/runtime/queen-runtime.mjs
+          node --check cloudflare/functions/_lib/queen-runtime.js
+          echo "S1_SYNTAX=PASS"
+
+      - name: Run canonical self-tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd queen-private
+          node ops/queen/cognitive/cognitive-core.mjs --self-test
+          node ops/queen/runtime/queen-runtime.mjs --self-test
+          node ops/queen/core/validate-s1-core.mjs
+
+      - name: Verify no mutable vNext runtime dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd queen-private
+          if grep -R "queen-universal-fabric-vnext"               ops/queen/cognitive/cognitive-core.mjs               ops/queen/cognitive/cognitive-engine.mjs               ops/queen/core/CORE_MANIFEST.v1.json               ops/queen/core/event-router.mjs               ops/queen/runtime/queen-runtime.mjs               cloudflare/functions/_lib/queen-runtime.js; then
+            echo "S1_MUTABLE_VNEXT_DEPENDENCY=FAIL"
+            exit 1
+          fi
+          echo "S1_MUTABLE_VNEXT_DEPENDENCY=NONE"
+
+      - name: Certification markers
+        shell: bash
+        run: |
+          {
+            echo "QUEEN_S1_CORE_CERTIFICATION=PASS"
+            echo "S1_PRIVATE_SHA=$PRIVATE_REF"
+            echo "S1_RUNTIME_PATH_SINGLE_PLANNER=true"
+            echo "S1_V1_AGENT_FABRIC_REBUILT=false"
+            echo "S1_PROJECT_MUTATION=false"
+            echo "S1_NEXT_GATE=EVENT_DRIVEN_INGRESS"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
