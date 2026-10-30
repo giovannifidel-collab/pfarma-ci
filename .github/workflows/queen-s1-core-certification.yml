@@ -7,6 +7,7 @@ on:
       - main
       - convergence/queen-s1-promote-v1
       - convergence/queen-s1-single-ingress-v1
+      - convergence/queen-s1-final-pin-v1
       - convergence/queen-s1-world-retry-v1
     paths:
       - .github/workflows/queen-s1-core-certification.yml
