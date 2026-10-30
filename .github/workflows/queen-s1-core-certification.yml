@@ -100,24 +100,24 @@ jobs:
           INGRESS='.github/workflows/queen-s1-event-ingress.yml'
           WORLD='.github/workflows/hive-world-sync.yml'
 
-          grep -q "PRIVATE_REF: $PRIVATE_REF" "$INGRESS"
-          grep -q 'repository_dispatch:' "$INGRESS"
-          grep -q 'world-state-changed' "$INGRESS"
-          grep -q 'steps.durable.outputs.complete' "$INGRESS"
-          grep -q 'SCHEDULE_DEPENDENCY=false' "$INGRESS"
+          grep -Fq "PRIVATE_REF: $PRIVATE_REF" "$INGRESS"
+          grep -Fq 'repository_dispatch:' "$INGRESS"
+          grep -Fq 'world-state-changed' "$INGRESS"
+          grep -Fq 'steps.durable.outputs.complete' "$INGRESS"
+          grep -Fq 'SCHEDULE_DEPENDENCY=false' "$INGRESS"
           if grep -Eq '^[[:space:]]+schedule:' "$INGRESS"; then
             echo 'S1_EVENT_INGRESS_SCHEDULE_DEPENDENCY=FAIL'
             exit 1
           fi
 
-          grep -q 'state_fingerprint' "$WORLD"
-          grep -q 'WORLD_SEMANTIC_CHANGE=false' "$WORLD"
-          grep -q "github.ref == 'refs/heads/main'" "$WORLD"
-          grep -q 'world-state-changed' "$WORLD"
-          grep -q 'steps.publish.outputs.changed' "$WORLD"
+          grep -Fq 'state_fingerprint' "$WORLD"
+          grep -Fq 'WORLD_SEMANTIC_CHANGE=false' "$WORLD"
+          grep -Fq "github.ref == 'refs/heads/main'" "$WORLD"
+          grep -Fq 'world-state-changed' "$WORLD"
+          grep -Fq 'steps.publish.outputs.changed' "$WORLD"
 
-          grep -q "cron: '17 */6 * * *'" queen-private/.github/workflows/queen-cognitive-core.yml
-          grep -q "cron: '47 */6 * * *'" queen-private/.github/workflows/queen-runtime.yml
+          grep -Fq "cron: '17 */6 * * *'" queen-private/.github/workflows/queen-cognitive-core.yml
+          grep -Fq "cron: '47 */6 * * *'" queen-private/.github/workflows/queen-runtime.yml
 
           echo 'S1_EVENT_INGRESS_WIRING=PASS'
           echo 'S1_WORLD_SEMANTIC_WAKE_WIRING=PASS'
