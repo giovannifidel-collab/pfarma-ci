@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - convergence/queen-s1-promote-v1
+      - convergence/queen-s1-final-pin-v1
     paths:
       - '.github/workflows/hive-queen-s1-site-deploy.yml'
   workflow_dispatch:
