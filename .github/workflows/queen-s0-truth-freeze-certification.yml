@@ -1,0 +1,139 @@
+name: Queen S0 Truth Freeze Certification
+
+on:
+  push:
+    branches:
+      - convergence/queen-s0-truth-freeze-v1
+    paths:
+      - .github/workflows/queen-s0-truth-freeze-certification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s0-truth-freeze-certification
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      PRIVATE_REPO: giovannifidel-collab/hive-alveare
+      PRIVATE_REF: convergence/s0-truth-freeze-v1
+      PRIVATE_BASE: 7affc33249efd1ba66f59e4bfaf9db5663f03611
+    steps:
+      - name: Checkout public certification branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout private Queen S0 branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_REPO }}
+          ref: ${{ env.PRIVATE_REF }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-private
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove S0 branch is governance-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd queen-private
+          git cat-file -e "${PRIVATE_BASE}^{commit}"
+          mapfile -t changed < <(git diff --name-only "${PRIVATE_BASE}...HEAD")
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -gt 0
+          for f in "${changed[@]}"; do
+            case "$f" in
+              ops/queen/governance/*) ;;
+              *) echo "S0_RUNTIME_DIFF_BLOCKED=$f"; exit 1 ;;
+            esac
+          done
+          echo "S0_GOVERNANCE_ONLY_DIFF=PASS"
+
+      - name: Validate project authority registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          node queen-private/ops/queen/governance/validate-project-authority.mjs
+
+      - name: Snapshot current authoritative refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const cp = require('child_process');
+          const registry = JSON.parse(fs.readFileSync('queen-private/ops/queen/governance/PROJECT_AUTHORITY_REGISTRY.v1.json','utf8'));
+          const rows = [];
+          for (const p of registry.projects) {
+            const ref = p.authoritative_ref || p.default_branch || 'main';
+            const args = ['api', '--method', 'GET', `repos/${p.repository}/commits`, '-f', `sha=${ref}`, '-f', 'per_page=1', '--jq', '.[0].sha'];
+            let current = null;
+            let error = null;
+            try {
+              current = cp.execFileSync('gh', args, {encoding:'utf8', stdio:['ignore','pipe','pipe']}).trim();
+            } catch (e) {
+              error = String(e.stderr || e.message || e);
+            }
+            rows.push({
+              id:p.id,
+              repository:p.repository,
+              authoritative_ref:ref,
+              audited_sha:p.audited_sha,
+              current_sha:current,
+              drift:!!(current && p.audited_sha && current !== p.audited_sha),
+              resolved:!!current,
+              error:error ? error.slice(0,300) : null
+            });
+          }
+          fs.writeFileSync('/tmp/s0-current-refs.json', JSON.stringify({
+            generated_at:new Date().toISOString(),
+            rows
+          }, null, 2));
+          for (const r of rows) {
+            console.log(`S0_REF ${r.id} resolved=${r.resolved} drift=${r.drift} current=${r.current_sha || 'NONE'}`);
+            if (!r.resolved) process.exitCode = 1;
+          }
+          NODE
+
+      - name: Verify critical semantic locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('queen-private/ops/queen/governance/PROJECT_AUTHORITY_REGISTRY.v1.json','utf8'));
+          const get=id=>r.projects.find(x=>x.id===id);
+          const foreign=['pfarma-social','pfarma-reel-media','rose-mary-beauty','rocco-rosy-wedding'];
+          if (foreign.some(id=>get(id)?.queen_access!=='DENY')) throw new Error('foreign-project-deny-lock');
+          if (get('hive-field')?.domain!=='isf-field-force-management') throw new Error('hive-field-identity-lock');
+          if (get('pfarma-ci')?.source_of_truth!==false) throw new Error('public-relay-truth-lock');
+          if (r.authority?.default_mutation_policy!=='DENY') throw new Error('default-deny-lock');
+          console.log('S0_FOREIGN_PROJECT_LOCKS=PASS');
+          console.log('S0_HIVE_FIELD_IDENTITY=PASS');
+          console.log('S0_PUBLIC_RELAY_BOUNDARY=PASS');
+          NODE
+
+      - name: Upload current-ref snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-s0-current-refs-${{ github.run_id }}
+          path: /tmp/s0-current-refs.json
+          retention-days: 30
+
+      - name: Certification markers
+        shell: bash
+        run: |
+          {
+            echo "QUEEN_S0_CERTIFICATION_BRANCH=PASS"
+            echo "S0_RUNTIME_CHANGED=false"
+            echo "S0_DEFAULT_MUTATION_POLICY=DENY"
+            echo "S0_NEXT_GATE=trigger-isolation-and-status-reconciliation"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
