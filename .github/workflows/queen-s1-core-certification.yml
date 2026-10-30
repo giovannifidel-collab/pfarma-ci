@@ -165,6 +165,10 @@ jobs:
             echo "S1_V1_AGENT_FABRIC_REBUILT=false"
             echo "S1_PROJECT_MUTATION=false"
             echo "S1_EVENT_DRIVEN_PRIMARY=true"
-            echo "S1_PRODUCTION_PROMOTED=false"
+            if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+              echo "S1_PRODUCTION_PROMOTED=true"
+            else
+              echo "S1_PRODUCTION_PROMOTED=false"
+            fi
             echo "S1_NEXT_GATE=S2_SCHOOL_MEMORY"
           } | tee -a "$GITHUB_STEP_SUMMARY"
