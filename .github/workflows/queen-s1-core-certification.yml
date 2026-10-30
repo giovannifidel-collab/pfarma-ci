@@ -1,4 +1,5 @@
 name: Queen S1 Core Certification
+# promotion-final-head-trigger
 
 on:
   push:
