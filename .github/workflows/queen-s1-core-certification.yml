@@ -142,9 +142,9 @@ jobs:
         run: |
           node - <<'NODE'
           const s=require('./queen-private/ops/queen/core/S1_STATE.json');
-          if(s.status!=='PASS_READY_FOR_S2_PENDING_SAFE_PROMOTION') process.exit(1);
+          if(s.status!=='PROMOTION_CANDIDATE_PENDING_FINAL_CERTIFICATION') process.exit(1);
           if(s.promotion?.production_promoted!==false) process.exit(2);
-          console.log('S1_FINAL_STATE=PASS_READY_FOR_S2_PENDING_SAFE_PROMOTION');
+          console.log('S1_FINAL_STATE=PROMOTION_CANDIDATE_PENDING_FINAL_CERTIFICATION');
           NODE
 
       - name: Certification markers
