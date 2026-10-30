@@ -104,6 +104,7 @@ jobs:
           node <<'NODE'
           const fs=require('fs');
           const cp=require('child_process');
+          const crypto=require('crypto');
 
           const generatedAt=new Date().toISOString();
           const git=(dir,args)=>{try{return cp.execFileSync('git',['-C',dir,...args],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim()}catch{return null}};
@@ -223,9 +224,37 @@ jobs:
             const sourceBacked=values.filter(x=>!!x.source?.repo).length;
             const sourceAvailable=values.filter(x=>!!x.source?.repo&&x.source.available).length;
             const runtimeChecks=values.flatMap(x=>x.runtime||[]).filter(x=>typeof x.reachable==='boolean');
+            const semanticState={
+              policy:'authoritative-source-first',
+              projects:Object.fromEntries(Object.entries(projects).map(([slug,p])=>[slug,{
+                source:{
+                  kind:p.source?.kind??null,
+                  repo:p.source?.repo??null,
+                  ref:p.source?.ref??null,
+                  available:p.source?.available===true,
+                  sha:p.source?.sha??null,
+                  version:p.source?.version??null,
+                  progress:p.source?.progress??null,
+                  provenance:p.source?.provenance??null
+                },
+                runtime:(p.runtime||[]).map(r=>({
+                  url:r.url??null,
+                  role:r.role??null,
+                  kind:r.kind??null,
+                  target:r.target??null,
+                  reachable:r.reachable??null,
+                  http_status:r.http_status??null,
+                  status:r.status??null,
+                  summary:r.summary??null
+                })),
+                sync_depth:p.sync_depth??null
+              }]))
+            };
+            const stateFingerprint=crypto.createHash('sha256').update(JSON.stringify(semanticState)).digest('hex');
             const world={
               schema_version:1,
               generated_at:generatedAt,
+              state_fingerprint:stateFingerprint,
               policy:'authoritative-source-first',
               privacy:'sanitized allowlist; gio-OS private source never materialized in global HIVE sync; no credentials or user data published',
               cadence_minutes:15,
@@ -241,24 +270,64 @@ jobs:
         shell: bash
         run: rm -rf _sources
 
-      - name: Publish world snapshot only when changed
+      - name: Publish world snapshot only when semantic state changed
+        id: publish
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'HIVE Queen World Sync'
           git config user.email 'hive-queen@users.noreply.github.com'
-          git add hive-world-state.json
-          if git diff --cached --quiet; then
-            echo 'World snapshot unchanged.'
+
+          OLD_FINGERPRINT="$(git show HEAD:hive-world-state.json 2>/dev/null | jq -r '.state_fingerprint // empty' || true)"
+          NEW_FINGERPRINT="$(jq -r '.state_fingerprint // empty' hive-world-state.json)"
+          test -n "$NEW_FINGERPRINT" || { echo 'WORLD_FINGERPRINT_MISSING'; exit 30; }
+
+          if [ -n "$OLD_FINGERPRINT" ] && [ "$OLD_FINGERPRINT" = "$NEW_FINGERPRINT" ]; then
+            git checkout -- hive-world-state.json
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "WORLD_SEMANTIC_CHANGE=false"
             exit 0
           fi
+
+          git add hive-world-state.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "WORLD_SEMANTIC_CHANGE=false"
+            exit 0
+          fi
+
           git commit -m 'state(hive): synchronize global world model'
           git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "fingerprint=$NEW_FINGERPRINT" >> "$GITHUB_OUTPUT"
+          echo "WORLD_SEMANTIC_CHANGE=true"
+
+      - name: Wake Queen only after a real semantic world change
+        if: steps.publish.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORLD_FINGERPRINT: ${{ steps.publish.outputs.fingerprint }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="$(jq -cn             --arg correlation_id "world-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"             --arg fingerprint "$WORLD_FINGERPRINT"             '{
+              event_type:"world-state-changed",
+              client_payload:{
+                schema:"hive.event.v1",
+                correlation_id:$correlation_id,
+                hop:0,
+                max_hops:8,
+                data:{world_fingerprint:$fingerprint,source:"hive-world-sync"}
+              }
+            }')"
+          HTTP="$(curl -sS -o /tmp/world-dispatch-response -w '%{http_code}'             -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2026-03-10"             "https://api.github.com/repos/${GITHUB_REPOSITORY}/dispatches"             -d "$BODY")"
+          test "$HTTP" = '204' || { echo "WORLD_WAKE_DISPATCH_FAILED_HTTP=$HTTP"; exit 31; }
+          echo "WORLD_CHANGE_WAKE=DISPATCHED"
 
       - name: Queen sync summary
         if: always()
         shell: bash
         run: |
           if [ -f hive-world-state.json ]; then
-            node -e "const s=require('./hive-world-state.json'); console.log('source coverage',s.coverage); console.log('generated',s.generated_at)"
+            node -e "const s=require('./hive-world-state.json'); console.log('source coverage',s.coverage); console.log('generated',s.generated_at); console.log('state_fingerprint',s.state_fingerprint);"
           fi
