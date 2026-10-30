@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - convergence/queen-s1-promote-v1
+      - convergence/queen-s1-single-ingress-v1
     paths:
       - '.github/workflows/queen-s1-event-ingress.yml'
   repository_dispatch:
@@ -12,6 +13,7 @@ on:
       - queen-task
       - fabric-result
       - verifier-result
+      - verification-result
       - school-verified
       - world-state-changed
       - queen-cycle
@@ -68,7 +70,7 @@ jobs:
             case "$DISPATCH_ACTION" in
               queen-task) TYPE='queen.task.requested' ;;
               fabric-result) TYPE='fabric.result.ready' ;;
-              verifier-result) TYPE='verification.result.ready' ;;
+              verifier-result|verification-result) TYPE='verification.result.ready' ;;
               school-verified) TYPE='school.experience.verified' ;;
               world-state-changed) TYPE='world.state.changed' ;;
               queen-cycle) TYPE='queen.cycle.continue' ;;

@@ -6,11 +6,13 @@ on:
     branches:
       - main
       - convergence/queen-s1-promote-v1
+      - convergence/queen-s1-single-ingress-v1
     paths:
       - .github/workflows/queen-s1-core-certification.yml
       - .github/workflows/queen-s1-event-ingress.yml
       - .github/workflows/hive-world-sync.yml
       - .github/workflows/hive-queen-s1-site-deploy.yml
+      - .github/workflows/hive-queen-event-ingress.yml
   workflow_dispatch:
 
 permissions:
@@ -131,6 +133,14 @@ jobs:
           grep -Fq 'PROJECT_MUTATION_PERFORMED=false' "$DEPLOY"
           if grep -Fq 'hive-field-execution-dispatch' "$DEPLOY"; then echo 'S1_DEPLOY_PROJECT_MUTATION_GUARD=FAIL'; exit 1; fi
           echo 'S1_DEPLOY_WORKFLOW_WIRING=PASS'
+          LEGACY='.github/workflows/hive-queen-event-ingress.yml'
+          CANONICAL='.github/workflows/queen-s1-event-ingress.yml'
+          test -f "$LEGACY" -a -f "$CANONICAL"
+          if grep -Fq 'repository_dispatch:' "$LEGACY"; then echo 'S1_LEGACY_EVENT_INGRESS_STILL_AUTOMATIC=FAIL'; exit 1; fi
+          grep -Fq 'repository_dispatch:' "$CANONICAL"
+          grep -Fq 'verification-result' "$CANONICAL"
+          grep -Fq 'verifier-result' "$CANONICAL"
+          echo 'S1_SINGLE_AUTOMATIC_EVENT_INGRESS=PASS'
 
       - name: Recheck preserved live proof anchors
         shell: bash

@@ -1,19 +1,15 @@
-name: HIVE Queen Event Ingress
+name: HIVE Queen Legacy Event Ingress (disabled)
 
 on:
-  repository_dispatch:
-    types:
-      - verification-result
-      - school-verified
-      - world-state-changed
-      - queen-cycle
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
 
   route:
+    if: ${{ false }} # S1 superseded; canonical ingress is queen-s1-event-ingress.yml
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     env:
