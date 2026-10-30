@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
+    inputs:
+      retry_hop:
+        description: 'Bounded self-retry hop after optimistic-concurrency conflict'
+        required: false
+        default: '0'
+        type: string
   push:
     branches: [main]
     paths:
@@ -11,10 +17,11 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: hive-queen-global-world-sync
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   synchronize:
@@ -272,6 +279,9 @@ jobs:
 
       - name: Publish world snapshot only when semantic state changed
         id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORLD_RETRY_HOP: ${{ inputs.retry_hop || '0' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -297,10 +307,26 @@ jobs:
           fi
 
           git commit -m 'state(hive): synchronize global world model'
-          git push
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "fingerprint=$NEW_FINGERPRINT" >> "$GITHUB_OUTPUT"
-          echo "WORLD_SEMANTIC_CHANGE=true"
+          if git push; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "fingerprint=$NEW_FINGERPRINT" >> "$GITHUB_OUTPUT"
+            echo "retry_dispatched=false" >> "$GITHUB_OUTPUT"
+            echo "WORLD_SEMANTIC_CHANGE=true"
+            exit 0
+          fi
+
+          HOP="${WORLD_RETRY_HOP:-0}"
+          [[ "$HOP" =~ ^[0-9]+$ ]] || HOP=0
+          if (( HOP >= 3 )); then
+            echo "WORLD_SYNC_RETRY_EXHAUSTED hop=$HOP"
+            exit 32
+          fi
+          NEXT_HOP=$((HOP + 1))
+          gh workflow run hive-world-sync.yml --repo "$GITHUB_REPOSITORY" --ref main -f retry_hop="$NEXT_HOP"
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "retry_dispatched=true" >> "$GITHUB_OUTPUT"
+          echo "WORLD_SYNC_RETRY_DISPATCHED hop=$NEXT_HOP"
+          exit 0
 
       - name: Wake Queen only after a real semantic world change
         if: steps.publish.outputs.changed == 'true' && github.ref == 'refs/heads/main'
