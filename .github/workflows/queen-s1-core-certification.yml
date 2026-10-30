@@ -26,7 +26,7 @@ jobs:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
       PRIVATE_REF: 4b59dee0d35a14616e744df414d95c94de68f420
-      S0_PARENT: e786c91d991a425d8f02536bfdddd83aee7879b4
+      S0_PARENT: c41ed6706927cd65e1dd509f0135895c1bc28f76
     steps:
       - name: Checkout public certification branch
         uses: actions/checkout@v4
