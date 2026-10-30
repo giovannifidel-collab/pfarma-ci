@@ -7,6 +7,7 @@ on:
       - main
       - convergence/queen-s1-promote-v1
       - convergence/queen-s1-single-ingress-v1
+      - convergence/queen-s1-world-retry-v1
     paths:
       - .github/workflows/queen-s1-core-certification.yml
       - .github/workflows/queen-s1-event-ingress.yml
@@ -141,6 +142,12 @@ jobs:
           grep -Fq 'verification-result' "$CANONICAL"
           grep -Fq 'verifier-result' "$CANONICAL"
           echo 'S1_SINGLE_AUTOMATIC_EVENT_INGRESS=PASS'
+          grep -Fq 'retry_hop:' "$WORLD"
+          grep -Fq 'WORLD_SYNC_RETRY_DISPATCHED' "$WORLD"
+          grep -Fq 'HOP >= 3' "$WORLD"
+          grep -Fq 'actions: write' "$WORLD"
+          grep -Fq 'cancel-in-progress: false' "$WORLD"
+          echo 'S1_WORLD_RETRY_BOUNDED=PASS'
 
       - name: Recheck preserved live proof anchors
         shell: bash
