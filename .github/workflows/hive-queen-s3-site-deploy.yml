@@ -1,0 +1,127 @@
+name: HIVE Queen S3 Site Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - convergence/queen-s3-delegation-v1
+    paths:
+      - '.github/workflows/hive-queen-s3-site-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      PRIVATE_SHA: 042af680c275dfcdad54f0f2970bc0c53e17edaf
+      EXPECTED_DELEGATION_PROFILES_BLOB: 88a8313e14fd049f1086b547df1668addfb0f4e6
+      EXPECTED_MISSION_ENGINE_BLOB: 749936dadbd5e4521c7a01e657861e14520ccd66
+      EXPECTED_MISSION_SCHEMA_BLOB: ce01d1a8d8b393a2a61ee3db275a22e74f49641d
+      EXPECTED_DELEGATION_SCHEMA_BLOB: cf96c3a84279bb7c650bb888b10b684f809c8cad
+      EXPECTED_EVIDENCE_SCHEMA_BLOB: bdcb3e168b946687b092bd53ccd7d4655c0681b7
+    steps:
+      - name: Check out exact private S3 main
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: private-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify exact S3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node private-source/ops/queen/delegation/validate-s3-delegation.mjs
+          node --check private-source/cloudflare/functions/_lib/queen-runtime.js
+          node --check private-source/cloudflare/functions/api/queen-command.js
+          for blob in "$EXPECTED_DELEGATION_PROFILES_BLOB" "$EXPECTED_MISSION_ENGINE_BLOB" "$EXPECTED_MISSION_SCHEMA_BLOB" "$EXPECTED_DELEGATION_SCHEMA_BLOB" "$EXPECTED_EVIDENCE_SCHEMA_BLOB"; do
+            grep -Fq "$blob" private-source/cloudflare/functions/_lib/queen-runtime.js
+          done
+          echo 'QUEEN_S3_SOURCE=PASS'
+
+      - name: Pull Pages config and bind Workers AI
+        working-directory: private-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/wrangler-download.log 2>&1
+          config=''
+          for f in wrangler.jsonc wrangler.json wrangler.toml; do [[ -f "$f" ]] && { config="$f"; break; }; done
+          test -n "$config" || { cat /tmp/wrangler-download.log; exit 40; }
+          if [[ "$config" == *.toml ]]; then
+            grep -Eq '^\s*\[ai\]\s*$' "$config" || printf '\n[ai]\nbinding = "AI"\n' >> "$config"
+            grep -Eq '^\s*\[env\.production\.ai\]\s*$' "$config" || printf '\n[env.production.ai]\nbinding = "AI"\n' >> "$config"
+          else
+            python3 -c 'from pathlib import Path; import sys,re; p=Path(sys.argv[1]); s=p.read_text(); i=s.find("{"); assert i>=0; s=s if re.search(r"(?m)^\s*["\x27]ai["\x27]\s*:",s) else s[:i+1]+"\n  \"ai\": {\"binding\": \"AI\"},"+s[i+1:]; p.write_text(s)' "$config"
+          fi
+          echo 'S3_WORKERS_AI_BINDING=PASS'
+
+      - name: Preserve Queen dispatcher secret
+        working-directory: private-source/cloudflare
+        shell: bash
+        env:
+          HIVE_GITHUB_DISPATCH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$HIVE_GITHUB_DISPATCH_TOKEN" | npx --yes wrangler@4 pages secret put HIVE_GITHUB_DISPATCH_TOKEN --project-name hive-alveare >/tmp/pages-secret.log 2>&1
+          echo 'S3_DISPATCH_SECRET=PASS'
+
+      - name: Deploy Queen S3
+        working-directory: private-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main
+          echo 'QUEEN_S3_DEPLOY=PASS'
+
+      - name: Wait for propagation
+        run: sleep 15
+
+      - name: Verify live S3 source lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; BASE="${BASE%/}"
+          headers=()
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            headers+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          fi
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+            headers+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          fi
+          code="$(curl -sS --max-time 30 -o /tmp/state -w '%{http_code}' "${headers[@]}" "$BASE/api/queen-state")"
+          test "$code" = 200
+          jq -e --arg dp "$EXPECTED_DELEGATION_PROFILES_BLOB" --arg me "$EXPECTED_MISSION_ENGINE_BLOB" --arg ms "$EXPECTED_MISSION_SCHEMA_BLOB" --arg ds "$EXPECTED_DELEGATION_SCHEMA_BLOB" --arg es "$EXPECTED_EVIDENCE_SCHEMA_BLOB" '
+            .ok == true
+            and .state.canonical.source_lock.delegation_profiles_blob == $dp
+            and .state.canonical.source_lock.mission_contract_engine_blob == $me
+            and .state.canonical.source_lock.mission_contract_schema_blob == $ms
+            and .state.canonical.source_lock.delegation_contract_schema_blob == $ds
+            and .state.canonical.source_lock.evidence_contract_schema_blob == $es
+          ' /tmp/state >/dev/null
+          echo 'QUEEN_S3_LIVE_SOURCE_LOCK=PASS'
+          echo 'PROJECT_MUTATION_PERFORMED=false'
+
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf private-source

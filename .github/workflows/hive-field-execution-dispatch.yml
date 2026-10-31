@@ -14,6 +14,12 @@ on:
         required: false
         type: string
         default: ai
+      mission_json:
+        required: false
+        type: string
+      delegation_json:
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       goal:
@@ -29,7 +35,15 @@ on:
         required: false
         type: choice
         default: ai
-        options: [ai, proof]
+        options: [ai, proof, preflight]
+      mission_json:
+        description: Canonical Queen Mission Contract JSON
+        required: false
+        type: string
+      delegation_json:
+        description: Canonical Queen Delegation Contract JSON
+        required: false
+        type: string
   repository_dispatch:
     types: [hive_field_execute]
 
@@ -60,22 +74,68 @@ jobs:
           DISPATCH_GOAL: ${{ github.event.client_payload.goal }}
           DISPATCH_TASK: ${{ github.event.client_payload.task_id }}
           DISPATCH_MODE: ${{ github.event.client_payload.mode }}
+          DISPATCH_MISSION: ${{ toJson(github.event.client_payload.mission) }}
+          DISPATCH_DELEGATION: ${{ toJson(github.event.client_payload.delegation) }}
           INPUT_GOAL: ${{ inputs.goal }}
           INPUT_TASK: ${{ inputs.task_id }}
           INPUT_MODE: ${{ inputs.mode }}
+          INPUT_MISSION: ${{ inputs.mission_json }}
+          INPUT_DELEGATION: ${{ inputs.delegation_json }}
         run: |
           set -euo pipefail
           goal="${DISPATCH_GOAL:-${INPUT_GOAL:-}}"
           task="${DISPATCH_TASK:-${INPUT_TASK:-exec-${GITHUB_RUN_ID}}}"
           requested_mode="${DISPATCH_MODE:-${INPUT_MODE:-ai}}"
           case "$requested_mode" in
-            ai|proof) mode="$requested_mode" ;;
+            ai|proof|preflight) mode="$requested_mode" ;;
             *) echo 'EXECUTOR_REQUEST=REJECTED_MODE'; exit 2 ;;
           esac
           [ -n "$goal" ] || { echo 'EXECUTOR_REQUEST=REJECTED_EMPTY_GOAL'; exit 2; }
           [ ${#goal} -le 4000 ] || { echo 'EXECUTOR_REQUEST=REJECTED_OVERSIZE'; exit 2; }
           safe_task="$(printf '%s' "$task" | tr -cd 'A-Za-z0-9._-' | cut -c1-80)"
           [ -n "$safe_task" ] || safe_task="exec-${GITHUB_RUN_ID}"
+          mission="${DISPATCH_MISSION:-}"
+          delegation="${DISPATCH_DELEGATION:-}"
+          if [ -z "$mission" ] || [ "$mission" = "null" ]; then mission="${INPUT_MISSION:-}"; fi
+          if [ -z "$delegation" ] || [ "$delegation" = "null" ]; then delegation="${INPUT_DELEGATION:-}"; fi
+          [ -n "$mission" ] && [ "$mission" != "null" ] || { echo 'MISSION_CONTRACT=REJECTED_MISSING'; exit 2; }
+          [ -n "$delegation" ] && [ "$delegation" != "null" ] || { echo 'DELEGATION_CONTRACT=REJECTED_MISSING'; exit 2; }
+          printf '%s' "$mission" >/tmp/hive-mission.json
+          printf '%s' "$delegation" >/tmp/hive-delegation.json
+          GOAL="$goal" TASK="$safe_task" TARGET_REPO="$TARGET_REPO" TARGET_BRANCH="$TARGET_BRANCH" python3 - <<'PY'
+          import fnmatch,json,os,re
+          m=json.load(open('/tmp/hive-mission.json'))
+          d=json.load(open('/tmp/hive-delegation.json'))
+          deny=lambda msg: (_ for _ in ()).throw(SystemExit('CONTRACT_REJECTED:'+msg))
+          if m.get('schema_version')!='1.0': deny('mission_schema')
+          if d.get('schema_version')!='1.0': deny('delegation_schema')
+          if m.get('mission_id')!=f"mission-{os.environ['TASK']}": deny('mission_task_identity')
+          if d.get('mission_id')!=m.get('mission_id'): deny('delegation_mission_identity')
+          p=m.get('project') or {}
+          if p.get('id')!='hive-field' or p.get('repository')!=os.environ['TARGET_REPO'] or p.get('target_branch')!=os.environ['TARGET_BRANCH']: deny('project_binding')
+          if not re.fullmatch(r'[0-9a-f]{40}',str(p.get('exact_source_sha',''))): deny('exact_source_sha')
+          if (m.get('intent') or {}).get('goal')!=os.environ['GOAL']: deny('goal_binding')
+          a=m.get('authority') or {}
+          if int(a.get('requested_level',99))>4 or int(a.get('ceiling',99))>4 or int(a.get('requested_level',99))>int(a.get('ceiling',-1)): deny('authority')
+          if a.get('human_gate_required') is not False: deny('human_gate_bypass')
+          b=m.get('budget') or {}
+          if b.get('paid_fallback') is not False or float(b.get('max_incremental_cost_eur',1))!=0: deny('budget')
+          failure=m.get('failure') or {}
+          if failure.get('fail_closed') is not True or failure.get('optimistic_concurrency') is not True: deny('fail_closed')
+          if not (m.get('evidence') or {}).get('required') is True: deny('evidence')
+          canonical=['.hive/execution-dispatcher.json','README.md','*.js','*.mjs','*.css','api/*.js']
+          allowed=(m.get('scope') or {}).get('allowed_paths') or []
+          if not allowed or any(x not in canonical for x in allowed): deny('mission_scope_widening')
+          inherited=d.get('inherited_scope') or {}
+          if inherited.get('repository')!=p.get('repository') or inherited.get('exact_source_sha')!=p.get('exact_source_sha') or inherited.get('target_branch')!=p.get('target_branch'): deny('delegation_source_widening')
+          if any(x not in allowed for x in inherited.get('allowed_paths') or []): deny('delegation_path_widening')
+          da=d.get('authority') or {}
+          if int(da.get('delegated_level',99))>int(a.get('requested_level',-1)) or int(da.get('mission_ceiling',99))!=int(a.get('ceiling',-1)): deny('delegation_authority_widening')
+          if not (d.get('failure') or {}).get('fail_closed') is True: deny('delegation_fail_closed')
+          open('/tmp/hive-mission-source-sha','w').write(p['exact_source_sha'])
+          print('MISSION_CONTRACT=PASS')
+          print('DELEGATION_CONTRACT=PASS')
+          PY
           printf 'goal<<__HIVE_GOAL__\n%s\n__HIVE_GOAL__\n' "$goal" >> "$GITHUB_OUTPUT"
           echo "task_id=$safe_task" >> "$GITHUB_OUTPUT"
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
@@ -107,7 +167,11 @@ jobs:
           git clone --quiet --depth=1 --branch "$TARGET_BRANCH" "https://github.com/${TARGET_REPO}.git" /tmp/hive-field
           cd /tmp/hive-field
           git rev-parse HEAD >/tmp/hive-base-sha
-          echo "TARGET_BASE_SHA=$(cat /tmp/hive-base-sha)"
+          base="$(cat /tmp/hive-base-sha)"
+          expected="$(cat /tmp/hive-mission-source-sha)"
+          [ "$base" = "$expected" ] || { echo "MISSION_SOURCE_SHA_MISMATCH expected=$expected actual=$base"; exit 6; }
+          echo "TARGET_BASE_SHA=$base"
+          echo 'MISSION_SOURCE_SHA=PASS'
           echo 'PRIVATE_SOURCE_CLONE=PASS'
 
       - name: Baseline quality gate
@@ -122,6 +186,7 @@ jobs:
           echo 'BASELINE_GATE=PASS'
 
       - name: Produce candidate change
+        if: steps.request.outputs.mode != 'preflight'
         shell: bash
         env:
           GOAL: ${{ steps.request.outputs.goal }}
@@ -213,6 +278,7 @@ jobs:
           echo 'CANDIDATE_SOURCE=AI_PATCH'
 
       - name: Enforce mutation policy
+        if: steps.request.outputs.mode != 'preflight'
         id: policy
         shell: bash
         working-directory: /tmp/hive-field
@@ -240,6 +306,16 @@ jobs:
             esac
           done
           [ ${#files[@]} -le 4 ] || { echo 'MUTATION_POLICY=REJECT_TOO_MANY_FILES'; exit 5; }
+          printf '%s\n' "${files[@]}" >/tmp/hive-changed-files
+          python3 - <<'PY'
+          import fnmatch,json
+          m=json.load(open('/tmp/hive-mission.json'))
+          allowed=(m.get('scope') or {}).get('allowed_paths') or []
+          files=[x.strip() for x in open('/tmp/hive-changed-files') if x.strip()]
+          bad=[f for f in files if not any(fnmatch.fnmatchcase(f,p) for p in allowed)]
+          if bad: raise SystemExit('MISSION_SCOPE_REJECT:'+','.join(bad))
+          print('MISSION_SCOPE=PASS')
+          PY
           echo 'changed=true' >> "$GITHUB_OUTPUT"
           echo "MUTATION_FILES=${#files[@]}"
           echo 'MUTATION_POLICY=PASS'
@@ -294,5 +370,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo 'MISSION_CONTRACT=PASS'
+          echo 'DELEGATION_CONTRACT=PASS'
+          if [ "${{ steps.request.outputs.mode }}" = "preflight" ]; then
+            echo 'PROJECT_MUTATION_PERFORMED=false'
+            echo 'DELEGATION_PREFLIGHT=PASS'
+          fi
           echo 'HIVE_EXECUTION_DISPATCHER=PASS'
           echo 'PAID_FALLBACK=false'
