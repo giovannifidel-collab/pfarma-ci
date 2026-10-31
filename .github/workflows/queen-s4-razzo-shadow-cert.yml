@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      PRIVATE_SHA: a7cb8be8bd539fdc29cc22ca95b62e6f973587c1
+      PRIVATE_SHA: bf5fc1c4255c6600904e732ade3f5f2c6035aa13
       RAZZO_SHA: aef58a8d6cf1db04fbc6658b7619cabcc883cdbd
     steps:
       - name: Checkout exact public certification PR
@@ -118,6 +118,110 @@ jobs:
           console.log('PROJECT_MUTATION_PERFORMED=false');
           console.log('PAID_FALLBACK=false');
           NODE
+      - name: Resolve live HIVE Field HEAD without changing the project
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/hive-field/branches/main --jq '.commit.sha' > "$RUNNER_TEMP/hive-field-head.txt"
+          grep -Eq '^[0-9a-f]{40}
+        shell: bash
+        env:
+          PRODUCT_READ_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PRODUCT_READ_TOKEN:-}" ]; then
+            echo 'RAZZO_PRIVATE_SOURCE_TOKEN=MISSING'
+            exit 0
+          fi
+          for repo in hive-alveare hive-field project-giovanni pfarma-cloud family-cloud; do
+            status="$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' \
+              -H "Authorization: Bearer ${PRODUCT_READ_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/giovannifidel-collab/${repo}")"
+            if [ "$status" = 200 ]; then
+              echo "RAZZO_SOURCE_ACCESS ${repo}=PASS"
+            else
+              echo "RAZZO_SOURCE_ACCESS ${repo}=BLOCKED_HTTP_${status}"
+            fi
+          done
+      - name: Publish non-secret certification summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Queen S4 protected shadow certification'
+            echo '- S0-S3 static regression: PASS'
+            echo '- Queen shadow adapter: PASS'
+            echo '- RAZZO kernel 100-simulation protected pilot: PASS'
+            echo '- Exact source SHA pinning: PASS'
+            echo '- Project mutations: **zero**'
+            echo '- Worker dispatch: **disabled**'
+            echo '- Live RAZZO mission / scheduler authority convergence: **not certified by this workflow**'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove all source checkouts
+        if: always()
+        run: rm -rf queen-authority razzo-source public-ci "$RUNNER_TEMP/razzo-protected-pilot.json"
+ "$RUNNER_TEMP/hive-field-head.txt"
+          echo 'S4_LIVE_HIVE_FIELD_HEAD=OBSERVED'
+      - name: Compile a real project-scoped, no-write Queen mission
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { compileMission, deriveDelegation } from './queen-authority/ops/queen/delegation/mission-contract.mjs';
+          import { compileRazzoShadowPreflight } from './queen-authority/ops/queen/razzo/razzo-shadow-adapter.mjs';
+          const root='./queen-authority/ops/queen';
+          const registry=JSON.parse(fs.readFileSync(root+'/governance/PROJECT_AUTHORITY_REGISTRY.v1.json','utf8'));
+          const profiles=JSON.parse(fs.readFileSync(root+'/delegation/PROJECT_DELEGATION_PROFILES.v1.json','utf8'));
+          const head=fs.readFileSync(process.env.RUNNER_TEMP+'/hive-field-head.txt','utf8').trim();
+          const mission=compileMission({registry,profiles,projectId:'hive-field',exactSourceSha:head,
+            taskId:'s4-live-readonly-'+process.env.GITHUB_RUN_ID,goal:'Real source-anchored HIVE Field read-only analysis through existing RAZZO kernel',
+            requestedLevel:1,intentClass:'analysis',source:'queen-s4-shadow-certification'});
+          const delegation=deriveDelegation(mission,{kind:'razzo',delegateId:'razzo-shadow-kernel',
+            capability:'software-engineering.shadow',ttlSeconds:600});
+          const preflight=compileRazzoShadowPreflight({mission,delegation,registry,profiles,razzoSourceSha:process.env.RAZZO_SHA});
+          if (preflight.status!=='STATIC_PREFLIGHT_ONLY' || preflight.controls.dispatch_enabled) throw Error('unsafe_preflight');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/s4-project-envelope.json',JSON.stringify({mission,delegation}));
+          console.log('S4_REAL_PROJECT_MISSION_STATIC=PASS');
+          NODE
+      - name: Run actual RAZZO kernel shadow on the source-anchored Queen mission
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/razzo-source" python queen-authority/ops/queen/razzo/queen_razzo_shadow.py \
+            --envelope "$RUNNER_TEMP/s4-project-envelope.json" \
+            --output "$RUNNER_TEMP/s4-project-shadow.json"
+          PYTHONPATH="$GITHUB_WORKSPACE/razzo-source:$GITHUB_WORKSPACE/queen-authority/ops/queen/razzo" python - <<'PY'
+          import copy,json,os
+          from pathlib import Path
+          from queen_razzo_shadow import compile_razzo_project_shadow
+          root=Path(os.environ['RUNNER_TEMP'])
+          observed=(root/'hive-field-head.txt').read_text().strip()
+          report=json.loads((root/'s4-project-shadow.json').read_text())
+          envelope=json.loads((root/'s4-project-envelope.json').read_text())
+          assert report['exact_source_sha']==observed
+          assert report['repository']=='giovannifidel-collab/hive-field'
+          assert report['objective_fingerprint'] and report['objective_branch'].startswith('razzo/o/')
+          assert not report['dispatch_performed'] and not report['completed']
+          assert report['product_mutations']==0 and report['evidence_status']=='no-change'
+          for tamper in ('write','repo','sha','scope','cost'):
+              bad=copy.deepcopy(envelope)
+              if tamper=='write': bad['delegation']['authority']['delegated_level']=4
+              elif tamper=='repo': bad['delegation']['inherited_scope']['repository']='giovannifidel-collab/pfarma-cloud'
+              elif tamper=='sha': bad['delegation']['inherited_scope']['exact_source_sha']='0'*40
+              elif tamper=='scope': bad['delegation']['inherited_scope']['allowed_paths']=['.github/**']
+              elif tamper=='cost': bad['mission']['budget']['paid_fallback']=True
+              try:
+                  compile_razzo_project_shadow(bad)
+              except (ValueError,TypeError):
+                  continue
+              raise AssertionError('mutation policy bypass: '+tamper)
+          print('S4_LIVE_PROJECT_READONLY_SHADOW=PASS')
+          print('S4_SHADOW_NEGATIVE_TESTS=PASS')
+          PY
       - name: Audit read-only private product source access (never print secrets)
         shell: bash
         env:
