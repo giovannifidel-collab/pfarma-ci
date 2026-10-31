@@ -22,7 +22,7 @@ jobs:
     environment: pfarma-ci-trusted
     env:
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
-      PRIVATE_REF: 2adbb4fd34418275d598a6de245c46837a5ff512
+      PRIVATE_REF: 8e89e422725ff626035537a5207e0ff390d3971b
       PRIVATE_BASE: 73778e4d040e6ae361401003441f6a9be2c793f5
     steps:
       - name: Check out exact private S2 source
