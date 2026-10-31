@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      PRIVATE_SHA: bf5fc1c4255c6600904e732ade3f5f2c6035aa13
+      PRIVATE_SHA: be69dc92243ed48436bde2c12dbc4c638b57ec76
       RAZZO_SHA: aef58a8d6cf1db04fbc6658b7619cabcc883cdbd
     steps:
       - name: Checkout exact public certification PR
@@ -74,6 +74,7 @@ jobs:
           node queen-authority/ops/queen/memory/validate-s2-school-memory.mjs
           node queen-authority/ops/queen/delegation/validate-s3-delegation.mjs
           node queen-authority/ops/queen/razzo/validate-s4-razzo-shadow.mjs
+          node queen-authority/ops/queen/razzo/validate-s4-razzo-route.mjs
           echo 'QUEEN_S0_S3_REGRESSION=PASS'
       - name: Verify actual existing RAZZO shadow kernel (fixture-only)
         shell: bash
