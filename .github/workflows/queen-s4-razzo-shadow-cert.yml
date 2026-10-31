@@ -80,7 +80,7 @@ jobs:
         working-directory: razzo-source
         run: |
           set -euo pipefail
-          python -m unittest razzo.kernel.test_model razzo.kernel.test_shadow razzo.kernel.test_organism razzo.kernel.tests.test_scoped_leases -v
+          python -m unittest razzo.kernel.test_model razzo.kernel.test_shadow razzo.kernel.test_organism razzo.kernel.test_runtime razzo.kernel.test_pilot -v
           python -m razzo.kernel.pilot --runs 100 --output "$RUNNER_TEMP/razzo-protected-pilot.json"
           python - <<'PY'
           import json, os
