@@ -1,0 +1,119 @@
+name: Queen S3 Delegation Certification
+
+on:
+  push:
+    branches:
+      - convergence/queen-s3-delegation-v1
+    paths:
+      - '.github/workflows/queen-s3-delegation-certification.yml'
+      - '.github/workflows/hive-field-execution-dispatch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    outputs:
+      mission_json: ${{ steps.contract.outputs.mission_json }}
+      delegation_json: ${{ steps.contract.outputs.delegation_json }}
+      task_id: ${{ steps.contract.outputs.task_id }}
+      goal: ${{ steps.contract.outputs.goal }}
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      PRIVATE_SHA: ab6a89b6c0b1d821985f8fc1b711f43866014c76
+    steps:
+      - name: Check out exact private S3 source
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-s3
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/checkout@v4
+        with:
+          path: public-s3
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate private contracts and public adapter wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-s3 rev-parse HEAD)" = "$PRIVATE_SHA"
+          node queen-s3/ops/queen/delegation/validate-s3-delegation.mjs
+          ADAPTER='public-s3/.github/workflows/hive-field-execution-dispatch.yml'
+          grep -Fq 'MISSION_CONTRACT=PASS' "$ADAPTER"
+          grep -Fq 'DELEGATION_CONTRACT=PASS' "$ADAPTER"
+          grep -Fq 'MISSION_SOURCE_SHA=PASS' "$ADAPTER"
+          grep -Fq 'MISSION_SCOPE=PASS' "$ADAPTER"
+          grep -Fq "preflight" "$ADAPTER"
+          echo 'S3_PUBLIC_ADAPTER_WIRING=PASS'
+
+      - name: Compile exact-SHA preflight mission
+        id: contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$(gh api repos/giovannifidel-collab/hive-field/branches/main --jq '.commit.sha')"
+          test ${#head} -eq 40
+          task="s3-preflight-${GITHUB_RUN_ID}"
+          goal="Validate Queen S3 delegation contract against HIVE Field without changing project source."
+          HIVE_FIELD_HEAD="$head" TASK_ID="$task" GOAL="$goal" node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { compileMission, deriveDelegation } from './queen-s3/ops/queen/delegation/mission-contract.mjs';
+          const registry=JSON.parse(fs.readFileSync('./queen-s3/ops/queen/governance/PROJECT_AUTHORITY_REGISTRY.v1.json','utf8'));
+          const profiles=JSON.parse(fs.readFileSync('./queen-s3/ops/queen/delegation/PROJECT_DELEGATION_PROFILES.v1.json','utf8'));
+          const mission=compileMission({
+            registry,profiles,projectId:'hive-field',
+            exactSourceSha:process.env.HIVE_FIELD_HEAD,
+            taskId:process.env.TASK_ID,goal:process.env.GOAL,
+            source:'queen-s3-certification',intentClass:'code-change',requestedLevel:4
+          });
+          const delegation=deriveDelegation(mission,{delegateId:'hive-field-github-dispatcher',kind:'project-adapter',capability:'project.execution',ttlSeconds:900});
+          fs.writeFileSync('/tmp/mission.json',JSON.stringify(mission));
+          fs.writeFileSync('/tmp/delegation.json',JSON.stringify(delegation));
+          NODE
+          echo "mission_json=$(cat /tmp/mission.json)" >> "$GITHUB_OUTPUT"
+          echo "delegation_json=$(cat /tmp/delegation.json)" >> "$GITHUB_OUTPUT"
+          echo "task_id=$task" >> "$GITHUB_OUTPUT"
+          echo "goal=$goal" >> "$GITHUB_OUTPUT"
+          echo 'S3_MISSION_COMPILE=PASS'
+
+  preflight:
+    needs: prepare
+    uses: ./.github/workflows/hive-field-execution-dispatch.yml
+    with:
+      goal: ${{ needs.prepare.outputs.goal }}
+      task_id: ${{ needs.prepare.outputs.task_id }}
+      mode: preflight
+      mission_json: ${{ needs.prepare.outputs.mission_json }}
+      delegation_json: ${{ needs.prepare.outputs.delegation_json }}
+    secrets: inherit
+
+  certify:
+    needs: [prepare, preflight]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require preflight PASS
+        shell: bash
+        env:
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+        run: |
+          set -euo pipefail
+          test "$PREPARE_RESULT" = success
+          test "$PREFLIGHT_RESULT" = success
+          echo 'QUEEN_S3_STATIC_CERTIFICATION=PASS'
+          echo 'QUEEN_S3_VALID_DELEGATION_PREFLIGHT=PASS'
+          echo 'PROJECT_MUTATION_PERFORMED=false'
+          echo 'PAID_FALLBACK=false'
