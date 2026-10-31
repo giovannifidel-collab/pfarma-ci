@@ -1,0 +1,63 @@
+name: Queen S4 RAZZO Evidence Feedback Contract Certification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/queen-s4-evidence-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-proposal:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      PRIVATE_SHA: 558b012d398a181ed379bcd4b5284845c2d384e2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-private
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Source integrity and live GitHub evidence verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-private rev-parse HEAD)" = "$PRIVATE_SHA"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/41242786577 --jq '.conclusion')" = success
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/41242956385 --jq '.conclusion')" = success
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/41243694696 --jq '.conclusion')" = success
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/pulls/29 --jq '.merged')" = true
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/pulls/29 --jq '.merge_commit_sha')" = c99848093eb06e6c9e52178c8f141b93d3fdd67e
+          echo 'S4_EXTERNAL_GITHUB_EVIDENCE_ATTESTATION=PASS'
+      - name: Reuse canonical Queen S0-S3 and independent S4 results policy
+        run: |
+          set -euo pipefail
+          node queen-private/ops/queen/governance/validate-s0-truth.mjs
+          node queen-private/ops/queen/core/validate-s1-core.mjs
+          node queen-private/ops/queen/memory/validate-s2-school-memory.mjs
+          node queen-private/ops/queen/delegation/validate-s3-delegation.mjs
+          node queen-private/ops/queen/razzo/validate-s4-razzo-shadow.mjs
+          node queen-private/ops/queen/razzo/validate-s4-razzo-route.mjs
+          node queen-private/ops/queen/razzo/validate-s4-evidence.mjs
+          echo 'QUEEN_S4_EVIDENCE_AND_SCHOOL_PROVISIONAL=PASS'
+      - name: Report exact scope and durable persistence limitation
+        run: |
+          echo 'RAZZO_EVIDENCE_CONTRACT=COMPILED_BLOCKED_PENDING_DURABLE_ATTESTATION'
+          echo 'SCHOOL_UNCERTIFIED_TEACHER=PROVISIONAL_NO_MASTERY'
+          echo 'MEMORY_WORKING_COPY_ONLY=TRUE'
+          echo 'WORLD_MODEL_UNMODIFIED=TRUE'
+          echo 'S4_FULL_COMPLETION=FALSE'
+      - name: Purge private source
+        if: always()
+        run: rm -rf queen-private
