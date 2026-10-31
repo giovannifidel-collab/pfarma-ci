@@ -118,6 +118,27 @@ jobs:
           console.log('PROJECT_MUTATION_PERFORMED=false');
           console.log('PAID_FALLBACK=false');
           NODE
+      - name: Audit read-only private product source access (never print secrets)
+        shell: bash
+        env:
+          PRODUCT_READ_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PRODUCT_READ_TOKEN:-}" ]; then
+            echo 'RAZZO_PRIVATE_SOURCE_TOKEN=MISSING'
+            exit 0
+          fi
+          for repo in hive-alveare hive-field project-giovanni pfarma-cloud family-cloud; do
+            status="$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' \
+              -H "Authorization: Bearer ${PRODUCT_READ_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/giovannifidel-collab/${repo}")"
+            if [ "$status" = 200 ]; then
+              echo "RAZZO_SOURCE_ACCESS ${repo}=PASS"
+            else
+              echo "RAZZO_SOURCE_ACCESS ${repo}=BLOCKED_HTTP_${status}"
+            fi
+          done
       - name: Publish non-secret certification summary
         if: success()
         shell: bash
