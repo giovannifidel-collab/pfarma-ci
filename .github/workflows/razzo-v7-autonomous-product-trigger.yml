@@ -2,7 +2,7 @@ name: RAZZO V7 CHIUDI MACROCICLO Trigger
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '29 */6 * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -10,7 +10,7 @@ on:
       - '.github/workflows/razzo-v7-autonomous-product-trigger.yml'
 
 permissions:
-  actions: write
+  actions: read
   contents: read
 
 concurrency:
@@ -27,5 +27,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh workflow run razzo-v7-ten-shard-trial.yml -R "$GH_REPO" --ref main -f mode=execute-trial
-          echo 'CHIUDI_MACROCICLO_EXECUTION_DISPATCHED'
+          # Queen S4: preserve this legacy trigger only as an observable watchdog.
+          echo 'QUEEN_S4_LEGACY_CHIUDI_MACROCICLO=WATCHDOG_ONLY_NO_DISPATCH'
+          echo 'LEGACY_EXECUTE_TRIAL=DENY'

@@ -1,0 +1,81 @@
+name: Queen S4 RAZZO Legacy Authority Cutover Certification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/razzo-v7-scheduler.yml'
+      - '.github/workflows/razzo-v7-autonomous-product-trigger.yml'
+      - '.github/workflows/razzo-v7-event-driven-continuation.yml'
+      - '.github/workflows/razzo-v7-ten-shard-trial.yml'
+      - '.github/workflows/queen-s4-legacy-cutover-cert.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/razzo-v7-scheduler.yml'
+      - '.github/workflows/razzo-v7-autonomous-product-trigger.yml'
+      - '.github/workflows/razzo-v7-event-driven-continuation.yml'
+      - '.github/workflows/razzo-v7-ten-shard-trial.yml'
+      - '.github/workflows/queen-s4-legacy-cutover-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prove-inert-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Certify immutable RAZZO authority boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          root=Path('.github/workflows')
+          native=(root/'razzo-v7-scheduler.yml').read_text()
+          autonomous=(root/'razzo-v7-autonomous-product-trigger.yml').read_text()
+          continuation=(root/'razzo-v7-event-driven-continuation.yml').read_text()
+          trial=(root/'razzo-v7-ten-shard-trial.yml').read_text()
+          discovery=(root/'super-factory-discovery.yml').read_text()
+          protected=(root/'razzo-objective-kernel.yml').read_text()
+          safe_plan=(root/'razzo-v7-product-worker-fabric.yml').read_text()
+          def check(condition, reason):
+              if not condition: raise SystemExit('S4_FAIL_CLOSED '+reason)
+          check('QUEEN_S4_LEGACY_SCHEDULER=WATCHDOG_ONLY_NO_DISPATCH' in native,'native_not_demoted')
+          check('QUEEN_S4_LEGACY_CHIUDI_MACROCICLO=WATCHDOG_ONLY_NO_DISPATCH' in autonomous,'autonomous_not_demoted')
+          check('QUEEN_S4_LEGACY_CONTINUATION=EVIDENCE_ONLY_NO_DISPATCH' in continuation,'continuation_not_demoted')
+          check('QUEEN_S4_LEGACY_PRODUCT_WRITE=DENY' in trial,'trial_gate_missing')
+          check('exit 78' in trial.split('name: Queen S4 legacy execute-trial authorization gate')[1].split('      - uses:')[0],'trial_fail_closed_missing')
+          check('discovery:\n    needs: plan\n    # No private project source' in trial,'discovery_deny_guard_missing')
+          for label,source in [('native',native),('autonomous',autonomous),('continuation',continuation)]:
+              check('actions: write' not in source,label+'_actions_write')
+              check('gh workflow run ' not in source,label+'_gh_dispatch')
+              check(' -X POST ' not in source,label+'_post_dispatch')
+              check('"/dispatches"' not in source,label+'_api_dispatch')
+          check("schedule:" in discovery and "gh workflow run" not in discovery,'read_only_shard_discovery_not_preserved')
+          check("repository_dispatch:" in protected,'kernel_receipts_or_pilot_not_preserved')
+          check("plan-only" in safe_plan,'safe_plan_lost')
+          check("name: RAZZO V7 Ten-Shard Free Product Trial" in trial,'legacy_trial_replaced')
+          print('S4_LEGACY_AUTONOMOUS_DISPATCH=DENY')
+          print('S4_LEGACY_PRODUCT_EXECUTE_TRIAL=DENY')
+          print('S4_300_SHARD_DISCOVERY=RETAINED')
+          print('S4_RAZZO_KERNEL_AND_RECEIPTS=RETAINED')
+          print('S4_WORKFLOW_AUTHORITY_STATIC=PASS')
+          PY
+      - name: Reverify existing RAZZO kernel and pool contracts
+        run: |
+          python -m unittest razzo.kernel.test_shadow razzo.kernel.test_organism razzo.kernel.test_runtime razzo.v7.test_actionability razzo.v7.test_dispatcher_pool -v
+          echo 'RAZZO_EXISTING_CAPABILITIES_PRESERVED=PASS'
+      - name: Summarize truthful scope
+        run: |
+          echo 'S4_AUTONOMOUS_AUTHORITY=DEMOTED'
+          echo 'S4_PROJECT_SPECIFIC_WORKERS=NOT_YET_CERTIFIED'
