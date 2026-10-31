@@ -16,7 +16,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 15
     env:
-      PRIVATE_PILOT_SHA: aec3c3909caac4a526887734039005e23bcfe6ee
+      PRIVATE_PILOT_SHA: a49e54cf12dca38b4acd99b9a5baa3a2c6331822
       PRIVATE_BASE_SHA: 7e941df211388cb7fd7a8e7165877b1f96f27eb5
       RAZZO_SHA: aef58a8d6cf1db04fbc6658b7619cabcc883cdbd
       GH_TOKEN: ${{ github.token }}
@@ -220,3 +220,117 @@ jobs:
           echo 'CANDIDATE_PUBLISHED=false'
           echo 'PRODUCT_CI_VERIFIED=false'
           echo 'LEGACY_SCHEDULER_DEMOTED=false'
+
+  publish-verified-canary-pr:
+    needs: [bounded-candidates, independent-robot-qa, certify-sandbox]
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'convergence/queen-s4-bounded-pilot-ci-v1' }}
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      PRIVATE_BASE_SHA: 7e941df211388cb7fd7a8e7165877b1f96f27eb5
+      PUBLISH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_BASE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-base
+      - uses: actions/download-artifact@v4
+        with:
+          name: queen-s4-sandbox-candidate-proof-${{ github.run_id }}
+          path: canary-receipt
+      - name: Reverify exact main and reconstruct only allowlisted candidate commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${PUBLISH_TOKEN:-}"
+          live="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')"
+          test "$live" = "$PRIVATE_BASE_SHA" || { echo 'QUEEN_SOURCE_MOVED_FAIL_CLOSED'; exit 51; }
+          python - <<'PY'
+          import json,os,re,subprocess
+          from pathlib import Path
+          receipt=json.loads(Path('canary-receipt/candidate-proof.json').read_text())
+          base=Path('queen-base').resolve()
+          source=os.environ['PRIVATE_BASE_SHA']
+          assert receipt['base_sha']==source
+          assert receipt['maker_count']==2 and receipt['worker_cap']==2
+          assert receipt['candidate_git_parent_verified'] is True
+          assert receipt['selected_role']=='MAKER_MINIMAL'
+          assert receipt['real_product_write'] is False and receipt['remote_branch_push'] is False
+          branch=receipt['objective_branch']
+          assert re.fullmatch(r'razzo/objective/hive-queen-[0-9a-f]{12}',branch)
+          path='ops/queen/razzo/pilot/s4-bounded-canary.json'
+          assert receipt['changed_files']==[path]
+          dst=Path(os.environ['RUNNER_TEMP'])/'queen-s4-verified-publish'
+          def git(*a,where):
+              return subprocess.run(['git',*a],cwd=where,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True).stdout.strip()
+          git('clone','--quiet','--no-hardlinks',str(base),str(dst),where=base)
+          git('checkout','--detach',source,where=dst)
+          file=dst/path
+          assert not file.exists()
+          file.parent.mkdir(parents=True,exist_ok=True)
+          payload={'schema':'queen.s4.bounded-canary.v1','source_sha':source,'role':'MAKER_MINIMAL',
+                   'mission_id':receipt['mission_id'],'mutations_on_products':0,'paid_fallback':False}
+          file.write_text(json.dumps(payload,sort_keys=True,indent=2)+'\n')
+          git('add','--',path,where=dst)
+          env=os.environ.copy()
+          env.update({'GIT_AUTHOR_NAME':'RAZZO S4 Fixture','GIT_AUTHOR_EMAIL':'razzo-s4@users.noreply.github.com',
+                      'GIT_COMMITTER_NAME':'RAZZO S4 Fixture','GIT_COMMITTER_EMAIL':'razzo-s4@users.noreply.github.com',
+                      'GIT_AUTHOR_DATE':'2001-01-01T00:00:00+0000','GIT_COMMITTER_DATE':'2001-01-01T00:00:00+0000'})
+          subprocess.run(['git','commit','--quiet','-m','Queen S4 bounded canary'],cwd=dst,env=env,check=True)
+          actual=git('rev-parse','HEAD',where=dst)
+          parent=git('rev-parse','HEAD^',where=dst)
+          changed=git('diff-tree','--no-commit-id','--name-only','-r',actual,where=dst).splitlines()
+          assert actual==receipt['candidate_sha'] and parent==source and changed==[path]
+          Path(os.environ['RUNNER_TEMP'],'s4-verified-branch.txt').write_text(branch)
+          Path(os.environ['RUNNER_TEMP'],'s4-verified-sha.txt').write_text(actual)
+          Path(os.environ['RUNNER_TEMP'],'s4-verified-fingerprint.txt').write_text(receipt['objective_fingerprint'])
+          print('S4_PUBLISH_CANDIDATE_EXACT_HEAD_RECHECK=PASS')
+          PY
+      - name: Publish only a new canonical private PR branch, never main
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="$(cat "$RUNNER_TEMP/s4-verified-branch.txt")"
+          candidate="$(cat "$RUNNER_TEMP/s4-verified-sha.txt")"
+          fingerprint="$(cat "$RUNNER_TEMP/s4-verified-fingerprint.txt")"
+          test "$candidate" != "$PRIVATE_BASE_SHA"
+          test "$(git -C "$RUNNER_TEMP/queen-s4-verified-publish" rev-parse HEAD)" = "$candidate"
+          cat > "$RUNNER_TEMP/s4-askpass.sh" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s' 'x-access-token' ;;
+            *Password*) printf '%s' "$PUBLISH_TOKEN" ;;
+            *) exit 1 ;;
+          esac
+          SH
+          chmod 700 "$RUNNER_TEMP/s4-askpass.sh"
+          export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$RUNNER_TEMP/s4-askpass.sh"
+          remote='https://github.com/giovannifidel-collab/hive-alveare.git'
+          existing="$(git ls-remote "$remote" "refs/heads/$branch" | cut -f1)"
+          if [ -n "$existing" ]; then
+            test "$existing" = "$candidate" || { echo 'DUPLICATE_CANONICAL_BRANCH_DRIFT'; exit 52; }
+          else
+            git -C "$RUNNER_TEMP/queen-s4-verified-publish" push "$remote" "$candidate:refs/heads/$branch"
+          fi
+          existing_pr="$(gh api 'repos/giovannifidel-collab/hive-alveare/pulls?state=open&per_page=100' --jq ".[] | select(.head.ref==\"$branch\") | .number")"
+          if [ -z "$existing_pr" ]; then
+            gh api -X POST repos/giovannifidel-collab/hive-alveare/pulls \
+              -f head="$branch" -f base=main \
+              -f title="Queen S4 RAZZO bounded canary [pilot only]" \
+              -f body="Queen-authorized branch-only canary mission. Fingerprint: $fingerprint. Exact candidate SHA: $candidate. Independent sandbox Robot QA PASSED; product CI and post-merge replay NOT YET CERTIFIED. No real product mutation. <!-- razzo-objective:$fingerprint -->" \
+              -F draft=true --jq '.number' > "$RUNNER_TEMP/s4-created-pr-number.txt"
+            echo 'S4_CANONICAL_PRIVATE_PILOT_PR=CREATED'
+          else
+            echo 'S4_CANONICAL_PRIVATE_PILOT_PR=REUSED'
+          fi
+      - name: Remove private source and credentials-related scratch files
+        if: always()
+        shell: bash
+        run: rm -rf queen-base canary-receipt "$RUNNER_TEMP/queen-s4-verified-publish" "$RUNNER_TEMP/s4-askpass.sh" "$RUNNER_TEMP/s4-verified-branch.txt" "$RUNNER_TEMP/s4-verified-sha.txt" "$RUNNER_TEMP/s4-verified-fingerprint.txt"
