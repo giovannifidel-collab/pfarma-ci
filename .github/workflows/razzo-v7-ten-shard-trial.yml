@@ -60,6 +60,9 @@ jobs:
 
   discovery:
     needs: plan
+    # No private project source is accessed by legacy plan-only requests.
+    # Execute-trial is denied in plan before any discovery, pending Queen adapter.
+    if: ${{ inputs.mode == 'execute-trial' }}
     strategy:
       fail-fast: false
       max-parallel: 3
