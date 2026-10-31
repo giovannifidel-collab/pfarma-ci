@@ -122,3 +122,101 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf queen-pilot queen-main razzo-source ci-source "$RUNNER_TEMP/mission.json" "$RUNNER_TEMP/delegation.json" "$RUNNER_TEMP/candidate-proof.json"
+
+  independent-robot-qa:
+    needs: bounded-candidates
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      PRIVATE_BASE_SHA: 7e941df211388cb7fd7a8e7165877b1f96f27eb5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_BASE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-base
+      - uses: actions/download-artifact@v4
+        with:
+          name: queen-s4-sandbox-candidate-proof-${{ github.run_id }}
+          path: canary-receipt
+      - name: Independent Robot QA rebuilds exact candidate and tests source unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          base=Path('queen-base').resolve()
+          receipt=json.loads(Path('canary-receipt/candidate-proof.json').read_text())
+          source=receipt['base_sha']
+          assert source==os.environ['PRIVATE_BASE_SHA']
+          assert receipt['schema']=='queen.s4.bounded-sandbox-proof.v1'
+          assert receipt['maker_count']==2 and receipt['selected_role']=='MAKER_MINIMAL'
+          assert receipt['candidate_git_parent_verified'] is True
+          assert receipt['changed_files']==['ops/queen/razzo/pilot/s4-bounded-canary.json']
+          assert receipt['independent_product_ci_verified'] is False
+          assert receipt['independent_robot_qa_verified'] is False
+          assert receipt['real_product_write'] is False and receipt['candidate_pr_created'] is False
+          def git(*args,cwd):
+              r=subprocess.run(['git',*args],cwd=cwd,capture_output=True,check=True,text=True)
+              return r.stdout.strip()
+          assert git('rev-parse','HEAD',cwd=base)==source
+          scratch=Path(os.environ['RUNNER_TEMP'])/'s4-robot-rebuild'
+          git('clone','--quiet','--no-hardlinks',str(base),str(scratch),cwd=base)
+          git('checkout','--detach',source,cwd=scratch)
+          file=scratch/'ops/queen/razzo/pilot/s4-bounded-canary.json'
+          assert not file.exists()
+          file.parent.mkdir(parents=True,exist_ok=True)
+          content={'schema':'queen.s4.bounded-canary.v1','source_sha':source,
+                   'role':'MAKER_MINIMAL','mission_id':receipt['mission_id'],
+                   'mutations_on_products':0,'paid_fallback':False}
+          file.write_text(json.dumps(content,sort_keys=True,indent=2)+'\n')
+          assert json.loads(file.read_text())==content
+          git('add','--','ops/queen/razzo/pilot/s4-bounded-canary.json',cwd=scratch)
+          env=os.environ.copy()
+          env.update({'GIT_AUTHOR_NAME':'RAZZO S4 Fixture',
+                      'GIT_AUTHOR_EMAIL':'razzo-s4@users.noreply.github.com',
+                      'GIT_COMMITTER_NAME':'RAZZO S4 Fixture',
+                      'GIT_COMMITTER_EMAIL':'razzo-s4@users.noreply.github.com',
+                      'GIT_AUTHOR_DATE':'2001-01-01T00:00:00+0000',
+                      'GIT_COMMITTER_DATE':'2001-01-01T00:00:00+0000'})
+          subprocess.run(['git','commit','--quiet','-m','Queen S4 bounded canary'],
+                         cwd=scratch,env=env,check=True,capture_output=True)
+          candidate=git('rev-parse','HEAD',cwd=scratch)
+          parent=git('rev-parse','HEAD^',cwd=scratch)
+          changed=git('diff-tree','--no-commit-id','--name-only','-r',candidate,cwd=scratch).splitlines()
+          assert candidate==receipt['candidate_sha']
+          assert parent==source
+          assert changed==receipt['changed_files']
+          assert git('rev-parse','HEAD',cwd=base)==source
+          assert not (base/'ops/queen/razzo/pilot/s4-bounded-canary.json').exists()
+          print('S4_INDEPENDENT_SANDBOX_ROBOT_QA=PASS')
+          print('S4_CANDIDATE_EXACT_SHA_REBUILT=PASS')
+          print('PROJECT_MUTATION_PERFORMED=false')
+          PY
+      - name: Delete all private checkouts and receipt
+        if: always()
+        run: rm -rf queen-base canary-receipt "$RUNNER_TEMP/s4-robot-rebuild"
+
+  certify-sandbox:
+    needs: [bounded-candidates, independent-robot-qa]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both independent no-write gates
+        env:
+          MAKERS: ${{ needs.bounded-candidates.result }}
+          QA: ${{ needs.independent-robot-qa.result }}
+        run: |
+          set -euo pipefail
+          test "$MAKERS" = success
+          test "$QA" = success
+          echo 'QUEEN_S4_SANDBOX_CANDIDATE_E2E=PASS'
+          echo 'CANDIDATE_PUBLISHED=false'
+          echo 'PRODUCT_CI_VERIFIED=false'
+          echo 'LEGACY_SCHEDULER_DEMOTED=false'
