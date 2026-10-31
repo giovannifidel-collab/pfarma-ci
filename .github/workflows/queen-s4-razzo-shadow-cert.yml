@@ -1,0 +1,131 @@
+name: Queen S4 RAZZO Shadow Certification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/queen-s4-razzo-shadow-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s4-shadow-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  certify-shadow:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      PRIVATE_SHA: a7cb8be8bd539fdc29cc22ca95b62e6f973587c1
+      RAZZO_SHA: aef58a8d6cf1db04fbc6658b7619cabcc883cdbd
+    steps:
+      - name: Checkout exact public certification PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: public-ci
+          persist-credentials: false
+      - name: Checkout private Queen S4 branch exact SHA
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-authority
+          persist-credentials: false
+      - name: Checkout existing RAZZO source exact SHA
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-ci
+          ref: ${{ env.RAZZO_SHA }}
+          path: razzo-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify source locks and public boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-authority rev-parse HEAD)" = "$PRIVATE_SHA"
+          test "$(git -C razzo-source rev-parse HEAD)" = "$RAZZO_SHA"
+          python public-ci/tools/validate_public_repo.py
+          python razzo-source/tools/validate_public_repo.py
+          echo 'QUEEN_S4_EXACT_SOURCE_LOCK=PASS'
+      - name: Certify canonical Queen invariants and shadow adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          node queen-authority/ops/queen/governance/validate-s0-truth.mjs
+          node queen-authority/ops/queen/core/validate-s1-core.mjs
+          node queen-authority/ops/queen/memory/validate-s2-school-memory.mjs
+          node queen-authority/ops/queen/delegation/validate-s3-delegation.mjs
+          node queen-authority/ops/queen/razzo/validate-s4-razzo-shadow.mjs
+          echo 'QUEEN_S0_S3_REGRESSION=PASS'
+      - name: Verify actual existing RAZZO shadow kernel (fixture-only)
+        shell: bash
+        working-directory: razzo-source
+        run: |
+          set -euo pipefail
+          python -m unittest razzo.kernel.test_model razzo.kernel.test_shadow razzo.kernel.test_organism razzo.kernel.tests.test_scoped_leases -v
+          python -m razzo.kernel.pilot --runs 100 --output "$RUNNER_TEMP/razzo-protected-pilot.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ['RUNNER_TEMP'])/'razzo-protected-pilot.json').read_text())
+          assert r['fixture_only'] is True
+          assert r['product_writes_allowed'] is False
+          assert r['merge_allowed'] is False
+          assert r['shadow_mutations'] == 0
+          assert r['simulation_failures'] == 0
+          assert r['activation_status'] == 'PRELAUNCH_GATES_GREEN'
+          print('RAZZO_SHADOW_PILOT_NO_WRITE=PASS')
+          PY
+      - name: Assert Queen envelope and existing RAZZO pilot parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {compileMission, deriveDelegation} from './queen-authority/ops/queen/delegation/mission-contract.mjs';
+          import {compileRazzoShadowPreflight} from './queen-authority/ops/queen/razzo/razzo-shadow-adapter.mjs';
+          const registry=JSON.parse(fs.readFileSync('./queen-authority/ops/queen/governance/PROJECT_AUTHORITY_REGISTRY.v1.json','utf8'));
+          const profiles=JSON.parse(fs.readFileSync('./queen-authority/ops/queen/delegation/PROJECT_DELEGATION_PROFILES.v1.json','utf8'));
+          const pilot=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/razzo-protected-pilot.json','utf8'));
+          const mission=compileMission({registry,profiles,projectId:'hive-field',exactSourceSha:'a'.repeat(40),
+            taskId:'queen-s4-proof',goal:'Fixture-only shadow parity preflight with no project write',
+            intentClass:'analysis',requestedLevel:1,source:'queen-s4-certification'});
+          const delegation=deriveDelegation(mission,{delegateId:'razzo-shadow-kernel',kind:'razzo',
+            capability:'software-engineering.shadow',ttlSeconds:600});
+          const result=compileRazzoShadowPreflight({mission,delegation,registry,profiles,razzoSourceSha:process.env.RAZZO_SHA});
+          if(result.controls.dispatch_enabled || result.controls.product_writes_allowed || result.controls.worker_cap !== 0) throw Error('unsafe_shadow_adapter');
+          if(result.evidence.status!=='no-change' || result.evidence.metadata.completion_eligible!==false) throw Error('false_completion');
+          if(pilot.fixture_only!==true || pilot.shadow_mutations!==0 || pilot.simulation_failures!==0) throw Error('razzo_parity_failed');
+          console.log('QUEEN_RAZZO_PROTECTED_SHADOW_PARITY=PASS');
+          console.log('PROJECT_MUTATION_PERFORMED=false');
+          console.log('PAID_FALLBACK=false');
+          NODE
+      - name: Publish non-secret certification summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Queen S4 protected shadow certification'
+            echo '- S0-S3 static regression: PASS'
+            echo '- Queen shadow adapter: PASS'
+            echo '- RAZZO kernel 100-simulation protected pilot: PASS'
+            echo '- Exact source SHA pinning: PASS'
+            echo '- Project mutations: **zero**'
+            echo '- Worker dispatch: **disabled**'
+            echo '- Live RAZZO mission / scheduler authority convergence: **not certified by this workflow**'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove all source checkouts
+        if: always()
+        run: rm -rf queen-authority razzo-source public-ci "$RUNNER_TEMP/razzo-protected-pilot.json"
