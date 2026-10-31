@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      PRIVATE_SHA: be69dc92243ed48436bde2c12dbc4c638b57ec76
+      PRIVATE_SHA: 7e941df211388cb7fd7a8e7165877b1f96f27eb5
       RAZZO_SHA: aef58a8d6cf1db04fbc6658b7619cabcc883cdbd
     steps:
       - name: Checkout exact public certification PR
