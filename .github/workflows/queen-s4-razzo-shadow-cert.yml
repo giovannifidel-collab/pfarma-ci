@@ -125,45 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           gh api repos/giovannifidel-collab/hive-field/branches/main --jq '.commit.sha' > "$RUNNER_TEMP/hive-field-head.txt"
-          grep -Eq '^[0-9a-f]{40}
-        shell: bash
-        env:
-          PRODUCT_READ_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${PRODUCT_READ_TOKEN:-}" ]; then
-            echo 'RAZZO_PRIVATE_SOURCE_TOKEN=MISSING'
-            exit 0
-          fi
-          for repo in hive-alveare hive-field project-giovanni pfarma-cloud family-cloud; do
-            status="$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' \
-              -H "Authorization: Bearer ${PRODUCT_READ_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/giovannifidel-collab/${repo}")"
-            if [ "$status" = 200 ]; then
-              echo "RAZZO_SOURCE_ACCESS ${repo}=PASS"
-            else
-              echo "RAZZO_SOURCE_ACCESS ${repo}=BLOCKED_HTTP_${status}"
-            fi
-          done
-      - name: Publish non-secret certification summary
-        if: success()
-        shell: bash
-        run: |
-          {
-            echo '## Queen S4 protected shadow certification'
-            echo '- S0-S3 static regression: PASS'
-            echo '- Queen shadow adapter: PASS'
-            echo '- RAZZO kernel 100-simulation protected pilot: PASS'
-            echo '- Exact source SHA pinning: PASS'
-            echo '- Project mutations: **zero**'
-            echo '- Worker dispatch: **disabled**'
-            echo '- Live RAZZO mission / scheduler authority convergence: **not certified by this workflow**'
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Remove all source checkouts
-        if: always()
-        run: rm -rf queen-authority razzo-source public-ci "$RUNNER_TEMP/razzo-protected-pilot.json"
- "$RUNNER_TEMP/hive-field-head.txt"
+          grep -Eq '^[0-9a-f]{40}$' "$RUNNER_TEMP/hive-field-head.txt"
           echo 'S4_LIVE_HIVE_FIELD_HEAD=OBSERVED'
       - name: Compile a real project-scoped, no-write Queen mission
         shell: bash
