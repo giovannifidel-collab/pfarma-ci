@@ -131,7 +131,7 @@ jobs:
           ' /tmp/state0 >/dev/null
           before="$(jq -r '.state.school.value.mastery.reasoning // 0' /tmp/state0)"
 
-          payload1='{"project_slug":"hive","source":"queen-s2-live-proof","message":"Valuta in due frasi il principio truth-before-completion per l architettura HIVE. Non effettuare alcuna azione esterna."}'
+          payload1='{"project_slug":"hive","source":"queen-s2-live-proof","message":"Spiega il principio architetturale truth-before-completion applicato a HIVE usando solo il contesto disponibile. Non effettuare alcuna azione esterna."}'
           code="$(curl -sS --max-time 90 -o /tmp/q1 -w '%{http_code}' "${headers[@]}" -X POST --data "$payload1" "$BASE/api/queen-command")"
           test "$code" = 200 || { cat /tmp/q1; exit 51; }
           jq -e '
@@ -144,7 +144,7 @@ jobs:
           after1="$(jq -r '.school.mastery // 0' /tmp/q1)"
           test "$before" = "$after1"
 
-          payload2='{"project_slug":"hive","source":"queen-s2-live-proof","message":"Rivaluta lo stesso principio truth-before-completion per HIVE e sintetizzalo in una frase, senza azioni esterne."}'
+          payload2='{"project_slug":"hive","source":"queen-s2-live-proof","message":"Rivaluta il principio truth-before-completion per HIVE tenendo conto del contesto disponibile, senza effettuare azioni esterne."}'
           code="$(curl -sS --max-time 90 -o /tmp/q2 -w '%{http_code}' "${headers[@]}" -X POST --data "$payload2" "$BASE/api/queen-command")"
           test "$code" = 200 || { cat /tmp/q2; exit 52; }
           jq -e '
