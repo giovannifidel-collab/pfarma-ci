@@ -3,6 +3,7 @@ name: HIVE Queen S3 Site Deploy
 on:
   push:
     branches:
+      - main
       - convergence/queen-s3-delegation-v1
     paths:
       - '.github/workflows/hive-queen-s3-site-deploy.yml'
