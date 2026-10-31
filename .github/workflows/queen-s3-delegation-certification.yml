@@ -23,7 +23,7 @@ jobs:
       goal: ${{ steps.contract.outputs.goal }}
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-      PRIVATE_SHA: ab6a89b6c0b1d821985f8fc1b711f43866014c76
+      PRIVATE_SHA: 87e0ef58a5a488728a8408eaf5669d1d51b8b99c
     steps:
       - name: Check out exact private S3 source
         uses: actions/checkout@v4
