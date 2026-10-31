@@ -6,7 +6,7 @@ on:
     types: [completed]
 
 permissions:
-  actions: write
+  actions: read
   contents: read
 
 concurrency:
@@ -37,7 +37,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh workflow run razzo-v7-product-worker-fabric.yml --repo "$GITHUB_REPOSITORY" --ref main
+          # Receipt evidence is retained, but only Queen may authorize a new mission.
+          echo 'QUEEN_S4_LEGACY_CONTINUATION=EVIDENCE_ONLY_NO_DISPATCH'
 
       - name: Stop cleanly when no safe product work was dispatched
         if: ${{ steps.productive.outputs.receipt_count == '0' }}
