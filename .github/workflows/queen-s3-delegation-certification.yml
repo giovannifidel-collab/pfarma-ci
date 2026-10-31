@@ -3,6 +3,7 @@ name: Queen S3 Delegation Certification
 on:
   push:
     branches:
+      - main
       - convergence/queen-s3-delegation-v1
     paths:
       - '.github/workflows/queen-s3-delegation-certification.yml'
@@ -23,7 +24,7 @@ jobs:
       goal: ${{ steps.contract.outputs.goal }}
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-      PRIVATE_SHA: e87f465bb81dd55fe40c9c037b244e4d8f9ba657
+      PRIVATE_SHA: 042af680c275dfcdad54f0f2970bc0c53e17edaf
     steps:
       - name: Check out exact private S3 source
         uses: actions/checkout@v4
@@ -99,8 +100,50 @@ jobs:
       delegation_json: ${{ needs.prepare.outputs.delegation_json }}
     secrets: inherit
 
-  certify:
+  queen_e2e:
     needs: [prepare, preflight]
+    if: ${{ github.ref == 'refs/heads/main' && needs.prepare.result == 'success' && needs.preflight.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    env:
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+    steps:
+      - name: Queen to dispatcher delegation preflight E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; BASE="${BASE%/}"
+          headers=(-H 'content-type: application/json')
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            headers+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          fi
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+            headers+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          fi
+          payload='{"project_slug":"hive-field","source":"queen-s3-delegation-preflight","message":"migliora HIVE Field verificando esclusivamente il contratto di delega S3; non modificare il progetto."}'
+          code="$(curl -sS --max-time 150 -o /tmp/queen-s3 -w '%{http_code}' "${headers[@]}" -X POST --data "$payload" "$BASE/api/queen-command")"
+          test "$code" = 200 || { cat /tmp/queen-s3; exit 61; }
+          jq -e '
+            .ok == true
+            and .route == "verified-delegation-preflight"
+            and .execution.mode == "preflight"
+            and .execution.project_mutation_performed == false
+            and .execution.mission.schema_version == "1.0"
+            and .execution.delegation.schema_version == "1.0"
+            and .execution.evidence.schema_version == "1.0"
+            and .execution.evidence.status == "verified"
+            and .execution.paid_fallback == false
+            and .execution.production_http == null
+          ' /tmp/queen-s3 >/dev/null
+          echo 'QUEEN_S3_QUEEN_TO_DISPATCHER_E2E=PASS'
+          echo 'PROJECT_MUTATION_PERFORMED=false'
+          echo 'PAID_FALLBACK=false'
+
+  certify:
+    needs: [prepare, preflight, queen_e2e]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -113,6 +156,10 @@ jobs:
           set -euo pipefail
           test "$PREPARE_RESULT" = success
           test "$PREFLIGHT_RESULT" = success
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            test "${{ needs.queen_e2e.result }}" = success
+            echo 'QUEEN_S3_QUEEN_TO_DISPATCHER_E2E=PASS'
+          fi
           echo 'QUEEN_S3_STATIC_CERTIFICATION=PASS'
           echo 'QUEEN_S3_VALID_DELEGATION_PREFLIGHT=PASS'
           echo 'PROJECT_MUTATION_PERFORMED=false'
