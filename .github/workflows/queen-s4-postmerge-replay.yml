@@ -1,0 +1,104 @@
+name: Queen S4 RAZZO Canary Postmerge Replay
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/queen-s4-postmerge-replay.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      QUEEN_MAIN_SHA: c99848093eb06e6c9e52178c8f141b93d3fdd67e
+      BASE_SHA: 7e941df211388cb7fd7a8e7165877b1f96f27eb5
+      CANDIDATE_SHA: efbaf4cf7aa621ac4fdaaf62d2bd3b648f33357a
+      RAZZO_SHA: aef58a8d6cf1db04fbc6658b7619cabcc883cdbd
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_MAIN_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          fetch-depth: 2
+          persist-credentials: false
+          path: queen-main
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-ci
+          ref: ${{ env.RAZZO_SHA }}
+          persist-credentials: false
+          path: razzo-source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Attest exact merged source and expected parent/candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-main rev-parse HEAD)" = "$QUEEN_MAIN_SHA"
+          test "$(git -C razzo-source rev-parse HEAD)" = "$RAZZO_SHA"
+          live="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')"
+          test "$live" = "$QUEEN_MAIN_SHA" || { echo 'REPLAY_HEAD_DRIFT_FAIL_CLOSED'; exit 51; }
+          parents="$(git -C queen-main show -s --format=%P HEAD)"
+          test "$parents" = "$BASE_SHA $CANDIDATE_SHA"
+          changed="$(git -C queen-main diff --name-only "$BASE_SHA" "$QUEEN_MAIN_SHA")"
+          test "$changed" = 'ops/queen/razzo/pilot/s4-bounded-canary.json'
+          echo 'QUEEN_S4_POSTMERGE_EXACT_PARENTS=PASS'
+      - name: Replay source integrity, canonical S0-S4 regressions and RAZZO roles
+        shell: bash
+        run: |
+          set -euo pipefail
+          node queen-main/ops/queen/governance/validate-s0-truth.mjs
+          node queen-main/ops/queen/core/validate-s1-core.mjs
+          node queen-main/ops/queen/memory/validate-s2-school-memory.mjs
+          node queen-main/ops/queen/delegation/validate-s3-delegation.mjs
+          node queen-main/ops/queen/razzo/validate-s4-razzo-shadow.mjs
+          node queen-main/ops/queen/razzo/validate-s4-razzo-route.mjs
+          (cd razzo-source && python -m unittest razzo.kernel.test_organism razzo.kernel.test_runtime razzo.kernel.test_shadow -v)
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          target=Path('queen-main/ops/queen/razzo/pilot/s4-bounded-canary.json')
+          c=json.loads(target.read_text())
+          assert c=={
+            'schema':'queen.s4.bounded-canary.v1',
+            'source_sha':os.environ['BASE_SHA'],
+            'role':'MAKER_MINIMAL',
+            'mission_id':'mission-s4-bounded-canary',
+            'mutations_on_products':0,
+            'paid_fallback':False,
+          }
+          assert not Path('queen-main/ops/queen/razzo/pilot/worker-secret').exists()
+          print('S4_POSTMERGE_CANARY_FUNCTIONAL_REPLAY=PASS')
+          PY
+          test -z "$(git -C queen-main status --porcelain)"
+          echo 'S4_POSTMERGE_QUEEN_AND_RAZZO_REGRESSIONS=PASS'
+          echo 'UNRELATED_PROJECT_MUTATIONS=false'
+      - name: Publish sanitized replay report (not overall S4 completion)
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Queen S4 post-merge replay'
+            echo "- Queen main exact commit: \`$QUEEN_MAIN_SHA\`"
+            echo "- RAZZO kernel exact commit: \`$RAZZO_SHA\`"
+            echo '- Canary independent Robot QA: PASS in prior proof 41242786577'
+            echo '- Published candidate CI: PASS in prior proof 41242786577'
+            echo '- Postmerge replay: PASS'
+            echo '- Unrelated product writes: zero'
+            echo '- Legacy scheduler authority parity/demotion: **still pending**'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Purge source clones
+        if: always()
+        run: rm -rf queen-main razzo-source
