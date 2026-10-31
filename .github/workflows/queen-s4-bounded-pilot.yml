@@ -334,3 +334,88 @@ jobs:
         if: always()
         shell: bash
         run: rm -rf queen-base canary-receipt "$RUNNER_TEMP/queen-s4-verified-publish" "$RUNNER_TEMP/s4-askpass.sh" "$RUNNER_TEMP/s4-verified-branch.txt" "$RUNNER_TEMP/s4-verified-sha.txt" "$RUNNER_TEMP/s4-verified-fingerprint.txt"
+
+  independent-published-candidate-ci:
+    needs: [publish-verified-canary-pr, independent-robot-qa]
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      EXPECTED_HEAD: efbaf4cf7aa621ac4fdaaf62d2bd3b648f33357a
+      EXPECTED_PARENT: 7e941df211388cb7fd7a8e7165877b1f96f27eb5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.EXPECTED_HEAD }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: candidate
+      - name: Verify actual published private PR exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C candidate rev-parse HEAD)" = "$EXPECTED_HEAD"
+          live="$(gh api repos/giovannifidel-collab/hive-alveare/pulls/29 --jq '.head.sha')"
+          test "$live" = "$EXPECTED_HEAD"
+          test "$(git -C candidate rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          changed="$(git -C candidate diff-tree --no-commit-id --name-only -r "$EXPECTED_HEAD")"
+          test "$changed" = 'ops/queen/razzo/pilot/s4-bounded-canary.json'
+          echo 'S4_PRIVATE_CANARY_PRODUCT_HEAD=PASS'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run authoritative Queen CI and independent candidate assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node candidate/ops/queen/governance/validate-s0-truth.mjs
+          node candidate/ops/queen/core/validate-s1-core.mjs
+          node candidate/ops/queen/memory/validate-s2-school-memory.mjs
+          node candidate/ops/queen/delegation/validate-s3-delegation.mjs
+          node candidate/ops/queen/razzo/validate-s4-razzo-shadow.mjs
+          node candidate/ops/queen/razzo/validate-s4-razzo-route.mjs
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          c=json.loads(Path('candidate/ops/queen/razzo/pilot/s4-bounded-canary.json').read_text())
+          assert c=={
+              'schema':'queen.s4.bounded-canary.v1',
+              'source_sha':os.environ['EXPECTED_PARENT'],
+              'role':'MAKER_MINIMAL',
+              'mission_id':'mission-s4-bounded-canary',
+              'mutations_on_products':0,
+              'paid_fallback':False,
+          }
+          print('S4_PUBLISHED_CANARY_FUNCTIONAL_QA=PASS')
+          PY
+          test -z "$(git -C candidate status --porcelain)"
+          echo 'S4_REAL_PRIVATE_CANDIDATE_CI=PASS'
+          echo 'PROJECT_MUTATION_PERFORMED=false'
+      - name: Purge candidate source
+        if: always()
+        run: rm -rf candidate
+
+  certify-published-candidate:
+    needs: [bounded-candidates, independent-robot-qa, certify-sandbox, publish-verified-canary-pr, independent-published-candidate-ci]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require exact candidate, Robot QA, published PR and product source CI
+        env:
+          MAKERS: ${{ needs.bounded-candidates.result }}
+          ROBOT_QA: ${{ needs.independent-robot-qa.result }}
+          SANDBOX: ${{ needs.certify-sandbox.result }}
+          PUBLISH: ${{ needs.publish-verified-canary-pr.result }}
+          PRIVATE_CI: ${{ needs.independent-published-candidate-ci.result }}
+        run: |
+          set -euo pipefail
+          for status in "$MAKERS" "$ROBOT_QA" "$SANDBOX" "$PUBLISH" "$PRIVATE_CI"; do test "$status" = success; done
+          echo 'QUEEN_S4_REAL_CANARY_BRANCH_CANDIDATE_E2E=PASS'
+          echo 'CANDIDATE_EXACT_SHA=efbaf4cf7aa621ac4fdaaf62d2bd3b648f33357a'
+          echo 'PROJECT_CI_AND_INDEPENDENT_ROBOT_QA=PASS'
+          echo 'MERGE_AND_POST_MERGE_REPLAY=NOT_DONE'
+          echo 'LEGACY_RAZZO_SCHEDULER_DEMOTED=false'
