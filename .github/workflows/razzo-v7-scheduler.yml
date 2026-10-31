@@ -2,7 +2,7 @@ name: RAZZO V7 Native Scheduler
 
 on:
   schedule:
-    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
+    - cron: '17 */6 * * *'
   workflow_dispatch:
   workflow_run:
     workflows:
@@ -20,7 +20,7 @@ on:
       - razzo/project-state.json
 
 permissions:
-  actions: write
+  actions: read
   contents: read
 
 concurrency:
@@ -71,8 +71,7 @@ jobs:
             exit 0
           fi
 
-          curl --fail-with-body --silent --show-error -X POST "${headers[@]}" \
-            "${api}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
-            -d '{"ref":"main","inputs":{"mode":"execute-trial"}}'
-
-          echo "DISPATCHED_EXECUTE_TRIAL"
+          # S4 authority cutover: retain watchdog and availability inspection,
+          # never independently dispatch legacy product workers.
+          echo "QUEEN_S4_LEGACY_SCHEDULER=WATCHDOG_ONLY_NO_DISPATCH"
+          echo "LEGACY_PRODUCT_EXECUTION=DENY"
