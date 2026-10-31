@@ -26,6 +26,18 @@ jobs:
     outputs:
       discovery_matrix: ${{ steps.plan.outputs.discovery_matrix }}
     steps:
+      - name: Queen S4 legacy execute-trial authorization gate
+        shell: bash
+        env:
+          REQUESTED_MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          if [ "$REQUESTED_MODE" != 'plan-only' ]; then
+            echo 'QUEEN_S4_LEGACY_PRODUCT_WRITE=DENY'
+            echo 'Use an exact-SHA Queen Mission + Delegation certified project adapter.'
+            exit 78
+          fi
+          echo 'QUEEN_S4_LEGACY_PLAN_ONLY=READ_ONLY'
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
       - uses: actions/setup-python@v5
