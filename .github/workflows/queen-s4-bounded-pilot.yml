@@ -353,6 +353,7 @@ jobs:
           ref: ${{ env.EXPECTED_HEAD }}
           token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           persist-credentials: false
+          fetch-depth: 2
           path: candidate
       - name: Verify actual published private PR exact candidate
         shell: bash
