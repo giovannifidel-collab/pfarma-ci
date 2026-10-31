@@ -1,0 +1,124 @@
+name: Queen S4 RAZZO Bounded Sandbox Pilot
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/queen-s4-bounded-pilot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-candidates:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      PRIVATE_PILOT_SHA: aec3c3909caac4a526887734039005e23bcfe6ee
+      PRIVATE_BASE_SHA: 7e941df211388cb7fd7a8e7165877b1f96f27eb5
+      RAZZO_SHA: aef58a8d6cf1db04fbc6658b7619cabcc883cdbd
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          path: ci-source
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_PILOT_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-pilot
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_BASE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-main
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-ci
+          ref: ${{ env.RAZZO_SHA }}
+          persist-credentials: false
+          path: razzo-source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate exact source locks and strictly one public workflow diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-pilot rev-parse HEAD)" = "$PRIVATE_PILOT_SHA"
+          test "$(git -C queen-main rev-parse HEAD)" = "$PRIVATE_BASE_SHA"
+          test "$(git -C razzo-source rev-parse HEAD)" = "$RAZZO_SHA"
+          test "$GITHUB_EVENT_NAME" = pull_request
+          paths="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" --jq '.[].filename')"
+          test "$paths" = '.github/workflows/queen-s4-bounded-pilot.yml'
+          echo 'S4_SANDBOX_SOURCE_LOCKS=PASS'
+      - name: Compile canonical Queen branch-only mission with narrow pilot overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {compileMission,deriveDelegation,validateDelegation} from './queen-pilot/ops/queen/delegation/mission-contract.mjs';
+          const root='./queen-pilot/ops/queen';
+          const registry=JSON.parse(fs.readFileSync(root+'/governance/PROJECT_AUTHORITY_REGISTRY.v1.json','utf8'));
+          const pilot=JSON.parse(fs.readFileSync(root+'/razzo/S4_INTERNAL_PILOT_PROFILE.v1.json','utf8'));
+          if (pilot.default_policy!=='DENY' || Object.keys(pilot.projects).join()!=='hive-queen') throw Error('pilot_profile_scope');
+          const mission=compileMission({registry,profiles:pilot,projectId:'hive-queen',
+            exactSourceSha:process.env.PRIVATE_BASE_SHA,
+            taskId:'s4-bounded-canary',goal:'Produce two sandbox canary git candidates without pushing private code',
+            intentClass:'code-change',requestedLevel:3,source:'queen-s4-bounded-pilot'});
+          const delegation=deriveDelegation(mission,{delegateId:'razzo-organism-221',kind:'razzo',
+            capability:'software-engineering.tournament',ttlSeconds:600});
+          validateDelegation(delegation,mission);
+          if (mission.scope.allowed_paths.length!==1 || mission.authority.requested_level!==3 || mission.budget.paid_fallback!==false) throw Error('unsafe_pilot_scope');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/mission.json',JSON.stringify(mission));
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/delegation.json',JSON.stringify(delegation));
+          console.log('QUEEN_S4_BOUND_MISSION=PASS');
+          NODE
+      - name: Execute two real ephemeral git candidates through existing RAZZO Organism
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$GITHUB_WORKSPACE/razzo-source" python queen-pilot/ops/queen/razzo/queen_razzo_bounded_pilot.py \
+            --source "$GITHUB_WORKSPACE/queen-main" --exact-sha "$PRIVATE_BASE_SHA" \
+            --mission "$RUNNER_TEMP/mission.json" --delegation "$RUNNER_TEMP/delegation.json" \
+            --output "$RUNNER_TEMP/candidate-proof.json"
+          jq -e '
+            .base_sha == env.PRIVATE_BASE_SHA
+            and .candidate_git_parent_verified == true
+            and .maker_count == 2
+            and .worker_cap == 2
+            and .real_product_write == false
+            and .remote_branch_push == false
+            and .candidate_pr_created == false
+            and .completion_eligible == false
+            and (.candidate_sha | test("^[0-9a-f]{40}$"))
+            and (.other_candidate_sha | test("^[0-9a-f]{40}$"))
+            and .candidate_sha != .other_candidate_sha
+          ' "$RUNNER_TEMP/candidate-proof.json" >/dev/null
+          test "$(git -C queen-main rev-parse HEAD)" = "$PRIVATE_BASE_SHA"
+          test ! -e queen-main/ops/queen/razzo/pilot/s4-bounded-canary.json
+          echo 'RAZZO_2_MAKER_SANDBOX_PROOF=PASS'
+          echo 'NO_PRODUCT_OR_REPOSITORY_MUTATION=PASS'
+      - name: Retain sanitized proof only, no private source or token
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-s4-sandbox-candidate-proof-${{ github.run_id }}
+          path: ${{ runner.temp }}/candidate-proof.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Remove all private source and ephemeral files
+        if: always()
+        shell: bash
+        run: rm -rf queen-pilot queen-main razzo-source ci-source "$RUNNER_TEMP/mission.json" "$RUNNER_TEMP/delegation.json" "$RUNNER_TEMP/candidate-proof.json"
