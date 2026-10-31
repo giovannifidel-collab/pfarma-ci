@@ -1,0 +1,93 @@
+name: Queen S2 School Memory Certification
+
+on:
+  push:
+    branches:
+      - convergence/queen-s2-school-memory-v1
+    paths:
+      - '.github/workflows/queen-s2-school-memory-certification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s2-school-memory-certification
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: pfarma-ci-trusted
+    env:
+      PRIVATE_REPO: giovannifidel-collab/hive-alveare
+      PRIVATE_REF: 12a1817745d91a01320569399601a9643753fe12
+      PRIVATE_BASE: 73778e4d040e6ae361401003441f6a9be2c793f5
+    steps:
+      - name: Check out exact private S2 source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PRIVATE_REPO }}
+          ref: ${{ env.PRIVATE_REF }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-s2
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enforce S2 bounded diff
+        working-directory: queen-s2
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRIVATE_REF"
+          git cat-file -e "$PRIVATE_BASE^{commit}"
+          mapfile -t changed < <(git diff --name-only "$PRIVATE_BASE...HEAD")
+          printf '%s\n' "${changed[@]}"
+          for f in "${changed[@]}"; do
+            case "$f" in
+              ops/queen/school/*|ops/queen/memory/*|cloudflare/functions/_lib/queen-runtime.js|cloudflare/functions/api/queen-command.js|db/019_hive_school_s2_learning_gate.sql|.github/workflows/queen-s2-school-memory-certification.yml) ;;
+              *) echo "S2_SCOPE_VIOLATION=$f"; exit 1 ;;
+            esac
+          done
+          echo 'S2_BOUNDED_DIFF=PASS'
+
+      - name: School core self-test
+        working-directory: queen-s2
+        run: node ops/queen/school/school-core.mjs self-test
+
+      - name: Teacher qualification self-test
+        working-directory: queen-s2
+        run: node ops/queen/school/teacher-qualification.mjs --self-test
+
+      - name: School and memory behavioral gate
+        working-directory: queen-s2
+        run: node ops/queen/memory/validate-s2-school-memory.mjs
+
+      - name: Edge syntax gate
+        working-directory: queen-s2
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check cloudflare/functions/_lib/queen-runtime.js
+          node --check cloudflare/functions/api/queen-command.js
+          grep -Fq "p_training_eligible boolean DEFAULT false" db/019_hive_school_s2_learning_gate.sql
+          echo 'S2_EDGE_SYNTAX=PASS'
+          echo 'S2_DB_FAIL_CLOSED_DEFAULT=PASS'
+
+      - name: Final certification
+        shell: bash
+        run: |
+          {
+            echo 'QUEEN_S2_STATIC_CERTIFICATION=PASS'
+            echo 'UNCERTIFIED_TEACHER_MASTERY=BLOCKED'
+            echo 'PROVISIONAL_TRAINING_EXCLUDED=PASS'
+            echo 'VERIFIED_MEMORY=PASS'
+            echo 'MEMORY_BEFORE_REASONING=PASS'
+            echo 'S1_PARENT_PRESERVED=true'
+            echo 'PROJECT_MUTATION_PERFORMED=false'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
