@@ -23,7 +23,7 @@ class PreparatoreEncryptedBridgeContract(unittest.TestCase):
         import download_preparatore_encrypted_worker as bridge
 
         sha = "a" * 40
-        payload = json.dumps({"source_ref": sha, "format": "test"}).encode() * 100
+        payload = json.dumps({"source_ref": sha, "format": "test", "payload": "x" * 12000}).encode()
         chunks = [payload[i:i+200] for i in range(0,len(payload),200)]
         manifest = {"v": 2, "source_ref": sha, "chunks": len(chunks),
                     "byte_length": len(payload), "bundle_sha256": hashlib.sha256(payload).hexdigest()}
