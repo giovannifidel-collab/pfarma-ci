@@ -104,7 +104,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
-          test -n "${HIVE_RUNTIME_BEARER_TOKEN:-}"
+          # Existing Cloudflare Access service authentication is proven:
+          # github run 41311970780, HTTP 200 on canonical Queen/Neon state.
+          # Do not create, rotate or require a missing bearer token.
+          test -n "${CF_ACCESS_CLIENT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_SECRET:-}"
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
           node queen-source/ops/queen/razzo/validate-s4-live-attestation.mjs
@@ -128,7 +132,10 @@ jobs:
         run: |
           set -euo pipefail
           BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; BASE="${BASE%/}"
-          headers=(-H 'content-type: application/json' -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          headers=(-H 'content-type: application/json')
+          if [[ -n "${HIVE_RUNTIME_BEARER_TOKEN:-}" ]]; then
+            headers+=(-H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          fi
           if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
             headers+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
           fi
