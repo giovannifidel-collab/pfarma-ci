@@ -17,7 +17,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 12
     env:
-      PRIVATE_SHA: 3babdbd932ba1c11c0ecfed95baf6bdfb792390c
+      PRIVATE_SHA: cad46b093bdadfe9ef47810a1ad29cc6ff3c5dc5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,7 +62,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 30
     env:
-      PRIVATE_SHA: 3babdbd932ba1c11c0ecfed95baf6bdfb792390c
+      PRIVATE_SHA: cad46b093bdadfe9ef47810a1ad29cc6ff3c5dc5
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
