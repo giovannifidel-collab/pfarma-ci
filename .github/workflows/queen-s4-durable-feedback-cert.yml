@@ -1,0 +1,64 @@
+name: Queen S4 Durable Feedback Source and GitHub Attestation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/queen-s4-durable-feedback-cert.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      PRIVATE_SHA: ccb5a06b0f2b1f7d1f6974b4513c785cf1e4431e
+      GH_AUDIT_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          path: public-pr
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-private
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify private source and no other public changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-private rev-parse HEAD)" = "$PRIVATE_SHA"
+          node --check queen-private/cloudflare/functions/api/queen-s4-evidence.js
+          node --check queen-private/ops/queen/razzo/s4-live-attestation.mjs
+          node queen-private/ops/queen/razzo/validate-s4-live-attestation.mjs
+          node queen-private/ops/queen/razzo/validate-s4-evidence.mjs
+          node queen-private/ops/queen/delegation/validate-s3-delegation.mjs
+          node queen-private/ops/queen/memory/validate-s2-school-memory.mjs
+          echo 'S4_DURABLE_SOURCE_AND_NEGATIVE_TESTS=PASS'
+      - name: Independently verify live GitHub identity and legacy denial
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd queen-private
+          node --input-type=module <<'NODE'
+          import {obtainS4GitHubAttestation} from './ops/queen/razzo/s4-live-attestation.mjs';
+          const proof=await obtainS4GitHubAttestation(process.env.GH_AUDIT_TOKEN);
+          if(proof.candidate_sha!=='efbaf4cf7aa621ac4fdaaf62d2bd3b648f33357a' || proof.mastery_eligible!==false) throw Error('s4_untrusted_proof');
+          console.log('S4_FRESH_GITHUB_CANARY_AND_LEGACY_ATTESTATION=PASS');
+          console.log('S4_PROVISIONAL_TRAINING_ELIGIBLE=false');
+          NODE
+      - name: Report non-mutating gate
+        run: |
+          echo 'S4_GITHUB_PROOF_LIVE=PASS'
+          echo 'S4_DURABLE_NEON_RECORD=NOT_ATTEMPTED'
+          echo 'S4_CLOUDFLARE_DEPLOY=NOT_ATTEMPTED'
