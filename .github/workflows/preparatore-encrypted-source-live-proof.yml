@@ -1,0 +1,62 @@
+name: Preparatore PLUS · Trusted encrypted source live proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/preparatore-encrypted-source-live-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-private-ciphertext-on-public-worker:
+    if: github.repository == 'giovannifidel-collab/pfarma-ci' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: photo-ai-private
+    steps:
+      - name: Checkout public bridge only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install audited AES-256-GCM implementation
+        run: python -m pip install --disable-pip-version-check 'cryptography==46.0.4'
+      - name: Verify private bundle with existing protected credentials
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CODEX_AUTH_STATE_KEY_B64: ${{ secrets.CODEX_AUTH_STATE_KEY_B64 }}
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+          from tools.download_preparatore_encrypted_worker import bundle_bytes, derived_key
+
+          sha, encrypted = bundle_bytes(None)
+          with tempfile.TemporaryDirectory(prefix="giovanni-source-proof-") as tmp:
+              root = Path(tmp)
+              bundle = root / "cipher.json"
+              dest = root / "worker"
+              bundle.write_bytes(encrypted)
+              env = dict(os.environ)
+              env["PFARMA_CI_BUNDLE_KEY"] = derived_key()
+              subprocess.run([sys.executable, "tools/public_ci_bundle.py", "unpack",
+                              "--bundle", str(bundle), "--destination", str(dest)],
+                             env=env, check=True, capture_output=True)
+              for item in ["scripts/preparatore-v2-job-compatible.mjs",
+                           "scripts/codex-auth-state.mjs",
+                           "lib/coachPolicyCore.mjs",
+                           ".github/photo-ai/preparatore-v2.prompt.md"]:
+                  if not (dest / item).is_file():
+                      raise RuntimeError("Encrypted source proof missing required worker module")
+          print(f"PASS public worker authenticated private encrypted source sha={sha}")
+          PY
