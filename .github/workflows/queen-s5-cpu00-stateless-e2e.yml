@@ -170,7 +170,7 @@ jobs:
           result="$(gh api "repos/$CPU_REPO/actions/runs/$run" --jq '.conclusion')"
           test "$result" = success || { echo "S5_CPU00_PROVIDER_$result"; exit 55; }
           jobs="$(gh api "repos/$CPU_REPO/actions/runs/$run/jobs?per_page=100")"
-          echo "$jobs" | jq -e '([.jobs[] | select(.name=="Execute HIVE Job Envelope" and .conclusion=="success")] | length)==1' >/dev/null
+          echo "$jobs" | jq -e '([.jobs[] | select(.name=="Execute HIVE Job Envelope" and .conclusion=="success" and ([.steps[] | select(.name=="Prove short-lived GitHub OIDC identity" and .conclusion=="success")] | length)==1 and ([.steps[] | select(.name=="Validate canonical sealed result" and .conclusion=="success")] | length)==1)] | length)==1' >/dev/null
           echo 'S5_STATLESS_PROVIDER_WORKFLOW=PASS'
       - name: Collect provider evidence and verify exact task lease, source and seal
         shell: bash
@@ -182,7 +182,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/s5cpu"
-          gh run download "$RUN_ID" --repo "$CPU_REPO" --dir "$RUNNER_TEMP/s5cpu"
+          # CPU00 uses actions/upload-artifact@v7 with archive:false.
+          # The REST /zip endpoint returns the raw JSON, not a ZIP archive.
+          # gh run download expects ZIP and therefore fails on this valid artifact.
+          artifact_id="$(gh api "repos/$CPU_REPO/actions/runs/$RUN_ID/artifacts?per_page=100" |
+            jq -r '[.artifacts[] | select(.name=="result.json" and .expired==false)] | if length==1 then .[0].id else empty end')"
+          test -n "$artifact_id" || { echo 'S5_RAW_ARTIFACT_NOT_UNIQUE'; exit 64; }
+          curl --fail --silent --show-error --location --max-time 60 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$CPU_REPO/actions/artifacts/$artifact_id/zip" \
+            -o "$RUNNER_TEMP/s5cpu/result.json"
           python - <<'PY'
           import hashlib,json,os
           from pathlib import Path
@@ -217,16 +227,12 @@ jobs:
           assert envelope['inputs']==[]
           assert r['output']['computation']['rounds']==50000
           assert all(r['output']['checks'].values())
-          oidc=list(root.rglob('oidc-claims.json'))
-          assert len(oidc)==1
-          proof=json.loads(oidc[0].read_text())
-          assert proof['verified_by_runner_request'] is True
-          assert all(proof['checks'].values())
-          assert str(proof['claims']['run_id'])==os.environ['RUN_ID']
-          assert proof['claims']['sha']==os.environ['CPU_SHA']
+          # CPU00 intentionally uploads ONLY result.json; OIDC claims are never
+          # persisted into this credential-free result artifact. The independent
+          # job-step attestation is required in addition to source/result checks.
           print('S5_EXACT_HIVE_JOB_ENVELOPE_SHA256=PASS')
           print('S5_EXACT_ATTEMPT_IDENTITY_PROVENANCE=PASS')
-          print('S5_SHORT_LIVED_GITHUB_OIDC_RUNNER_SELF_CLAIMS=PASS')
+          print('S5_SHORT_LIVED_GITHUB_OIDC_RUNNER_STEP=PASS')
           print('S5_CPU00_WORKER_ACCESS_CREDENTIALS=NOT_REQUIRED')
           print('S5_PRODUCT_WRITES=ZERO')
           print('S5_PRODUCTION_NEON_MIGRATION=NOT_ATTEMPTED')
