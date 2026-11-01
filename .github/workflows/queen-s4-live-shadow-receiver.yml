@@ -1,0 +1,152 @@
+name: Queen S4 Live RAZZO Shadow Receiver
+run-name: "Queen S4 shadow ${{ github.event.client_payload.task_id || github.run_id }}"
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-live-shadow-receiver.yml']
+  repository_dispatch:
+    types: [queen-s4-shadow]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s4-shadow-${{ github.event.client_payload.task_id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      PRIVATE_SHA: bedb99e2b742244c9be6b46eb382fb395918c377
+      RAZZO_SHA: aef58a8d6cf1db04fbc6658b7619cabcc883cdbd
+      REQUEST: ${{ toJson(github.event.client_payload) }}
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-ci
+          ref: ${{ env.RAZZO_SHA }}
+          persist-credentials: false
+          path: razzo-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify authoritative source and S3+S4 runtime policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          test "$(git -C razzo-source rev-parse HEAD)" = "$RAZZO_SHA"
+          node queen-source/ops/queen/razzo/validate-s4-live-runtime-route.mjs
+          node queen-source/ops/queen/razzo/validate-s4-razzo-shadow.mjs
+          echo 'S4_RUNTIME_ROUTE_SOURCE=PASS'
+      - name: Require exact authenticated Queen contract, or PR static smoke
+        id: envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            echo 'S4_SHADOW_PR_STATIC_ONLY=PASS'
+            echo 'real=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo 'real=true' >> "$GITHUB_OUTPUT"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {validateMission,validateDelegation} from './queen-source/ops/queen/delegation/mission-contract.mjs';
+          import {selectQueenRazzoRoute} from './queen-source/ops/queen/razzo/queen-razzo-route.mjs';
+          const registry=JSON.parse(fs.readFileSync('queen-source/ops/queen/governance/PROJECT_AUTHORITY_REGISTRY.v1.json'));
+          const profiles=JSON.parse(fs.readFileSync('queen-source/ops/queen/delegation/PROJECT_DELEGATION_PROFILES.v1.json'));
+          const data=JSON.parse(process.env.REQUEST||'{}');
+          if(data.schema!=='queen.s4.shadow-dispatch.v1' || !/^s4-[a-z0-9-]{8,70}$/.test(data.task_id||''))throw Error('untrusted_request');
+          const {mission,delegation}=data;
+          validateMission(mission,{registry,profiles});
+          validateDelegation(delegation,mission);
+          if(data.task_id!==mission.task_id || data.exact_source_sha!==mission.project.exact_source_sha ||
+             data.razzo_source_sha!==process.env.RAZZO_SHA ||
+             mission.project.id!=='hive-field' ||
+             mission.project.repository!=='giovannifidel-collab/hive-field' ||
+             mission.project.target_branch!=='main' ||
+             mission.authority.requested_level!==1 ||
+             delegation.capability!=='software-engineering.shadow')throw Error('source_scope_or_authority_mismatch');
+          const route=selectQueenRazzoRoute({mission,delegation,registry,profiles,
+             razzoSourceSha:process.env.RAZZO_SHA});
+          if(route.dispatch_authorized!==false || route.worker_count!==0 ||
+             route.mutation_authorized!==false || route.project_repository!==mission.project.repository)
+             throw Error('razzo_write_authority_widened');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/queen-s4-envelope.json',JSON.stringify({mission,delegation}));
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/hive-field-sha.txt',mission.project.exact_source_sha);
+          console.log('QUEEN_S4_RUNTIME_MISSION_AND_DELEGATION=PASS');
+          NODE
+      - name: Verify target main still equals Queen delegated exact SHA
+        if: steps.envelope.outputs.real == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(cat "$RUNNER_TEMP/hive-field-sha.txt")"
+          live="$(gh api repos/giovannifidel-collab/hive-field/branches/main --jq '.commit.sha')"
+          test "$live" = "$sha" || { echo 'QUEEN_S4_SOURCE_DRIFT=DENY'; exit 51; }
+          echo 'QUEEN_S4_TARGET_CURRENT_SOURCE=PASS'
+      - name: Checkout read-only target project at delegated exact SHA
+        if: steps.envelope.outputs.real == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-field
+          ref: ${{ github.event.client_payload.exact_source_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: target-readonly
+      - name: Execute real existing RAZZO kernel shadow under Queen
+        if: steps.envelope.outputs.real == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="$(cat "$RUNNER_TEMP/hive-field-sha.txt")"
+          test "$(git -C target-readonly rev-parse HEAD)" = "$source"
+          PYTHONPATH="$GITHUB_WORKSPACE/razzo-source" python queen-source/ops/queen/razzo/queen_razzo_shadow.py \
+            --envelope "$RUNNER_TEMP/queen-s4-envelope.json" \
+            --output "$RUNNER_TEMP/queen-s4-shadow-result.json"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          proof=json.loads((root/'queen-s4-shadow-result.json').read_text())
+          source=(root/'hive-field-sha.txt').read_text().strip()
+          assert proof['exact_source_sha']==source
+          assert proof['repository']=='giovannifidel-collab/hive-field'
+          assert proof['objective_fingerprint']
+          assert proof['objective_branch'].startswith('razzo/o/')
+          assert proof['product_mutations']==0
+          assert proof['dispatch_performed'] is False
+          assert proof['completed'] is False
+          assert proof['paid_fallback'] is False
+          assert proof['source_attested_by_runner'] is False
+          print('QUEEN_S4_LIVE_RAZZO_SHADOW=PASS')
+          print('PROJECT_MUTATION_PERFORMED=false')
+          PY
+          test -z "$(git -C target-readonly status --porcelain)"
+          echo 'QUEEN_S4_TARGET_READONLY=PASS'
+      - name: Publish only sanitized shadow evidence
+        if: steps.envelope.outputs.real == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-s4-shadow-${{ github.event.client_payload.task_id }}
+          path: ${{ runner.temp }}/queen-s4-shadow-result.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Remove private target and receipts
+        if: always()
+        shell: bash
+        run: rm -rf queen-source razzo-source target-readonly "$RUNNER_TEMP/queen-s4-envelope.json" "$RUNNER_TEMP/hive-field-sha.txt" "$RUNNER_TEMP/queen-s4-shadow-result.json"
