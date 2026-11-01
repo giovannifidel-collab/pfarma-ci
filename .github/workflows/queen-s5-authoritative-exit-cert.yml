@@ -1,0 +1,86 @@
+name: Queen S5 Authoritative Scoped Exit Certification
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-authoritative-exit-cert.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-authoritative-exit-cert.yml']
+permissions:
+  contents: read
+concurrency:
+  group: queen-s5-authoritative-exit
+  cancel-in-progress: false
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      PRIVATE_SHA: f0e191a822466eae78e44299d8d297ab0b6b7f0c
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-private
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Source-locked S0–S5 including closure and deny safeguards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-private rev-parse HEAD)" = "$PRIVATE_SHA"
+          for p in \
+            governance/validate-s0-truth.mjs \
+            core/validate-s1-core.mjs \
+            memory/validate-s2-school-memory.mjs \
+            delegation/validate-s3-delegation.mjs \
+            razzo/validate-s4-closeout.mjs \
+            compute/validate-node-registry.mjs \
+            compute/validate-fabric-contracts.mjs \
+            compute/validate-s5-staging.mjs \
+            compute/validate-s5-cpu00-probe.mjs \
+            compute/validate-s5-stateless-canary.mjs \
+            compute/validate-s5-closeout.mjs; do
+            node "queen-private/ops/queen/$p"
+          done
+          node queen-private/ops/queen/compute/build-s5-production-migration.mjs --check
+          echo 'QUEEN_S0_S5_NO_REGRESSION=PASS'
+      - name: Reverify independent GH provider run and exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          cpu="$(gh api repos/giovannifidel-collab/hive-compute-node-00/actions/runs/41348429484)"
+          echo "$cpu" | jq -e '.conclusion=="success" and .event=="workflow_dispatch" and .head_sha=="95d898d3e229eee22959726d5abd918ac1c5688b"' >/dev/null
+          receiver="$(gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/41348410068)"
+          echo "$receiver" | jq -e '.conclusion=="success" and .event=="push"' >/dev/null
+          feedback="$(gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/41348928000)"
+          echo "$feedback" | jq -e '.conclusion=="success" and .event=="push"' >/dev/null
+          echo 'S5_INDEPENDENT_PROVIDER_QUEUE_FEEDBACK_RUNS=PASS'
+      - name: Authenticate and recheck durable Queen feedback plus consumed lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          h=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          code="$(curl -sS --max-time 45 -o "$RUNNER_TEMP/s5-exit.json" -w '%{http_code}' "${h[@]}" "$base/api/queen-s5-compute-feedback")"
+          test "$code" = 200
+          jq -e '.ok==true and .receipt.status=="COMPLETE" and .receipt.task_id=="28f220c6-f2d2-44d1-96c0-9a6b8108844d" and .receipt.training_eligible==false and .receipt.mastery_eligible==false and .receipt.worker_certified==false and (.receipt.steps|all(.==true))' "$RUNNER_TEMP/s5-exit.json" >/dev/null
+          code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/s5-lease-deny.json" -w '%{http_code}' "${h[@]}" "$base/api/queen-s5-job-lease")"
+          test "$code" = 409
+          jq -e '.ok==false and .error=="no_authorized_lease"' "$RUNNER_TEMP/s5-lease-deny.json" >/dev/null
+          echo 'S5_LIVE_COMPUTE_FEEDBACK_DURABLE=PASS'
+          echo 'S5_ONE_SHOT_LEASE_CONSUMED_AND_DENIED=PASS'
+          echo 'S5_GENERIC_WORKER_PAID_GPU_DISPATCH=DENY'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-private "$RUNNER_TEMP/s5-exit.json" "$RUNNER_TEMP/s5-lease-deny.json"
