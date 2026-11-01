@@ -1,4 +1,5 @@
 name: Queen S6 Bounded Autopilot Scheduler
+# Owner-authorized exact one-shot CPU00 live phase-exit dispatch proof: 2026-11-01.
 on:
   schedule:
     - cron: '7,22,37,52 * * * *'
