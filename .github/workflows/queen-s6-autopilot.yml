@@ -1,0 +1,225 @@
+name: Queen S6 Bounded Autopilot Scheduler
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s6-autopilot.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s6-autopilot.yml']
+permissions:
+  contents: read
+concurrency:
+  group: queen-s6-autopilot-one-lease
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      # Replace with exact merged Queen SHA after private PR is certified.
+      PRIVATE_SHA: 7c9ed48451c7f801363b77fb8dee73070bc3a7af
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact Queen source and S0–S5 policy before scheduling
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node queen-source/ops/queen/compute/validate-s5-closeout.mjs
+          node --test queen-source/ops/queen/autopilot/tests/s6-planner.test.mjs queen-source/ops/queen/autopilot/tests/s6-edge.test.mjs
+          node --check queen-source/cloudflare/functions/api/queen-s6-autopilot.js
+          echo 'S6_EXACT_QUEEN_SCHEDULER_POLICY=PASS'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source
+  deploy-edge:
+    needs: preflight
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      PRIVATE_SHA: 7c9ed48451c7f801363b77fb8dee73070bc3a7af
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - name: Require exact source and previously connected Cloudflare security context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          test -n "${CLOUDFLARE_API_TOKEN:-}" && test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          node --check queen-source/cloudflare/functions/api/queen-s6-autopilot.js
+      - name: Deploy S6 Queen endpoint through existing public Cloudflare CI bridge
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/queen-s6-config.log 2>&1
+          test -f wrangler.jsonc -o -f wrangler.json -o -f wrangler.toml
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main >/tmp/queen-s6-deploy.log 2>&1 || { tail -n 35 /tmp/queen-s6-deploy.log; exit 46; }
+          echo 'S6_AUTHENTICATED_EDGE_DEPLOY=PASS'
+      - name: Probe protected live S6 endpoint without dispatching
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          code=''
+          for i in {1..12}; do
+            code="$(curl -sS --max-time 25 -o "$RUNNER_TEMP/s6-state.json" -w '%{http_code}' \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              "$base/api/queen-s6-autopilot" || true)"
+            if [ "$code" = 200 ] && jq -e '.ok==true and .default_dispatch=="DENY" and .worker_persistent_certified==false and .paid_fallback==false' "$RUNNER_TEMP/s6-state.json" >/dev/null 2>&1; then break; fi
+            sleep 4
+          done
+          test "$code" = 200
+          jq -e '.ok==true and .default_dispatch=="DENY" and .worker_persistent_certified==false and .paid_fallback==false' "$RUNNER_TEMP/s6-state.json" >/dev/null
+          echo 'S6_LIVE_AUTH_READONLY_SAFE_STATUS=PASS'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source "$RUNNER_TEMP/s6-state.json"
+  autonomous-tick:
+    needs: [preflight, deploy-edge]
+    if: >-
+      always() && needs.preflight.result == 'success' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy-edge.result == 'success'))
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      CPU_REPO: giovannifidel-collab/hive-compute-node-00
+      CPU_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Claim at most one owner-prepared lease through Access
+        id: claim
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" && test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          test "$(gh api "repos/$CPU_REPO/branches/main" --jq .commit.sha)" = "$CPU_SHA"
+          url="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";url="${url%/}"
+          code="$(curl -sS --max-time 45 -o "$RUNNER_TEMP/s6-claim.json" -w '%{http_code}' \
+            -H 'content-type: application/json' -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -X POST --data '{"action":"claim"}' "$url/api/queen-s6-autopilot")"
+          if [ "$code" != 200 ]; then
+            jq -c '{ok,status,reason,error}' "$RUNNER_TEMP/s6-claim.json" || true
+            echo "S6_TICK_FAIL_CLOSED_HTTP=$code";exit 56
+          fi
+          state="$(jq -r '.status' "$RUNNER_TEMP/s6-claim.json")"
+          case "$state" in
+            IDLE|OBSERVE|COMPLETE)
+              echo "execute=false" >> "$GITHUB_OUTPUT"
+              echo "S6_AUTONOMOUS_TICK_${state}=PASS"
+              exit 0
+              ;;
+            DISPATCH_LEASED)
+              jq -e --arg sha "$CPU_SHA" '.ok==true and .worker_sha==$sha and .task_id and .attempt_token and .job_id and .envelope_b64' "$RUNNER_TEMP/s6-claim.json" >/dev/null
+              echo "execute=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *) echo 'S6_UNKNOWN_DECISION_DENY';exit 57;;
+          esac
+          token="$(jq -r .attempt_token "$RUNNER_TEMP/s6-claim.json")"
+          envelope="$(jq -r .envelope_b64 "$RUNNER_TEMP/s6-claim.json")"
+          echo "::add-mask::$token"
+          echo "::add-mask::$envelope"
+          echo "start=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          gh workflow run hive-envelope-worker.yml --repo "$CPU_REPO" --ref main \
+            -f hive_task_id="$(jq -r .task_id "$RUNNER_TEMP/s6-claim.json")" \
+            -f attempt_token="$token" -f envelope_b64="$envelope"
+          echo 'S6_SCHEDULED_OWNER_APPROVED_DISPATCH=PASS'
+      - name: Verify provider output independently and close Neon attempt
+        if: steps.claim.outputs.execute == 'true'
+        shell: bash
+        env:
+          START: ${{ steps.claim.outputs.start }}
+        run: |
+          set -euo pipefail
+          provider=''
+          for i in {1..30}; do
+            runs="$(gh api "repos/$CPU_REPO/actions/workflows/hive-envelope-worker.yml/runs?event=workflow_dispatch&per_page=35")"
+            candidates="$(printf '%s' "$runs" | jq -r --arg start "$START" --arg sha "$CPU_SHA" '[.workflow_runs[] | select(.created_at >= $start and .head_sha==$sha and .head_branch=="main")] | .[].id')"
+            count="$(printf '%s\n' "$candidates" | sed '/^$/d' | wc -l)"
+            if [ "$count" -gt 1 ]; then echo 'S6_AMBIGUOUS_PROVIDER_RUN_QUARANTINE';exit 61;fi
+            if [ "$count" -eq 1 ]; then provider="$candidates";break;fi
+            sleep 3
+          done
+          test -n "$provider" || { echo 'S6_PROVIDER_RUN_NOT_PROVEN';exit 62; }
+          for i in {1..80}; do
+            status="$(gh api "repos/$CPU_REPO/actions/runs/$provider" --jq .status)"
+            [ "$status" = completed ] && break
+            sleep 3
+          done
+          test "${status:-}" = completed || { echo 'S6_PROVIDER_UNKNOWN_TIMEOUT';exit 63; }
+          test "$(gh api "repos/$CPU_REPO/actions/runs/$provider" --jq .conclusion)" = success || { echo 'S6_PROVIDER_FAILED_NO_AUTORETRY';exit 64; }
+          jobs="$(gh api "repos/$CPU_REPO/actions/runs/$provider/jobs?per_page=100")"
+          printf '%s' "$jobs" | jq -e '[.jobs[]|select(.name=="Execute HIVE Job Envelope" and .conclusion=="success" and ([.steps[]|select(.name=="Prove short-lived GitHub OIDC identity" and .conclusion=="success")]|length)==1 and ([.steps[]|select(.name=="Validate canonical sealed result" and .conclusion=="success")]|length)==1)]|length==1' >/dev/null
+          artifact="$(gh api "repos/$CPU_REPO/actions/runs/$provider/artifacts?per_page=100" | jq -r '[.artifacts[]|select(.name=="result.json" and .expired==false)] | if length==1 then .[0].id else empty end')"
+          test -n "$artifact"
+          curl --fail --silent --show-error --location --max-time 60 \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$CPU_REPO/actions/artifacts/$artifact/zip" -o "$RUNNER_TEMP/s6-result.json"
+          PROVIDER_RUN="$provider" python - <<'PY'
+          import hashlib,json,os
+          path=os.environ['RUNNER_TEMP']
+          lease=json.load(open(path+'/s6-claim.json'))
+          r=json.load(open(path+'/s6-result.json'))
+          digest=r.pop('result_sha256')
+          assert hashlib.sha256(json.dumps(r,sort_keys=True,separators=(',',':')).encode()).hexdigest()==digest
+          assert r['status']=='completed' and r['exit_code']==0
+          assert r['metadata']['hive_task_id']==lease['task_id']
+          assert r['metadata']['attempt_token']==lease['attempt_token']
+          assert r['metadata']['project_slug']=='hive'
+          assert r['job_id']==lease['job_id']
+          assert r['node']['node_id']=='hive-compute-node-00'
+          assert r['node']['provider_run_ref']==os.environ['PROVIDER_RUN']
+          assert r['provenance']['environment']['repository']==os.environ['CPU_REPO']
+          assert r['provenance']['environment']['sha']==os.environ['CPU_SHA']
+          assert r['workload']=={'name':'selftest','version':'1'}
+          assert r['metadata']['job_envelope']['parameters']=={'rounds':50000}
+          assert all(r['output']['checks'].values())
+          print('S6_INDEPENDENT_SHA256_TASK_TOKEN_PROVENANCE=PASS')
+          PY
+          url="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";url="${url%/}"
+          code="$(curl -sS --max-time 150 -o "$RUNNER_TEMP/s6-complete.json" -w '%{http_code}' \
+            -H 'content-type: application/json' -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -X POST --data "{\"action\":\"complete\",\"run_id\":$provider}" "$url/api/queen-s6-autopilot")"
+          if [ "$code" != 200 ]; then jq -c '{ok,error}' "$RUNNER_TEMP/s6-complete.json";exit 67;fi
+          jq -e '.ok==true and .status=="COMPLETE" and .training_eligible==false and .mastery_eligible==false and (.steps|all(.==true))' "$RUNNER_TEMP/s6-complete.json" >/dev/null
+          echo "S6_REAL_AUTONOMOUS_QUEUE_CPU00_FEEDBACK=PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s6-claim.json" "$RUNNER_TEMP/s6-result.json" "$RUNNER_TEMP/s6-complete.json"
