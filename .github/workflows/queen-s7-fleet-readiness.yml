@@ -18,7 +18,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 15
     env:
-      QUEEN_SOURCE_SHA: aa08472f1b126b3402979042aa88f441752f1550
+      QUEEN_SOURCE_SHA: 43a97ef8b51309207aa48798d224cd17365db86b
       CPU00_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
     steps:
@@ -82,6 +82,27 @@ jobs:
               print('S7_PACKAGE_VALIDATED',d.name)
           PY
           echo 'S7_FIVE_IDENTITY_BOUND_WORKER_INSTALL_PACKAGES=PASS'
+      - name: Generate isolated private Kaggle GPU01/02 probe bundles (never authenticate/push)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node queen-source/ops/queen/compute/s7/build-kaggle-bundles.mjs \
+            queen-source/ops/queen/compute/s7/kaggle/hive_gpu_probe.py output/gpu-probes
+          python - <<'PY'
+          import hashlib,json,pathlib,py_compile
+          for folder in sorted(pathlib.Path('output/gpu-probes').glob('hive-gpu-node-*')):
+              meta=json.loads((folder/'kernel-metadata.json').read_text())
+              manifest=json.loads((folder/'s7-gpu-manifest.json').read_text())
+              code=folder/'hive_gpu_probe.py'
+              py_compile.compile(str(code),doraise=True)
+              assert meta['is_private']=='true'
+              assert meta['enable_gpu']=='true'
+              assert meta['enable_internet']=='false'
+              assert hashlib.sha256(code.read_bytes()).hexdigest()==manifest['source_sha256']
+              assert manifest['status']=='REVIEW_ONLY_NOT_INSTALLED_OR_CERTIFIED'
+              print('S7_GPU_PACKAGE_VALIDATED',manifest['node_id'],meta['id'])
+          PY
+          echo 'S7_TWO_KAGGLE_PRIVATE_GPU_PACKAGE_SOURCE_PROOF=PASS'
       - uses: actions/upload-artifact@v4
         with:
           name: queen-s7-readonly-audit-and-cpu01-05-installers
