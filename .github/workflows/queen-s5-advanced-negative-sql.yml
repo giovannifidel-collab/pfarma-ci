@@ -1,0 +1,116 @@
+name: Queen S5 Advanced Isolated Dispatch Negative QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/queen-s5-advanced-negative-sql.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-schema:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    services:
+      pg:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hive
+          POSTGRES_PASSWORD: ephemeral-test-only
+          POSTGRES_DB: hive_s5
+        options: >-
+          --health-cmd "pg_isready -U hive -d hive_s5"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PRIVATE_SHA: 1ef9d94033e2423279572bd30e83e58e0ade4970
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-private
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assert source lock and S0-S4 regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-private rev-parse HEAD)" = "$PRIVATE_SHA"
+          node queen-private/ops/queen/governance/validate-s0-truth.mjs
+          node queen-private/ops/queen/core/validate-s1-core.mjs
+          node queen-private/ops/queen/memory/validate-s2-school-memory.mjs
+          node queen-private/ops/queen/delegation/validate-s3-delegation.mjs
+          node queen-private/ops/queen/razzo/validate-s4-closeout.mjs
+          node queen-private/ops/queen/compute/validate-node-registry.mjs
+          node queen-private/ops/queen/compute/validate-fabric-contracts.mjs
+          node queen-private/ops/queen/compute/validate-s5-staging.mjs
+          echo 'QUEEN_S0_S5_SOURCE_REGRESSION=PASS'
+      - name: Recreate HIVE schema and apply preserved School plus renumbered Compute SQL
+        shell: bash
+        env:
+          PG_CONTAINER: ${{ job.services.pg.id }}
+        run: |
+          set -euo pipefail
+          test -n "$PG_CONTAINER"
+          cd queen-private
+          for migration in \
+            db/001_tables.sql \
+            db/002_functions.sql \
+            db/003_seed_projects.sql \
+            db/004_integrity.sql \
+            db/015_compute_fabric_v1.sql \
+            db/016_compute_fabric_claim_guard.sql \
+            db/017_hive_school_v1.sql \
+            db/018_hive_field_cell.sql \
+            db/019_hive_school_s2_learning_gate.sql \
+            db/020_compute_fabric_stateless_dispatch.sql \
+            db/021_compute_fabric_dispatch_abort.sql \
+            db/022_compute_fabric_stateless_sweep.sql; do
+              echo "APPLY_ISOLATED $migration"
+              docker exec -i "$PG_CONTAINER" psql -U hive -d hive_s5 -v ON_ERROR_STOP=1 -q < "$migration" > /tmp/s5-migration-output.log
+          done
+          echo 'S5_EPHEMERAL_POSTGRES_MIGRATION=PASS'
+      - name: Verify zero certification and preserved School and fail-closed execution
+        shell: bash
+        env:
+          PG_CONTAINER: ${{ job.services.pg.id }}
+        run: |
+          set -euo pipefail
+          psql_q() { docker exec "$PG_CONTAINER" psql -U hive -d hive_s5 -Atc "$1"; }
+          test "$(psql_q "select count(*) from information_schema.columns where table_name='tasks' and column_name in ('requirements','task_kind');")" = 2
+          test "$(psql_q "select count(*) from public.nodes where kind='compute' and coalesce((metadata->>'certified')::boolean,false)=true;")" = 0
+          test "$(psql_q "select count(*) from public.nodes where name='hive-compute-node-00' and status='prepared';")" = 1
+          test "$(psql_q "select count(*) from information_schema.tables where table_name in ('hive_school_students','hive_school_experiences');")" = 2
+          test "$(psql_q "select count(*) from pg_proc where proname in ('hive_prepare_stateless_dispatch','hive_abort_stateless_dispatch','hive_list_dispatchable_compute_tasks');")" = 3
+          test "$(psql_q "select count(*) from public.hive_list_dispatchable_compute_tasks(20);")" = 0
+          test "$(psql_q "select count(*) from public.hive_select_compute_node('{\"class\":\"cpu\",\"required_capabilities\":[\"cpu\"]}'::jsonb);")" = 0
+          echo 'S5_CPU00_PREPARED_UNSCHEDULABLE=PASS'
+          echo 'S5_SCHOOL_MIGRATION_PRESERVED=PASS'
+          echo 'S5_COMPUTE_LEASE_AND_DISPATCH_SCHEMA=PASS'
+          echo 'S5_PRODUCTION_NEON_MUTATIONS=ZERO'
+      - name: Independently test deny, exact token and no-replay with ephemeral-only rows
+        shell: bash
+        env:
+          PG_CONTAINER: ${{ job.services.pg.id }}
+        run: |
+          set -euo pipefail
+          test -n "$PG_CONTAINER"
+          docker exec -i "$PG_CONTAINER" psql -U hive -d hive_s5 \
+            -v ON_ERROR_STOP=1 < queen-private/ops/queen/compute/tests/S5_4_DISPATCH_NEGATIVE_FIXTURE.sql
+          test "$(docker exec "$PG_CONTAINER" psql -U hive -d hive_s5 -Atc "select count(*) from tasks where title like 'S5 isolated%';")" = 0
+          test "$(docker exec "$PG_CONTAINER" psql -U hive -d hive_s5 -Atc "select count(*) from nodes where name='hive-compute-node-00' and coalesce((metadata->>'certified')::boolean,false)=true;")" = 0
+          echo 'S5_ISOLATED_FAIL_CLOSED_LEASE_REPLAY_NEGATIVE_QA=PASS'
+          echo 'S5_EPHEMERAL_CERTIFIED_NODE_ROWS_ROLLED_BACK=PASS'
+          echo 'S5_PRODUCTION_NEON_MODIFICATIONS=ZERO'
+      - name: Clean private source
+        if: always()
+        run: rm -rf queen-private /tmp/s5-migration-output.log
