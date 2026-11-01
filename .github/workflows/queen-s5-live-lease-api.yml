@@ -1,0 +1,109 @@
+name: Queen S5 Live One Shot Lease API
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-live-lease-api.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-live-lease-api.yml']
+permissions:
+  contents: read
+concurrency:
+  group: queen-s5-lease-pages
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      PRIVATE_SHA: 25f074d7e1dd567fe6b91b4c2053dd0a0b2f0fe1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Exact authority and deny secretless unauthorized lease reads
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node --check source/cloudflare/functions/api/queen-s5-job-lease.js
+          node source/ops/queen/governance/validate-s0-truth.mjs
+          node source/ops/queen/razzo/validate-s4-closeout.mjs
+          node source/ops/queen/compute/validate-s5-stateless-canary.mjs
+          node source/ops/queen/compute/build-s5-production-migration.mjs --check
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('source/cloudflare/functions/api/queen-s5-job-lease.js').read_text()
+          assert "request.headers.get('Cf-Access-Jwt-Assertion')" in p
+          assert "request.method!=='GET'" in p
+          assert '30*60*1000' in p
+          assert "lease.status!=='DISPATCH_PREPARED'" in p
+          assert "lease.node_certified!==false" in p
+          assert "lease.product_writes!==false" in p
+          assert "lease.paid_fallback!==false" in p
+          assert 'return response({ok:true' in p
+          assert "Authorization" not in p.replace("No fallback Authorization","")
+          print('S5_AUTHENTICATED_LEASE_SCOPE_AND_EXPIRY=PASS')
+          PY
+      - name: Cleanup
+        if: always()
+        run: rm -rf source
+  deploy:
+    needs: preflight
+    if: github.event_name=='push' && github.ref=='refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      PRIVATE_SHA: 25f074d7e1dd567fe6b91b4c2053dd0a0b2f0fe1
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: source
+      - name: Require pre-existing auth and deploy exact Queen source
+        working-directory: source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          test "$(git rev-parse HEAD)" = "$PRIVATE_SHA"
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/s5cf-config.log 2>&1
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main >/tmp/s5cf-deploy.log 2>&1 || { tail -n 30 /tmp/s5cf-deploy.log; exit 50; }
+          echo 'S5_QUEEN_AUTH_LEASE_EDGE_DEPLOY=PASS'
+      - name: Probe protected route before lease exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";url="${url%/}"
+          code=''
+          for i in {1..12}; do
+            code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/s5lease.json" -w '%{http_code}' -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" "$url/api/queen-s5-job-lease" || true)"
+            if [ "$code" = 409 ] && jq -e '.error=="no_authorized_lease"' "$RUNNER_TEMP/s5lease.json" >/dev/null 2>&1; then break; fi
+            sleep 4
+          done
+          test "$code" = 409
+          jq -e '.ok==false and .error=="no_authorized_lease"' "$RUNNER_TEMP/s5lease.json" >/dev/null
+          echo 'S5_AUTH_ACCESS_ALLOW_AND_NO_UNAUTHORIZED_TASK=PASS'
+      - name: Cleanup
+        if: always()
+        run: rm -rf source "$RUNNER_TEMP/s5lease.json"
