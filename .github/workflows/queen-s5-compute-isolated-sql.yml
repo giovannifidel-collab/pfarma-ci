@@ -28,7 +28,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      PRIVATE_SHA: 02f5c6a775d9135c135f27b3cb9556fde2f9338a
+      PRIVATE_SHA: c4daa7a3f13cfb37846f3cfc351b1db062b0d194
     steps:
       - uses: actions/checkout@v4
         with:
