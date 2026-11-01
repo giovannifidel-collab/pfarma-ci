@@ -21,7 +21,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 12
     env:
-      QUEEN_SOURCE_SHA: 45730f2595e8e0af7c5fc2a5a770d7df5ed058e6
+      QUEEN_SOURCE_SHA: bd35fc205743dc0988de98858db84cfcf85745b5
       CPU00_SOURCE_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
     steps:
       - uses: actions/checkout@v4
