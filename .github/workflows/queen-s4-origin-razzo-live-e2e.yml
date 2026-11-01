@@ -1,0 +1,169 @@
+name: Queen S4 Origin-to-RAZZO Live Shadow E2E
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-origin-razzo-live-e2e.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-origin-razzo-live-e2e.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s4-origin-live-e2e
+  cancel-in-progress: false
+
+jobs:
+  certify-source:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 20
+    env:
+      PRIVATE_SHA: bedb99e2b742244c9be6b46eb382fb395918c377
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact approved Queen and canonical S3/S4 route tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node --check queen-source/cloudflare/functions/api/queen-razzo-shadow.js
+          node queen-source/ops/queen/razzo/validate-s4-live-runtime-route.mjs
+          node queen-source/ops/queen/razzo/validate-s4-live-attestation.mjs
+          node queen-source/ops/queen/delegation/validate-s3-delegation.mjs
+          echo 'QUEEN_S4_ORIGIN_SOURCE_AND_POLICY=PASS'
+      - name: Pull existing Cloudflare Pages config
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/s4-origin-pages.log 2>&1
+          test -f wrangler.toml -o -f wrangler.json -o -f wrangler.jsonc
+      - name: Preview S4 live route without invoking any worker
+        if: github.event_name == 'pull_request'
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch s4-origin-preview >/tmp/s4-origin-preview.log 2>&1 || { tail -n 35 /tmp/s4-origin-preview.log; exit 45; }
+          echo 'S4_QUEEN_ORIGIN_PREVIEW=PASS'
+          echo 'PROJECT_MUTATION_PERFORMED=false'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source
+
+  live-queen-to-razzo:
+    needs: certify-source
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 20
+    env:
+      PRIVATE_SHA: bedb99e2b742244c9be6b46eb382fb395918c377
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - name: Require current source and existing certified authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          test -n "${CF_ACCESS_CLIENT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${GH_TOKEN:-}"
+      - name: Download existing Pages binding and deploy only approved private SHA
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/s4-live-cf.log 2>&1
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main >/tmp/s4-origin-prod.log 2>&1 || { tail -n 35 /tmp/s4-origin-prod.log; exit 46; }
+          echo 'QUEEN_S4_NEW_ORIGIN_PRODUCTION=PASS'
+      - name: Dispatch genuinely new Queen authorized HIVE Field shadow mission
+        id: send
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; base="${base%/}"
+          headers=(-H 'content-type: application/json' -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          for try in {1..15}; do
+            code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/s4-origin-preflight.json" -w '%{http_code}' "${headers[@]}" "$base/api/queen-s4-evidence" || true)"
+            if [[ "$code" = '200' ]] && jq -e '.receipt.status=="COMPLETE"' "$RUNNER_TEMP/s4-origin-preflight.json" >/dev/null; then break; fi
+            sleep 3
+          done
+          test "$code" = 200
+          jq -e '.receipt.status=="COMPLETE"' "$RUNNER_TEMP/s4-origin-preflight.json" >/dev/null
+          code="$(curl -sS --max-time 80 -o "$RUNNER_TEMP/s4-origin-response.json" -w '%{http_code}' "${headers[@]}" -X POST \
+             --data '{"action":"dispatch-shadow","project_id":"hive-field","goal":"Certify a new Queen initiated source locked RAZZO analysis without project writes or worker dispatch."}' \
+             "$base/api/queen-razzo-shadow")"
+          if [[ "$code" != '202' ]]; then jq -c '{ok,error}' "$RUNNER_TEMP/s4-origin-response.json"; echo "S4_ORIGIN_HTTP=$code"; exit 61; fi
+          jq -e '.ok==true and .route=="queen-authorized-razzo-shadow" and .verified==false and .dispatch_status=="accepted_pending_independent_evidence" and .project_mutation_performed==false and .paid_fallback==false' "$RUNNER_TEMP/s4-origin-response.json" >/dev/null
+          task="$(jq -r '.task_id' "$RUNNER_TEMP/s4-origin-response.json")"
+          test -n "$task"
+          echo "task_id=$task" >> "$GITHUB_OUTPUT"
+          echo 'QUEEN_S4_REAL_ORIGIN_DISPATCH=ACCEPTED_NOT_COMPLETED'
+      - name: Independently await matching GitHub receiver and prove zero project mutation
+        shell: bash
+        env:
+          TASK_ID: ${{ steps.send.outputs.task_id }}
+        run: |
+          set -euo pipefail
+          test -n "$TASK_ID"
+          receiver=''
+          for attempt in {1..35}; do
+            receiver="$(gh api 'repos/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s4-live-shadow-receiver.yml/runs?event=repository_dispatch&per_page=45' \
+              --jq '[.workflow_runs[] | select(.display_title | contains(env.TASK_ID))][0].id // empty' || true)"
+            if [[ -n "$receiver" ]]; then break; fi
+            sleep 3
+          done
+          test -n "$receiver" || { echo 'S4_REAL_RUN_NOT_FOUND'; exit 70; }
+          for attempt in {1..50}; do
+            status="$(gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$receiver" --jq '.status')"
+            [[ "$status" == completed ]] && break
+            sleep 3
+          done
+          status="$(gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$receiver" --jq '.conclusion')"
+          test "$status" = success || { echo 'QUEEN_S4_REAL_SHADOW_NOT_VERIFIED'; exit 71; }
+          gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$receiver/jobs?per_page=100" \
+            --jq '.jobs[] | select(.name=="contract") | .steps[] | [.name,.conclusion] | @tsv' \
+            > "$RUNNER_TEMP/s4-receiver-steps.tsv"
+          for expected in 'Require exact authenticated Queen contract, or PR static smoke' 'Verify target main still equals Queen delegated exact SHA' 'Checkout read-only target project at delegated exact SHA' 'Execute real existing RAZZO kernel shadow under Queen' 'Publish only sanitized shadow evidence'; do
+            grep -F "$expected" "$RUNNER_TEMP/s4-receiver-steps.tsv" | grep -Fq $'\tsuccess'
+          done
+          count="$(gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$receiver/artifacts?per_page=100" --jq --arg task "$TASK_ID" '[.artifacts[] | select(.name==("queen-s4-shadow-"+$task))] | length')"
+          test "$count" = 1
+          echo 'QUEEN_S4_REAL_ORIGIN_TO_RAZZO_SHADOW_E2E=PASS'
+          echo 'RAZZO_EXISTING_KERNEL_EXECUTED=PASS'
+          echo 'PROJECT_WRITES=false'
+          echo 'WORKER_DISPATCH=false'
+          echo 'PAID_FALLBACK=false'
+      - name: Purge ephemeral private checkout and responses
+        if: always()
+        run: rm -rf queen-source "$RUNNER_TEMP/s4-origin-preflight.json" "$RUNNER_TEMP/s4-origin-response.json" "$RUNNER_TEMP/s4-receiver-steps.tsv"
