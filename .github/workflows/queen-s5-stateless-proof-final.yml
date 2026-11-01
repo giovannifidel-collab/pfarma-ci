@@ -14,7 +14,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 10
     env:
-      PRIVATE_SHA: a6faeb5cdab4883290556b5bd8cb6a251ef158d7
+      PRIVATE_SHA: 1f13f0ee43a463433af181a7b7d0d7dba6cb3d79
       CPU_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
       CPU_RUN_ID: '41345870248'
       RELAY_RUN_ID: '41345849589'
