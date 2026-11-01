@@ -16,7 +16,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 15
     env:
-      QUEEN_S4_CANDIDATE_SHA: cd00dbb1e95d7fcd6b1c691560786685d5c7ffa3
+      QUEEN_S4_CANDIDATE_SHA: 60c96f292b8603ff8aab5ac926e648445a729c29
       GH_AUDIT_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
