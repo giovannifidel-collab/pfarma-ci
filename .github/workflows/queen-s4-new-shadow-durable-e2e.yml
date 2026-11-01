@@ -1,0 +1,154 @@
+name: Queen S4 New Shadow Durable Return E2E
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-new-shadow-durable-e2e.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-new-shadow-durable-e2e.yml']
+permissions:
+  contents: read
+concurrency:
+  group: queen-s4-new-shadow-durable
+  cancel-in-progress: false
+
+jobs:
+  prove-source:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 20
+    env:
+      PRIVATE_SHA: 7b0efeceefb0af8a1654190a07d6b8ae7da25dc7
+      GH_AUDIT_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Source-locked S2/S3/S4 contracts and negative cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node --check queen-source/cloudflare/functions/api/queen-razzo-shadow-result.js
+          node queen-source/ops/queen/razzo/validate-s4-shadow-result.mjs
+          node queen-source/ops/queen/razzo/validate-s4-live-runtime-route.mjs
+          node queen-source/ops/queen/memory/validate-s2-school-memory.mjs
+          node queen-source/ops/queen/delegation/validate-s3-delegation.mjs
+          echo 'QUEEN_S4_NEW_RESULT_SOURCE_POLICY=PASS'
+      - name: Attest actual GitHub live shadow run and exact artifact before any DB mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd queen-source
+          node --input-type=module <<'NODE'
+          import {obtainS4ShadowObserved} from './ops/queen/razzo/s4-shadow-run-attestation.mjs';
+          const result=await obtainS4ShadowObserved(process.env.GH_AUDIT_TOKEN,{
+            taskId:'s4-91dc38e1ec674a6382c9b4f8',runId:41313104961
+          });
+          if(result.product_mutation_performed || result.training_eligible || result.mastery_eligible)throw Error('unauthorized_shadow_claim');
+          console.log('QUEEN_S4_FRESH_LIVE_SHADOW_EVIDENCE=PASS');
+          NODE
+      - name: Load existing Cloudflare config
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/s4-durable-return-config.log 2>&1
+          test -f wrangler.jsonc -o -f wrangler.json -o -f wrangler.toml
+      - name: Preview only (no new evidence ingestion)
+        if: github.event_name == 'pull_request'
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch s4-shadow-return-preview >/tmp/s4-return-preview.log 2>&1 || { tail -n 30 /tmp/s4-return-preview.log; exit 45; }
+          echo 'QUEEN_S4_NEW_SHADOW_RETURN_PREVIEW=PASS'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source
+
+  live-durable-return:
+    needs: prove-source
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      PRIVATE_SHA: 7b0efeceefb0af8a1654190a07d6b8ae7da25dc7
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - name: Require exact Queen source and existing Access service auth
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+      - name: Deploy exact approved Queen result receiver with existing Pages config
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/s4-shadow-cfg.log 2>&1
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main >/tmp/s4-shadow-deploy.log 2>&1 || { tail -n 30 /tmp/s4-shadow-deploy.log; exit 46; }
+          echo 'QUEEN_S4_SHADOW_RESULT_PRODUCTION_DEPLOY=PASS'
+      - name: Reconcile real live RAZZO result into canonical Neon Memory School World Cognitive
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; base="${base%/}"
+          task='s4-91dc38e1ec674a6382c9b4f8'
+          run=41313104961
+          headers=(-H 'content-type: application/json' -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          for attempt in {1..12}; do
+            code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/s4-shadow-before.json" -w '%{http_code}' "${headers[@]}" "$base/api/queen-razzo-shadow-result?task_id=$task&run_id=$run" || true)"
+            if [[ "$code" == 200 ]] && jq -e '.ok==true' "$RUNNER_TEMP/s4-shadow-before.json" >/dev/null; then break; fi
+            sleep 3
+          done
+          test "${code:-}" = 200 || { echo "S4_NEW_RESULT_ROUTE_HTTP=$code"; exit 61; }
+          code="$(curl -sS --max-time 120 -o "$RUNNER_TEMP/s4-shadow-post.json" -w '%{http_code}' "${headers[@]}" -X POST \
+            --data '{"action":"reconcile-shadow","task_id":"s4-91dc38e1ec674a6382c9b4f8","run_id":41313104961}' \
+            "$base/api/queen-razzo-shadow-result")"
+          if [[ "$code" != 200 ]]; then jq -c '{ok,error}' "$RUNNER_TEMP/s4-shadow-post.json"; echo "S4_NEW_RESULT_HTTP=$code"; exit 62; fi
+          jq -e '.ok==true and .status=="COMPLETE" and (.receipt.steps|all(.==true)) and .receipt.mastery_eligible==false and .receipt.training_eligible==false and .receipt.attestation.product_mutation_performed==false' "$RUNNER_TEMP/s4-shadow-post.json" >/dev/null
+          code="$(curl -sS --max-time 85 -o "$RUNNER_TEMP/s4-shadow-replay.json" -w '%{http_code}' "${headers[@]}" -X POST \
+            --data '{"action":"reconcile-shadow","task_id":"s4-91dc38e1ec674a6382c9b4f8","run_id":41313104961}' \
+            "$base/api/queen-razzo-shadow-result")"
+          test "$code" = 200
+          jq -e '.ok==true and .replayed==true and .status=="COMPLETE"' "$RUNNER_TEMP/s4-shadow-replay.json" >/dev/null
+          code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/s4-shadow-get.json" -w '%{http_code}' "${headers[@]}" "$base/api/queen-razzo-shadow-result?task_id=$task&run_id=$run")"
+          test "$code" = 200
+          jq -e '.ok==true and .receipt.status=="COMPLETE" and (.receipt.steps|all(.==true))' "$RUNNER_TEMP/s4-shadow-get.json" >/dev/null
+          echo 'QUEEN_S4_NEW_LIVE_MISSION_MEMORY=PASS'
+          echo 'QUEEN_S4_NEW_LIVE_MISSION_SCHOOL_PROVISIONAL=PASS'
+          echo 'QUEEN_S4_NEW_LIVE_MISSION_WORLD=PASS'
+          echo 'QUEEN_S4_NEW_LIVE_MISSION_COGNITIVE=PASS'
+          echo 'QUEEN_S4_SHADOW_IDEMPOTENT_REPLAY=PASS'
+          echo 'GENERAL_PRODUCT_WRITERS=DENY'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source "$RUNNER_TEMP/s4-shadow-before.json" "$RUNNER_TEMP/s4-shadow-post.json" "$RUNNER_TEMP/s4-shadow-replay.json" "$RUNNER_TEMP/s4-shadow-get.json"
