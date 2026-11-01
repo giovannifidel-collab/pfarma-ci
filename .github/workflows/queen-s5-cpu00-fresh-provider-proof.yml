@@ -1,0 +1,180 @@
+name: Queen S5 CPU00 Fresh Bounded Provider Proof
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-cpu00-fresh-provider-proof.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-cpu00-fresh-provider-proof.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s5-cpu00-single-certification
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      PRIVATE_PROBE_SHA: d45a2110c5ae0c507161054001fee74ef6bad152
+      CPU00_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_PROBE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-private
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-compute-node-00
+          ref: ${{ env.CPU00_SHA }}
+          path: cpu00-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Source-locked S0-S5 policy and CPU00 allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-private rev-parse HEAD)" = "$PRIVATE_PROBE_SHA"
+          test "$(git -C cpu00-source rev-parse HEAD)" = "$CPU00_SHA"
+          node queen-private/ops/queen/governance/validate-s0-truth.mjs
+          node queen-private/ops/queen/core/validate-s1-core.mjs
+          node queen-private/ops/queen/memory/validate-s2-school-memory.mjs
+          node queen-private/ops/queen/delegation/validate-s3-delegation.mjs
+          node queen-private/ops/queen/razzo/validate-s4-closeout.mjs
+          node queen-private/ops/queen/compute/validate-s5-staging.mjs
+          node queen-private/ops/queen/compute/validate-s5-cpu00-probe.mjs
+          python - <<'PY'
+          from pathlib import Path
+          wf=Path('cpu00-source/.github/workflows/hive-worker.yml').read_text()
+          assert 'id-token: write' in wf
+          assert 'selftest' in wf
+          assert "if: inputs.mode == 'direct'" in wf
+          assert "if: github.event_name == 'workflow_dispatch'" in wf
+          assert 'HIVE dispatched CPU task' in wf
+          assert 'hive-cpu00-result-' in wf
+          assert 'Upload task evidence' in wf
+          print('S5_CPU00_EXISTING_WORKFLOW_NO_REBUILD=PASS')
+          PY
+          echo 'S5_CPU00_STATIC_SAFE_PROBE=PASS'
+      - name: Never dispatch CPU00 from an unmerged pull request
+        if: github.event_name == 'pull_request'
+        run: echo 'S5_CPU00_PROVIDER_DISPATCH=NOT_AUTHORIZED_IN_PR'
+
+  fresh-provider-run:
+    needs: preflight
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CPU_REPO: giovannifidel-collab/hive-compute-node-00
+      CPU00_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+    steps:
+      - name: Verify CPU00 current HEAD, dispatch only bounded selftest
+        id: dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          head="$(gh api "repos/$CPU_REPO/branches/main" --jq '.commit.sha')"
+          test "$head" = "$CPU00_SHA" || { echo 'S5_CPU00_SOURCE_DRIFT_DENY'; exit 51; }
+          nonce="s5cpu00-${GITHUB_RUN_ID}"
+          start="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "nonce=$nonce" >> "$GITHUB_OUTPUT"
+          echo "start=$start" >> "$GITHUB_OUTPUT"
+          gh workflow run hive-worker.yml --repo "$CPU_REPO" --ref main \
+            -f mode=direct -f task_type=selftest -f job_id="$nonce" \
+            -f payload_json='{"rounds":50000}' -f shard=0
+          echo 'S5_CPU00_FRESH_PROBE_DISPATCHED_NOT_YET_CERTIFIED'
+      - name: Match unique new CPU00 run and require completed success
+        id: result
+        shell: bash
+        env:
+          START_AT: ${{ steps.dispatch.outputs.start }}
+        run: |
+          set -euo pipefail
+          run=''
+          for n in {1..30}; do
+            candidates="$(gh api "repos/$CPU_REPO/actions/workflows/hive-worker.yml/runs?event=workflow_dispatch&per_page=30" | jq -r --arg from "$START_AT" --arg sha "$CPU00_SHA" '[.workflow_runs[] | select(.created_at >= $from and .head_sha==$sha and .head_branch=="main")] | .[].id')"
+            count="$(printf '%s\n' "$candidates" | sed '/^$/d' | wc -l)"
+            if [ "$count" -gt 1 ]; then echo 'S5_CPU00_AMBIGUOUS_PROVIDER_RUN_DENY'; exit 53; fi
+            if [ "$count" -eq 1 ]; then run="$(printf '%s\n' "$candidates" | head -n 1)"; break; fi
+            sleep 3
+          done
+          test -n "$run" || { echo 'S5_CPU00_RUN_NOT_OBSERVED'; exit 54; }
+          echo "run_id=$run" >> "$GITHUB_OUTPUT"
+          for i in {1..80}; do
+            status="$(gh api "repos/$CPU_REPO/actions/runs/$run" --jq '.status')"
+            [ "$status" = completed ] && break
+            sleep 4
+          done
+          test "$status" = completed || { echo 'S5_CPU00_RUN_NOT_COMPLETED'; exit 55; }
+          conclusion="$(gh api "repos/$CPU_REPO/actions/runs/$run" --jq '.conclusion')"
+          test "$conclusion" = success || { echo "S5_CPU00_WORKER_RUN_$conclusion"; exit 56; }
+          echo 'S5_CPU00_FRESH_PROVIDER_RUN=PASS'
+      - name: Collect CPU00 result and independently verify nonce, OIDC, SHA-256
+        shell: bash
+        env:
+          PROVIDER_RUN: ${{ steps.result.outputs.run_id }}
+          NONCE: ${{ steps.dispatch.outputs.nonce }}
+        run: |
+          set -euo pipefail
+          gh run download "$PROVIDER_RUN" --repo "$CPU_REPO" \
+            --name "hive-cpu00-result-$PROVIDER_RUN" --dir "$RUNNER_TEMP/cpu00"
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'cpu00'
+          data=json.loads((root/'result.json').read_text())
+          oidc=json.loads((root/'oidc-claims.json').read_text())
+          assert data['node_id']=='hive-compute-node-00'
+          assert data['provider']=='github-actions'
+          assert data['task_type']=='selftest'
+          assert data['job_id']==os.environ['NONCE']
+          assert data['status']=='done'
+          assert data['provenance']['repository']==os.environ['CPU_REPO']
+          assert data['provenance']['sha']==os.environ['CPU00_SHA']
+          assert str(data['provenance']['run_id'])==os.environ['PROVIDER_RUN']
+          assert data['provenance']['ref']=='refs/heads/main'
+          assert data['output']['computation']['rounds']==50000
+          assert all(data['output']['checks'].values())
+          digest=data.pop('result_sha256')
+          raw=json.dumps(data,sort_keys=True,separators=(',',':')).encode()
+          assert hashlib.sha256(raw).hexdigest()==digest
+          assert oidc['verified_by_runner_request'] is True
+          assert all(oidc['checks'].values())
+          assert oidc['claims']['repository']==os.environ['CPU_REPO']
+          assert str(oidc['claims']['run_id'])==os.environ['PROVIDER_RUN']
+          assert oidc['claims']['sha']==os.environ['CPU00_SHA']
+          assert oidc['claims']['workflow_ref']=='giovannifidel-collab/hive-compute-node-00/.github/workflows/hive-worker.yml@refs/heads/main'
+          edge=json.loads((root/'hive-identity.json').read_text())
+          if edge.get('ok') is True and edge.get('identity')=='verified':
+            print('S5_CPU00_EDGE_OIDC_IDENTITY=PASS')
+          else:
+            print('S5_CPU00_EDGE_OIDC_IDENTITY=NOT_CERTIFIED')
+          print('S5_CPU00_GITHUB_OIDC_SELF_CLAIMS=PASS')
+          print('S5_CPU00_BOUND_SELFTEST_RESULT_SHA256=PASS')
+          print('S5_CPU00_LIVE_NEON_HEARTBEAT=NOT_CERTIFIED')
+          print('S5_CPU00_PRODUCTION_SCHEDULABILITY=DENY')
+          PY
+      - name: Confirm HIVE compute task schema still fail closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'S5_CPU00_PROVIDER_RUN_IS_CERTIFICATION_PROBE_ONLY'
+          echo 'S5_NO_LIVE_NEON_SCHEMA_MUTATION_OR_CPU00_CERTIFICATION'
+          echo 'PAID_FALLBACK=false'
+      - name: Remove local artifact copy
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/cpu00"
