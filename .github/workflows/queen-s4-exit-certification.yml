@@ -1,0 +1,146 @@
+name: Queen S4 Authoritative Exit Certification
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-exit-certification.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-exit-certification.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      QUEEN_S4_CANDIDATE_SHA: 60c96f292b8603ff8aab5ac926e648445a729c29
+      GH_AUDIT_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_S4_CANDIDATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-private
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/pfarma-ci
+          ref: main
+          persist-credentials: false
+          path: public-main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify source pin and all canonical exit invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-private rev-parse HEAD)" = "$QUEEN_S4_CANDIDATE_SHA"
+          node queen-private/ops/queen/governance/validate-s0-truth.mjs
+          node queen-private/ops/queen/core/validate-s1-core.mjs
+          node queen-private/ops/queen/memory/validate-s2-school-memory.mjs
+          node queen-private/ops/queen/delegation/validate-s3-delegation.mjs
+          node queen-private/ops/queen/razzo/validate-s4-razzo-shadow.mjs
+          node queen-private/ops/queen/razzo/validate-s4-razzo-route.mjs
+          node queen-private/ops/queen/razzo/validate-s4-evidence.mjs
+          node queen-private/ops/queen/razzo/validate-s4-live-attestation.mjs
+          node queen-private/ops/queen/razzo/validate-s4-live-runtime-route.mjs
+          node queen-private/ops/queen/razzo/validate-s4-shadow-result.mjs
+          node queen-private/ops/queen/razzo/validate-s4-closeout.mjs
+          echo 'QUEEN_S0_S4_CLOSEOUT_REGRESSION=PASS'
+      - name: Verify completed GitHub proof chain and exact bounded PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_AUDIT_TOKEN:-}"
+          node --input-type=module <<'NODE'
+          import {obtainS4ShadowObserved} from './queen-private/ops/queen/razzo/s4-shadow-run-attestation.mjs';
+          import {obtainS4GitHubAttestation} from './queen-private/ops/queen/razzo/s4-live-attestation.mjs';
+          const token=process.env.GH_AUDIT_TOKEN;
+          const canary=await obtainS4GitHubAttestation(token);
+          if(canary.candidate_sha!=='efbaf4cf7aa621ac4fdaaf62d2bd3b648f33357a'||
+             canary.training_eligible!==false||
+             canary.external_product_execution_authorized!==false)throw Error('canary_truth_failed');
+          const actual=await obtainS4ShadowObserved(token,{
+            taskId:'s4-91dc38e1ec674a6382c9b4f8',runId:41313104961
+          });
+          if(actual.product_mutation_performed!==false||
+             actual.workers_mutating_code!==0)throw Error('live_shadow_truth_failed');
+          const ids=[41312146193,41313049988,41327616793,41242786577,41242956385,41243694696];
+          for(const id of ids){
+            const r=await fetch('https://api.github.com/repos/giovannifidel-collab/pfarma-ci/actions/runs/'+id,{
+              headers:{authorization:'Bearer '+token,accept:'application/vnd.github+json',
+                'user-agent':'Queen-S4-Exit','x-github-api-version':'2022-11-28'}
+            });
+            if(!r.ok)throw Error('missing_run_'+id);
+            const j=await r.json();
+            if(j.status!=='completed'||j.conclusion!=='success')throw Error('failed_run_'+id);
+          }
+          console.log('QUEEN_S4_INDEPENDENT_GITHUB_PROOF_CHAIN=PASS');
+          NODE
+      - name: Confirm all autonomous legacy RAZZO write-dispatch remains disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          root=Path('public-main/.github/workflows')
+          data=[(root/n).read_text() for n in [
+            'razzo-v7-scheduler.yml','razzo-v7-autonomous-product-trigger.yml',
+            'razzo-v7-event-driven-continuation.yml'
+          ]]
+          required=[
+            'QUEEN_S4_LEGACY_SCHEDULER=WATCHDOG_ONLY_NO_DISPATCH',
+            'QUEEN_S4_LEGACY_CHIUDI_MACROCICLO=WATCHDOG_ONLY_NO_DISPATCH',
+            'QUEEN_S4_LEGACY_CONTINUATION=EVIDENCE_ONLY_NO_DISPATCH'
+          ]
+          for text,marker in zip(data,required):
+            assert marker in text
+            assert 'actions: write' not in text
+            assert 'gh workflow run razzo-v7-' not in text
+            assert ' -X POST ' not in text
+          source=(root/'razzo-v7-ten-shard-trial.yml').read_text()
+          assert 'QUEEN_S4_LEGACY_PRODUCT_WRITE=DENY' in source
+          assert 'exit 78' in source
+          print('QUEEN_S4_LEGACY_AUTONOMOUS_DISPATCH=DENY')
+          print('QUEEN_S4_UNCERTIFIED_PRODUCT_WRITERS=DENY')
+          PY
+      - name: Read-only verify completed live Neon and Queen memory feedback
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CF_ACCESS_CLIENT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; base="${base%/}"
+          headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          code="$(curl --silent --show-error --max-time 45 -o "$RUNNER_TEMP/s4-exit-live.json" -w '%{http_code}' "${headers[@]}" "$base/api/queen-razzo-shadow-result?task_id=s4-91dc38e1ec674a6382c9b4f8&run_id=41313104961")"
+          test "$code" = 200
+          jq -e '.ok == true and .receipt.status=="COMPLETE" and .receipt.task_id=="s4-91dc38e1ec674a6382c9b4f8" and .receipt.attestation.product_mutation_performed==false and .receipt.training_eligible==false and .receipt.mastery_eligible==false and (.receipt.steps|all(.==true))' "$RUNNER_TEMP/s4-exit-live.json" >/dev/null
+          code="$(curl --silent --show-error --max-time 45 -o "$RUNNER_TEMP/s4-exit-canary.json" -w '%{http_code}' "${headers[@]}" "$base/api/queen-s4-evidence")"
+          test "$code" = 200
+          jq -e '.ok==true and .receipt.status=="COMPLETE" and .receipt.training_eligible==false and (.receipt.steps|all(.==true))' "$RUNNER_TEMP/s4-exit-canary.json" >/dev/null
+          echo 'QUEEN_S4_DURABLE_NEON_SCHOOL_MEMORY_WORLD_COGNITIVE=PASS'
+          echo 'QUEEN_S4_REPLAY_IDEMPOTENCE=PRIOR_LIVE_PASS'
+      - name: Report scope of certified S4 exit
+        if: success()
+        run: |
+          {
+            echo '## QUEEN S4 — certified scoped exit'
+            echo '- Queen→RAZZO shadow mission+delegation+kernel+independent evidence: PASS'
+            echo '- Bounded two-maker internal canary + QA + private PR + merge/replay: PASS'
+            echo '- Live durable feedback Memory/School/World/Cognitive: PASS'
+            echo '- Legacy duplicate scheduler authority: DENY'
+            echo '- Other product writers and strategy capabilities: DENY pending project-specific authorization'
+            echo '- Incremental cost and paid fallback: zero / false'
+            echo '- Status: CLOSED_CERTIFIED_SCOPED (not general product-worker rollout)'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Clean up all authenticated source and responses
+        if: always()
+        run: rm -rf queen-private public-main "$RUNNER_TEMP/s4-exit-live.json" "$RUNNER_TEMP/s4-exit-canary.json"
