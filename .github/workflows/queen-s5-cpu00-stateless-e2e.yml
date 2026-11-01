@@ -1,0 +1,237 @@
+name: Queen S5 CPU00 Stateless Provider E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-cpu00-stateless-e2e.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-cpu00-stateless-e2e.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s5-cpu00-stateless-one-shot
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      QUEEN_SOURCE_SHA: 45730f2595e8e0af7c5fc2a5a770d7df5ed058e6
+      CPU00_SOURCE_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-private
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-compute-node-00
+          ref: ${{ env.CPU00_SOURCE_SHA }}
+          persist-credentials: false
+          path: cpu00
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify owner source and deny mutable or arbitrary workload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-private rev-parse HEAD)" = "$QUEEN_SOURCE_SHA"
+          test "$(git -C cpu00 rev-parse HEAD)" = "$CPU00_SOURCE_SHA"
+          node queen-private/ops/queen/razzo/validate-s4-closeout.mjs
+          node queen-private/ops/queen/compute/validate-s5-staging.mjs
+          node queen-private/ops/queen/compute/validate-s5-stateless-canary.mjs
+          python - <<'PY'
+          import base64,json,sys
+          from pathlib import Path
+          sys.path.insert(0,'cpu00/worker')
+          from run_job_envelope import decode_envelope
+          source=Path('cpu00/.github/workflows/hive-envelope-worker.yml').read_text()
+          assert 'workflow_dispatch:' in source
+          assert 'id-token: write' in source
+          assert 'Upload result.json directly' in source
+          assert 'CF_ACCESS_CLIENT_SECRET' not in source
+          assert 'HIVE_DATA_API_URL' not in source
+          base={'schema_version':'1.0','job_id':'s5-negative','project_slug':'hive',
+            'workload':{'name':'selftest','version':'1'},
+            'requirements':{'class':'cpu','required_capabilities':['cpu','github-actions']},
+            'source':{'repository':'giovannifidel-collab/hive-compute-node-00',
+                      'commit_or_version':'95d898d3e229eee22959726d5abd918ac1c5688b'},
+            'inputs':[],'evidence_required':True}
+          def encode(e):
+            return base64.urlsafe_b64encode(json.dumps(e).encode()).decode().rstrip('=')
+          assert decode_envelope(encode(base))['job_id']=='s5-negative'
+          for mod in [{'workload':{'name':'arbitrary-shell','version':'1'}},
+                      {'requirements':{'class':'gpu'}},
+                      {'requirements':{'class':'cpu','required_capabilities':['unknown']}}]:
+            invalid={**base,**mod}
+            try:decode_envelope(encode(invalid))
+            except RuntimeError:continue
+            raise AssertionError('Unsafe workload accepted '+str(mod))
+          print('S5_SECRETLESS_CPU00_WORKLOAD_ALLOWLIST=PASS')
+          print('S5_ARBITRARY_WORKER_EXECUTION=DENY')
+          PY
+      - name: PR cannot activate provider execution
+        if: github.event_name == 'pull_request'
+        run: echo 'S5_NO_PROVIDER_EXECUTION_ON_UNMERGED_PR=PASS'
+
+  stateless-execution:
+    needs: preflight
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CPU_REPO: giovannifidel-collab/hive-compute-node-00
+      CPU_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Create Queen-approved bounded Job Envelope and dispatch exact CPU00 main
+        id: dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          observed="$(gh api "repos/$CPU_REPO/branches/main" --jq '.commit.sha')"
+          test "$observed" = "$CPU_SHA" || { echo 'S5_CPU00_SOURCE_MOVED_DENY'; exit 51; }
+          python - <<'PY'
+          import base64,json,os,uuid
+          job_id='s5-stateless-'+os.environ['GITHUB_RUN_ID']
+          task=str(uuid.uuid4())
+          attempt=str(uuid.uuid4())
+          envelope={
+            'schema_version':'1.0','job_id':job_id,
+            'project_slug':'hive','priority':50,
+            'workload':{'name':'selftest','version':'1'},
+            'requirements':{'class':'cpu','required_capabilities':['cpu','github-actions']},
+            'source':{'repository':os.environ['CPU_REPO'],'commit_or_version':os.environ['CPU_SHA']},
+            'inputs':[], 'parameters':{'rounds':50000},
+            'evidence_required':True, 'metadata':{'shard':0,'queen_s5':True}
+          }
+          encoded=base64.urlsafe_b64encode(json.dumps(envelope,separators=(',',':')).encode()).decode().rstrip('=')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+            f.write('task_id='+task+'\n')
+            f.write('attempt_token='+attempt+'\n')
+            f.write('job_id='+job_id+'\n')
+            f.write('envelope_b64='+encoded+'\n')
+          PY
+          echo "started_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          echo 'S5_PROVIDER_TASK_RECEIPT=NEW_UNTRUSTED'
+      - name: Dispatch exactly one CPU00 secretless worker execution
+        id: start
+        env:
+          TASK: ${{ steps.dispatch.outputs.task_id }}
+          ATTEMPT: ${{ steps.dispatch.outputs.attempt_token }}
+          ENVELOPE: ${{ steps.dispatch.outputs.envelope_b64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TASK"
+          test -n "$ATTEMPT"
+          test -n "$ENVELOPE"
+          gh workflow run hive-envelope-worker.yml --repo "$CPU_REPO" --ref main \
+            -f hive_task_id="$TASK" -f attempt_token="$ATTEMPT" -f envelope_b64="$ENVELOPE"
+          echo 'S5_SECRETLESS_GITHUB_WORKFLOW_DISPATCH=PASS'
+      - name: Locate unique provider run at exact worker SHA
+        id: match
+        shell: bash
+        env:
+          START: ${{ steps.dispatch.outputs.started_at }}
+        run: |
+          set -euo pipefail
+          run=''
+          for try in {1..30}; do
+            candidates="$(gh api "repos/$CPU_REPO/actions/workflows/hive-envelope-worker.yml/runs?event=workflow_dispatch&per_page=35" |
+              jq -r --arg start "$START" --arg sha "$CPU_SHA" '[.workflow_runs[]|select(.created_at >= $start and .head_sha==$sha and .head_branch=="main")]|.[].id')"
+            n="$(printf '%s\n' "$candidates" | sed '/^$/d' | wc -l)"
+            if [ "$n" -gt 1 ]; then echo 'S5_AMBIGUOUS_PROVIDER_RUN_DENY'; exit 52; fi
+            if [ "$n" = 1 ]; then run="$candidates"; break; fi
+            sleep 3
+          done
+          test -n "$run" || { echo 'S5_CPU00_RUN_MISSING'; exit 53; }
+          echo "run_id=$run" >> "$GITHUB_OUTPUT"
+          for i in {1..75}; do
+            state="$(gh api "repos/$CPU_REPO/actions/runs/$run" --jq '.status')"
+            if [ "$state" = completed ]; then break; fi
+            sleep 4
+          done
+          test "$state" = completed || { echo 'S5_CPU00_RUN_TIMEOUT'; exit 54; }
+          result="$(gh api "repos/$CPU_REPO/actions/runs/$run" --jq '.conclusion')"
+          test "$result" = success || { echo "S5_CPU00_PROVIDER_$result"; exit 55; }
+          jobs="$(gh api "repos/$CPU_REPO/actions/runs/$run/jobs?per_page=100")"
+          echo "$jobs" | jq -e '([.jobs[] | select(.name=="Execute HIVE Job Envelope" and .conclusion=="success")] | length)==1' >/dev/null
+          echo 'S5_STATLESS_PROVIDER_WORKFLOW=PASS'
+      - name: Collect provider evidence and verify exact task lease, source and seal
+        shell: bash
+        env:
+          RUN_ID: ${{ steps.match.outputs.run_id }}
+          TASK: ${{ steps.dispatch.outputs.task_id }}
+          ATTEMPT: ${{ steps.dispatch.outputs.attempt_token }}
+          EXPECT_JOB: ${{ steps.dispatch.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/s5cpu"
+          gh run download "$RUN_ID" --repo "$CPU_REPO" --dir "$RUNNER_TEMP/s5cpu"
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'s5cpu'
+          candidates=list(root.rglob('result.json'))
+          assert len(candidates)==1, f'ambiguous artifact count {len(candidates)}'
+          r=json.loads(candidates[0].read_text())
+          expected=r.pop('result_sha256')
+          actual=hashlib.sha256(json.dumps(r,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          assert actual==expected
+          assert r['schema_version']=='1.0'
+          assert r['status']=='completed'
+          assert r['exit_code']==0
+          assert r['job_id']==os.environ['EXPECT_JOB']
+          assert r['node']['node_id']=='hive-compute-node-00'
+          assert r['node']['provider']=='github-actions'
+          assert r['node']['provider_run_ref']==os.environ['RUN_ID']
+          assert r['provenance']['environment']['repository']==os.environ['CPU_REPO']
+          assert r['provenance']['environment']['sha']==os.environ['CPU_SHA']
+          assert str(r['provenance']['environment']['run_id'])==os.environ['RUN_ID']
+          assert r['provenance']['environment']['workflow_ref']==os.environ['CPU_REPO']+'/.github/workflows/hive-envelope-worker.yml@refs/heads/main'
+          assert r['provenance']['source_commit_or_version']==os.environ['CPU_SHA']
+          assert r['workload']=={'name':'selftest','version':'1'}
+          assert r['metadata']['project_slug']=='hive'
+          assert r['metadata']['dispatch_mode']=='stateless-artifact'
+          assert r['metadata']['hive_task_id']==os.environ['TASK']
+          assert r['metadata']['attempt_token']==os.environ['ATTEMPT']
+          envelope=r['metadata']['job_envelope']
+          assert envelope['job_id']==os.environ['EXPECT_JOB']
+          assert envelope['requirements']=={'class':'cpu','required_capabilities':['cpu','github-actions']}
+          assert envelope['parameters']=={'rounds':50000}
+          assert envelope['inputs']==[]
+          assert r['output']['computation']['rounds']==50000
+          assert all(r['output']['checks'].values())
+          oidc=list(root.rglob('oidc-claims.json'))
+          assert len(oidc)==1
+          proof=json.loads(oidc[0].read_text())
+          assert proof['verified_by_runner_request'] is True
+          assert all(proof['checks'].values())
+          assert str(proof['claims']['run_id'])==os.environ['RUN_ID']
+          assert proof['claims']['sha']==os.environ['CPU_SHA']
+          print('S5_EXACT_HIVE_JOB_ENVELOPE_SHA256=PASS')
+          print('S5_EXACT_ATTEMPT_IDENTITY_PROVENANCE=PASS')
+          print('S5_SHORT_LIVED_GITHUB_OIDC_RUNNER_SELF_CLAIMS=PASS')
+          print('S5_CPU00_WORKER_ACCESS_CREDENTIALS=NOT_REQUIRED')
+          print('S5_PRODUCT_WRITES=ZERO')
+          print('S5_PRODUCTION_NEON_MIGRATION=NOT_ATTEMPTED')
+          print('S5_CPU00_PRODUCTION_SCHEDULABILITY=DENY')
+          PY
+      - name: Purge ephemeral result
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/s5cpu"
