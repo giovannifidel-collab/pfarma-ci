@@ -1,0 +1,122 @@
+name: Queen S5 CPU00 Durable Feedback E2E
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-compute-durable-feedback.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-compute-durable-feedback.yml']
+permissions:
+  contents: read
+concurrency:
+  group: queen-s5-compute-durable
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      PRIVATE_SHA: 3babdbd932ba1c11c0ecfed95baf6bdfb792390c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Assert S0-S5 and exact bounded S5 feedback route
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node --check queen-source/cloudflare/functions/api/queen-s5-compute-feedback.js
+          node queen-source/ops/queen/governance/validate-s0-truth.mjs
+          node queen-source/ops/queen/razzo/validate-s4-closeout.mjs
+          node queen-source/ops/queen/compute/validate-s5-stateless-canary.mjs
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('queen-source/cloudflare/functions/api/queen-s5-compute-feedback.js').read_text()
+          assert "Cf-Access-Jwt-Assertion" in s
+          assert "if(body.length>160)" in s
+          assert "reconcile-verified-cpu00" in s
+          assert "school_provisional" in s
+          assert "training_eligible:false" in s
+          assert "mastery_eligible:false" in s
+          assert 'product_mutations:false' in s
+          assert "const TASK='28f220c6-f2d2-44d1-96c0-9a6b8108844d'" in s
+          assert "const PROVIDER_RUN=41348429484" in s
+          assert "const RELAY_RUN=41348410068" in s
+          print('S5_SOURCE_LOCKED_DURABLE_BOUNDARY=PASS')
+          PY
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source
+  live-feedback:
+    needs: preview
+    if: github.event_name=='push' && github.ref=='refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 30
+    env:
+      PRIVATE_SHA: 3babdbd932ba1c11c0ecfed95baf6bdfb792390c
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - name: Publish source-locked Queen feedback route using existing Pages config
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" && test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          test "$(git rev-parse HEAD)" = "$PRIVATE_SHA"
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/s5-feedback-cfg.log 2>&1
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main >/tmp/s5-feedback-deploy.log 2>&1 || { tail -n 35 /tmp/s5-feedback-deploy.log; exit 45; }
+          echo 'S5_QUEEN_DURABLE_FEEDBACK_PRODUCTION_DEPLOY=PASS'
+      - name: Verify live Queen Memory School World Cognitive and idempotent replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          headers=(-H 'content-type: application/json' -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          code=''
+          for i in {1..12}; do
+            code="$(curl -sS --max-time 35 -o "$RUNNER_TEMP/s5-before.json" -w '%{http_code}' "${headers[@]}" "$base/api/queen-s5-compute-feedback" || true)"
+            if [ "$code" = 200 ] && jq -e '.ok==true' "$RUNNER_TEMP/s5-before.json" >/dev/null; then break; fi
+            sleep 4
+          done
+          test "$code" = 200 || { echo "S5_FEEDBACK_GET_HTTP=$code"; exit 61; }
+          code="$(curl -sS --max-time 150 -o "$RUNNER_TEMP/s5-result.json" -w '%{http_code}' "${headers[@]}" \
+            -X POST --data '{"action":"reconcile-verified-cpu00"}' "$base/api/queen-s5-compute-feedback")"
+          if [ "$code" != 200 ]; then jq -c '{ok,error}' "$RUNNER_TEMP/s5-result.json"; exit 62; fi
+          jq -e '.ok==true and .status=="COMPLETE" and .receipt.task_id=="28f220c6-f2d2-44d1-96c0-9a6b8108844d" and .receipt.training_eligible==false and .receipt.mastery_eligible==false and .receipt.worker_certified==false and (.receipt.steps | all(.==true))' "$RUNNER_TEMP/s5-result.json" >/dev/null
+          code="$(curl -sS --max-time 120 -o "$RUNNER_TEMP/s5-repeat.json" -w '%{http_code}' "${headers[@]}" \
+            -X POST --data '{"action":"reconcile-verified-cpu00"}' "$base/api/queen-s5-compute-feedback")"
+          test "$code" = 200
+          jq -e '.ok==true and .replayed==true and .status=="COMPLETE"' "$RUNNER_TEMP/s5-repeat.json" >/dev/null
+          code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/s5-get.json" -w '%{http_code}' "${headers[@]}" "$base/api/queen-s5-compute-feedback")"
+          test "$code" = 200
+          jq -e '.receipt.status=="COMPLETE" and (.receipt.steps | all(.==true))' "$RUNNER_TEMP/s5-get.json" >/dev/null
+          echo 'S5_DURABLE_NEON_MEMORY=PASS'
+          echo 'S5_DURABLE_SCHOOL_PROVISIONAL_NO_MASTERY=PASS'
+          echo 'S5_DURABLE_WORLD_AND_COGNITIVE=PASS'
+          echo 'S5_EVIDENCE_REPLAY_IDEMPOTENT=PASS'
+          echo 'S5_GENERAL_COMPUTE_NODE_ACTIVATION=DENY'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source "$RUNNER_TEMP/s5-before.json" "$RUNNER_TEMP/s5-result.json" "$RUNNER_TEMP/s5-repeat.json" "$RUNNER_TEMP/s5-get.json"
