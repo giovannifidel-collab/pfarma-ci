@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-01T18:39:55.018Z",
-  "state_fingerprint": "da6c74dff118dc302b64c993a81ae4b72dc479cbe33ffb4997e1f3ed6655c16b",
+  "generated_at": "2026-11-01T22:24:09.202Z",
+  "state_fingerprint": "d65e42d0eaa245e4514c0929cf994b4fc0ef509a6d382dad2b85df2500fd4ded",
   "policy": "authoritative-source-first",
   "privacy": "sanitized allowlist; gio-OS private source never materialized in global HIVE sync; no credentials or user data published",
   "cadence_minutes": 15,
   "coverage": {
-    "source_backed_projects": 8,
-    "source_available": 8,
-    "runtime_checks": 7,
-    "runtimes_reachable": 7
+    "source_backed_projects": 7,
+    "source_available": 7,
+    "runtime_checks": 6,
+    "runtimes_reachable": 6
   },
   "projects": {
     "hive": {
@@ -18,8 +18,8 @@
         "repo": "giovannifidel-collab/hive-alveare",
         "ref": "main",
         "available": true,
-        "sha": "5106eacbfb99d65b7cf26fdeac3fa8ccc6307506",
-        "observed_at": "2026-11-01T18:39:34.364Z",
+        "sha": "f0e191a822466eae78e44299d8d297ab0b6b7f0c",
+        "observed_at": "2026-11-01T22:24:09.202Z",
         "version": null,
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -30,9 +30,9 @@
           "role": "primary",
           "reachable": true,
           "http_status": 302,
-          "latency_ms": 126,
+          "latency_ms": 162,
           "summary": null,
-          "observed_at": "2026-11-01T18:39:34.364Z"
+          "observed_at": "2026-11-01T22:24:09.202Z"
         }
       ],
       "sync_depth": "source+runtime+control-state"
@@ -44,7 +44,7 @@
         "ref": "main",
         "available": true,
         "sha": "8d8922171bfdc3554cb7786d08b3594ec681f59a",
-        "observed_at": "2026-11-01T18:39:34.364Z",
+        "observed_at": "2026-11-01T22:24:09.202Z",
         "version": "1.7.0",
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -55,12 +55,12 @@
           "role": "primary",
           "reachable": true,
           "http_status": 200,
-          "latency_ms": 2371,
+          "latency_ms": 3179,
           "summary": {
             "status": "ok",
             "version": "1.7.0-cloudflare-hive"
           },
-          "observed_at": "2026-11-01T18:39:34.364Z"
+          "observed_at": "2026-11-01T22:24:09.202Z"
         }
       ],
       "sync_depth": "source+runtime+scientific-control-state"
@@ -72,7 +72,7 @@
         "ref": "main",
         "available": true,
         "sha": "1d460184944355ed2d4b375bfe03b35a70c7aa41",
-        "observed_at": "2026-11-01T18:39:34.364Z",
+        "observed_at": "2026-11-01T22:24:09.202Z",
         "version": null,
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -83,9 +83,9 @@
           "role": "primary",
           "reachable": true,
           "http_status": 303,
-          "latency_ms": 2181,
+          "latency_ms": 1590,
           "summary": null,
-          "observed_at": "2026-11-01T18:39:34.364Z"
+          "observed_at": "2026-11-01T22:24:09.202Z"
         }
       ],
       "sync_depth": "source+runtime+business-control-state"
@@ -97,7 +97,7 @@
         "ref": "main",
         "available": true,
         "sha": "31103989996a664dff385896143dccd03072cdf6",
-        "observed_at": "2026-11-01T18:39:34.364Z",
+        "observed_at": "2026-11-01T22:24:09.202Z",
         "version": null,
         "progress": {
           "phase": "software-complete-release-candidate",
@@ -114,7 +114,7 @@
           "reachable": null,
           "status": "human-gated",
           "target": "Xiaomi Redmi Note 7 lavender",
-          "observed_at": "2026-11-01T18:39:34.364Z"
+          "observed_at": "2026-11-01T22:24:09.202Z"
         }
       ],
       "sync_depth": "sanitized-source-state+build-state+certification-state"
@@ -126,7 +126,7 @@
         "ref": "agent/bootstrap-family-cloud",
         "available": true,
         "sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
-        "observed_at": "2026-11-01T18:39:34.364Z",
+        "observed_at": "2026-11-01T22:24:09.202Z",
         "version": "1.1.4",
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -137,9 +137,9 @@
           "role": "primary",
           "reachable": true,
           "http_status": 200,
-          "latency_ms": 205,
+          "latency_ms": 120,
           "summary": null,
-          "observed_at": "2026-11-01T18:39:34.364Z"
+          "observed_at": "2026-11-01T22:24:09.202Z"
         }
       ],
       "sync_depth": "source+runtime+storage-control-state"
@@ -150,8 +150,8 @@
         "repo": "giovannifidel-collab/project-giovanni",
         "ref": "main",
         "available": true,
-        "sha": "bed361a7fca77f5ccf08d139f6e30dfb37408b8b",
-        "observed_at": "2026-11-01T18:39:34.364Z",
+        "sha": "e1a7781d85163e9f7b7b5c59f21998846b0bb0b2",
+        "observed_at": "2026-11-01T22:24:09.202Z",
         "version": "1.0.0",
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -162,18 +162,18 @@
           "role": "primary",
           "reachable": true,
           "http_status": 307,
-          "latency_ms": 112,
+          "latency_ms": 961,
           "summary": null,
-          "observed_at": "2026-11-01T18:39:34.364Z"
+          "observed_at": "2026-11-01T22:24:09.202Z"
         },
         {
           "url": "https://project-giovanni.project-giovanni.workers.dev",
           "role": "standby",
           "reachable": true,
           "http_status": 307,
-          "latency_ms": 421,
+          "latency_ms": 485,
           "summary": null,
-          "observed_at": "2026-11-01T18:39:34.364Z"
+          "observed_at": "2026-11-01T22:24:09.202Z"
         }
       ],
       "sync_depth": "source+runtime+application-control-state"
@@ -183,7 +183,7 @@
         "kind": "hive-strategic-state",
         "available": true,
         "sha": null,
-        "observed_at": "2026-11-01T18:39:34.364Z",
+        "observed_at": "2026-11-01T22:24:09.202Z",
         "provenance": "HIVE_CONTROL_PLANE"
       },
       "runtime": [],
@@ -195,8 +195,8 @@
         "repo": "giovannifidel-collab/pfarma-ci",
         "ref": "main",
         "available": true,
-        "sha": "c317ef41d63089b5ed7666bba8672e1f83240b35",
-        "observed_at": "2026-11-01T18:39:34.364Z",
+        "sha": "ab90332072a2d7ca6c7a96b98a0d919895d63ebf",
+        "observed_at": "2026-11-01T22:24:09.202Z",
         "provenance": "PUBLIC_CI_FABRIC"
       },
       "runtime": [],
@@ -207,35 +207,11 @@
         "kind": "hive-strategic-state",
         "available": true,
         "sha": null,
-        "observed_at": "2026-11-01T18:39:34.364Z",
+        "observed_at": "2026-11-01T22:24:09.202Z",
         "provenance": "HIVE_CONTROL_PLANE"
       },
       "runtime": [],
       "sync_depth": "control-state"
-    },
-    "hive-field": {
-      "source": {
-        "kind": "github-private",
-        "repo": "giovannifidel-collab/hive-field",
-        "ref": "main",
-        "available": true,
-        "sha": "44c73a353de1ecbbe88cf3221252d34f39799495",
-        "observed_at": "2026-11-01T18:39:55.018Z",
-        "version": "9.14.0",
-        "progress": null,
-        "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
-      },
-      "runtime": [
-        {
-          "url": "https://hive-field-v8.vercel.app/",
-          "role": "primary",
-          "reachable": true,
-          "http_status": 200,
-          "latency_ms": 136,
-          "observed_at": "2026-11-01T18:39:55.018Z"
-        }
-      ],
-      "sync_depth": "source+runtime+field-control-state"
     }
   }
 }
