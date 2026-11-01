@@ -74,30 +74,60 @@ def required_sha(job_id):
     return source
 
 
+def verified_chunks(sha, manifest):
+    count = manifest.get("chunks")
+    size = manifest.get("byte_length")
+    digest = manifest.get("bundle_sha256")
+    if (manifest.get("v") != 2 or manifest.get("source_ref") != sha
+        or type(count) is not int or not 1 <= count <= 128
+        or type(size) is not int or not 1 <= size <= MAX_BUNDLE
+        or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+        raise RuntimeError("Invalid authenticated-source bundle manifest")
+    parts = []
+    total = 0
+    for index in range(count):
+        piece = fetch(object_url(f"{PREFIX}/chunks/{sha}/{index:03d}.json"))
+        if piece is None:
+            raise RuntimeError("Encrypted source chunk missing")
+        record = json.loads(piece)
+        if (record.get("v") != 1 or record.get("source_ref") != sha
+            or record.get("index") != index):
+            raise RuntimeError("Encrypted source chunk metadata mismatch")
+        part = base64.b64decode(record["data_b64"], validate=True)
+        total += len(part)
+        if total > MAX_BUNDLE:
+            raise RuntimeError("Encrypted source exceeds allowed size")
+        parts.append(part)
+    content = b"".join(parts)
+    if len(content) != size or hashlib.sha256(content).hexdigest() != digest:
+        raise RuntimeError("Encrypted source chunks failed integrity verification")
+    envelope = json.loads(content)
+    if envelope.get("source_ref") != sha:
+        raise RuntimeError("Authenticated encryption source revision mismatch")
+    return content
+
+
 def bundle_bytes(source_sha):
-    # The first publisher run may still be encrypting its exact main commit.
     for attempt in range(15):
         try:
             sha = source_sha
             if not sha:
-                manifest = fetch(object_url(f"{PREFIX}/latest.json"))
-                if manifest:
-                    obj = json.loads(manifest)
-                    if obj.get("v") == 1 and SHA.fullmatch(str(obj.get("source_ref", ""))):
-                        sha = obj["source_ref"]
+                pointer = fetch(object_url(f"{PREFIX}/latest.json"))
+                if pointer:
+                    latest = json.loads(pointer)
+                    if latest.get("v") == 1 and SHA.fullmatch(str(latest.get("source_ref", ""))):
+                        sha = latest["source_ref"]
             if sha:
-                content = fetch(object_url(f"{PREFIX}/bundles/{sha}.json"))
-                if content:
-                    envelope = json.loads(content)
-                    if envelope.get("source_ref") != sha:
-                        raise RuntimeError("Encrypted source SHA mismatch")
+                response = fetch(object_url(f"{PREFIX}/bundles/{sha}.json"))
+                if response:
+                    metadata = json.loads(response)
+                    content = verified_chunks(sha, metadata)
                     return sha, content
         except (urllib.error.URLError, TimeoutError):
             pass
         if attempt < 14:
             time.sleep(12)
-    raise RuntimeError("Current encrypted private worker not yet published; job stays unclaimed")
-
+    raise RuntimeError("SHA-pinned encrypted worker unavailable; job stays unclaimed")
 
 def main():
     parser = argparse.ArgumentParser()
