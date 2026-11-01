@@ -139,7 +139,7 @@ jobs:
           receiver=''
           for attempt in {1..35}; do
             receiver="$(gh api 'repos/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s4-live-shadow-receiver.yml/runs?event=repository_dispatch&per_page=45' \
-              --jq '[.workflow_runs[] | select(.display_title | contains(env.TASK_ID))][0].id // empty' || true)"
+              | jq -r --arg task "$TASK_ID" '[.workflow_runs[] | select(.display_title | contains($task))][0].id // empty' || true)"
             if [[ -n "$receiver" ]]; then break; fi
             sleep 3
           done
@@ -157,7 +157,7 @@ jobs:
           for expected in 'Require exact authenticated Queen contract, or PR static smoke' 'Verify target main still equals Queen delegated exact SHA' 'Checkout read-only target project at delegated exact SHA' 'Execute real existing RAZZO kernel shadow under Queen' 'Publish only sanitized shadow evidence'; do
             grep -F "$expected" "$RUNNER_TEMP/s4-receiver-steps.tsv" | grep -Fq $'\tsuccess'
           done
-          count="$(gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$receiver/artifacts?per_page=100" --jq --arg task "$TASK_ID" '[.artifacts[] | select(.name==("queen-s4-shadow-"+$task))] | length')"
+          count="$(gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$receiver/artifacts?per_page=100" | jq -r --arg task "$TASK_ID" '[.artifacts[] | select(.name==("queen-s4-shadow-"+$task))] | length')"
           test "$count" = 1
           echo 'QUEEN_S4_REAL_ORIGIN_TO_RAZZO_SHADOW_E2E=PASS'
           echo 'RAZZO_EXISTING_KERNEL_EXECUTED=PASS'
