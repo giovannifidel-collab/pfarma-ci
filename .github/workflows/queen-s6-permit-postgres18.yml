@@ -20,7 +20,7 @@ jobs:
           --health-cmd "pg_isready -U hive -d s6"
           --health-interval 5s --health-timeout 3s --health-retries 10
     env:
-      PRIVATE_SHA: 29eb1e072264fa22bc0f4cf70449d80319034fe2
+      PRIVATE_SHA: 7c9ed48451c7f801363b77fb8dee73070bc3a7af
     steps:
       - uses: actions/checkout@v4
         with:
