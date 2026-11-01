@@ -18,7 +18,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 15
     env:
-      QUEEN_SOURCE_SHA: 3a2ade1ba9e8cb093d9be8fa0d09cd498d814892
+      QUEEN_SOURCE_SHA: c7140c0073deb7d305a87958b64f4dd33cbeeda2
       CPU00_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
     steps:
