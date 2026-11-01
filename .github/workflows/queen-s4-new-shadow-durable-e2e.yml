@@ -18,7 +18,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 20
     env:
-      PRIVATE_SHA: 7b0efeceefb0af8a1654190a07d6b8ae7da25dc7
+      PRIVATE_SHA: c89c3e392dab701ad19486c5405d661023b83e12
       GH_AUDIT_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
@@ -85,7 +85,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 25
     env:
-      PRIVATE_SHA: 7b0efeceefb0af8a1654190a07d6b8ae7da25dc7
+      PRIVATE_SHA: c89c3e392dab701ad19486c5405d661023b83e12
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
