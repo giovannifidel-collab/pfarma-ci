@@ -1,0 +1,93 @@
+name: Queen S7 Independent Fleet Readiness + Installer Bundles
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-fleet-readiness.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-fleet-readiness.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: queen-s7-readonly-fleet-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      QUEEN_SOURCE_SHA: 4286c83db3764221162e63a66ced87ed86b95d8c
+      CPU00_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Checkout authoritative private Queen exact SHA
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - name: Checkout exact verified public CPU00 provider source (read only)
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-compute-node-00
+          ref: ${{ env.CPU00_SHA }}
+          persist-credentials: false
+          path: cpu00-source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run all S7 source and negative tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$QUEEN_SOURCE_SHA"
+          test "$(git -C cpu00-source rev-parse HEAD)" = "$CPU00_SHA"
+          node queen-source/ops/queen/compute/validate-node-registry.mjs
+          node queen-source/ops/queen/compute/validate-fabric-contracts.mjs
+          node queen-source/ops/queen/autopilot/validate-s6-closeout.mjs
+          node --test queen-source/ops/queen/compute/s7/tests/*.test.mjs
+          echo 'S7_OWNER_GATE_AND_NEGATIVE_SOURCE_TESTS=PASS'
+      - name: Live authenticated read-only inventory of all 5 CPU public repos + both GPU declarations
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          mkdir -p output
+          node queen-source/ops/queen/compute/s7-audit-fleet.mjs >output/s7-inventory.json
+          jq -e '.schema=="queen.s7-readonly-inventory.v1" and .summary.tracked==7 and .summary.cpu==5 and .summary.gpu==2 and .summary.newly_certified==0 and .summary.newly_schedulable==0 and .provider_writes_performed==false and .dispatches_performed==0 and .default_dispatch=="DENY"' output/s7-inventory.json >/dev/null
+          jq -r '.nodes[]|[.node_id,.reason,.connected_credential_push,.workflow_installed,.schedulable]|@tsv' output/s7-inventory.json
+          echo 'S7_READ_ONLY_FRESH_INVENTORY=PASS'
+      - name: Generate 5 exact identity-bound reviewable worker packages (no remote writes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node queen-source/ops/queen/compute/s7/build-cpu-installers.mjs cpu00-source output/installers
+          for idx in 01 02 03 04 05; do
+            test -f "output/installers/hive-compute-node-$idx/s7-manifest.json"
+            test -f "output/installers/hive-compute-node-$idx/.github/workflows/hive-envelope-worker.yml"
+            test -f "output/installers/hive-compute-node-$idx/worker/run_job_envelope.py"
+          done
+          python - <<'PY'
+          import hashlib,json,pathlib
+          for d in sorted(pathlib.Path('output/installers').glob('hive-compute-node-*')):
+              manifest=json.loads((d/'s7-manifest.json').read_text())
+              assert manifest['state']=='INSTALLER_ONLY_NOT_CERTIFIED'
+              assert not manifest['worker_secrets_required']
+              for filename,digest in manifest['files_sha256'].items():
+                  assert hashlib.sha256((d/filename).read_bytes()).hexdigest()==digest
+              print('S7_PACKAGE_VALIDATED',d.name)
+          PY
+          echo 'S7_FIVE_IDENTITY_BOUND_WORKER_INSTALL_PACKAGES=PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: queen-s7-readonly-audit-and-cpu01-05-installers
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Secure cleanup
+        if: always()
+        run: rm -rf queen-source cpu00-source output
