@@ -21,7 +21,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 12
     env:
-      PRIVATE_SHA: 0d7ac3df234c33422ab3c9d3406674835f141fb4
+      PRIVATE_SHA: bedb99e2b742244c9be6b46eb382fb395918c377
       RAZZO_SHA: aef58a8d6cf1db04fbc6658b7619cabcc883cdbd
       REQUEST: ${{ toJson(github.event.client_payload) }}
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
