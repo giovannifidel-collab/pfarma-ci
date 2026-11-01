@@ -1,0 +1,71 @@
+name: Queen S6 Owner Permit PostgreSQL18 Isolation
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s6-permit-postgres18.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s6-permit-postgres18.yml']
+permissions: {contents: read}
+jobs:
+  isolated-owner-permit:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    services:
+      pg:
+        image: postgres:18
+        env: {POSTGRES_USER: hive, POSTGRES_PASSWORD: ephemeral-only-for-ci, POSTGRES_DB: s6}
+        options: >-
+          --health-cmd "pg_isready -U hive -d s6"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      PRIVATE_SHA: 29eb1e072264fa22bc0f4cf70449d80319034fe2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Exact sources, S0-S5, 18 S6 negative tests
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node source/ops/queen/compute/validate-s5-closeout.mjs
+          node --test source/ops/queen/autopilot/tests/*.test.mjs
+          node source/ops/queen/compute/build-s5-production-migration.mjs --check
+      - name: Recreate S5 on isolated real PostgreSQL18
+        env: {PG_CONTAINER: '${{ job.services.pg.id }}'}
+        run: |
+          set -euo pipefail
+          for m in 001_tables 002_functions 003_seed_projects 004_integrity 017_hive_school_v1 018_hive_field_cell 019_hive_school_s2_learning_gate; do
+            docker exec -i "$PG_CONTAINER" psql -U hive -d s6 -v ON_ERROR_STOP=1 -q < "source/db/$m.sql"
+          done
+          node source/ops/queen/compute/build-s5-production-migration.mjs --sql > "$RUNNER_TEMP/s5-runtime.sql"
+          docker exec -i "$PG_CONTAINER" psql -U hive -d s6 -v ON_ERROR_STOP=1 -1 -q < "$RUNNER_TEMP/s5-runtime.sql"
+      - name: Owner-only CPU00 lease is one-shot, node returns DENY
+        env: {PG_CONTAINER: '${{ job.services.pg.id }}'}
+        run: |
+          set -euo pipefail
+          docker exec -i "$PG_CONTAINER" psql -U hive -d s6 -v ON_ERROR_STOP=1 -1 -q < source/ops/queen/autopilot/owner-only/prepare-s6-approved-cpu00.sql
+          q(){ docker exec "$PG_CONTAINER" psql -U hive -d s6 -Atc "$1"; }
+          test "$(q "select count(*) from hive_meta where key='hive.queen.s6.autopilot.approved-lease.v1' and value->>'status'='DISPATCH_PREPARED';")" = 1
+          test "$(q "select count(*) from tasks where task_kind='compute' and status='running';")" = 1
+          test "$(q "select count(*) from task_attempts where status='dispatching' and node_id in (select id from nodes where name='hive-compute-node-00');")" = 1
+          test "$(q "select count(*) from nodes where kind='compute' and (status<>'prepared' or coalesce((metadata->>'certified')::boolean,false));")" = 0
+          test "$(q "select count(*) from hive_select_compute_node('{\"class\":\"cpu\"}'::jsonb);")" = 0
+          if docker exec -i "$PG_CONTAINER" psql -U hive -d s6 -v ON_ERROR_STOP=1 -1 -q < source/ops/queen/autopilot/owner-only/prepare-s6-approved-cpu00.sql; then
+            echo 'S6_UNAUTHORIZED_SECOND_PERMIT=UNSAFE'; exit 78
+          fi
+          test "$(q "select count(*) from tasks where task_kind='compute';")" = 1
+          echo 'S6_POSTGRES18_OWNER_PERMIT_ONESHOT=PASS'
+          echo 'S6_NODE_CERTIFICATION_REVOKED=PASS'
+          echo 'S6_GENERIC_COMPUTE_SCHEDULER=DENY'
+          echo 'S6_PRODUCTION_DB_WRITES=ZERO'
+      - name: Cleanup
+        if: always()
+        run: rm -rf source "$RUNNER_TEMP/s5-runtime.sql"
