@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 10
     env:
       # Replace with exact merged Queen SHA after private PR is certified.
-      PRIVATE_SHA: ffe52aa9c8af750faf09b19a0f4bebf55b63500b
+      PRIVATE_SHA: a5b029a5822faef655c659fe4fdc00c398fd1c2e
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,7 +51,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 25
     env:
-      PRIVATE_SHA: ffe52aa9c8af750faf09b19a0f4bebf55b63500b
+      PRIVATE_SHA: a5b029a5822faef655c659fe4fdc00c398fd1c2e
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
