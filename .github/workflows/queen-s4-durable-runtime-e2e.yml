@@ -1,0 +1,159 @@
+name: Queen S4 Certified Durable Feedback E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-durable-runtime-e2e.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-durable-runtime-e2e.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-s4-durable-live-e2e
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      PRIVATE_SHA: ccb5a06b0f2b1f7d1f6974b4513c785cf1e4431e
+      GH_AUDIT_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify source, policy and fresh immutable GitHub proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node queen-source/ops/queen/razzo/validate-s4-live-attestation.mjs
+          node queen-source/ops/queen/razzo/validate-s4-evidence.mjs
+          node queen-source/ops/queen/delegation/validate-s3-delegation.mjs
+          node --check queen-source/cloudflare/functions/api/queen-s4-evidence.js
+          cd queen-source
+          node --input-type=module <<'NODE'
+          import {obtainS4GitHubAttestation} from './ops/queen/razzo/s4-live-attestation.mjs';
+          const x=await obtainS4GitHubAttestation(process.env.GH_AUDIT_TOKEN);
+          if(x.training_eligible!==false||x.external_product_execution_authorized!==false)throw Error('unsafe_s4');
+          console.log('QUEEN_S4_LIVE_TRUTH_BOUNDARY=PASS');
+          NODE
+      - name: Pull existing Cloudflare Pages configuration without changing secrets
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/s4-cf-config.log 2>&1
+          test -f wrangler.jsonc -o -f wrangler.json -o -f wrangler.toml || { echo 'PAGES_CONFIG_UNAVAILABLE'; exit 40; }
+          echo 'S4_EXISTING_PAGES_CONFIG=PASS'
+      - name: Preview only, never publish on main from PR
+        if: github.event_name == 'pull_request'
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch s4-evidence-preview > /tmp/s4-preview.log 2>&1 || { tail -n 40 /tmp/s4-preview.log; exit 45; }
+          echo 'S4_PAGES_PREVIEW_DEPLOY=PASS'
+          echo 'PRODUCTION_DEPLOY_PERFORMED=false'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source
+
+  production-durable:
+    needs: preview
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      PRIVATE_SHA: ccb5a06b0f2b1f7d1f6974b4513c785cf1e4431e
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: queen-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Require exact approved Queen source and complete credential context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          test -n "${HIVE_RUNTIME_BEARER_TOKEN:-}"
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          node queen-source/ops/queen/razzo/validate-s4-live-attestation.mjs
+          echo 'S4_PRODUCTION_SOURCE_AND_AUTH=PASS'
+      - name: Download existing Pages configuration
+        working-directory: queen-source/cloudflare
+        run: |
+          set -euo pipefail
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/s4-cf-config-prod.log 2>&1
+          test -f wrangler.jsonc -o -f wrangler.json -o -f wrangler.toml
+      - name: Publish source-locked S4 route to existing Queen Pages
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main > /tmp/s4-production-deploy.log 2>&1 || { tail -n 35 /tmp/s4-production-deploy.log; exit 46; }
+          echo 'QUEEN_S4_PAGES_PRODUCTION_DEPLOY=PASS'
+      - name: Verify authenticated live Neon persistence and idempotent second replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; BASE="${BASE%/}"
+          headers=(-H 'content-type: application/json' -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN")
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            headers+=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          fi
+          for attempt in {1..12}; do
+            code="$(curl -sS --max-time 30 -o /tmp/s4-before -w '%{http_code}' "${headers[@]}" "$BASE/api/queen-s4-evidence" || true)"
+            if [[ "$code" == 200 ]] && jq -e '.ok==true' /tmp/s4-before >/dev/null; then break; fi
+            sleep 4
+          done
+          test "${code:-}" = 200 || { echo "S4_ROUTE_HTTP=${code:-missing}"; exit 60; }
+          code="$(curl -sS --max-time 160 -o /tmp/s4-post -w '%{http_code}' "${headers[@]}" \
+             -X POST --data '{"action":"reconcile-certified-canary"}' "$BASE/api/queen-s4-evidence")"
+          if [[ "$code" != 200 ]]; then jq -c '{ok,error}' /tmp/s4-post; echo "S4_PERSISTENCE_HTTP=$code"; exit 61; fi
+          jq -e '.ok==true and .status=="COMPLETE" and .receipt.training_eligible==false and .receipt.mastery_eligible==false and .receipt.attestation.external_product_execution_authorized==false and (.receipt.steps|all(.==true))' /tmp/s4-post >/dev/null
+          code="$(curl -sS --max-time 90 -o /tmp/s4-second -w '%{http_code}' "${headers[@]}" \
+            -X POST --data '{"action":"reconcile-certified-canary"}' "$BASE/api/queen-s4-evidence")"
+          test "$code" = 200
+          jq -e '.ok==true and .replayed==true and .status=="COMPLETE" and (.receipt.steps|all(.==true))' /tmp/s4-second >/dev/null
+          code="$(curl -sS --max-time 30 -o /tmp/s4-get -w '%{http_code}' "${headers[@]}" "$BASE/api/queen-s4-evidence")"
+          test "$code" = 200
+          jq -e '.ok==true and .receipt.status=="COMPLETE" and .receipt.steps.memory==true and .receipt.steps.school_provisional==true and .receipt.steps.world==true and .receipt.steps.cognitive==true' /tmp/s4-get >/dev/null
+          echo 'S4_DURABLE_NEON_MEMORY=PASS'
+          echo 'S4_DURABLE_SCHOOL_PROVISIONAL=PASS'
+          echo 'S4_DURABLE_WORLD_AND_COGNITIVE_CYCLE=PASS'
+          echo 'S4_DURABLE_IDEMPOTENT_REPLAY=PASS'
+          echo 'LEGACY_RAZZO_PRODUCT_WORKERS=DENY'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source /tmp/s4-before /tmp/s4-post /tmp/s4-second /tmp/s4-get
