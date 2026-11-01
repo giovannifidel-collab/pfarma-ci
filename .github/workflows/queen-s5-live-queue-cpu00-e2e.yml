@@ -1,0 +1,152 @@
+name: Queen S5 Live HIVE Queue CPU00 E2E
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-live-queue-cpu00-e2e.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-live-queue-cpu00-e2e.yml']
+permissions:
+  contents: read
+concurrency:
+  group: queen-s5-single-hive-queue-cpu00
+  cancel-in-progress: false
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      PRIVATE_SHA: e991100b66bd44c6fb281ed28d0f937acb6cf556
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Fail closed for all unverified S5 missions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node queen-source/ops/queen/razzo/validate-s4-closeout.mjs
+          node queen-source/ops/queen/compute/validate-s5-stateless-canary.mjs
+          node --check queen-source/cloudflare/functions/api/queen-s5-job-lease.js
+          echo 'S5_COGNITIVE_AND_EXECUTION_AUTHORITY=QUEEN_ONLY'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source
+  live:
+    needs: preflight
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      CPU_REPO: giovannifidel-collab/hive-compute-node-00
+      CPU_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: GET owner-authorized queue lease and dispatch only exact CPU00
+        id: dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          test -n "${CF_ACCESS_CLIENT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          observed="$(gh api "repos/$CPU_REPO/branches/main" --jq '.commit.sha')"
+          test "$observed" = "$CPU_SHA"
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          result=''
+          for i in {1..10}; do
+            code="$(curl -sS --max-time 35 -o "$RUNNER_TEMP/s5lease.json" -w '%{http_code}' \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              "$base/api/queen-s5-job-lease" || true)"
+            if [[ "$code" == 200 ]]; then break; fi
+            sleep 3
+          done
+          test "$code" = 200 || { echo "S5_AUTHORIZED_LEASE_HTTP=$code"; exit 51; }
+          jq -e --arg sha "$CPU_SHA" '.ok==true and .project_slug=="hive" and .node=="hive-compute-node-00" and .worker_sha==$sha and .task_id and .attempt_token and .job_id and .envelope_b64' "$RUNNER_TEMP/s5lease.json" >/dev/null
+          task="$(jq -r .task_id "$RUNNER_TEMP/s5lease.json")"
+          attempt="$(jq -r .attempt_token "$RUNNER_TEMP/s5lease.json")"
+          job="$(jq -r .job_id "$RUNNER_TEMP/s5lease.json")"
+          envelope="$(jq -r .envelope_b64 "$RUNNER_TEMP/s5lease.json")"
+          echo "::add-mask::$attempt"
+          echo "::add-mask::$envelope"
+          echo "started=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          gh workflow run hive-envelope-worker.yml --repo "$CPU_REPO" --ref main \
+            -f hive_task_id="$task" -f attempt_token="$attempt" -f envelope_b64="$envelope"
+          echo 'S5_REAL_NEON_TASK_DISPATCHED_VIA_AUTHENTICATED_QUEEN=PASS'
+      - name: Match unique provider run and independently validate exact sealed receipt
+        shell: bash
+        env: {START: '${{ steps.dispatch.outputs.started }}'}
+        run: |
+          set -euo pipefail
+          run=''
+          for i in {1..30}; do
+            candidate="$(gh api "repos/$CPU_REPO/actions/workflows/hive-envelope-worker.yml/runs?event=workflow_dispatch&per_page=30" |
+              jq -r --arg start "$START" --arg sha "$CPU_SHA" '[.workflow_runs[] | select(.created_at >= $start and .head_sha==$sha and .head_branch=="main")] | .[].id')"
+            count="$(printf '%s\n' "$candidate" | sed '/^$/d' | wc -l)"
+            if [ "$count" -gt 1 ]; then echo 'S5_AMBIGUOUS_CPU00_RUN_DENY'; exit 52; fi
+            if [ "$count" = 1 ]; then run="$candidate"; break; fi
+            sleep 3
+          done
+          test -n "$run" || { echo 'S5_NO_PROVIDER_RUN'; exit 53; }
+          for i in {1..75}; do
+            state="$(gh api "repos/$CPU_REPO/actions/runs/$run" --jq .status)"
+            [ "$state" = completed ] && break
+            sleep 4
+          done
+          test "$state" = completed || { echo 'S5_PROVIDER_TIMEOUT'; exit 54; }
+          test "$(gh api "repos/$CPU_REPO/actions/runs/$run" --jq .conclusion)" = success || { echo 'S5_PROVIDER_FAILURE'; exit 55; }
+          jobs="$(gh api "repos/$CPU_REPO/actions/runs/$run/jobs?per_page=100")"
+          echo "$jobs" | jq -e '[.jobs[]|select(.name=="Execute HIVE Job Envelope" and .conclusion=="success" and ([.steps[]|select(.name=="Prove short-lived GitHub OIDC identity" and .conclusion=="success")]|length)==1 and ([.steps[]|select(.name=="Validate canonical sealed result" and .conclusion=="success")]|length)==1)]|length==1' >/dev/null
+          artifact="$(gh api "repos/$CPU_REPO/actions/runs/$run/artifacts?per_page=100" |
+            jq -r '[.artifacts[]|select(.name=="result.json" and .expired==false)]|if length==1 then .[0].id else empty end')"
+          test -n "$artifact"
+          curl --fail --silent --show-error --location --max-time 60 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$CPU_REPO/actions/artifacts/$artifact/zip" -o "$RUNNER_TEMP/s5-result.json"
+          PROVIDER_RUN="$run" python - <<'PY'
+          import hashlib,json,os
+          lease=json.load(open(os.environ['RUNNER_TEMP']+'/s5lease.json'))
+          r=json.load(open(os.environ['RUNNER_TEMP']+'/s5-result.json'))
+          digest=r.pop('result_sha256')
+          assert hashlib.sha256(json.dumps(r,sort_keys=True,separators=(',',':')).encode()).hexdigest()==digest
+          assert r['status']=='completed' and r['exit_code']==0
+          assert r['metadata']['project_slug']=='hive'
+          assert r['metadata']['hive_task_id']==lease['task_id']
+          assert r['metadata']['attempt_token']==lease['attempt_token']
+          assert r['job_id']==lease['job_id']
+          assert r['node']['node_id']=='hive-compute-node-00'
+          assert r['node']['provider_run_ref']==os.environ['PROVIDER_RUN']
+          assert r['provenance']['environment']['repository']==os.environ['CPU_REPO']
+          assert r['provenance']['environment']['sha']==os.environ['CPU_SHA']
+          assert r['provenance']['environment']['workflow_ref']==os.environ['CPU_REPO']+'/.github/workflows/hive-envelope-worker.yml@refs/heads/main'
+          assert str(r['provenance']['environment']['run_id'])==os.environ['PROVIDER_RUN']
+          assert r['provenance']['source_commit_or_version']==os.environ['CPU_SHA']
+          assert r['workload']=={'name':'selftest','version':'1'}
+          assert r['metadata']['job_envelope']['parameters']=={'rounds':50000}
+          assert r['metadata']['job_envelope']['inputs']==[]
+          assert all(r['output']['checks'].values())
+          print('S5_LIVE_HIVE_QUEUE_TASK_AND_ATTEMPT_PROVENANCE=PASS')
+          print('S5_LIVE_CPU00_ARTIFACT_SHA256=PASS')
+          print('S5_LIVE_CPU00_GITHUB_OIDC_RUN_STEP=PASS')
+          print('S5_LIVE_CPU00_PROVIDER_RUN_ID='+os.environ['PROVIDER_RUN'])
+          print('S5_LIVE_CPU00_VERIFIED_RESULT_SHA256='+digest)
+          print('S5_GENERAL_COMPUTE_SCHEDULING=DENY')
+          PY
+      - name: Remove sensitive ephemeral lease and artifacts
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s5lease.json" "$RUNNER_TEMP/s5-result.json"
