@@ -44,9 +44,71 @@ jobs:
       - name: Cleanup
         if: always()
         run: rm -rf queen-source
-  autonomous-tick:
+  deploy-edge:
     needs: preflight
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      PRIVATE_SHA: 29eb1e072264fa22bc0f4cf70449d80319034fe2
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - name: Require exact source and previously connected Cloudflare security context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          test -n "${CLOUDFLARE_API_TOKEN:-}" && test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          node --check queen-source/cloudflare/functions/api/queen-s6-autopilot.js
+      - name: Deploy S6 Queen endpoint through existing public Cloudflare CI bridge
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >/tmp/queen-s6-config.log 2>&1
+          test -f wrangler.jsonc -o -f wrangler.json -o -f wrangler.toml
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main >/tmp/queen-s6-deploy.log 2>&1 || { tail -n 35 /tmp/queen-s6-deploy.log; exit 46; }
+          echo 'S6_AUTHENTICATED_EDGE_DEPLOY=PASS'
+      - name: Probe protected live S6 endpoint without dispatching
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          code=''
+          for i in {1..12}; do
+            code="$(curl -sS --max-time 25 -o "$RUNNER_TEMP/s6-state.json" -w '%{http_code}' \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              "$base/api/queen-s6-autopilot" || true)"
+            if [ "$code" = 200 ] && jq -e '.ok==true and .default_dispatch=="DENY" and .worker_persistent_certified==false and .paid_fallback==false' "$RUNNER_TEMP/s6-state.json" >/dev/null 2>&1; then break; fi
+            sleep 4
+          done
+          test "$code" = 200
+          jq -e '.ok==true and .default_dispatch=="DENY" and .worker_persistent_certified==false and .paid_fallback==false' "$RUNNER_TEMP/s6-state.json" >/dev/null
+          echo 'S6_LIVE_AUTH_READONLY_SAFE_STATUS=PASS'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source "$RUNNER_TEMP/s6-state.json"
+  autonomous-tick:
+    needs: [preflight, deploy-edge]
+    if: >-
+      always() && needs.preflight.result == 'success' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy-edge.result == 'success'))
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 25
