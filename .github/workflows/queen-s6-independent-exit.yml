@@ -1,0 +1,70 @@
+name: Queen S6 Independent Scoped Exit Certification
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s6-independent-exit.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s6-independent-exit.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s6-exit-certificate
+  cancel-in-progress: false
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      PRIVATE_SHA: a5b029a5822faef655c659fe4fdc00c398fd1c2e
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify closed S0-S6 and exact bounded policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$PRIVATE_SHA"
+          for x in governance/validate-s0-truth.mjs core/validate-s1-core.mjs memory/validate-s2-school-memory.mjs delegation/validate-s3-delegation.mjs razzo/validate-s4-closeout.mjs compute/validate-s5-closeout.mjs autopilot/validate-s6-closeout.mjs; do
+            node "source/ops/queen/$x"
+          done
+          node --test source/ops/queen/autopilot/tests/*.test.mjs
+          echo 'QUEEN_S0_TO_S6_SCOPED_CONTRACTS=PASS'
+      - name: Reattest exact original CPU00 run and recovered Queen feedback
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          gh api repos/giovannifidel-collab/hive-compute-node-00/actions/runs/41358859735 |
+            jq -e '.conclusion=="success" and .status=="completed" and .event=="workflow_dispatch" and .head_sha=="95d898d3e229eee22959726d5abd918ac1c5688b"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/41359383400 |
+            jq -e '.conclusion=="success" and .status=="completed" and .event=="push"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/41358611132 |
+            jq -e '.conclusion=="success"' >/dev/null
+          echo 'S6_VERIFIED_PROVIDER_AND_DURABLE_RETURN_GITHUB=PASS'
+      - name: Authenticate live completed Queen S6 and zero open worker lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          code="$(curl -sS --max-time 45 -o "$RUNNER_TEMP/s6-read.json" -w '%{http_code}' \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$base/api/queen-s6-autopilot")"
+          test "$code" = 200
+          jq -e '.ok==true and .state=="COMPLETED_VERIFIED" and .default_dispatch=="DENY" and .worker_persistent_certified==false and .paid_fallback==false' "$RUNNER_TEMP/s6-read.json" >/dev/null
+          echo 'S6_LIVE_NEON_FEEDBACK_CONSUMED_AND_DEFAULT_DENY=PASS'
+      - name: Cleanup
+        if: always()
+        run: rm -rf source "$RUNNER_TEMP/s6-read.json"

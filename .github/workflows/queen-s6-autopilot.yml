@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 10
     env:
       # Replace with exact merged Queen SHA after private PR is certified.
-      PRIVATE_SHA: 558bd3d72f5b283e9c2ea4fd38f2c2c0eacd97c8
+      PRIVATE_SHA: a5b029a5822faef655c659fe4fdc00c398fd1c2e
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,7 +51,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 25
     env:
-      PRIVATE_SHA: 558bd3d72f5b283e9c2ea4fd38f2c2c0eacd97c8
+      PRIVATE_SHA: a5b029a5822faef655c659fe4fdc00c398fd1c2e
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
@@ -230,79 +230,3 @@ jobs:
       - name: Cleanup
         if: always()
         run: rm -f "$RUNNER_TEMP/s6-claim.json" "$RUNNER_TEMP/s6-result.json" "$RUNNER_TEMP/s6-complete.json" "$RUNNER_TEMP/s6-verified-return.json"
-
-  recover-previously-verified-provider-result:
-    needs: [preflight, deploy-edge, autonomous-tick]
-    if: >-
-      always() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
-      needs.preflight.result == 'success' && needs.deploy-edge.result == 'success' &&
-      needs.autonomous-tick.result == 'success'
-    runs-on: ubuntu-latest
-    environment: pfarma-ci-trusted
-    timeout-minutes: 15
-    env:
-      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
-      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-      CPU_REPO: giovannifidel-collab/hive-compute-node-00
-      CPU_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
-      PROVIDER_RUN: '41358859735'
-    steps:
-      - name: Only resume the previously executed bounded attempt, never redispatch
-        shell: bash
-        run: |
-          set -euo pipefail
-          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
-          h=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
-          test -n "${GH_TOKEN:-}" && test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
-          code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/s6-recovery-state.json" -w '%{http_code}' "${h[@]}" "$base/api/queen-s6-autopilot")"
-          test "$code" = 200
-          state="$(jq -r .state "$RUNNER_TEMP/s6-recovery-state.json")"
-          if [ "$state" = COMPLETED_VERIFIED ]; then echo 'S6_OLD_VERIFIED_RUN_ALREADY_CLOSED=PASS';exit 0;fi
-          test "$state" = DISPATCH_LEASED || { echo "S6_UNEXPECTED_RECEIPT_STATE=$state";exit 72; }
-          gh api "repos/$CPU_REPO/actions/runs/$PROVIDER_RUN" |
-            jq -e --arg sha "$CPU_SHA" '.conclusion=="success" and .event=="workflow_dispatch" and .head_sha==$sha and .path==".github/workflows/hive-envelope-worker.yml"' >/dev/null
-          gh api "repos/$CPU_REPO/actions/runs/$PROVIDER_RUN/jobs?per_page=100" |
-            jq -e '[.jobs[]|select(.name=="Execute HIVE Job Envelope" and .conclusion=="success" and ([.steps[]|select(.name=="Prove short-lived GitHub OIDC identity" and .conclusion=="success")]|length)==1 and ([.steps[]|select(.name=="Validate canonical sealed result" and .conclusion=="success")]|length)==1)]|length==1' >/dev/null
-          artifact="$(gh api "repos/$CPU_REPO/actions/runs/$PROVIDER_RUN/artifacts?per_page=100" |
-            jq -r '[.artifacts[]|select(.name=="result.json" and .expired==false)]|if length==1 then .[0].id else empty end')"
-          test -n "$artifact"
-          curl --fail --silent --show-error --location --max-time 60 \
-            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/$CPU_REPO/actions/artifacts/$artifact/zip" -o "$RUNNER_TEMP/s6-recovery-artifact.json"
-          python - <<'PY'
-          import hashlib,json,os
-          p=os.environ['RUNNER_TEMP']
-          r=json.load(open(p+'/s6-recovery-artifact.json'))
-          digest=r.pop('result_sha256')
-          assert hashlib.sha256(json.dumps(r,sort_keys=True,separators=(',',':')).encode()).hexdigest()==digest
-          assert r['status']=='completed' and r['exit_code']==0
-          assert r['metadata']['project_slug']=='hive'
-          assert r['provenance']['environment']['sha']==os.environ['CPU_SHA']
-          assert r['provenance']['environment']['repository']==os.environ['CPU_REPO']
-          assert str(r['provenance']['environment']['run_id'])==os.environ['PROVIDER_RUN']
-          assert r['workload']=={'name':'selftest','version':'1'}
-          assert r['metadata']['job_envelope']['parameters']=={'rounds':50000}
-          assert all(r['output']['checks'].values())
-          r['result_sha256']=digest
-          with open(p+'/s6-recovery-payload.json','w') as f:
-            json.dump({'action':'complete','run_id':int(os.environ['PROVIDER_RUN']),'artifact':r},f,separators=(',',':'))
-          print('S6_RECOVERY_INDEPENDENT_SHA256=PASS')
-          PY
-          code="$(curl -sS --max-time 150 -o "$RUNNER_TEMP/s6-recovered.json" -w '%{http_code}' \
-            -H 'content-type: application/json' "${h[@]}" \
-            -X POST --data-binary @"$RUNNER_TEMP/s6-recovery-payload.json" "$base/api/queen-s6-autopilot")"
-          if [ "$code" != 200 ];then jq -c '{ok,error}' "$RUNNER_TEMP/s6-recovered.json";exit 76;fi
-          jq -e '.ok==true and .status=="COMPLETE" and .training_eligible==false and .mastery_eligible==false and (.steps|all(.==true))' "$RUNNER_TEMP/s6-recovered.json" >/dev/null
-          code="$(curl -sS --max-time 35 -o "$RUNNER_TEMP/s6-replay.json" -w '%{http_code}' \
-            -H 'content-type: application/json' "${h[@]}" \
-            -X POST --data-binary @"$RUNNER_TEMP/s6-recovery-payload.json" "$base/api/queen-s6-autopilot")"
-          test "$code" = 200
-          jq -e '.ok==true and .replayed==true and .status=="COMPLETE"' "$RUNNER_TEMP/s6-replay.json" >/dev/null
-          echo 'S6_REAL_CPU00_RESULT_TO_QUEEN_MEMORY_SCHOOL_WORLD_COGNITIVE=PASS'
-          echo 'S6_RECOVERY_NO_SECOND_PROVIDER_DISPATCH=PASS'
-          echo 'S6_COMPLETION_REPLAY_IDEMPOTENT=PASS'
-      - name: Cleanup
-        if: always()
-        run: rm -f "$RUNNER_TEMP"/s6-recovery-*.json "$RUNNER_TEMP/s6-recovered.json" "$RUNNER_TEMP/s6-replay.json"
