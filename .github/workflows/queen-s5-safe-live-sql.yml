@@ -1,0 +1,79 @@
+name: Queen S5 Live SQL Safety Gate PostgreSQL 18
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-safe-live-sql.yml']
+permissions:
+  contents: read
+jobs:
+  isolated-proof:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 20
+    services:
+      pg:
+        image: postgres:18
+        env: { POSTGRES_USER: hive, POSTGRES_PASSWORD: ephemeral-ci-only, POSTGRES_DB: hive_s5 }
+        options: >-
+          --health-cmd "pg_isready -U hive -d hive_s5"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      PRIVATE_SHA: 5d686c5065954fe0773c3dce7fad9601571cfc6d
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify source locks and immutable S0-S4
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$PRIVATE_SHA"
+          for c in governance/validate-s0-truth.mjs core/validate-s1-core.mjs memory/validate-s2-school-memory.mjs delegation/validate-s3-delegation.mjs razzo/validate-s4-closeout.mjs; do
+            node "source/ops/queen/$c"
+          done
+          node source/ops/queen/compute/validate-s5-staging.mjs
+          node source/ops/queen/compute/build-s5-production-migration.mjs --check
+      - name: Recreate real School and HIVE schema on disposable PostgreSQL 18
+        shell: bash
+        env: {PG_CONTAINER: '${{ job.services.pg.id }}'}
+        run: |
+          set -euo pipefail
+          for m in 001_tables 002_functions 003_seed_projects 004_integrity 017_hive_school_v1 018_hive_field_cell 019_hive_school_s2_learning_gate; do
+            docker exec -i "$PG_CONTAINER" psql -U hive -d hive_s5 -v ON_ERROR_STOP=1 -q < "source/db/$m.sql"
+          done
+          test "$(docker exec "$PG_CONTAINER" psql -U hive -d hive_s5 -Atc "select count(*) from tasks;")" = 0
+      - name: Build and apply exact safe production overlay atomically
+        shell: bash
+        env: {PG_CONTAINER: '${{ job.services.pg.id }}'}
+        run: |
+          set -euo pipefail
+          node source/ops/queen/compute/build-s5-production-migration.mjs --sql > "$RUNNER_TEMP/s5-safe.sql"
+          docker exec -i "$PG_CONTAINER" psql -U hive -d hive_s5 -v ON_ERROR_STOP=1 -1 -q < "$RUNNER_TEMP/s5-safe.sql"
+          echo 'S5_POSTGRES18_PRODUCTION_SQL=PASS'
+      - name: Verify owner permission, prepared node denial and no self certification
+        shell: bash
+        env: {PG_CONTAINER: '${{ job.services.pg.id }}'}
+        run: |
+          set -euo pipefail
+          q() { docker exec "$PG_CONTAINER" psql -U hive -d hive_s5 -Atc "$1"; }
+          test "$(q "select count(*) from nodes where kind='compute';")" = 8
+          test "$(q "select count(*) from nodes where name='hive-compute-node-00' and status='prepared';")" = 1
+          test "$(q "select count(*) from nodes where kind='compute' and coalesce((metadata->>'certified')::boolean,false)=true;")" = 0
+          test "$(q "select has_function_privilege('public','public.hive_certify_compute_node(text,boolean,text,jsonb)','EXECUTE');")" = f
+          test "$(q "select count(*) from pg_proc where proname in ('hive_prepare_stateless_dispatch','hive_abort_stateless_dispatch','hive_claim_compute_task');")" = 3
+          test "$(q "select count(*) from hive_select_compute_node('{\"class\":\"cpu\"}'::jsonb);")" = 0
+          q "select hive_compute_node_heartbeat('hive-compute-node-00','github-actions','online','{\"class\":\"cpu\"}'::jsonb,null,'{\"certified\":true,\"certified_by\":\"forged\"}'::jsonb);" >/dev/null
+          test "$(q "select metadata->>'certified' from nodes where name='hive-compute-node-00';")" = false
+          test "$(q "select count(*) from hive_select_compute_node('{\"class\":\"cpu\"}'::jsonb);")" = 0
+          docker exec -i "$PG_CONTAINER" psql -U hive -d hive_s5 -v ON_ERROR_STOP=1 -q < source/ops/queen/compute/tests/S5_4_DISPATCH_NEGATIVE_FIXTURE.sql
+          echo 'S5_OWNER_ONLY_AND_NO_HEARTBEAT_SELF_CERTIFICATION=PASS'
+          echo 'S5_PRODUCTION_NEON_MUTATIONS=ZERO'
+      - name: Cleanup
+        if: always()
+        run: rm -rf source "$RUNNER_TEMP/s5-safe.sql"
