@@ -1,0 +1,81 @@
+name: Queen S5 Stateless CPU00 Final Proof
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s5-stateless-proof-final.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      PRIVATE_SHA: 1f13f0ee43a463433af181a7b7d0d7dba6cb3d79
+      CPU_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+      CPU_RUN_ID: '41345870248'
+      RELAY_RUN_ID: '41345849589'
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Exact private source and S0–S5 policy integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node queen-source/ops/queen/governance/validate-s0-truth.mjs
+          node queen-source/ops/queen/core/validate-s1-core.mjs
+          node queen-source/ops/queen/memory/validate-s2-school-memory.mjs
+          node queen-source/ops/queen/delegation/validate-s3-delegation.mjs
+          node queen-source/ops/queen/razzo/validate-s4-closeout.mjs
+          node queen-source/ops/queen/compute/validate-s5-staging.mjs
+          node queen-source/ops/queen/compute/validate-s5-stateless-canary.mjs
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=JSON.parse(fs.readFileSync('queen-source/ops/queen/compute/S5_STATE.json'));
+          const p=s.s5_stateless_live_proof;
+          if(s.status!=='IN_PROGRESS_FAIL_CLOSED'||
+             p.status!=='PASS_END_TO_END_WITHOUT_WORKER_CREDENTIALS'||
+             p.public_relay_success_run!==41345849589||
+             p.cpu00_provider_run!==41345870248||
+             p.production_db_schema_changes===true||
+             p.neon_production_migration_performed!==false||
+             p.general_node_schedulable!==false||
+             p.secret_in_cpu00_worker!==false||
+             p.paid_fallback!==false||
+             s.gates['S5.3_cpu00_fresh_oidc_heartbeat']!=='PENDING'||
+             s.gates['S5.4_provider_neutral_queued_dispatch_claim_collect']!=='PENDING')
+             throw Error('unsafe S5 state or forged completion');
+          console.log('QUEEN_S5_PRODUCTION_BOUNDARY=DENY_CERTIFIED');
+          NODE
+      - name: Independently verify real source, success, OIDC job and raw artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          provider="$(gh api "repos/giovannifidel-collab/hive-compute-node-00/actions/runs/$CPU_RUN_ID")"
+          echo "$provider" | jq -e --arg sha "$CPU_SHA" '.status=="completed" and .conclusion=="success" and .event=="workflow_dispatch" and .head_sha==$sha' >/dev/null
+          relay="$(gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$RELAY_RUN_ID")"
+          echo "$relay" | jq -e '.status=="completed" and .conclusion=="success" and .event=="push"' >/dev/null
+          pjobs="$(gh api "repos/giovannifidel-collab/hive-compute-node-00/actions/runs/$CPU_RUN_ID/jobs?per_page=100")"
+          echo "$pjobs" | jq -e '[.jobs[]|select(.name=="Execute HIVE Job Envelope" and .status=="completed" and .conclusion=="success" and ([.steps[]|select(.name=="Prove short-lived GitHub OIDC identity" and .conclusion=="success")]|length)==1 and ([.steps[]|select(.name=="Validate canonical sealed result" and .conclusion=="success")]|length)==1)]|length==1' >/dev/null
+          rjobs="$(gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$RELAY_RUN_ID/jobs?per_page=100")"
+          echo "$rjobs" | jq -e '[.jobs[]|select(.name=="stateless-execution" and .conclusion=="success" and ([.steps[]|select(.name=="Collect provider evidence and verify exact task lease, source and seal" and .conclusion=="success")]|length)==1)]|length==1' >/dev/null
+          artifacts="$(gh api "repos/giovannifidel-collab/hive-compute-node-00/actions/runs/$CPU_RUN_ID/artifacts?per_page=100")"
+          echo "$artifacts" | jq -e '[.artifacts[]|select(.name=="result.json" and .expired==false)]|length==1' >/dev/null
+          echo 'QUEEN_S5_SECRETLESS_CPU00_FINAL_INDEPENDENT_QA=PASS'
+          echo 'QUEEN_S5_PRODUCTION_SCHEDULING=DENY'
+      - name: Clean private source
+        if: always()
+        run: rm -rf queen-source
