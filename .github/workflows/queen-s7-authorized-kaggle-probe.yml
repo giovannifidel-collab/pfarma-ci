@@ -53,7 +53,7 @@ jobs:
     env:
       QUEEN_SOURCE_SHA: c7aca674b5cdb22fdeff88c42a018bb7bec3666c
       NODE: ${{ inputs.node_id }}
-      KAGGLE_API_TOKEN: ${{ inputs.node_id == 'hive-gpu-node-01' && (secrets.KAGGLE_API_TOKEN_GPU01 || secrets.GiovPand) || (secrets.KAGGLE_API_TOKEN_GPU02 || secrets.PatrickPand) }}
+      KAGGLE_API_TOKEN: ${{ (inputs.node_id == 'hive-gpu-node-01' && (secrets.KAGGLE_API_TOKEN_GPU01 || secrets.GiovPand)) || (inputs.node_id == 'hive-gpu-node-02' && (secrets.KAGGLE_API_TOKEN_GPU02 || secrets.PatrickPand)) }}
     steps:
       - uses: actions/checkout@v4
         with:
