@@ -1,0 +1,127 @@
+name: Queen S7 Owner-Gated Private Kaggle GPU Probe
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-authorized-kaggle-probe.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-authorized-kaggle-probe.yml']
+  workflow_dispatch:
+    inputs:
+      node_id:
+        description: Exact Kaggle identity for one free private CUDA probe
+        required: true
+        type: choice
+        options: [hive-gpu-node-01, hive-gpu-node-02]
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-one-private-kaggle-probe
+  cancel-in-progress: false
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env: {QUEEN_SOURCE_SHA: 'c7aca674b5cdb22fdeff88c42a018bb7bec3666c'}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact source, policy and offline Kaggle package test
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$QUEEN_SOURCE_SHA"
+          node source/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node --test source/ops/queen/compute/s7/tests/build-kaggle-bundles.test.mjs
+          mkdir -p "$RUNNER_TEMP/gpu-packages"
+          node source/ops/queen/compute/s7/build-kaggle-bundles.mjs \
+            source/ops/queen/compute/s7/kaggle/hive_gpu_probe.py "$RUNNER_TEMP/gpu-packages"
+          echo 'S7_GPU_PRIVATE_PROBE_SOURCE_CHECKS=PASS'
+  kaggle-actual-run:
+    if: github.event_name == 'workflow_dispatch'
+    needs: source-audit
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      QUEEN_SOURCE_SHA: c7aca674b5cdb22fdeff88c42a018bb7bec3666c
+      NODE: ${{ inputs.node_id }}
+      KAGGLE_API_TOKEN: ${{ inputs.node_id == 'hive-gpu-node-01' && secrets.KAGGLE_API_TOKEN_GPU01 || secrets.KAGGLE_API_TOKEN_GPU02 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Validate authorized Kaggle token and prepare exact private kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$QUEEN_SOURCE_SHA"
+          test -n "${KAGGLE_API_TOKEN:-}" || { echo 'S7_OWNER_KAGGLE_SECRET_NOT_CONNECTED'; exit 61; }
+          case "$NODE" in
+            hive-gpu-node-01) kernel='GiovPand/hive-s7-gpu-readiness-01';;
+            hive-gpu-node-02) kernel='PatrickPand/hive-s7-gpu-readiness-02';;
+            *) echo 'S7_KAGGLE_UNKNOWN_NODE_DENY'; exit 62;;
+          esac
+          echo "KERNEL=$kernel" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/s7-kaggle"
+          node source/ops/queen/compute/s7/build-kaggle-bundles.mjs \
+            source/ops/queen/compute/s7/kaggle/hive_gpu_probe.py "$RUNNER_TEMP/s7-kaggle"
+          python -m pip -q install kaggle
+          test -f "$RUNNER_TEMP/s7-kaggle/$NODE/kernel-metadata.json"
+          echo 'S7_PRIVATE_TOKEN_AND_SOURCE_BOUNDARY=PASS'
+      - name: Launch exactly one private non-product Kaggle GPU readiness canary
+        shell: bash
+        run: |
+          set -euo pipefail
+          kaggle kernels push --path "$RUNNER_TEMP/s7-kaggle/$NODE" --accelerator NvidiaTeslaT4 --timeout 600
+          echo 'S7_GPU_PROVIDER_PUSH_ISSUED_NOT_CERTIFIED'
+          complete=0
+          for i in {1..65}; do
+            state="$(kaggle kernels status "$KERNEL" 2>&1 || true)"
+            if printf '%s' "$state" | grep -Eqi 'complete|success'; then complete=1; break; fi
+            if printf '%s' "$state" | grep -Eqi 'error|failed|cancelled'; then echo 'S7_GPU_PROVIDER_FAILED'; exit 63; fi
+            sleep 10
+          done
+          test "$complete" -eq 1 || { echo 'S7_GPU_PROBE_TIMED_OUT_NOT_CERTIFIED'; exit 64; }
+          mkdir -p "$RUNNER_TEMP/s7-kaggle-results"
+          kaggle kernels output "$KERNEL" --path "$RUNNER_TEMP/s7-kaggle-results"
+          NODE="$NODE" python - <<'PY'
+          import os,json,hashlib
+          from pathlib import Path
+          p=Path(os.environ['RUNNER_TEMP'])/'s7-kaggle-results'/'s7-gpu-readiness.json'
+          r=json.loads(p.read_text())
+          expected=r.pop('result_sha256')
+          computed=hashlib.sha256(json.dumps(r,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          assert expected==computed,'S7_GPU_ARTIFACT_HASH_MISMATCH'
+          assert r['node_id']==os.environ['NODE'],'S7_GPU_IDENTITY_MISMATCH'
+          assert r['status']=='probe_completed','S7_GPU_NO_ACTUAL_SUCCESS'
+          assert r['observed_gpu_count']>=1,'S7_GPU_UNOBSERVED'
+          assert all(r['checks'].values()),'S7_GPU_CUDA_TEST_FAILURE'
+          print('S7_KAGGLE_REAL_GPU_PROBE_VERIFIED_SHA256=PASS',r['node_id'],r['observed_gpu_count'],expected)
+          print('S7_GPU_PROBE_IS_NOT_HIVE_NODE_CERTIFICATION')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: queen-s7-kaggle-gpu-probe-${{ inputs.node_id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/s7-kaggle-results/s7-gpu-readiness.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Clean up GPU bundle and results, keep secrets in trusted runner only
+        if: always()
+        run: rm -rf source "$RUNNER_TEMP/s7-kaggle" "$RUNNER_TEMP/s7-kaggle-results"
