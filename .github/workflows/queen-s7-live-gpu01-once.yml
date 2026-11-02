@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-      GPU01_TOKEN: ${{ secrets.KAGGLE_API_TOKEN_GPU01 || secrets.GiovPand }}
+      GPU01_TOKEN: ${{ secrets.KAGGLE_API_TOKEN_GPU01 }}
     steps:
       - name: Verify pre-existing Kaggle authorization without exposing tokens
         shell: bash
