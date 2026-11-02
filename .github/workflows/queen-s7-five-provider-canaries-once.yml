@@ -1,0 +1,130 @@
+name: Queen S7 Five Independent CPU Provider OIDC Artifact Canaries
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-five-provider-canaries-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-five-verified-provider-canaries
+  cancel-in-progress: false
+jobs:
+  verify-each-node:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Execute exactly one allowlisted non-HIVE task selftest per CPU and reattest OIDC + digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          mkdir -p "$RUNNER_TEMP/s7"
+          echo '[]' > "$RUNNER_TEMP/s7/evidence.json"
+          for idx in 01 02 03 04 05; do
+            node="hive-compute-node-$idx"
+            case "$idx" in
+              01) repo="giovannipandolfo108168-cyber/hive-compute-node-01" ;;
+              02) repo="axis41990-art/hive-compute-node-02" ;;
+              03) repo="pfarmaestetista-cell/hive-compute-node-03" ;;
+              04) repo="pfarmagalenica-commits/hive-compute-node-04" ;;
+              05) repo="pandolfopatrickantonio-lang/hive-compute-node-05" ;;
+              *) exit 41 ;;
+            esac
+            sha="$(gh api "repos/$repo/branches/main" --jq '.commit.sha')"
+            test -n "$sha"
+            export SHA="$sha" REPO="$repo" NODE="$node"
+            python - <<'PY'
+          import os,json,uuid,base64
+          folder=os.environ['RUNNER_TEMP']+'/s7'
+          nonce=str(uuid.uuid4())
+          envelope={'schema_version':'1.0','job_id':'s7-provider-only-'+os.environ['NODE']+'-'+nonce,
+           'project_slug':'hive','priority':50,'workload':{'name':'selftest','version':'1'},
+           'requirements':{'class':'cpu','required_capabilities':['cpu','github-actions']},
+           'source':{'repository':os.environ['REPO'],'commit_or_version':os.environ['SHA']},
+           'inputs':[],'parameters':{'rounds':50000},'evidence_required':True,
+           'metadata':{'shard':0,'s7_provider_only':True,'not_a_neon_task':True}}
+          payload=base64.urlsafe_b64encode(json.dumps(envelope,separators=(',',':')).encode()).decode().rstrip('=')
+          json.dump({'task':str(uuid.uuid4()),'attempt':str(uuid.uuid4()),'envelope':envelope,'encoded':payload},open(folder+'/request.json','w'))
+          PY
+            started="$(date -u -d '-2 seconds' +'%Y-%m-%dT%H:%M:%SZ')"
+            task="$(jq -r .task "$RUNNER_TEMP/s7/request.json")"
+            attempt="$(jq -r .attempt "$RUNNER_TEMP/s7/request.json")"
+            encoded="$(jq -r .encoded "$RUNNER_TEMP/s7/request.json")"
+            echo "::add-mask::$attempt"
+            echo "::add-mask::$encoded"
+            gh workflow run hive-envelope-worker.yml --repo "$repo" --ref main \
+              -f hive_task_id="$task" -f attempt_token="$attempt" -f envelope_b64="$encoded"
+            run=''
+            for i in {1..45}; do
+              runs="$(gh api "repos/$repo/actions/workflows/hive-envelope-worker.yml/runs?event=workflow_dispatch&per_page=20")"
+              candidates="$(printf '%s' "$runs" | jq -r --arg sha "$sha" --arg start "$started" '[.workflow_runs[] | select(.head_sha==$sha and .created_at>=$start and .head_branch=="main")] | .[].id')"
+              count="$(printf '%s\n' "$candidates" | sed '/^$/d' | wc -l)"
+              if test "$count" -gt 1; then echo 'S7_MULTIPLE_AMBIGUOUS_PROVIDER_RUNS_DENY'; exit 42; fi
+              if test "$count" = 1; then run="$candidates"; break; fi
+              sleep 3
+            done
+            test -n "$run" || { echo 'S7_PROVIDER_RUN_MISSING'; exit 43; }
+            status=''
+            for i in {1..100}; do
+              status="$(gh api "repos/$repo/actions/runs/$run" --jq '.status')"
+              test "$status" = completed && break
+              sleep 3
+            done
+            test "$status" = completed || { echo 'S7_PROVIDER_RUN_TIMEOUT'; exit 44; }
+            test "$(gh api "repos/$repo/actions/runs/$run" --jq '.conclusion')" = success || { echo 'S7_PROVIDER_RUN_FAILED'; exit 45; }
+            gh api "repos/$repo/actions/runs/$run/jobs?per_page=100" |
+              jq -e '[.jobs[]|select(.name=="Execute HIVE Job Envelope" and .conclusion=="success" and ([.steps[]|select(.name=="Prove short-lived GitHub OIDC identity" and .conclusion=="success")]|length)==1 and ([.steps[]|select(.name=="Validate canonical sealed result" and .conclusion=="success")]|length)==1)]|length==1' >/dev/null
+            artifact="$(gh api "repos/$repo/actions/runs/$run/artifacts?per_page=100" |
+              jq -r '[.artifacts[]|select(.name=="result.json" and .expired==false)]|if length==1 then .[0].id else empty end')"
+            test -n "$artifact" || { echo 'S7_PROVIDER_ARTIFACT_MISSING'; exit 46; }
+            curl --fail --silent --show-error --location --max-time 60 \
+              -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$repo/actions/artifacts/$artifact/zip" \
+              -o "$RUNNER_TEMP/s7/result.json"
+            export PROVIDER_RUN="$run"
+            python - <<'PY'
+          import json,hashlib,os
+          folder=os.environ['RUNNER_TEMP']+'/s7'
+          req=json.load(open(folder+'/request.json'))
+          result=json.load(open(folder+'/result.json'))
+          expected=result.pop('result_sha256')
+          actual=hashlib.sha256(json.dumps(result,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          assert expected==actual, 'CANONICAL_SHA256_MISMATCH'
+          assert result['schema_version']=='1.0' and result['status']=='completed' and result['exit_code']==0
+          assert result['job_id']==req['envelope']['job_id']
+          assert result['metadata']['hive_task_id']==req['task']
+          assert result['metadata']['attempt_token']==req['attempt']
+          assert result['metadata']['job_envelope']['source']['commit_or_version']==os.environ['SHA']
+          assert result['metadata']['job_envelope']['metadata']['s7_provider_only'] is True
+          assert result['node']['node_id']==os.environ['NODE'] and result['node']['provider']=='github-actions'
+          assert str(result['node']['provider_run_ref'])==os.environ['PROVIDER_RUN']
+          assert result['provenance']['environment']['repository']==os.environ['REPO']
+          assert result['provenance']['environment']['sha']==os.environ['SHA']
+          assert result['provenance']['environment']['workflow_ref']==os.environ['REPO']+'/.github/workflows/hive-envelope-worker.yml@refs/heads/main'
+          assert all(result['output']['checks'].values())
+          evidence=json.load(open(folder+'/evidence.json'))
+          evidence.append({'node_id':os.environ['NODE'],'repository':os.environ['REPO'],
+           'worker_sha':os.environ['SHA'],'provider_run_id':int(os.environ['PROVIDER_RUN']),
+           'result_sha256':expected,'oidc_runner_step_pass':True,
+           'result_checked_independently':True,'real_neon_task':False,
+           'hive_general_node_certified':False,'paid_fallback':False})
+          json.dump(evidence,open(folder+'/evidence.json','w'),indent=2)
+          print('S7_PROVIDER_ONLY_OIDC_SHA256_PASS',os.environ['NODE'],os.environ['PROVIDER_RUN'])
+          PY
+            rm -f "$RUNNER_TEMP/s7/request.json" "$RUNNER_TEMP/s7/result.json"
+          done
+          jq -e 'length==5 and all(.[]; .oidc_runner_step_pass==true and .result_checked_independently==true and .hive_general_node_certified==false)' "$RUNNER_TEMP/s7/evidence.json"
+          echo 'S7_ALL_FIVE_CPU_PROVIDER_ONLY_FRESH_OIDC_AND_SHA256=PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: queen-s7-five-provider-selftest-evidence
+          path: ${{ runner.temp }}/s7/evidence.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove temporary tokens, job envelopes and results
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/s7"
