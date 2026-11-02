@@ -81,7 +81,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/s7-kaggle"
           node source/ops/queen/compute/s7/build-kaggle-bundles.mjs \
             source/ops/queen/compute/s7/kaggle/hive_gpu_probe.py "$RUNNER_TEMP/s7-kaggle"
-          python -m pip -q install kaggle
+          python -m pip -q install kaggle 'six>=1.16,<2'
+          python -c 'import six; from kaggle.cli import main; print("S7_KAGGLE_CLI_IMPORT_READY=PASS")'
           test -f "$RUNNER_TEMP/s7-kaggle/$NODE/kernel-metadata.json"
           echo 'S7_PRIVATE_TOKEN_AND_SOURCE_BOUNDARY=PASS'
       - name: Launch exactly one private non-product Kaggle GPU readiness canary
