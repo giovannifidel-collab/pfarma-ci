@@ -1,0 +1,26 @@
+name: Queen S7 CPU01 Owner-Approved One-Shot Installer Trigger
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-live-cpu01-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-owner-cpu01-once
+  cancel-in-progress: false
+jobs:
+  trigger-approved-exact-node:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Trigger only verified S7 CPU01 owner-authenticated installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          gh workflow run queen-s7-authorized-cpu-bootstrap.yml \
+            --repo giovannifidel-collab/pfarma-ci --ref main \
+            -f node_id=hive-compute-node-01
+          echo 'S7_CPU01_SINGLE_OWNER_APPROVED_INSTALLER_DISPATCH=PASS'
