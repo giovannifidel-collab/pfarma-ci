@@ -1,0 +1,98 @@
+name: Queen S7 Owner-Gated Cross-Account CPU Installer
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-authorized-cpu-bootstrap.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-authorized-cpu-bootstrap.yml']
+  workflow_dispatch:
+    inputs:
+      node_id:
+        description: Exact owner-authorized CPU node to install after GitHub permission grant
+        required: true
+        type: choice
+        options: [hive-compute-node-01, hive-compute-node-02, hive-compute-node-03, hive-compute-node-04, hive-compute-node-05]
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-cross-owner-installer
+  cancel-in-progress: false
+jobs:
+  source-check:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      QUEEN_SOURCE_SHA: f3752722c98bc74760fc6ed41aa9e21e04619247
+      CPU00_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-compute-node-00
+          ref: ${{ env.CPU00_SHA }}
+          persist-credentials: false
+          path: cpu00-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Source lock and negative authorization tests, no remote writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$QUEEN_SOURCE_SHA"
+          test "$(git -C cpu00-source rev-parse HEAD)" = "$CPU00_SHA"
+          node --test queen-source/ops/queen/compute/s7/tests/*.test.mjs
+          mkdir -p reviewed-packages
+          node queen-source/ops/queen/compute/s7/build-cpu-installers.mjs cpu00-source reviewed-packages
+          echo 'S7_BOOTSTRAP_EXACT_SOURCE_AND_NEGATIVE_TESTS=PASS'
+  install-only-after-permission:
+    if: github.event_name == 'workflow_dispatch'
+    needs: source-check
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      QUEEN_SOURCE_SHA: f3752722c98bc74760fc6ed41aa9e21e04619247
+      CPU00_SHA: 95d898d3e229eee22959726d5abd918ac1c5688b
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      NODE: ${{ inputs.node_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-compute-node-00
+          ref: ${{ env.CPU00_SHA }}
+          persist-credentials: false
+          path: cpu00-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Install only immutable-owner target via atomic GitHub commit after write permission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          test "$(git -C queen-source rev-parse HEAD)" = "$QUEEN_SOURCE_SHA"
+          test "$(git -C cpu00-source rev-parse HEAD)" = "$CPU00_SHA"
+          mkdir -p "$RUNNER_TEMP/s7-reviewed-bundles"
+          node queen-source/ops/queen/compute/s7/build-cpu-installers.mjs \
+            cpu00-source "$RUNNER_TEMP/s7-reviewed-bundles"
+          node queen-source/ops/queen/compute/s7/install-authorized-cpu-node.mjs \
+            "$NODE" "$RUNNER_TEMP/s7-reviewed-bundles" --dry-run
+          node queen-source/ops/queen/compute/s7/install-authorized-cpu-node.mjs \
+            "$NODE" "$RUNNER_TEMP/s7-reviewed-bundles"
+          echo 'S7_SINGLE_NODE_SOURCE_INSTALLED_NOT_YET_CERTIFIED=PASS'
+      - name: Delete temporary installation package
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/s7-reviewed-bundles" queen-source cpu00-source
