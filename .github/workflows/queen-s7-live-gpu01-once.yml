@@ -1,0 +1,33 @@
+name: Queen S7 Owner-Approved Kaggle GPU01 First Live Probe
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-live-gpu01-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-owner-gpu01-once
+  cancel-in-progress: false
+jobs:
+  dispatch-one-approved-provider-probe:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      GPU01_TOKEN: ${{ secrets.KAGGLE_API_TOKEN_GPU01 }}
+    steps:
+      - name: Verify pre-existing Kaggle authorization without exposing tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          test -n "${GPU01_TOKEN:-}" || { echo 'S7_GPU01_KAGGLE_TOKEN_MISSING'; exit 61; }
+          echo 'S7_GPU01_KAGGLE_TOKEN_PRESENT_ONLY=PASS'
+      - name: Dispatch exact source-locked private GPU01 canary
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run queen-s7-authorized-kaggle-probe.yml \
+            --repo giovannifidel-collab/pfarma-ci --ref main \
+            -f node_id=hive-gpu-node-01
+          echo 'S7_GPU01_SINGLE_APPROVED_WORKFLOW_DISPATCHED=PASS'
