@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 10
-    env: {QUEEN_SOURCE_SHA: '1ac6f3e90a696ec3cf7981d986105f98735e772c'}
+    env: {QUEEN_SOURCE_SHA: 'c7aca674b5cdb22fdeff88c42a018bb7bec3666c'}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,7 +51,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 25
     env:
-      QUEEN_SOURCE_SHA: 1ac6f3e90a696ec3cf7981d986105f98735e772c
+      QUEEN_SOURCE_SHA: c7aca674b5cdb22fdeff88c42a018bb7bec3666c
       NODE: ${{ inputs.node_id }}
       KAGGLE_API_TOKEN: ${{ inputs.node_id == 'hive-gpu-node-01' && secrets.KAGGLE_API_TOKEN_GPU01 || secrets.KAGGLE_API_TOKEN_GPU02 }}
     steps:
