@@ -1,0 +1,46 @@
+name: Queen S7 HIVE Independent Reconcile
+on:
+  workflow_run:
+    workflows: ['Queen S7 HIVE One-Shot Provider']
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: queen-s7-one-live-reconcile
+  cancel-in-progress: false
+jobs:
+  reconcile-hive-provider:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      PRIVATE_SHA: 1cf678bd1eaf6f928ea70e52b09da365fdfac3e5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Independently attest completed provider and store Queen S7 feedback
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          test -n "${GH_TOKEN:-}" && test -n "${CF_ACCESS_CLIENT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          python queen-source/ops/queen/compute/s7/runner/s7_reconcile.py
+          echo 'S7_EXACT_NEON_AND_DURABLE_COGNITIVE_FEEDBACK_PASS'
+      - name: Remove checked-out private source
+        if: always()
+        run: rm -rf queen-source

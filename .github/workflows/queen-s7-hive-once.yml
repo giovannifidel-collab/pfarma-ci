@@ -1,0 +1,108 @@
+name: Queen S7 HIVE One-Shot Provider
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-hive-once.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-hive-once.yml']
+  workflow_dispatch:
+    inputs:
+      node_id:
+        required: true
+        description: Exact owner-approved HIVE node
+        type: choice
+        options:
+          - hive-compute-node-01
+          - hive-compute-node-02
+          - hive-compute-node-03
+          - hive-compute-node-04
+          - hive-compute-node-05
+          - hive-gpu-node-01
+          - hive-gpu-node-02
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-one-live-provider-run
+  cancel-in-progress: false
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env: {PRIVATE_SHA: '1cf678bd1eaf6f928ea70e52b09da365fdfac3e5'}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Source-locked negative S7 tests, syntax and S0-S6 regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node queen-source/ops/queen/autopilot/validate-s6-closeout.mjs
+          node queen-source/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node --test queen-source/ops/queen/compute/s7/tests/*.test.mjs
+          node --check queen-source/cloudflare/functions/api/queen-s7-e2e.js
+          for file in queen-s7-claim.js queen-s7-verify.js queen-s7-feedback.js; do
+            node --check "queen-source/cloudflare/functions/_lib/$file"
+          done
+          python -m py_compile queen-source/ops/queen/compute/s7/runner/*.py
+          python -m py_compile queen-source/ops/queen/compute/s7/kaggle/hive_gpu_job_template.py
+          echo 'S7_BOUNDED_SOURCE_AND_REGRESSION_GATE_PASS'
+      - name: Remove temporary private checkout
+        if: always()
+        run: rm -rf queen-source
+  execute-one-s7-hive-node:
+    needs: source-audit
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 30
+    env:
+      PRIVATE_SHA: 1cf678bd1eaf6f928ea70e52b09da365fdfac3e5
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      S7_NODE_ID: ${{ inputs.node_id }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      KAGGLE_API_TOKEN: ${{ (inputs.node_id == 'hive-gpu-node-01' && secrets.KAGGLE_API_TOKEN_GPU01) || (inputs.node_id == 'hive-gpu-node-02' && secrets.KAGGLE_API_TOKEN_GPU02) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install Kaggle CLI only when an exact GPU node is approved
+        if: startsWith(inputs.node_id, 'hive-gpu-node-')
+        run: python -m pip -q install kaggle 'six>=1.16,<2'
+      - name: Kaggle authenticated live run and independent sealed output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" && test -n "${CF_ACCESS_CLIENT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          python queen-source/ops/queen/compute/s7/runner/s7_main.py
+          test -s "$RUNNER_TEMP/s7-receipt.json"
+          echo 'S7_PROTECTED_PROVIDER_ORCHESTRATED_ONE_SHOT_PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s7-hive-live-${{ inputs.node_id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/s7-receipt.json
+          if-no-files-found: error
+          retention-days: 2
+      - name: Clear ephemeral claim and provider artifacts
+        if: always()
+        run: rm -rf queen-source "$RUNNER_TEMP/s7-receipt.json" "$RUNNER_TEMP/s7-gpu-private" "$RUNNER_TEMP/s7-gpu-output"

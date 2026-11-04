@@ -1,0 +1,101 @@
+name: Queen S7 Access-Protected Edge Deployment
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-hive-edge-deploy.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-hive-edge-deploy.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-one-scoped-edge-deploy
+  cancel-in-progress: false
+jobs:
+  source-check:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env: {PRIVATE_SHA: '1cf678bd1eaf6f928ea70e52b09da365fdfac3e5'}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Fail-closed source and S6-S7 regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          node queen-source/ops/queen/autopilot/validate-s6-closeout.mjs
+          node queen-source/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node --test queen-source/ops/queen/compute/s7/tests/*.test.mjs
+          node --check queen-source/cloudflare/functions/api/queen-s7-e2e.js
+          for f in queen-s7-claim queen-s7-verify queen-s7-feedback; do
+            node --check "queen-source/cloudflare/functions/_lib/$f.js"
+          done
+          echo 'QUEEN_S7_EDGE_SOURCE_LOCK_AND_FAIL_CLOSED_PASS'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source
+  deploy:
+    needs: source-check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 25
+    env:
+      PRIVATE_SHA: 1cf678bd1eaf6f928ea70e52b09da365fdfac3e5
+      CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Deploy bounded S7 endpoint through existing Cloudflare Pages
+        working-directory: queen-source/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" && test -n "${CLOUDFLARE_ACCOUNT_ID:-}"
+          rm -f wrangler.toml wrangler.json wrangler.jsonc
+          npx --yes wrangler@4 pages download config hive-alveare --force >"$RUNNER_TEMP/s7-cf-config.log" 2>&1
+          test -f wrangler.jsonc -o -f wrangler.json -o -f wrangler.toml
+          npx --yes wrangler@4 pages deploy public --project-name hive-alveare --branch main >"$RUNNER_TEMP/s7-cf-deploy.log" 2>&1 || {
+            tail -n 30 "$RUNNER_TEMP/s7-cf-deploy.log";exit 54;
+          }
+          echo 'QUEEN_S7_CLOUDFLARE_SOURCE_LOCKED_DEPLOY_PASS'
+      - name: Require protected S7 live GET policy still DENY
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          url="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";url="${url%/}"
+          code=''
+          for i in {1..12}; do
+            code="$(curl --silent --show-error --max-time 35 -o "$RUNNER_TEMP/s7-state.json" -w '%{http_code}' \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              "$url/api/queen-s7-e2e" || true)"
+            if [ "$code" = 200 ] && jq -e '.ok==true and .default_dispatch=="DENY" and .general_routing==false and .paid_fallback==false and .product_writes==false' "$RUNNER_TEMP/s7-state.json" >/dev/null 2>&1;then break;fi
+            sleep 3
+          done
+          test "$code" = 200
+          jq -e '.ok==true and .default_dispatch=="DENY" and .general_routing==false' "$RUNNER_TEMP/s7-state.json" >/dev/null
+          echo 'QUEEN_S7_ACCESS_PROTECTED_LIVE_POLICY_DENY_PASS'
+      - name: Cleanup
+        if: always()
+        run: rm -rf queen-source "$RUNNER_TEMP/s7-state.json"
