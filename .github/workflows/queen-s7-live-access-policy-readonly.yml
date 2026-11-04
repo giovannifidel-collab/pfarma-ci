@@ -1,0 +1,32 @@
+name: Queen S7 Live Access Policy Readonly Verification
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-live-access-policy-readonly.yml']
+permissions: {contents: read}
+jobs:
+  verify-queen-s7-edge:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Read protected live S7 policy and require DENY invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          code="$(curl -sS --max-time 40 -o "$RUNNER_TEMP/queen-s7-live.json" -w '%{http_code}' \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "${base%/}/api/queen-s7-e2e")"
+          test "$code" = 200
+          jq -e '.ok == true and .stage == "S7" and .default_dispatch == "DENY" and .general_routing == false and .paid_fallback == false and .product_writes == false' "$RUNNER_TEMP/queen-s7-live.json" >/dev/null
+          echo 'QUEEN_S7_CLOUDFLARE_ACCESS_PROTECTED_LIVE_POLICY=PASS'
+      - name: Cleanup
+        if: always()
+        run: rm -f "$RUNNER_TEMP/queen-s7-live.json"
