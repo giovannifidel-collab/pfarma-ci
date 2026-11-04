@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 10
-    env: {PRIVATE_SHA: 'afc0231c86f9ec46f336e16743e66b661c397395'}
+    env: {PRIVATE_SHA: '1cf678bd1eaf6f928ea70e52b09da365fdfac3e5'}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,7 +49,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 25
     env:
-      PRIVATE_SHA: afc0231c86f9ec46f336e16743e66b661c397395
+      PRIVATE_SHA: 1cf678bd1eaf6f928ea70e52b09da365fdfac3e5
       CLOUDFLARE_API_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
