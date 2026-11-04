@@ -1,0 +1,65 @@
+name: Queen S7 Owner-Approved CPU01 Single Live Canary
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-cpu01-live-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-one-cpu01-owner-live-canary
+  cancel-in-progress: false
+jobs:
+  exact-owner-cpu01-once:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Require one exact pending Neon owner approval
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" && test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          curl -fsS --max-time 35 -o "$RUNNER_TEMP/s7-before.json" \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$base/api/queen-s7-e2e?node_id=hive-compute-node-01"
+          jq -e '.ok==true and .node_id=="hive-compute-node-01" and .status=="OWNER_APPROVED_PENDING" and .general_routing==false' "$RUNNER_TEMP/s7-before.json" >/dev/null
+          echo 'S7_OWNER_APPROVED_CPU01_LIVE_PRECONDITION_PASS'
+      - name: Dispatch one exact CPU01 HIVE provider attempt
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run queen-s7-hive-once.yml \
+            --repo giovannifidel-collab/pfarma-ci --ref main \
+            -f node_id=hive-compute-node-01
+          echo 'S7_CPU01_EXACT_ONE_SHOT_REQUESTED'
+      - name: Wait for authenticated durable completion and fail closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          for i in {1..330}; do
+            code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/s7-status.json" -w '%{http_code}' \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              "$base/api/queen-s7-e2e?node_id=hive-compute-node-01" || true)"
+            if [ "$code" = 200 ] && jq -e '.status=="COMPLETED_VERIFIED" and .general_routing==false and .steps.memory==true and .steps.school_provisional==true and .steps.world==true and .steps.cognitive==true' "$RUNNER_TEMP/s7-status.json" >/dev/null 2>&1; then
+              echo 'QUEEN_S7_CPU01_REAL_HIVE_NEON_TO_PROVIDER_TO_SCHOOL_MEMORY_WORLD_COGNITIVE=PASS'
+              exit 0
+            fi
+            if [ "$code" = 200 ] && jq -e '.status=="QUARANTINED" or .status=="DENIED" or .status=="FAILED"' "$RUNNER_TEMP/s7-status.json" >/dev/null 2>&1; then
+              echo 'QUEEN_S7_CPU01_QUARANTINED_FAIL_CLOSED'
+              exit 63
+            fi
+            sleep 5
+          done
+          echo 'QUEEN_S7_CPU01_LIVE_PROOF_NOT_CONFIRMED'
+          exit 64
+      - name: Cleanup
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s7-before.json" "$RUNNER_TEMP/s7-status.json"
