@@ -1,0 +1,55 @@
+name: Queen S7 CPU03-05 Owner-Approved Sequential HIVE E2E
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-cpu03-05-hive-e2e-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-cpu03-05-sequential-one-shot
+  cancel-in-progress: false
+jobs:
+  exact-remaining-cpu-nodes:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 55
+    env:
+      PRIVATE_SHA: 16e2322664aa87fd13e335d6d355d1814df7a3a9
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Pin private source and audit scoped S7 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          test -n "${GH_TOKEN:-}" && test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          node queen-source/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node --test queen-source/ops/queen/compute/s7/tests/*.test.mjs
+          python -m py_compile queen-source/ops/queen/compute/s7/runner/*.py
+          echo 'S7_CPU03_05_SCOPED_NEGATIVE_GATES_PASS'
+      - name: Execute only CPU03 then CPU04 then CPU05, each one owner-approved task
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=queen-source/ops/queen/compute/s7/runner python - <<'PY'
+          from s7_orchestrate import do_node
+          for node in ('hive-compute-node-03','hive-compute-node-04','hive-compute-node-05'):
+              do_node(node)
+          print('QUEEN_S7_CPU03_05_INDEPENDENT_HIVE_COMPLETE=PASS')
+          PY
+      - name: Remove private checkout and runtime traces
+        if: always()
+        run: rm -rf queen-source
