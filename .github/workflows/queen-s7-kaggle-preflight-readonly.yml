@@ -1,0 +1,53 @@
+name: Queen S7 GPU01-02 private Kaggle read-only preflight
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-kaggle-preflight-readonly.yml']
+permissions: {contents: read}
+jobs:
+  private-version-identity:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: hive-gpu-node-01
+            kernel: GiovPand/hive-s7-gpu-readiness-01
+          - node: hive-gpu-node-02
+            kernel: PatrickPand/hive-s7-gpu-readiness-02
+    env:
+      KAGGLE_API_TOKEN: ${{ (matrix.node == 'hive-gpu-node-01' && secrets.KAGGLE_API_TOKEN_GPU01) || (matrix.node == 'hive-gpu-node-02' && secrets.KAGGLE_API_TOKEN_GPU02) }}
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read existing private version 1 and require version 2 unused
+        env:
+          NODE: ${{ matrix.node }}
+          KERNEL: ${{ matrix.kernel }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KAGGLE_API_TOKEN:-}" || { echo "S7_KAGGLE_SECRET_MISSING";exit 61; }
+          python -m pip -q install kaggle 'six>=1.16,<2'
+          mkdir -p "$RUNNER_TEMP/kaggle-v1" "$RUNNER_TEMP/kaggle-v2"
+          kaggle kernels pull "$KERNEL/1" --metadata --path "$RUNNER_TEMP/kaggle-v1" >/dev/null
+          NODE="$NODE" KERNEL="$KERNEL" python - <<'PY'
+          import os,json,pathlib
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'kaggle-v1'/'kernel-metadata.json'
+          data=json.loads(p.read_text())
+          truth=lambda a:a is True or a=='true'
+          assert data.get('id')==os.environ['KERNEL'],'kernel_identity_mismatch'
+          assert truth(data.get('is_private')),'private_setting_mismatch'
+          assert not truth(data.get('enable_internet')),'network_enabled_denied'
+          assert truth(data.get('enable_gpu')),'gpu_not_enabled'
+          print('S7_READONLY_KAGGLE_IDENTITY_PRIVACY_V1_PASS='+os.environ['NODE'])
+          PY
+          if kaggle kernels pull "$KERNEL/2" --path "$RUNNER_TEMP/kaggle-v2" >"$RUNNER_TEMP/v2-probe.log" 2>&1; then
+            echo "S7_KAGGLE_V2_ALREADY_EXISTS_REFUSE_OVERWRITE";exit 62
+          fi
+          echo "S7_KAGGLE_EXISTING_PRIVATE_V1_PRESENT_V2_NOT_OBSERVED"
+      - name: Remove temporary private Kaggle code
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/kaggle-v1" "$RUNNER_TEMP/kaggle-v2" "$RUNNER_TEMP/v2-probe.log"
