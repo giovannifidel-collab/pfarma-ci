@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 10
-    env: {PRIVATE_SHA: '1cf678bd1eaf6f928ea70e52b09da365fdfac3e5'}
+    env: {PRIVATE_SHA: '1fc5e28ac03b980e0b24f014690b0c49c68a4ce3'}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,7 +67,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 30
     env:
-      PRIVATE_SHA: 1cf678bd1eaf6f928ea70e52b09da365fdfac3e5
+      PRIVATE_SHA: 1fc5e28ac03b980e0b24f014690b0c49c68a4ce3
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       S7_NODE_ID: ${{ inputs.node_id }}
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
