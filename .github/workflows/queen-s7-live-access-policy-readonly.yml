@@ -27,6 +27,50 @@ jobs:
           test "$code" = 200
           jq -e '.ok == true and .stage == "S7" and .default_dispatch == "DENY" and .general_routing == false and .paid_fallback == false and .product_writes == false' "$RUNNER_TEMP/queen-s7-live.json" >/dev/null
           echo 'QUEEN_S7_CLOUDFLARE_ACCESS_PROTECTED_LIVE_POLICY=PASS'
+      - name: Safe negative POST through Cloudflare Access - no Neon task
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
+          code="$(curl -sS --max-time 40 -o "$RUNNER_TEMP/s7-negative-post.json" -w '%{http_code}' \
+            -H 'content-type: application/json' \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -X POST --data '{"action":"claim","node_id":"s7-unregistered-negative-identity"}' \
+            "${base%/}/api/queen-s7-e2e" || true)"
+          echo "S7_SAFE_NEGATIVE_POST_HTTP=$code"
+          if jq -e 'type=="object" and .ok==false and .error and (.error | contains("unknown_node"))' "$RUNNER_TEMP/s7-negative-post.json" >/dev/null 2>&1; then
+            echo 'S7_NEGATIVE_POST_REACHED_QUEEN_GUARD=PASS'
+          else
+            echo 'S7_NEGATIVE_POST_DID_NOT_REACH_EXPECTED_QUEEN_GUARD'
+            jq -r '{ok,error} | tostring' "$RUNNER_TEMP/s7-negative-post.json" 2>/dev/null | cut -c 1-240 || true
+          fi
+          if [ "$code" = 200 ]; then echo 'S7_UNKNOWN_NODE_UNEXPECTED_SUCCESS';exit 80; fi
+      - name: Safe Python urllib POST impossible node - transport comparison
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,os,urllib.request,urllib.error
+          base=(os.environ.get('HIVE_BASE_URL') or 'https://hive-alveare.pages.dev').rstrip('/')
+          body=json.dumps({'action':'claim','node_id':'s7-unregistered-python-negative'}).encode()
+          req=urllib.request.Request(base+'/api/queen-s7-e2e',data=body,method='POST',headers={
+            'Content-Type':'application/json',
+            'CF-Access-Client-Id':os.environ['CF_ACCESS_CLIENT_ID'],
+            'CF-Access-Client-Secret':os.environ['CF_ACCESS_CLIENT_SECRET']})
+          try:
+            with urllib.request.urlopen(req,timeout=40) as res:
+              print('S7_PYTHON_NEGATIVE_HTTP',res.status)
+              raise SystemExit('unexpected_unknown_node_success')
+          except urllib.error.HTTPError as err:
+            body=err.read(4096)
+            try:
+              data=json.loads(body)
+              print('S7_PYTHON_NEGATIVE_HTTP',err.code,'ERROR',str(data.get('error',''))[:170])
+            except (ValueError,UnicodeDecodeError):
+              print('S7_PYTHON_NEGATIVE_HTTP',err.code,'NONJSON_RESPONSE_CONTENT_TYPE',err.headers.get('content-type','unknown'))
+            if err.code not in (403,409):
+              raise
+          PY
       - name: Cleanup
         if: always()
-        run: rm -f "$RUNNER_TEMP/queen-s7-live.json"
+        run: rm -f "$RUNNER_TEMP/queen-s7-live.json" "$RUNNER_TEMP/s7-negative-post.json"
