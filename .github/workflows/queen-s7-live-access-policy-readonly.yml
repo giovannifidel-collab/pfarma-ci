@@ -46,6 +46,31 @@ jobs:
             jq -r '{ok,error} | tostring' "$RUNNER_TEMP/s7-negative-post.json" 2>/dev/null | cut -c 1-240 || true
           fi
           if [ "$code" = 200 ]; then echo 'S7_UNKNOWN_NODE_UNEXPECTED_SUCCESS';exit 80; fi
+      - name: Safe Python urllib POST impossible node - transport comparison
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,os,urllib.request,urllib.error
+          base=(os.environ.get('HIVE_BASE_URL') or 'https://hive-alveare.pages.dev').rstrip('/')
+          body=json.dumps({'action':'claim','node_id':'s7-unregistered-python-negative'}).encode()
+          req=urllib.request.Request(base+'/api/queen-s7-e2e',data=body,method='POST',headers={
+            'Content-Type':'application/json',
+            'CF-Access-Client-Id':os.environ['CF_ACCESS_CLIENT_ID'],
+            'CF-Access-Client-Secret':os.environ['CF_ACCESS_CLIENT_SECRET']})
+          try:
+            with urllib.request.urlopen(req,timeout=40) as res:
+              print('S7_PYTHON_NEGATIVE_HTTP',res.status)
+              raise SystemExit('unexpected_unknown_node_success')
+          except urllib.error.HTTPError as err:
+            body=err.read(4096)
+            try:
+              data=json.loads(body)
+              print('S7_PYTHON_NEGATIVE_HTTP',err.code,'ERROR',str(data.get('error',''))[:170])
+            except (ValueError,UnicodeDecodeError):
+              print('S7_PYTHON_NEGATIVE_HTTP',err.code,'NONJSON_RESPONSE_CONTENT_TYPE',err.headers.get('content-type','unknown'))
+            if err.code not in (403,409):
+              raise
+          PY
       - name: Cleanup
         if: always()
         run: rm -f "$RUNNER_TEMP/queen-s7-live.json" "$RUNNER_TEMP/s7-negative-post.json"
