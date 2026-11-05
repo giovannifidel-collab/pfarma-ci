@@ -37,7 +37,7 @@ jobs:
           gh workflow run queen-s7-hive-once.yml \
             --repo giovannifidel-collab/pfarma-ci --ref main \
             -f node_id=hive-compute-node-01
-          echo 'S7_CPU01_CORRECT_NEON_ROLE_OWNER_GATE_DISPATCH_REQUESTED'
+          echo 'S7_CPU01_VERIFIED_CURL_ACCESS_TRANSPORT_ONE_SHOT_DISPATCH_REQUESTED'
       - name: Wait for authenticated durable completion and fail closed
         shell: bash
         run: |
