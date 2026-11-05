@@ -1,0 +1,52 @@
+name: Queen S7 CPU02 One-Shot Full Automatic E2E
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-cpu02-full-e2e-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-bounded-cpu02-one-shot
+  cancel-in-progress: false
+jobs:
+  owner-approved-cpu02-e2e:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 40
+    env:
+      PRIVATE_SHA: 16e2322664aa87fd13e335d6d355d1814df7a3a9
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Validate pinned source, CPU02 owner approval and no live quota escalation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
+          test -n "${GH_TOKEN:-}" && test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          node queen-source/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node --test queen-source/ops/queen/compute/s7/tests/*.test.mjs
+          python -m py_compile queen-source/ops/queen/compute/s7/runner/*.py
+          echo 'S7_CPU02_SOURCE_LOCK_AND_NEGATIVE_GATES_PASS'
+      - name: Execute exactly CPU02 and wait for independent durable Queen receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=queen-source/ops/queen/compute/s7/runner \
+          python -c 'from s7_orchestrate import do_node; do_node("hive-compute-node-02")'
+          echo 'S7_CPU02_COMPLETE_THROUGH_QUEEN_NEON_PROVIDER_SCHOOL_MEMORY_WORLD_PASS'
+      - name: Secure cleanup
+        if: always()
+        run: rm -rf queen-source
