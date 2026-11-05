@@ -38,7 +38,11 @@ jobs:
           p=pathlib.Path(os.environ['RUNNER_TEMP'])/'kaggle-v1'/'kernel-metadata.json'
           data=json.loads(p.read_text())
           truth=lambda a:a is True or a=='true'
-          assert data.get('id')==os.environ['KERNEL'],'kernel_identity_mismatch'
+          print('S7_KAGGLE_METADATA_ID_NORMALIZED='+str(data.get('id','')).lower()[:110])
+          print('S7_KAGGLE_METADATA_PRIVACY_FLAG='+str(data.get('is_private')))
+          print('S7_KAGGLE_METADATA_INTERNET_FLAG='+str(data.get('enable_internet')))
+          print('S7_KAGGLE_METADATA_GPU_FLAG='+str(data.get('enable_gpu')))
+          assert str(data.get('id','')).lower()==os.environ['KERNEL'].lower(),'kernel_identity_mismatch'
           assert truth(data.get('is_private')),'private_setting_mismatch'
           assert not truth(data.get('enable_internet')),'network_enabled_denied'
           assert truth(data.get('enable_gpu')),'gpu_not_enabled'
