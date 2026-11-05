@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"
           test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
-          code="$(curl -sS --max-time 40 -o "$RUNNER_TEMP/queen-s7-live.json" "$RUNNER_TEMP/s7-negative-post.json" -w '%{http_code}' \
+          code="$(curl -sS --max-time 40 -o "$RUNNER_TEMP/queen-s7-live.json" -w '%{http_code}' \
             -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
             -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
             "${base%/}/api/queen-s7-e2e")"
@@ -48,4 +48,4 @@ jobs:
           if [ "$code" = 200 ]; then echo 'S7_UNKNOWN_NODE_UNEXPECTED_SUCCESS';exit 80; fi
       - name: Cleanup
         if: always()
-        run: rm -f "$RUNNER_TEMP/queen-s7-live.json"
+        run: rm -f "$RUNNER_TEMP/queen-s7-live.json" "$RUNNER_TEMP/s7-negative-post.json"
