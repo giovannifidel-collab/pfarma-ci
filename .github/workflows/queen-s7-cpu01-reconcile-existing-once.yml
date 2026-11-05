@@ -1,0 +1,104 @@
+name: Queen S7 CPU01 Existing Artifact One-Shot Reconcile
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-cpu01-reconcile-existing-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-cpu01-verified-recovery-one-shot
+  cancel-in-progress: false
+jobs:
+  recover-existing-approved-result:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      CPU_REPO: giovannipandolfo108168-cyber/hive-compute-node-01
+      CPU_SHA: b07e2296fce76af3390a9faa198c419f46ba6487
+      CPU_RUN: '41940421810'
+      TASK_ID: 4acbff79-3478-4912-b8ea-3592a63fcba0
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Reattest exactly one existing owner-approved CPU01 provider result
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" && test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          curl -fsS --max-time 35 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$base/api/queen-s7-e2e?node_id=hive-compute-node-01" >"$RUNNER_TEMP/s7-status.json"
+          jq -e '.ok==true and .status=="DISPATCH_LEASED" and .general_routing==false' "$RUNNER_TEMP/s7-status.json" >/dev/null
+          gh api "repos/$CPU_REPO/actions/runs/$CPU_RUN" | jq -e --arg sha "$CPU_SHA" '.status=="completed" and .conclusion=="success" and .event=="workflow_dispatch" and .head_sha==$sha' >/dev/null
+          gh api "repos/$CPU_REPO/actions/runs/$CPU_RUN/jobs?per_page=100" |
+            jq -e '[.jobs[]|select(.name=="Execute HIVE Job Envelope" and .conclusion=="success" and ([.steps[]|select(.name=="Prove short-lived GitHub OIDC identity" and .conclusion=="success")]|length)==1 and ([.steps[]|select(.name=="Validate canonical sealed result" and .conclusion=="success")]|length)==1)]|length==1' >/dev/null
+          artifact="$(gh api "repos/$CPU_REPO/actions/runs/$CPU_RUN/artifacts?per_page=100" |
+            jq -r '[.artifacts[] | select(.name=="result.json" and .expired==false)] | if length==1 then .[0].id else empty end')"
+          test -n "$artifact" || { echo 'S7_EXISTING_PROVIDER_ARTIFACT_NOT_UNIQUE'; exit 61; }
+          curl --fail --silent --show-error --location --max-time 65 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$CPU_REPO/actions/artifacts/$artifact/zip" \
+            -o "$RUNNER_TEMP/s7-existing-result"
+          test -s "$RUNNER_TEMP/s7-existing-result"
+          echo 'S7_CPU01_EXISTING_PROVIDER_OIDC_AND_ARCHIVE_REFETCH=PASS'
+      - name: Independently verify SHA256 and exact task/source/run before completion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import io,json,hashlib,os,zipfile
+          from pathlib import Path
+          folder=Path(os.environ['RUNNER_TEMP'])
+          raw=(folder/'s7-existing-result').read_bytes()
+          if zipfile.is_zipfile(io.BytesIO(raw)):
+              with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                  paths=[p for p in z.namelist() if p.endswith('result.json')]
+                  assert len(paths)==1,'AMBIGUOUS_ZIP_CONTENTS'
+                  result=json.loads(z.read(paths[0]))
+          else:
+              result=json.loads(raw)
+          unsigned={k:v for k,v in result.items() if k!='result_sha256'}
+          observed=hashlib.sha256(json.dumps(unsigned,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          assert result['result_sha256']==observed,'ARTIFACT_SHA256_INVALID'
+          assert result['status']=='completed' and result['exit_code']==0
+          assert result['node']['node_id']=='hive-compute-node-01'
+          assert str(result['node']['provider_run_ref'])==os.environ['CPU_RUN']
+          assert result['metadata']['hive_task_id']==os.environ['TASK_ID']
+          assert result['provenance']['environment']['sha']==os.environ['CPU_SHA']
+          assert result['provenance']['environment']['repository']==os.environ['CPU_REPO']
+          assert result['job_id']=='s7-'+os.environ['TASK_ID'].replace('-','')
+          assert result['workload']=={'name':'selftest','version':'1'}
+          assert all(result['output']['checks'].values())
+          payload={'action':'complete','node_id':'hive-compute-node-01',
+              'run_ref':os.environ['CPU_RUN'],'artifact':result,'external_evidence':{}}
+          (folder/'s7-owner-completion.json').write_text(json.dumps(payload,separators=(',',':')))
+          print('S7_CPU01_REAL_HIVE_ATTEMPT_PROVIDER_SHA256_MATCH=PASS')
+          PY
+      - name: Complete existing Neon attempt and verified Queen feedback - never re-dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          code="$(curl -sS --show-error --max-time 110 -w '%{http_code}' \
+            -H 'content-type: application/json' \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            --data-binary "@$RUNNER_TEMP/s7-owner-completion.json" \
+            "$base/api/queen-s7-e2e" -o "$RUNNER_TEMP/s7-completion-response.json")"
+          if [ "$code" != 200 ]; then
+            echo "S7_CPU01_RECONCILE_HTTP=$code"
+            jq -r '.error // "unknown_error"' "$RUNNER_TEMP/s7-completion-response.json" | cut -c 1-160 || true
+            exit 62
+          fi
+          jq -e --arg task "$TASK_ID" '.ok==true and .status=="COMPLETE" and .task_id==$task and .general_routing==false and .steps.memory==true and .steps.school_provisional==true and .steps.world==true and .steps.cognitive==true and .training_eligible==false' "$RUNNER_TEMP/s7-completion-response.json" >/dev/null
+          echo 'S7_CPU01_EXISTING_NEON_TASK_COMPLETED_AND_COGNITIVE_FEEDBACK_VERIFIED=PASS'
+      - name: Destroy temporary artifacts and bearer-containing job evidence
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s7-status.json" "$RUNNER_TEMP/s7-existing-result" "$RUNNER_TEMP/s7-owner-completion.json" "$RUNNER_TEMP/s7-completion-response.json"
