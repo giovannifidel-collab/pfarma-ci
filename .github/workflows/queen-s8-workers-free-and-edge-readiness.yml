@@ -62,23 +62,20 @@ jobs:
               print('S8_WORKERS_PLAN=UNKNOWN_NO_BILLING_TOKEN')
               print('S8_AI_COST_GATE=DENY')
               raise SystemExit(0)
-          allsubs=[];complete=False
-          for page in range(1,7):
-              st,data=read('/accounts/'+aid+'/subscriptions?per_page=100&page='+str(page),billing)
-              if st!=200 or data.get('success') is not True or not isinstance(data.get('result'),list):
-                  print('S8_WORKERS_PLAN=UNKNOWN_BILLING_API_UNAVAILABLE')
-                  print('S8_CF_BILLING_READ_STATUS='+str(st))
-                  print('S8_AI_COST_GATE=DENY')
-                  raise SystemExit(0)
-              results=data['result'];allsubs.extend(results)
-              info=data.get('result_info') or {}
-              total=info.get('total_count')
-              if isinstance(total,int) and len(allsubs)>=total:
-                  complete=True;break
-              if len(results)<100:
-                  complete=True;break
-          if not complete:
-              print('S8_WORKERS_PLAN=UNKNOWN_BILLING_PAGINATION_INCOMPLETE')
+          # Cloudflare GET /accounts/{id}/subscriptions is a SinglePage endpoint.
+          # Pagination query arguments (per_page/page) are not accepted.
+          st,data=read('/accounts/'+aid+'/subscriptions',billing)
+          if st!=200 or data.get('success') is not True or not isinstance(data.get('result'),list):
+              print('S8_WORKERS_PLAN=UNKNOWN_BILLING_API_UNAVAILABLE')
+              print('S8_CF_BILLING_READ_STATUS='+str(st))
+              errors=data.get('errors') if isinstance(data,dict) else None
+              if isinstance(errors,list):
+                  print('S8_CF_BILLING_ERROR_CATEGORY=' + ('CLOUDFLARE_API_RETURNED_ERRORS' if errors else 'NONE'))
+              print('S8_AI_COST_GATE=DENY')
+              raise SystemExit(0)
+          allsubs=data['result']
+          if len(allsubs)>10000:
+              print('S8_WORKERS_PLAN=UNKNOWN_UNBOUNDED_SUBSCRIPTIONS')
               print('S8_AI_COST_GATE=DENY')
               raise SystemExit(0)
           suspicious=[]
@@ -97,7 +94,7 @@ jobs:
           ambiguous=any(not ('free' in ident or 'free' in pub or 'paid' in ident or
                              'paid' in pub or 'standard' in pub or 'enterprise' in pub)
                         for ident,pub,scope in suspicious)
-          print('S8_BILLING_SUBSCRIPTIONS_COMPLETE=TRUE')
+          print('S8_BILLING_SUBSCRIPTIONS_SINGLEPAGE=TRUE')
           print('S8_BILLING_SUBSCRIPTIONS_REVIEWED='+str(len(allsubs)))
           print('S8_WORKERS_ACTIVE_RELATED_SUBSCRIPTIONS='+str(len(suspicious)))
           if paid:print('S8_WORKERS_PLAN=PAID_OR_OVERAGE_POSSIBLE')
