@@ -1,0 +1,95 @@
+name: Queen S8 Codespaces No-Cost Allowance Read-only Check
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-codespaces-billing-readonly.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-codespaces-billing-readonly-once
+  cancel-in-progress: false
+jobs:
+  read-owner-quota:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Read existing Codespace ownership, user plan, billing reports without resource changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          gh api --method GET '/user/codespaces?per_page=100' > "$RUNNER_TEMP/s8-cs.json"
+          python - <<'PY'
+          import json,os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          data=json.loads((root/'s8-cs.json').read_text())
+          spaces=[c for c in data.get('codespaces',[]) if str(c.get('repository',{}).get('full_name','')).lower()=='giovannifidel-collab/pfarma-ci' and str(c.get('git_status',{}).get('ref',''))=='hive-cloud-computer-v0']
+          if len(spaces)!=1: raise SystemExit('S8_ORIGINAL_CODESPACE_EXACT_IDENTITY=DENY')
+          item=spaces[0]
+          owner=(item.get('owner') or {}).get('login') or (item.get('repository',{}).get('owner') or {}).get('login')
+          if not isinstance(owner,str) or not owner.isascii() or not owner.replace('-','').isalnum():
+              raise SystemExit('S8_CODESPACE_BILLING_OWNER_UNKNOWN=DENY')
+          (root/'s8-owner.txt').write_text(owner)
+          print('S8_ORIGINAL_CODESPACE_EXACT_IDENTITY=PASS')
+          print('S8_ORIGINAL_CODESPACE_IS_STOPPED='+str(item.get('state')!='Available'))
+          print('S8_ORIGINAL_CODESPACE_MACHINE_COHERENT='+str(bool(item.get('machine'))))
+          print('S8_CODESPACE_IDLE_TIMEOUT_MINUTES='+str(item.get('idle_timeout_minutes','unknown')))
+          PY
+          OWNER="$(cat "$RUNNER_TEMP/s8-owner.txt")"
+          if gh api --method GET '/user' > "$RUNNER_TEMP/s8-user.json" 2>/dev/null; then
+            python - <<'PY'
+          import json,os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          user=json.loads((root/'s8-user.json').read_text())
+          owner=(root/'s8-owner.txt').read_text()
+          print('S8_AUTHENTICATED_OWNER_MATCH='+str(str(user.get('login','')).lower()==owner.lower()))
+          plan=str((user.get('plan') or {}).get('name','')).lower()
+          print('S8_OWNER_PLAN_CATEGORY='+('FREE' if plan=='free' else 'PRO' if plan=='pro' else 'UNKNOWN'))
+          PY
+          else
+            echo 'S8_USER_PLAN_API_ACCESS=DENY'
+          fi
+          if gh api --method GET -H 'X-GitHub-Api-Version: 2026-03-10' "/users/$OWNER/settings/billing/usage/summary?year=2026&month=11&product=codespaces" > "$RUNNER_TEMP/s8-billing-summary.json" 2>/dev/null; then
+            python - <<'PY'
+          import json,os,pathlib
+          obj=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'s8-billing-summary.json').read_text())
+          records=[v for v in obj.get('usageItems',[]) if 'codespace' in str(v.get('product','')).lower()]
+          print('S8_CODESPACES_BILLING_SUMMARY=PASS')
+          print('S8_CODESPACES_BILLING_ITEMS='+str(len(records)))
+          print('S8_CODESPACES_BILLING_NET_ZERO='+str(all(float(v.get('netAmount',1))==0 for v in records)))
+          for x in records:
+            unit=str(x.get('unitType','')).lower()
+            sku=str(x.get('sku','')).lower()
+            if 'storage' in sku or 'storage' in unit: family='STORAGE'
+            elif 'compute' in sku or 'core' in sku or 'hour' in unit:family='COMPUTE'
+            else:family='OTHER'
+            print('S8_CODESPACES_BILLING_ITEM='+family+
+              ':UNITS='+('CORE_HOURS' if 'core' in unit else 'HOURS' if 'hour' in unit else 'OTHER')+
+              ':GROSS_QUANTITY='+str(x.get('grossQuantity','unknown'))+
+              ':GROSS_AMOUNT='+str(x.get('grossAmount','unknown'))+
+              ':NET_AMOUNT='+str(x.get('netAmount','unknown')))
+          PY
+          else
+            echo 'S8_CODESPACES_BILLING_SUMMARY=UNAVAILABLE_OR_NO_PLAN_READ_SCOPE'
+          fi
+          if gh api --method GET -H 'X-GitHub-Api-Version: 2026-03-10' "/users/$OWNER/settings/billing/budgets" > "$RUNNER_TEMP/s8-budgets.json" 2>/dev/null; then
+            python - <<'PY'
+          import json,os,pathlib
+          obj=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'s8-budgets.json').read_text())
+          budgets=obj if isinstance(obj,list) else obj.get('budgets',obj.get('items',[]))
+          if not isinstance(budgets,list):budgets=[]
+          controls=[v for v in budgets if 'codespaces' in str(v.get('budget_product_sku','')).lower() or 'codespaces' in str(v.get('budget_product','')).lower()]
+          print('S8_CODESPACES_BUDGET_ACCESS=PASS')
+          print('S8_CODESPACES_BUDGETS_COUNT='+str(len(controls)))
+          print('S8_CODESPACES_BUDGET_HARD_ZERO='+str(any(v.get('prevent_further_usage') is True and float(v.get('budget_amount',-1))==0 for v in controls)))
+          PY
+          else
+            echo 'S8_CODESPACES_BUDGET_ACCESS=UNAVAILABLE_OR_NO_PLAN_READ_SCOPE'
+          fi
+          echo 'S8_NO_START_NO_STOP_NO_SECRETS_CHANGED=TRUE'
+      - name: Destroy ephemeral private billing and account data
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/s8-cs.json" "$RUNNER_TEMP/s8-owner.txt" "$RUNNER_TEMP/s8-user.json" "$RUNNER_TEMP/s8-billing-summary.json" "$RUNNER_TEMP/s8-budgets.json"
