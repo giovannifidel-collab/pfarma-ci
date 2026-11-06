@@ -74,6 +74,59 @@ jobs:
             ' "$RUNNER_TEMP/s8-live.json"
           fi
           echo 'S8_AI_INFERENCE_REQUESTED=FALSE'
+      - name: Classify failed Cloudflare Pages build logs from existing deployment only
+        shell: bash
+        env:
+          CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          TOKEN="$CF_PRIMARY"
+          if [ -z "$TOKEN" ]; then TOKEN="$CF_SECONDARY"; fi
+          export TOKEN
+          python - <<'PY'
+          import urllib.request,urllib.error,os,json,re
+          def get(path):
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                headers={'Authorization':'Bearer '+os.environ['TOKEN'],'Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=12) as x:return x.status,json.load(x)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          s,accounts=get('/accounts?per_page=50')
+          if s!=200 or not accounts.get('success'):
+              print('S8_CF_BUILD_LOG_ACCESS=DENY_ACCOUNT');raise SystemExit
+          matches=[]
+          for a in accounts.get('result',[]):
+              uid=a.get('id','')
+              if not re.fullmatch('[a-f0-9]{32}',uid):continue
+              st,r=get('/accounts/'+uid+'/pages/projects/hive-alveare')
+              if st==200 and r.get('result',{}).get('name')=='hive-alveare':
+                  matches.append((uid,r['result']))
+          if len(matches)!=1:
+              print('S8_CF_BUILD_LOG_ACCESS=DENY_PROJECT');raise SystemExit
+          uid,project=matches[0]
+          latest=project.get('latest_deployment') or {}
+          deployment=latest.get('id','')
+          if not re.fullmatch('[a-f0-9-]{36}',str(deployment)):
+              print('S8_CF_BUILD_LOG_ACCESS=DENY_DEPLOYMENT');raise SystemExit
+          st,data=get('/accounts/'+uid+'/pages/projects/hive-alveare/deployments/'+deployment+'/history/logs')
+          print('S8_CF_BUILD_LOG_HTTP='+str(st))
+          if st!=200 or not data.get('success'):raise SystemExit
+          lines=[str(x.get('line','')) for x in ((data.get('result') or {}).get('data') or [])]
+          red=re.compile('secret|token|password|authorization|api.key|credential|private.key|bearer',re.I)
+          safe=[]
+          for line in lines:
+              if not re.search('error|failed|cannot|not found|resolve|module|missing|unexpected|could not',line,re.I):continue
+              if red.search(line):continue
+              line=re.sub(r'https?://\S+','[url]',line)
+              line=re.sub(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+','[email]',line)
+              line=re.sub(r'[a-f0-9]{32,}', '[hash]',line,flags=re.I)
+              safe.append(line.strip()[:280])
+          print('S8_CF_FAILED_BUILD_RELEVANT_LINE_COUNT='+str(len(safe)))
+          for i,line in enumerate(safe[-12:]):
+              print('S8_CF_BUILD_SAFE_DIAGNOSTIC_'+str(i)+'='+line)
+          PY
       - name: Delete ephemeral audit responses
         if: always()
         run: rm -f "$RUNNER_TEMP/s8-live.json"
