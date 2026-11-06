@@ -1,0 +1,79 @@
+name: Queen S8 Cloudflare Pages Live Deployment Audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-cloudflare-deployment-audit.yml']
+permissions: {contents: read}
+jobs:
+  audit-private-hive-production-deployment:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      CF_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      PRIVATE_SHA: 23aef9f2509315568e09d37cbf9554b72a7c0898
+    steps:
+      - name: Check HIVE Pages production deployment and edge route read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="${CF_TOKEN_PRIMARY:-${CF_TOKEN_SECONDARY:-}}"
+          export TOKEN="$token"
+          python - <<'PY'
+          import os,urllib.request,urllib.error,json
+          token=os.environ.get('TOKEN','')
+          if not token:
+              print('S8_CF_ACCOUNT_TOKEN=NOT_CONFIGURED');raise SystemExit(0)
+          def get(path):
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                   headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=12) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          status,accounts=get('/accounts?per_page=50')
+          if status!=200 or accounts.get('success') is not True:
+              print('S8_CF_ACCOUNTS=DENIED');raise SystemExit(0)
+          match=[]
+          for a in accounts.get('result',[]):
+              aid=a.get('id','')
+              if not isinstance(aid,str) or len(aid)!=32:continue
+              st,data=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+              if st==200 and data.get('success') is True and data.get('result',{}).get('name')=='hive-alveare':
+                  match.append((aid,data.get('result',{})))
+          print('S8_CF_HIVE_PAGES_PROJECT_COUNT='+str(len(match)))
+          if len(match)!=1:raise SystemExit(0)
+          aid,project=match[0]
+          branch=str((project.get('source',{}).get('config') or {}).get('production_branch',''))
+          print('S8_CF_PRODUCTION_BRANCH_MAIN='+str(branch=='main'))
+          print('S8_CF_BUILD_SOURCE_CONFIGURED='+str(bool(project.get('source'))))
+          latest=project.get('latest_deployment') or {}
+          print('S8_CF_LATEST_DEPLOYMENT_STATUS='+str(latest.get('latest_stage',{}).get('status','UNKNOWN'))[:30])
+          latest_hash=str((latest.get('deployment_trigger',{}).get('metadata') or {}).get('commit_hash',''))
+          print('S8_CF_LATEST_DEPLOYMENT_PRIVATE_SHA_MATCH='+str(latest_hash==os.environ['PRIVATE_SHA']))
+          st,data=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments?per_page=5')
+          print('S8_CF_PRODUCTION_DEPLOYMENT_READ_HTTP='+str(st))
+          if st==200 and data.get('success') is True:
+              records=data.get('result') or []
+              print('S8_CF_RECENT_DEPLOYMENTS='+str(len(records)))
+              print('S8_CF_RECENT_PRIVATE_SHA_PRESENT='+str(any(
+                 str((x.get('deployment_trigger',{}).get('metadata') or {}).get('commit_hash',''))==os.environ['PRIVATE_SHA']
+                 for x in records)))
+          PY
+          http="$(curl --silent --show-error --max-time 25 -o "$RUNNER_TEMP/s8-live.json"             -w '%{http_code}'             -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"             -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"             'https://hive-alveare.pages.dev/api/queen-s8-workers-ai' || true)"
+          echo "S8_CF_LIVE_S8_ENDPOINT_HTTP=$http"
+          if [ "$http" = '200' ]; then
+            jq -r '
+             "S8_CF_LIVE_ROUTE=" + (.route // "UNKNOWN"),
+             "S8_CF_LIVE_AI_BINDING_PRESENT=" + (.binding_present|tostring),
+             "S8_CF_LIVE_COST_GATE_CERTIFIED=" + (.free_plan_certified|tostring),
+             "S8_CF_LIVE_AI_CALLED=" + (.model_invoked|tostring)
+            ' "$RUNNER_TEMP/s8-live.json"
+          fi
+          echo 'S8_AI_INFERENCE_REQUESTED=FALSE'
+      - name: Delete ephemeral audit responses
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s8-live.json"
