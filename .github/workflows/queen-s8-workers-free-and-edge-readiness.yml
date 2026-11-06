@@ -1,0 +1,133 @@
+name: Queen S8 Workers AI Free Plan and Edge Prerequisites Audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/queen-s8-workers-free-and-edge-readiness.yml'
+  workflow_dispatch: {}
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-cloudflare-cost-readonly
+  cancel-in-progress: false
+jobs:
+  authoritative-account-billing-read:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      CF_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_DEPLOY_TOKEN_ALTERNATE: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_BILLING_READ_TOKEN: ${{ secrets.CF_BILLING_READ_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Verify authoritative HIVE Pages account and complete Workers subscriptions pagination, read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error,re
+          primary=os.environ.get('CF_DEPLOY_TOKEN') or os.environ.get('CF_DEPLOY_TOKEN_ALTERNATE')
+          billing=os.environ.get('CF_BILLING_READ_TOKEN') or primary
+          def read(path,token):
+              if not token:return 0,{}
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  headers={'Authorization':'Bearer '+token,'Accept':'application/json'},
+                  method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=15) as r:
+                      return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          st,accounts=read('/accounts?per_page=50',primary)
+          if st!=200 or accounts.get('success') is not True:
+              print('S8_FREE_AUDIT_ACCOUNT=DENY');raise SystemExit(0)
+          projects=[]
+          for account in accounts.get('result',[]):
+              aid=str(account.get('id',''))
+              if not re.fullmatch('[a-f0-9]{32}',aid):continue
+              a,p=read('/accounts/'+aid+'/pages/projects/hive-alveare',primary)
+              if a==200 and p.get('success') is True and p.get('result',{}).get('name')=='hive-alveare':
+                  projects.append((aid,p['result']))
+          if len(projects)!=1:
+              print('S8_FREE_AUDIT_ACCOUNT=DENY_NOT_UNIQUE');raise SystemExit(0)
+          aid,project=projects[0]
+          print('S8_FREE_AUDIT_ACCOUNT=VERIFIED_UNIQUE_HIVE_PAGES')
+          print('S8_PAGES_MAIN_BRANCH='+str((project.get('source',{}).get('config') or {}).get('production_branch')=='main'))
+          settings=(project.get('deployment_configs',{}).get('production',{}) or {}).get('env_vars',{}) or {}
+          print('S8_PAGES_SOURCE_TOKEN_BINDING_CONFIGURED='+str('HIVE_GITHUB_DISPATCH_TOKEN' in settings))
+          print('S8_PAGES_NEON_URL_BINDING_CONFIGURED='+str('HIVE_DATA_API_URL' in settings))
+          print('S8_BILLING_READ_DEDICATED_SECRET_CONFIGURED='+str(bool(os.environ.get('CF_BILLING_READ_TOKEN'))))
+          if not billing:
+              print('S8_WORKERS_PLAN=UNKNOWN_NO_BILLING_TOKEN')
+              print('S8_AI_COST_GATE=DENY')
+              raise SystemExit(0)
+          allsubs=[];complete=False
+          for page in range(1,7):
+              st,data=read('/accounts/'+aid+'/subscriptions?per_page=100&page='+str(page),billing)
+              if st!=200 or data.get('success') is not True or not isinstance(data.get('result'),list):
+                  print('S8_WORKERS_PLAN=UNKNOWN_BILLING_API_UNAVAILABLE')
+                  print('S8_CF_BILLING_READ_STATUS='+str(st))
+                  print('S8_AI_COST_GATE=DENY')
+                  raise SystemExit(0)
+              results=data['result'];allsubs.extend(results)
+              info=data.get('result_info') or {}
+              total=info.get('total_count')
+              if isinstance(total,int) and len(allsubs)>=total:
+                  complete=True;break
+              if len(results)<100:
+                  complete=True;break
+          if not complete:
+              print('S8_WORKERS_PLAN=UNKNOWN_BILLING_PAGINATION_INCOMPLETE')
+              print('S8_AI_COST_GATE=DENY')
+              raise SystemExit(0)
+          suspicious=[]
+          for sub in allsubs:
+              plan=sub.get('rate_plan') or {}
+              identifier=str(plan.get('id','')).lower()
+              public=str(plan.get('public_name','')).lower()
+              scope=str(plan.get('scope','')).lower()
+              state=str(sub.get('state','')).lower()
+              if state in ('cancelled','expired','failed'):continue
+              candidate=' '.join((identifier,public,scope,str(sub.get('product','')).lower()))
+              if 'worker' in candidate or 'ai gateway' in candidate:
+                  suspicious.append((identifier,public,scope))
+          paid=any('paid' in ident or 'paid' in pub or 'standard' in pub or 'enterprise' in pub
+                   for ident,pub,scope in suspicious)
+          ambiguous=any(not ('free' in ident or 'free' in pub or 'paid' in ident or
+                             'paid' in pub or 'standard' in pub or 'enterprise' in pub)
+                        for ident,pub,scope in suspicious)
+          print('S8_BILLING_SUBSCRIPTIONS_COMPLETE=TRUE')
+          print('S8_BILLING_SUBSCRIPTIONS_REVIEWED='+str(len(allsubs)))
+          print('S8_WORKERS_ACTIVE_RELATED_SUBSCRIPTIONS='+str(len(suspicious)))
+          if paid:print('S8_WORKERS_PLAN=PAID_OR_OVERAGE_POSSIBLE')
+          elif ambiguous:print('S8_WORKERS_PLAN=UNKNOWN_SUBSCRIPTION')
+          else:print('S8_WORKERS_PLAN=FREE_NO_PAID_WORKERS_SUBSCRIPTION')
+          print('S8_AI_COST_GATE='+('PASS_FREE_PLAN_READONLY' if not paid and not ambiguous else 'DENY'))
+          print('S8_AI_INFERENCE_CALLS=ZERO')
+          PY
+      - name: Verify deployed S8 candidate endpoint only via protected GET
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$CF_ACCESS_CLIENT_ID" ] || [ -z "$CF_ACCESS_CLIENT_SECRET" ]; then
+            echo 'S8_LIVE_PROTECTED_ENDPOINT=DENY_ACCESS_CREDENTIAL_MISSING'
+            exit 0
+          fi
+          status="$(curl --silent --show-error --max-time 20 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -o "$RUNNER_TEMP/s8-readonly.json" -w '%{http_code}' \
+            https://hive-alveare.pages.dev/api/queen-s8-workers-ai || true)"
+          if [ "$status" != 200 ]; then
+            echo 'S8_LIVE_PROTECTED_ENDPOINT=UNAVAILABLE'
+            exit 0
+          fi
+          jq -e '.ok==true and .route=="cloudflare-workers-ai" and
+            .binding_present==true and .model_invoked==false and
+            .paid_fallback==false and .general_routing==false' \
+            "$RUNNER_TEMP/s8-readonly.json" >/dev/null
+          echo 'S8_LIVE_PROTECTED_ENDPOINT=PASS_NO_INFERENCE'
+      - name: Scrub temporary artifacts
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s8-readonly.json"
