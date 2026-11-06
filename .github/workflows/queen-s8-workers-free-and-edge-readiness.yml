@@ -131,3 +131,5 @@ jobs:
       - name: Scrub temporary artifacts
         if: always()
         run: rm -f "$RUNNER_TEMP/s8-readonly.json"
+
+# Owner-triggered read-only billing attestation rerun, 2026-11-06. No AI inference.
