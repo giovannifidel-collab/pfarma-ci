@@ -17,7 +17,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 10
     env:
-      PRIVATE_SHA: 2e99642416ac3bc99b85ac4a1d900bece3905b36
+      PRIVATE_SHA: 07b32e147a7a68e3985bfac296af7922a5e57706
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,7 +49,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 5
     env:
-      PRIVATE_SHA: 2e99642416ac3bc99b85ac4a1d900bece3905b36
+      PRIVATE_SHA: 07b32e147a7a68e3985bfac296af7922a5e57706
       HIVE_AGENT_BRIDGE_URL: ${{ secrets.HIVE_AGENT_BRIDGE_URL }}
       HIVE_AGENT_BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
