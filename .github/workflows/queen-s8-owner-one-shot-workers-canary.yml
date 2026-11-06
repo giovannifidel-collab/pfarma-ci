@@ -13,10 +13,10 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 14
     env:
-      PRIVATE_SHA: c87a1631964f7e078d4d742298c0d60d19c6c4d1
+      PRIVATE_SHA: b281f35a6c8770a805af8987d9ec4afb097c34e1
       MISSION_ID: 5e9f85b8-517c-4c42-a684-2706ed833716
-      APPROVAL_ISSUED: '2026-11-06T19:22:11.215Z'
-      APPROVAL_EXPIRES: '2026-11-06T19:41:11.215Z'
+      APPROVAL_ISSUED: '2026-11-06T19:27:34.277Z'
+      APPROVAL_EXPIRES: '2026-11-06T19:43:34.277Z'
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -121,7 +121,12 @@ jobs:
                   'github_source_unavailable','stale_authoritative_source_sha',
                   'source_content_untrusted','source_content_not_authoritative',
                   'source_hash_mismatch','atomic_lease_conflict',
-                  'owner_mission_not_authorized','mission_witness_invalid']);
+                  'owner_mission_not_authorized','mission_witness_invalid',
+                  'safe_preflight_stage_neon_meta_read','safe_preflight_stage_billing_record_read',
+                  'safe_preflight_stage_owner_approval_read','safe_preflight_stage_witness_validation',
+                  'safe_preflight_stage_private_source_verification','safe_preflight_stage_private_source_verified',
+                  'safe_preflight_stage_owner_neon_lease_atomic_claim',
+                  'safe_preflight_stage_model_inference','safe_preflight_stage_model_receipt_cas']);
                 const classification=safe.has(body?.reason)?body.reason:'OTHER_SAFE_DENIAL';
                 console.log('S8_CLOUDFLARE_EDGE_SAFE_DENIAL='+classification);
               }
