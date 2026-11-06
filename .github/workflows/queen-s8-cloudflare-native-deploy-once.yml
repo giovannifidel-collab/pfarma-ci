@@ -1,0 +1,151 @@
+name: Queen S8 Exact Private Source to HIVE Pages (Modern Wrangler, No AI Calls)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-cloudflare-native-deploy-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-hive-pages-s8-exact-modern-deploy
+  cancel-in-progress: false
+jobs:
+  source-locked-protected-pages-deploy:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 18
+    env:
+      PRIVATE_SHA: 23aef9f2509315568e09d37cbf9554b72a7c0898
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Confirm source is exact current private main before any production change
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          HEAD="$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')"
+          test "$HEAD" = "$PRIVATE_SHA"
+          echo "S8_HIVE_PRIVATE_SOURCE_EXACT_MAIN=$PRIVATE_SHA"
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact source, S6 and S7 certification, and S8 negative tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = "$PRIVATE_SHA"
+          node private-hive/ops/queen/autopilot/validate-s6-closeout.mjs
+          node private-hive/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node private-hive/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
+          node --test private-hive/ops/queen/autopilot/s8/tests/*.test.mjs
+          echo 'S8_DEPLOY_SOURCE_GATES_AND_30_NEGATIVE_TESTS=PASS'
+      - name: Verify unique existing HIVE Pages project and protected Cloudflare API authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          CF_TOKEN="$CF_PRIMARY"
+          if [ -z "$CF_TOKEN" ]; then CF_TOKEN="$CF_SECONDARY"; fi
+          test -n "$CF_TOKEN"
+          export CF_TOKEN
+          python - <<'PY'
+          import urllib.request,urllib.error,json,os,re
+          def api(path):
+              request=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                 headers={'Authorization':'Bearer '+os.environ['CF_TOKEN'],'Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(request,timeout=15) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          s,accounts=api('/accounts?per_page=50')
+          if s!=200 or accounts.get('success') is not True:
+              raise SystemExit('S8_DEPLOY_DENY_CLOUDFLARE_ACCOUNT_UNVERIFIED')
+          matched=[]
+          for a in accounts.get('result',[]):
+              ident=str(a.get('id',''))
+              if not re.fullmatch('[a-f0-9]{32}',ident):continue
+              st,resp=api('/accounts/'+ident+'/pages/projects/hive-alveare')
+              project=resp.get('result',{}) if isinstance(resp,dict) else {}
+              if st==200 and project.get('name')=='hive-alveare':
+                  matched.append((ident,project))
+          if len(matched)!=1:raise SystemExit('S8_DEPLOY_DENY_NOT_UNIQUE_HIVE_PAGES')
+          account,project=matched[0]
+          branch=(project.get('source',{}).get('config') or {}).get('production_branch')
+          if branch!='main':raise SystemExit('S8_DEPLOY_DENY_WRONG_PRODUCTION_BRANCH')
+          original=(project.get('source',{}).get('config') or {}).get('repo_name')
+          if original and 'hive-alveare' not in str(original):
+              raise SystemExit('S8_DEPLOY_DENY_WRONG_GIT_SOURCE')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('CLOUDFLARE_ACCOUNT_ID='+account+'\n')
+          print('S8_DEPLOY_EXISTING_HIVE_PAGES_PRODUCTION_IDENTIFIED=PASS')
+          print('S8_DEPLOY_NEW_CLOUDFLARE_PROJECT_CREATED=FALSE')
+          PY
+          echo "CLOUDFLARE_API_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
+      - name: Compile HIVE Pages Functions with verified current Wrangler before deploy
+        working-directory: private-hive/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.123.0 pages functions build functions \
+            --outdir "$RUNNER_TEMP/s8-deploy-compile"
+          test -n "$(find "$RUNNER_TEMP/s8-deploy-compile" -type f -print -quit)"
+          echo 'S8_CLOUDFLARE_MODERN_WRANGLER_COMPILE=PASS'
+      - name: Deploy one exact existing private main to HIVE Pages production; no inference
+        working-directory: private-hive/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          npx --yes wrangler@4.123.0 pages deploy public \
+            --project-name hive-alveare \
+            --branch main \
+            --commit-hash "$PRIVATE_SHA" \
+            --commit-message "Queen S8 one-shot native Cloudflare AI proposal, no inference until free plan certified"
+          echo 'S8_PAGES_EXACT_SOURCE_DEPLOY_TRIGGERED=TRUE'
+      - name: Read-only confirm protected S8 route, S7 scope and original health
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          ready=0
+          for i in 1 2 3 4 5 6 7 8; do
+            status="$(curl --silent --show-error --max-time 18 \
+              "$"{headers[@]}" -w '%{http_code}' -o "$RUNNER_TEMP/s8-route-readiness.json" \
+              'https://hive-alveare.pages.dev/api/queen-s8-workers-ai' || true)"
+            if [ "$status" = '200' ] && jq -e '.ok==true and .route=="cloudflare-workers-ai" and
+              .model_invoked==false and .paid_fallback==false and
+              .product_writes==false and .general_routing==false and
+              .default_dispatch=="DENY" and .free_plan_certified==false and
+              .callable==false' "$RUNNER_TEMP/s8-route-readiness.json" >/dev/null 2>&1; then
+              ready=1;break
+            fi
+            sleep 5
+          done
+          test "$ready" = 1 || { echo 'S8_PAGES_PROTECTED_ROUTE_UNAVAILABLE=DENY'; exit 1; }
+          echo 'S8_PAGES_PROTECTED_ROUTE_READONLY=PASS'
+          jq -r '"S8_WORKERS_AI_BINDING_PRESENT=" + (.binding_present|tostring)' "$RUNNER_TEMP/s8-route-readiness.json"
+          echo 'S8_PAID_FALLBACK_AND_INFERENCE=DENY'
+          runtime="$(curl --silent --show-error --max-time 20 "$"{headers[@]}" \
+            -o /dev/null -w '%{http_code}' 'https://hive-alveare.pages.dev/api/runtime-health' || true)"
+          test "$runtime" = '200'
+          echo 'S8_EXISTING_QUEEN_RUNTIME_HEALTH=PASS'
+          s7="$(curl --silent --show-error --max-time 20 "$"{headers[@]}" \
+            -o "$RUNNER_TEMP/s7-readiness.json" -w '%{http_code}' \
+            'https://hive-alveare.pages.dev/api/queen-s7-e2e' || true)"
+          test "$s7" = '200'
+          jq -e '.ok==true and .stage=="S7" and
+            .general_routing==false and .default_dispatch=="DENY" and
+            .paid_fallback==false' "$RUNNER_TEMP/s7-readiness.json" >/dev/null
+          echo 'S8_POST_DEPLOY_S7_ROUTING_NONREGRESSION=PASS'
+      - name: Erase temporary source and audit files
+        if: always()
+        shell: bash
+        run: rm -rf private-hive "$RUNNER_TEMP/s8-deploy-compile" "$RUNNER_TEMP/s8-route-readiness.json" "$RUNNER_TEMP/s7-readiness.json"
