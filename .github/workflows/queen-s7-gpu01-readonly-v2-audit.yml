@@ -1,0 +1,64 @@
+name: Queen S7 GPU01 Kaggle v2 Read-only Evidence Audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-gpu01-readonly-v2-audit.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-gpu01-v2-readonly-audit
+  cancel-in-progress: false
+jobs:
+  inspect-existing-private-kaggle-v2:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN_GPU01 }}
+      PRIVATE_SOURCE_SHA: 0bfb9facf1a7f96260719e317f6b5e9c21d56202
+      KERNEL: GiovPand/hive-s7-gpu-readiness-01
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-source
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read existing v2 source and require privacy without logging data
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SOURCE_SHA"
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip -q install kaggle 'six>=1.16,<2'
+          mkdir -p "$RUNNER_TEMP/s7-gpu01-v2-ro"
+          kaggle kernels status "$KERNEL/2" > "$RUNNER_TEMP/s7-gpu01-v2-ro/status.txt"
+          kaggle kernels pull "$KERNEL/2" --metadata --path "$RUNNER_TEMP/s7-gpu01-v2-ro"
+          python - <<'PY'
+          import os,json,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'s7-gpu01-v2-ro'
+          paths=[p for p in root.iterdir() if p.is_file()]
+          safe=[(p.suffix,p.name=='kernel-metadata.json') for p in paths]
+          print('S7_GPU01_V2_PULL_FILE_TYPES_AND_METADATA='+str(safe))
+          p=root/'kernel-metadata.json'
+          assert p.is_file(),'S7_V2_NO_METADATA'
+          meta=json.loads(p.read_text())
+          truth=lambda v:v is True or v=='true'
+          assert str(meta.get('id','')).lower()==os.environ['KERNEL'].lower(),'S7_WRONG_KERNEL'
+          assert truth(meta.get('is_private')),'S7_PRIVATE_REQUIRED'
+          assert truth(meta.get('enable_gpu')),'S7_GPU_REQUIRED'
+          assert not truth(meta.get('enable_internet')),'S7_INTERNET_MUST_BE_DISABLED'
+          print('S7_GPU01_V2_AUTHENTICATED_IDENTITY_PRIVATE_CUDA_MODE=PASS')
+          PY
+          PYTHONPATH=queen-source/ops/queen/compute/s7/runner python - <<'PY'
+          from s7_gpu_recover import recover_existing_gpu01
+          recover_existing_gpu01()
+          PY
+          test -s "$RUNNER_TEMP/s7-receipt.json"
+          echo 'S7_GPU01_V2_ORIGINAL_TASK_EXACT_SOURCE_SHA256_AND_CUDA_READONLY=PASS'
+      - name: Remove private source and evidence
+        if: always()
+        shell: bash
+        run: rm -rf queen-source "$RUNNER_TEMP/s7-gpu01-v2-ro" "$RUNNER_TEMP/s7-gpu01-v2-exact-source" "$RUNNER_TEMP/s7-gpu01-v2-exact-output" "$RUNNER_TEMP/s7-receipt.json"
