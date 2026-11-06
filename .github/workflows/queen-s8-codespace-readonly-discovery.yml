@@ -1,0 +1,102 @@
+name: Queen S8 Original Codespace and Bridge Read-only Discovery
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-codespace-readonly-discovery.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-codespace-discovery-once
+  cancel-in-progress: false
+jobs:
+  inspect-original-bridge:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_AGENT_BRIDGE_URL: ${{ secrets.HIVE_AGENT_BRIDGE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Inspect bridge hostname kind and DNS without disclosing hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'JS'
+          import dns from 'node:dns/promises';
+          const raw=String(process.env.HIVE_AGENT_BRIDGE_URL||'');
+          try {
+            const u=new URL(raw);
+            if(u.protocol!=='https:')throw Error('NOT_HTTPS');
+            const host=u.hostname.toLowerCase();
+            const kind=host.endsWith('.trycloudflare.com')?'EPHEMERAL_QUICK_TUNNEL':
+              host.endsWith('.app.github.dev')?'CODESPACES_FORWARDING':
+              host.endsWith('.github.dev')?'GITHUB_DEVELOPMENT_URL':
+              'CUSTOM_OR_UNCLASSIFIED_HOST';
+            console.log('S8_BRIDGE_HOST_TYPE='+kind);
+            try {
+              const addresses=await dns.lookup(host,{all:true});
+              console.log('S8_BRIDGE_DNS_RESOLVES='+(addresses.length>0));
+            } catch(e) {
+              const code=String(e.code||'UNKNOWN');
+              console.log('S8_BRIDGE_DNS_RESULT='+(['ENOTFOUND','EAI_AGAIN'].includes(code)?code:'OTHER_ERROR'));
+            }
+          }catch{
+            console.log('S8_BRIDGE_URL_VALID=false');
+          }
+          JS
+      - name: Determine whether trusted GitHub credential can read existing Codespaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo 'S8_CODESPACE_READ_ACCESS=NO_GITHUB_TOKEN'
+            exit 0
+          fi
+          if gh api --method GET '/user/codespaces?per_page=100' >"$RUNNER_TEMP/s8-codespace-user.json" 2>"$RUNNER_TEMP/s8-codespace-api.err"; then
+            echo 'S8_CODESPACE_READ_ACCESS=PASS'
+            python - <<'PY'
+          import json,os,pathlib
+          f=pathlib.Path(os.environ['RUNNER_TEMP'])/'s8-codespace-user.json'
+          data=json.loads(f.read_text())
+          records=data.get('codespaces',[])
+          target=[x for x in records if str(x.get('repository',{}).get('full_name','')).lower()=='giovannifidel-collab/pfarma-ci' and
+             (x.get('git_status',{}).get('ref','')=='hive-cloud-computer-v0' or
+              str(x.get('name','')).startswith('hive-'))]
+          print('S8_EXISTING_CODESPACES_VISIBLE='+str(len(records)))
+          print('S8_CANDIDATE_BRIDGE_CODESPACES='+str(len(target)))
+          print('S8_CANDIDATE_CODESPACES_RUNNING='+str(sum(x.get('state')=='Available' for x in target)))
+          print('S8_CANDIDATE_CODESPACES_STOPPED='+str(sum(x.get('state')!='Available' for x in target)))
+          print('S8_CANDIDATE_CODESPACE_REPO_EXISTS='+str(any(x.get('repository',{}).get('full_name','').lower()=='giovannifidel-collab/pfarma-ci' for x in records)))
+          PY
+          else
+            echo 'S8_CODESPACE_READ_ACCESS=DENIED_OR_UNAVAILABLE'
+            if grep -qiE 'HTTP 403|Resource not accessible|permission' "$RUNNER_TEMP/s8-codespace-api.err"; then
+              echo 'S8_CODESPACE_READ_BLOCK=GITHUB_CREDENTIAL_SCOPE'
+            elif grep -qiE 'HTTP 401|Bad credentials' "$RUNNER_TEMP/s8-codespace-api.err"; then
+              echo 'S8_CODESPACE_READ_BLOCK=GITHUB_CREDENTIAL_AUTH'
+            else
+              echo 'S8_CODESPACE_READ_BLOCK=OTHER'
+            fi
+          fi
+      - name: Check Cloudflare protected Queen API independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then
+            status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              'https://hive-alveare.pages.dev/api/runtime-health' || true)"
+            case "$status" in
+              200) echo 'S8_CLOUDFLARE_PAGES_API_REACHABLE=PASS' ;;
+              401|403) echo 'S8_CLOUDFLARE_PAGES_API_ACCESS=DENIED' ;;
+              *) echo 'S8_CLOUDFLARE_PAGES_API_STATUS=UNVERIFIED' ;;
+            esac
+          else
+            echo 'S8_CLOUDFLARE_ACCESS_CREDENTIALS=NOT_CONFIGURED'
+          fi
+      - name: Remove ephemeral Codespaces metadata
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/s8-codespace-user.json" "$RUNNER_TEMP/s8-codespace-api.err"
