@@ -21,7 +21,7 @@ jobs:
       HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-      PRIVATE_SHA: 6c81312f8c8da510874af22cf2cee6d914476748
+      PRIVATE_SHA: 56ca0ff40f2ca03079a137e41826e14eb844ca15
     steps:
       - uses: actions/checkout@v4
         with:
