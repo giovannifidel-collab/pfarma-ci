@@ -13,10 +13,10 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 14
     env:
-      PRIVATE_SHA: 23aef9f2509315568e09d37cbf9554b72a7c0898
+      PRIVATE_SHA: c87a1631964f7e078d4d742298c0d60d19c6c4d1
       MISSION_ID: 5e9f85b8-517c-4c42-a684-2706ed833716
-      APPROVAL_ISSUED: '2026-11-06T19:07:39.839Z'
-      APPROVAL_EXPIRES: '2026-11-06T19:27:39.839Z'
+      APPROVAL_ISSUED: '2026-11-06T19:22:11.215Z'
+      APPROVAL_EXPIRES: '2026-11-06T19:41:11.215Z'
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -88,7 +88,7 @@ jobs:
           import fs from 'node:fs/promises';
           import path from 'node:path';
           import {planS8,sha256,POLICY} from './hive-private/ops/queen/autopilot/s8/s8-core.mjs';
-          import {requestQueenDeveloperProposal} from './hive-private/ops/queen/autopilot/s8/s8-generator.mjs';
+          import {requestS8WorkersProposal} from './hive-private/ops/queen/autopilot/s8/s8-workers-adapter.mjs';
           const id=process.env.MISSION_ID,source=process.env.PRIVATE_SHA;
           const scope=POLICY.scope;
           const original=await fs.readFile('hive-private/'+scope.only_source_path,'utf8');
@@ -112,7 +112,21 @@ jobs:
               max_authority:1,reachable_live:true}};
           const plan=planS8({mission,approval,environment});
           if(!plan.ok)throw Error('S8_OWNER_PLAN_DENIED_'+plan.reason);
-          const candidate=await requestQueenDeveloperProposal({plan,original});
+          const candidate=await requestS8WorkersProposal({plan,original,
+            fetcher:async (url,options)=>{
+              const response=await fetch(url,options);
+              if(!response.ok){
+                const body=await response.clone().json().catch(()=>({}));
+                const safe=new Set(['private_source_token_unavailable',
+                  'github_source_unavailable','stale_authoritative_source_sha',
+                  'source_content_untrusted','source_content_not_authoritative',
+                  'source_hash_mismatch','atomic_lease_conflict',
+                  'owner_mission_not_authorized','mission_witness_invalid']);
+                const classification=safe.has(body?.reason)?body.reason:'OTHER_SAFE_DENIAL';
+                console.log('S8_CLOUDFLARE_EDGE_SAFE_DENIAL='+classification);
+              }
+              return response;
+            }});
           if(!candidate.ok)throw Error('S8_REAL_MODEL_REJECTED_'+candidate.reason);
           if(candidate.decision!=='TEST_ONLY'||candidate.authority_to_commit!==false||
              candidate.provider_agent_id!=='cloudflare-workers-ai'||
