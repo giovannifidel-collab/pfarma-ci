@@ -1,0 +1,85 @@
+name: Queen S8 Cloudflare Native AI Candidate Source and Live Binding Audit
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-workers-ai-readiness.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-workers-ai-readiness.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-native-cloudflare-ai-readiness
+  cancel-in-progress: false
+jobs:
+  s8-source-and-adversarial-tests:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      PRIVATE_SHA: 23aef9f2509315568e09d37cbf9554b72a7c0898
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Source-locked S6/S7 and S8 negative tests; never invoke model
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = "$PRIVATE_SHA"
+          node private-hive/ops/queen/autopilot/validate-s6-closeout.mjs
+          node private-hive/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node private-hive/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
+          node --test private-hive/ops/queen/autopilot/s8/tests/*.test.mjs
+          echo 'QUEEN_S8_CLOUDFLARE_NATIVE_SOURCE_TESTS=PASS'
+          echo 'QUEEN_S8_REAL_MODEL_CALL_NOT_EXECUTED=TRUE'
+      - name: Secure cleanup
+        if: always()
+        shell: bash
+        run: rm -rf private-hive
+  s8-readonly-binding-and-cost-deny-proof:
+    needs: s8-source-and-adversarial-tests
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 4
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Read-only authenticated Queen Workers AI binding; no inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          code="$(curl --silent --show-error --max-time 20 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -o "$RUNNER_TEMP/s8-ai-ready.json" -w '%{http_code}' \
+            'https://hive-alveare.pages.dev/api/queen-s8-workers-ai' || true)"
+          if [ "$code" != 200 ]; then
+            echo 'S8_CLOUDFLARE_NATIVE_LIVE_DEPLOYMENT=NOT_YET_AVAILABLE'
+            echo 'S8_MODEL_INFERENCE_EXECUTED=FALSE'
+            exit 1
+          fi
+          jq -e '.ok==true and .stage=="S8" and
+             .route=="cloudflare-workers-ai" and
+             .model_invoked==false and .paid_fallback==false and
+             .product_writes==false and .general_routing==false and
+             .default_dispatch=="DENY" and .callable==false and
+             .free_plan_certified==false' "$RUNNER_TEMP/s8-ai-ready.json" >/dev/null
+          if jq -e '.binding_present==true' "$RUNNER_TEMP/s8-ai-ready.json" >/dev/null; then
+            echo 'S8_CLOUDFLARE_NATIVE_AI_BINDING=READY'
+          else
+            echo 'S8_CLOUDFLARE_NATIVE_AI_BINDING=MISSING'
+          fi
+          echo 'S8_FREE_PLAN_BILLING_GATE=DENY_UNCERTIFIED'
+          echo 'S8_WORKERS_AI_MODEL_INVOKED=FALSE'
+      - name: Cleanup
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s8-ai-ready.json"
