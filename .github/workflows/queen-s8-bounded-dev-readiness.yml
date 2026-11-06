@@ -17,7 +17,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 10
     env:
-      PRIVATE_SHA: 18d6f25554dadbdb9ffdd78f57f86d7e05578c2c
+      PRIVATE_SHA: 23aef9f2509315568e09d37cbf9554b72a7c0898
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,7 +28,7 @@ jobs:
           path: queen-source
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: S8 source policy, bounded autonomous dev adversarial canary, S0-S7 non-regression
+      - name: S8 source policy, Cloudflare native adversarial suite, S6/S7 nonregression
         shell: bash
         run: |
           set -euo pipefail
@@ -37,7 +37,7 @@ jobs:
           node queen-source/ops/queen/compute/s7/validate-s7-readiness.mjs
           node queen-source/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
           node --test queen-source/ops/queen/autopilot/s8/tests/*.test.mjs
-          echo 'QUEEN_S8_SOURCE_LOCKED_GUARDS_S6_S7_REGRESSIONS_PASS'
+          echo 'QUEEN_S8_CLOUDFLARE_NATIVE_SOURCE_LOCKED_NEGATIVE_TESTS=PASS'
       - name: Scrub temporary private checkout
         if: always()
         shell: bash
@@ -49,54 +49,28 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 5
     env:
-      PRIVATE_SHA: 18d6f25554dadbdb9ffdd78f57f86d7e05578c2c
-      HIVE_AGENT_BRIDGE_URL: ${{ secrets.HIVE_AGENT_BRIDGE_URL }}
-      HIVE_AGENT_BRIDGE_TOKEN: ${{ secrets.HIVE_AGENT_BRIDGE_TOKEN }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: giovannifidel-collab/hive-alveare
-          ref: ${{ env.PRIVATE_SHA }}
-          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-          persist-credentials: false
-          path: queen-source
-      - uses: actions/setup-node@v4
-        with: {node-version: '22'}
-      - name: Authenticate live managed AI bridge read-only, zero provider inference
+      - name: Verify native Cloudflare Pages Workers AI source and hard cost gate, zero inference
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C queen-source rev-parse HEAD)" = "$PRIVATE_SHA"
-          node --input-type=module - <<'JS'
-          import {bridgeConfigured, QueenAgentBridgeClient} from './queen-source/ops/queen/agents/bridge-client.mjs';
-          if(!bridgeConfigured()){
-            console.error('S8_CLOUD_AI_BRIDGE_CREDENTIALS_NOT_CONFIGURED=DENY');
-            process.exitCode=78;
-          }else{
-            try{
-              const client=new QueenAgentBridgeClient({attempts:1,timeoutMs:12000});
-              const health=await client.health();
-              const agents=await client.agents();
-              if(health.ok!==true||!Array.isArray(agents)||agents.length===0){
-                throw Error('READ_ONLY_BRIDGE_NOT_READY');
-              }
-              console.log('QUEEN_S8_CLOUD_AI_BRIDGE_HEALTH_AND_AGENT_DISCOVERY_PASS count='+agents.length);
-            }catch(e){
-              const message=String(e?.message||'');
-              const found=message.match(/AGENT_BRIDGE_(HEALTH|AGENTS)_(\d{3})/);
-              const cause=String(e?.cause?.code||'');
-              const category=found?('HTTP_'+found[1]+'_'+found[2]):
-                ['ENOTFOUND','ECONNREFUSED','ECONNRESET','ETIMEDOUT','EAI_AGAIN'].includes(cause)?cause:
-                e?.name==='TimeoutError'?'TIMEOUT':
-                e?.name==='TypeError'?'FETCH_FAILED':'UNCLASSIFIED';
-              console.error('S8_CLOUD_AI_BRIDGE_FAILURE_CATEGORY='+category);
-              console.error('S8_CLOUD_AI_BRIDGE_UNAVAILABLE_OR_UNTRUSTED=DENY');
-              process.exitCode=79;
-            }
-          }
-          JS
-      - name: Erase temporary private source
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          curl --fail --silent --show-error --max-time 25 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -o "$RUNNER_TEMP/s8-native-readiness.json" \
+            'https://hive-alveare.pages.dev/api/queen-s8-workers-ai'
+          jq -e '.ok==true and .route=="cloudflare-workers-ai" and
+             .binding_present==true and .model_invoked==false and
+             .free_plan_certified==false and .callable==false and
+             .paid_fallback==false and .product_writes==false and
+             .general_routing==false and .default_dispatch=="DENY"' \
+             "$RUNNER_TEMP/s8-native-readiness.json" >/dev/null
+          echo 'S8_NATIVE_WORKERS_AI_LIVE_BINDING_AND_ZERO_COST_DENY=PASS'
+          echo 'S8_LEGACY_BROWSER_BRIDGE_NOT_REQUIRED=TRUE'
+          echo 'S8_AUTONOMOUS_CODE_GENERATION_LIVE_CERTIFICATION=PENDING'
+      - name: Erase temporary response
         if: always()
-        run: rm -rf queen-source
+        run: rm -f "$RUNNER_TEMP/s8-native-readiness.json"
