@@ -1,0 +1,73 @@
+name: Queen S8 Cloudflare AI Zero-Cost Plan Read-only Discovery
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-workers-ai-billing-readonly.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-workers-ai-plan-audit
+  cancel-in-progress: false
+jobs:
+  discover-hive-pages-workers-ai-plan:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    steps:
+      - name: Locate Queen Pages account and read-only plan without using AI
+        shell: bash
+        env:
+          PRIMARY_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          FALLBACK_CF_TOKEN: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          CF_TOKEN="${PRIMARY_CF_TOKEN:-${FALLBACK_CF_TOKEN:-}}"
+          if [ -z "$CF_TOKEN" ]; then echo 'S8_CF_TOKEN_AVAILABLE=FALSE'; exit 0; fi
+          echo 'S8_CF_TOKEN_AVAILABLE=TRUE'
+          export CF_TOKEN
+          python - <<'PY'
+          import urllib.request,urllib.error,json,os
+          token=os.environ['CF_TOKEN']
+          def get(path):
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=12) as r:
+                      return r.status,json.load(r)
+              except urllib.error.HTTPError as e:
+                  return e.code,{}
+              except Exception:
+                  return 0,{}
+          status,items=get('/accounts?per_page=50')
+          if status!=200 or items.get('success') is not True or not isinstance(items.get('result'),list):
+              print('S8_CLOUDFLARE_ACCOUNT_DISCOVERY=DENIED');raise SystemExit(0)
+          match=[]
+          for acc in items['result']:
+              aid=acc.get('id','')
+              if not isinstance(aid,str) or len(aid)!=32:continue
+              x,obj=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+              if x==200 and obj.get('success') is True and obj.get('result',{}).get('name')=='hive-alveare':
+                  match.append(aid)
+          print('S8_AUTHORITATIVE_HIVE_PAGES_ACCOUNTS='+str(len(match)))
+          if len(match)!=1:
+              print('S8_FREE_COST_GATE=DENY_ACCOUNT_ID_UNVERIFIED')
+              raise SystemExit(0)
+          aid=match[0]
+          s,data=get('/accounts/'+aid+'/subscriptions')
+          if s!=200 or data.get('success') is not True or not isinstance(data.get('result'),list):
+              print('S8_CF_BILLING_READ=UNAVAILABLE')
+              print('S8_FREE_COST_GATE=DENY_PLAN_UNKNOWN')
+              raise SystemExit(0)
+          print('S8_CF_BILLING_READ=PASS')
+          subscriptions=data['result']
+          worker_plans=[]
+          for item in subscriptions:
+              rp=item.get('rate_plan') or {}
+              parts=' '.join(str(v or '') for v in (rp.get('id'),rp.get('public_name'),rp.get('name'),rp.get('scope')))
+              if any(x in parts.lower() for x in ('worker','ai')):
+                  worker_plans.append((parts.lower(),str(item.get('state','')).lower()))
+          print('S8_WORKERS_AI_PLAN_TAGS_FOUND='+str(len(worker_plans)))
+          any_paid=any(any(x in n for x in ('paid','bundled','enterprise','standard')) and st not in ('cancelled','expired','failed') for n,st in worker_plans)
+          any_free=any('free' in n and st not in ('cancelled','expired','failed') for n,st in worker_plans)
+          print('S8_WORKERS_AI_PAID_PLAN_DETECTED='+str(any_paid))
+          print('S8_WORKERS_AI_FREE_PLAN_DETECTED='+str(any_free))
+          print('S8_FREE_COST_GATE='+('PASS_NO_PAID_PLAN' if any_free and not any_paid else 'DENY_UNKNOWN_OR_PAID'))
+          PY
