@@ -1,0 +1,83 @@
+name: Queen S7 GPU02 Exact Owner-Approved Kaggle CUDA One Shot
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-gpu02-exact-owner-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-gpu02-exact-owner-one-shot
+  cancel-in-progress: false
+jobs:
+  owner-approved-gpu02-one-shot:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN_GPU02 }}
+      KERNEL: PatrickPand/hive-s7-gpu-readiness-02
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read-only exact GPU02 v1 privacy and no existing v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          test -n "$KAGGLE_API_TOKEN"
+          python -m pip -q install kaggle 'six>=1.16,<2'
+          python - <<'PY'
+          import json,os,pathlib,subprocess,tempfile
+          kernel=os.environ['KERNEL']
+          with tempfile.TemporaryDirectory(prefix='s7-gpu02-preflight-') as tmp:
+              base=pathlib.Path(tmp)
+              v1=base/'v1'; v1.mkdir()
+              subprocess.run(['kaggle','kernels','pull',kernel+'/1','--metadata',
+                 '--path',str(v1)],check=True,capture_output=True,text=True,timeout=65)
+              metadata=v1/'kernel-metadata.json'
+              if not metadata.is_file():raise SystemExit('S7_GPU02_V1_METADATA_REQUIRED')
+              m=json.loads(metadata.read_text())
+              truth=lambda s:s is True or s=='true'
+              if not (str(m.get('id','')).casefold()==kernel.casefold() and
+                 truth(m.get('is_private')) and truth(m.get('enable_gpu')) and
+                 not truth(m.get('enable_internet'))):
+                  raise SystemExit('S7_GPU02_PRIVATE_OFFLINE_GPU_IDENTITY_DENIED')
+              v2=base/'v2';v2.mkdir()
+              existing=subprocess.run(['kaggle','kernels','pull',kernel+'/2',
+                  '--metadata','--path',str(v2)],
+                   capture_output=True,text=True,timeout=65)
+              if existing.returncode==0:
+                  raise SystemExit('S7_GPU02_V2_ALREADY_EXISTS_DENY_OVERWRITE')
+              info=(existing.stdout+' '+existing.stderr).casefold()
+              if not any(mark in info for mark in ('404','not found','does not exist','could not find')):
+                  raise SystemExit('S7_GPU02_V2_EXISTENCE_UNKNOWN_FAIL_CLOSED')
+          print('S7_GPU02_EXACT_PRIVATE_GPU_V1_VERIFIED_UNUSED_V2=PASS')
+          PY
+      - name: Require one pending owner-bound Neon GPU02 lease and default DENY
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(printf '%s' "$HIVE_BASE_URL" | sed 's:/*$::')"
+          test -n "$base" || base="https://hive-alveare.pages.dev"
+          curl --fail --silent --show-error --max-time 45 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$base/api/queen-s7-e2e?node_id=hive-gpu-node-02" >"$RUNNER_TEMP/s7-gpu02-owner-state.json"
+          jq -e '.ok==true and .node_id=="hive-gpu-node-02" and .status=="OWNER_APPROVED_PENDING" and .general_routing==false and .paid_fallback==false' "$RUNNER_TEMP/s7-gpu02-owner-state.json" >/dev/null
+          echo 'S7_GPU02_EXACT_OWNER_NEON_GATE=PASS'
+      - name: Dispatch existing trusted CPU/GPU provider once with recovery disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run queen-s7-hive-once.yml \
+            --repo giovannifidel-collab/pfarma-ci --ref main \
+            -f node_id=hive-gpu-node-02 \
+            -f recover_existing_gpu01_v2=false
+          echo 'S7_GPU02_EXACT_ONE_SHOT_GPU_PROVIDER_REQUESTED_UNCERTIFIED'
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/s7-gpu02-owner-state.json"
