@@ -1,0 +1,41 @@
+name: Queen S7 GPU01 Owner-Approved HIVE Kaggle Once
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-gpu01-hive-neon-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-gpu01-hive-owner-one-shot
+  cancel-in-progress: false
+jobs:
+  owner-approved-gpu01-start:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Check exact GPU01 owner lease gate, no general routing
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" && test -n "${CF_ACCESS_CLIENT_ID:-}" && test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}";base="${base%/}"
+          curl --fail --silent --show-error --max-time 40 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$base/api/queen-s7-e2e?node_id=hive-gpu-node-01" >"$RUNNER_TEMP/s7-gpu01-state.json"
+          jq -e '.ok == true and .node_id == "hive-gpu-node-01" and .status == "OWNER_APPROVED_PENDING" and .general_routing == false and .paid_fallback == false' "$RUNNER_TEMP/s7-gpu01-state.json" >/dev/null
+          echo 'S7_GPU01_EXACT_OWNER_NEON_PREAPPROVAL=PASS'
+      - name: Dispatch one existing trusted source-locked GPU01 HIVE job
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run queen-s7-hive-once.yml --repo giovannifidel-collab/pfarma-ci --ref main -f node_id=hive-gpu-node-01
+          echo 'S7_GPU01_HIVE_PROVIDER_DISPATCH_REQUESTED_NOT_YET_CERTIFIED'
+      - name: Remove temporary state
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s7-gpu01-state.json"
