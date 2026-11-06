@@ -118,7 +118,7 @@ jobs:
           ready=0
           for i in 1 2 3 4 5 6 7 8; do
             status="$(curl --silent --show-error --max-time 18 \
-              "$"{headers[@]}" -w '%{http_code}' -o "$RUNNER_TEMP/s8-route-readiness.json" \
+              "${headers[@]}"" -w '%{http_code}' -o "$RUNNER_TEMP/s8-route-readiness.json" \
               'https://hive-alveare.pages.dev/api/queen-s8-workers-ai' || true)"
             if [ "$status" = '200' ] && jq -e '.ok==true and .route=="cloudflare-workers-ai" and
               .model_invoked==false and .paid_fallback==false and
@@ -133,11 +133,11 @@ jobs:
           echo 'S8_PAGES_PROTECTED_ROUTE_READONLY=PASS'
           jq -r '"S8_WORKERS_AI_BINDING_PRESENT=" + (.binding_present|tostring)' "$RUNNER_TEMP/s8-route-readiness.json"
           echo 'S8_PAID_FALLBACK_AND_INFERENCE=DENY'
-          runtime="$(curl --silent --show-error --max-time 20 "$"{headers[@]}" \
+          runtime="$(curl --silent --show-error --max-time 20 "${headers[@]}"" \
             -o /dev/null -w '%{http_code}' 'https://hive-alveare.pages.dev/api/runtime-health' || true)"
           test "$runtime" = '200'
           echo 'S8_EXISTING_QUEEN_RUNTIME_HEALTH=PASS'
-          s7="$(curl --silent --show-error --max-time 20 "$"{headers[@]}" \
+          s7="$(curl --silent --show-error --max-time 20 "${headers[@]}"" \
             -o "$RUNNER_TEMP/s7-readiness.json" -w '%{http_code}' \
             'https://hive-alveare.pages.dev/api/queen-s7-e2e' || true)"
           test "$s7" = '200'
