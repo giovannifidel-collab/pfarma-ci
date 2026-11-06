@@ -123,7 +123,7 @@ jobs:
             if [ "$status" = '200' ] && jq -e '.ok==true and .route=="cloudflare-workers-ai" and
               .model_invoked==false and .paid_fallback==false and
               .product_writes==false and .general_routing==false and
-              .default_dispatch=="DENY" and .free_plan_certified==false and
+              .default_dispatch=="DENY" and .free_plan_certified==true and
               .callable==true' "$RUNNER_TEMP/s8-route-readiness.json" >/dev/null 2>&1; then
               ready=1;break
             fi
