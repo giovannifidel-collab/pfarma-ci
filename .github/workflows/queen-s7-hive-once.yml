@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 10
-    env: {PRIVATE_SHA: '56ca0ff40f2ca03079a137e41826e14eb844ca15'}
+    env: {PRIVATE_SHA: '318ac5a22d91a9f3ac34b2b08ad4ceabf8a488f5'}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,7 +72,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 30
     env:
-      PRIVATE_SHA: 56ca0ff40f2ca03079a137e41826e14eb844ca15
+      PRIVATE_SHA: 318ac5a22d91a9f3ac34b2b08ad4ceabf8a488f5
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       S7_NODE_ID: ${{ inputs.node_id }}
       S7_RECOVER_EXISTING_GPU01_V2: ${{ inputs.recover_existing_gpu01_v2 }}
