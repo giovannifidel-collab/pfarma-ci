@@ -83,7 +83,15 @@ jobs:
                 throw Error('READ_ONLY_BRIDGE_NOT_READY');
               }
               console.log('QUEEN_S8_CLOUD_AI_BRIDGE_HEALTH_AND_AGENT_DISCOVERY_PASS count='+agents.length);
-            }catch{
+            }catch(e){
+              const message=String(e?.message||'');
+              const found=message.match(/AGENT_BRIDGE_(HEALTH|AGENTS)_(\d{3})/);
+              const cause=String(e?.cause?.code||'');
+              const category=found?('HTTP_'+found[1]+'_'+found[2]):
+                ['ENOTFOUND','ECONNREFUSED','ECONNRESET','ETIMEDOUT','EAI_AGAIN'].includes(cause)?cause:
+                e?.name==='TimeoutError'?'TIMEOUT':
+                e?.name==='TypeError'?'FETCH_FAILED':'UNCLASSIFIED';
+              console.error('S8_CLOUD_AI_BRIDGE_FAILURE_CATEGORY='+category);
               console.error('S8_CLOUD_AI_BRIDGE_UNAVAILABLE_OR_UNTRUSTED=DENY');
               process.exitCode=79;
             }
