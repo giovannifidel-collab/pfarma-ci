@@ -1,0 +1,46 @@
+name: Queen S7 GPU01 Existing Kaggle v2 Read-only Recovery One-Shot
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s7-gpu01-existing-v2-recovery-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s7-existing-gpu01-one-shot-recovery
+  cancel-in-progress: false
+jobs:
+  recover-only-original-owner-bound-run:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Require original GPU01 lease pending final receipt and default DENY
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          base="$(printf '%s' "$HIVE_BASE_URL" | sed 's:/*$::')"
+          test -n "$base" || base="https://hive-alveare.pages.dev"
+          curl --fail --silent --show-error --max-time 45 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$base/api/queen-s7-e2e?node_id=hive-gpu-node-01" >"$RUNNER_TEMP/s7-gpu01-owner-status.json"
+          jq -e '.ok==true and .node_id=="hive-gpu-node-01" and .status=="DISPATCH_LEASED" and .general_routing==false and .paid_fallback==false' "$RUNNER_TEMP/s7-gpu01-owner-status.json" >/dev/null
+          echo 'S7_GPU01_ORIGINAL_TASK_RECOVERY_ONLY_POLICY_GATE=PASS'
+      - name: Dispatch explicit read-only recovery with original trusted provider workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run queen-s7-hive-once.yml \
+            --repo giovannifidel-collab/pfarma-ci --ref main \
+            -f node_id=hive-gpu-node-01 \
+            -f recover_existing_gpu01_v2=true
+          echo 'S7_GPU01_ORIGINAL_KAGGLE_V2_READONLY_RECOVERY_REQUESTED'
+      - name: Clean temporary approval state
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/s7-gpu01-owner-status.json"
