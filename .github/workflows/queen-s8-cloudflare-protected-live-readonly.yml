@@ -1,0 +1,84 @@
+name: Queen S8 Protected Live Cloudflare AI Route — Read-only Certification
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-cloudflare-protected-live-readonly.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-protected-cloudflare-live-readonly
+  cancel-in-progress: false
+jobs:
+  verify-current-hive-apis-no-model:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 4
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Authenticated GET Cloudflare S8 route, zero inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          curl --fail --silent --show-error --max-time 25 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            'https://hive-alveare.pages.dev/api/queen-s8-workers-ai' \
+            -o "$RUNNER_TEMP/s8-live-state.json"
+          jq -e '.ok==true and .stage=="S8" and
+             .route=="cloudflare-workers-ai" and
+             .model_invoked==false and .paid_fallback==false and
+             .product_writes==false and .general_routing==false and
+             .default_dispatch=="DENY" and
+             .free_plan_certified==false and .callable==false' \
+             "$RUNNER_TEMP/s8-live-state.json" >/dev/null
+          echo 'S8_CLOUDFLARE_PROTECTED_ENDPOINT_LIVE=PASS'
+          if jq -e '.binding_present==true' "$RUNNER_TEMP/s8-live-state.json" >/dev/null; then
+            echo 'S8_WORKERS_AI_BINDING_PRESENT=TRUE'
+          else
+            echo 'S8_WORKERS_AI_BINDING_PRESENT=FALSE'
+          fi
+          echo 'S8_COST_UNVERIFIED_INFERENCE=DENY'
+      - name: Authenticated malformed POST must deny without model invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl --silent --show-error --max-time 20 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -H 'Content-Type: application/json' \
+            --data '{"action":"generate"}' \
+            -o "$RUNNER_TEMP/s8-deny.json" -w '%{http_code}' \
+            'https://hive-alveare.pages.dev/api/queen-s8-workers-ai' || true)"
+          test "$code" = '403'
+          jq -e '.ok==false and .decision=="DENY" and
+            .model_invoked==false and .paid_fallback==false' \
+            "$RUNNER_TEMP/s8-deny.json" >/dev/null
+          echo 'S8_LIVE_UNAUTHORIZED_INFERENCE_DENIAL=PASS'
+      - name: Existing Queen runtime and S7 fail-closed remain healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="$(curl --silent --show-error --max-time 20 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -o "$RUNNER_TEMP/s8-runtime.json" -w '%{http_code}' \
+            'https://hive-alveare.pages.dev/api/runtime-health' || true)"
+          test "$runtime" = '200'
+          echo 'S8_QUEEN_RUNTIME_HEALTH_HTTP=200'
+          s7="$(curl --silent --show-error --max-time 20 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -o "$RUNNER_TEMP/s8-s7.json" -w '%{http_code}' \
+            'https://hive-alveare.pages.dev/api/queen-s7-e2e' || true)"
+          test "$s7" = '200'
+          jq -e '.ok==true and .stage=="S7" and
+            .general_routing==false and .default_dispatch=="DENY" and
+            .paid_fallback==false' "$RUNNER_TEMP/s8-s7.json" >/dev/null
+          echo 'S8_S7_LIVE_POST_DEPLOY_POLICY_REGRESSION=PASS'
+          echo 'S8_AI_INFERENCES_EXECUTED=ZERO'
+      - name: Cleanup evidence bytes
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/s8-live-state.json" "$RUNNER_TEMP/s8-deny.json" "$RUNNER_TEMP/s8-runtime.json" "$RUNNER_TEMP/s8-s7.json"
