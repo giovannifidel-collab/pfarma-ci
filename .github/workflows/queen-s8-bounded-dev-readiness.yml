@@ -48,7 +48,7 @@ jobs:
           evidence="$(gh api "/repos/$repo/pulls/$pr")"
           echo "$evidence" | jq -e '
             .draft==true and .merged==false and .state=="open" and
-            .base.sha=="f963589ac77473ce0c36c2a8997c8f4d1e23bfb4" and
+            .base.sha=="1064d92d825cb2eb16b7606631457edb1a8e1824" and
             .head.sha=="23ef48508b8f1e57180a1c7b098f7855dc30d4b9"
           ' >/dev/null
           gh api "/repos/$repo/pulls/$pr/files?per_page=20" | jq -e '
