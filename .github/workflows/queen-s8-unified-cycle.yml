@@ -45,6 +45,62 @@ jobs:
       - name: Scrub private checkout
         if: always()
         run: rm -rf source
+  live-oidc-controller-preflight:
+    if: github.event_name == 'push'
+    needs: safe-source-preflight
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 4
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Verify Access-protected S8 control endpoints and signed GitHub OIDC without mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const base='https://hive-alveare.pages.dev';
+          const h={
+            'CF-Access-Client-Id':process.env.CF_ACCESS_CLIENT_ID,
+            'CF-Access-Client-Secret':process.env.CF_ACCESS_CLIENT_SECRET,
+            accept:'application/json'
+          };
+          if(!h['CF-Access-Client-Id']||!h['CF-Access-Client-Secret'])
+            throw Error('S8_ACCESS_CREDENTIALS_MISSING');
+          for(const route of ['/api/queen-s8-repair-handoff','/api/queen-s8-complete']){
+            const r=await fetch(base+route,{headers:h});
+            const x=await r.json().catch(()=>null);
+            if(!r.ok||x?.ok!==true||x.model_invoked!==false||
+               x.paid_fallback!==false||x.default_dispatch!=='DENY')
+              throw Error('S8_LIVE_CONTROL_EDGE_GET_DENIED_'+route);
+          }
+          console.log('S8_LIVE_CONTROL_EDGES_DEFAULT_DENY=PASS');
+          const req=await fetch(process.env.ACTIONS_ID_TOKEN_REQUEST_URL+
+            '&audience='+encodeURIComponent('hive-queen-s8-auto-repair-controller-v1'),{
+              headers:{Authorization:'Bearer '+process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}
+            });
+          if(!req.ok)throw Error('S8_GITHUB_OIDC_TOKEN_NOT_AVAILABLE');
+          const token=(await req.json()).value;
+          if(typeof token!=='string'||token.length<300)throw Error('S8_GITHUB_OIDC_TOKEN_INVALID');
+          const payload={action:'identity_preflight',
+            public_sha:process.env.GITHUB_SHA,
+            run_id:Number(process.env.GITHUB_RUN_ID),
+            run_attempt:Number(process.env.GITHUB_RUN_ATTEMPT)};
+          const r=await fetch(base+'/api/queen-s8-repair-handoff',{
+            method:'POST',headers:{...h,'content-type':'application/json',
+            'X-Queen-CI-OIDC':token},body:JSON.stringify(payload)});
+          const x=await r.json().catch(()=>null);
+          if(!r.ok||x?.ok!==true||x.decision!=='VERIFIED_OIDC_PREFLIGHT'||
+             x.model_invoked!==false||x.paid_fallback!==false)
+            throw Error('S8_OIDC_PREFLIGHT_DENIED_'+String(x?.reason||'unknown'));
+          console.log('S8_TRUSTED_GITHUB_OIDC_SIGNATURE_REPO_ENV_WORKFLOW_SHA_LIVE=PASS');
+          console.log('S8_NEON_OWNER_MISSION_MUTATIONS=ZERO');
+          console.log('S8_AI_MODEL_INFERENCES=ZERO');
+          JS
   one-owner-mission:
     if: github.event_name == 'workflow_dispatch'
     needs: safe-source-preflight
