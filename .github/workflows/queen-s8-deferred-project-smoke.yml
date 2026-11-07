@@ -1,0 +1,98 @@
+name: Queen S8 Deferred Product Independent Smoke - No Writes
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-deferred-project-smoke.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-deferred-project-smoke.yml']
+permissions: {contents: read}
+jobs:
+  verify-safe-existing-test:
+    name: bounded independent profile (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: pfarma-cloud
+            repository: giovannifidel-collab/pfarma-cloud
+            source_sha: 1d460184944355ed2d4b375bfe03b35a70c7aa41
+            profile: migration-atomic
+          - project: family-cloud
+            repository: giovannifidel-collab/family-cloud
+            source_sha: 17b242eca13d7c73607e0bc52c64146750020cb7
+            profile: ui-source-contract
+          - project: gio-os
+            repository: giovannifidel-collab/gio-OS
+            source_sha: 31103989996a664dff385896143dccd03072cdf6
+            profile: assembler-unit
+          - project: pfarma-social
+            repository: giovannifidel-collab/pfarma-social
+            source_sha: c56bbbd89b2a1bc273d833635dee6b0b10c5cf07
+            profile: receipt-unit
+    steps:
+      - name: Checkout authoritative exact project source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.source_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: project
+      - name: Select immutable project-owned acceptance profile and test isolated
+        shell: bash
+        env:
+          PROJECT: ${{ matrix.project }}
+          SOURCE_SHA: ${{ matrix.source_sha }}
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          test "$(git -C project rev-parse HEAD)" = "$SOURCE_SHA"
+          case "$PROJECT:$PROFILE" in
+            pfarma-cloud:migration-atomic)
+              IMAGE=python:3.13-alpine
+              set -- python -B agent/staging/test_migration_dry_run_atomic_status_guard.py
+              ;;
+            family-cloud:ui-source-contract)
+              IMAGE=node:22-alpine
+              set -- node factory/alternate-name-enter-save-v2.test.mjs
+              ;;
+            gio-os:assembler-unit)
+              IMAGE=python:3.13-alpine
+              set -- python -B -m unittest discover -s tests -p test_assembler_plan.py
+              ;;
+            pfarma-social:receipt-unit)
+              IMAGE=python:3.13-alpine
+              set -- python -B -m unittest discover -s tools -p test_verify_public_receipt.py
+              ;;
+            *)
+              echo "S8_PROFILE=DENY"
+              exit 1
+              ;;
+          esac
+          if docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --pids-limit 90 --memory 512m \
+            --tmpfs /tmp:rw,nosuid,size=64m --user 65534:65534 \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/project,target=/project,readonly" \
+            --workdir /project "$IMAGE" "$@" > "$RUNNER_TEMP/s8-project-smoke.log" 2>&1; then
+            echo "S8_PROFILE=PASS"
+            echo "S8_PROJECT=$PROJECT"
+            echo "S8_EXACT_SHA=$SOURCE_SHA"
+            echo "S8_PROFILE_KIND=$PROFILE"
+            echo "S8_SANDBOX_READONLY=TRUE"
+            echo "S8_SANDBOX_NETWORK=NONE"
+            echo "S8_SANDBOX_SECRETS=NONE"
+            echo "S8_ADDITIONAL_AUTHORITY=NONE"
+          else
+            echo "S8_PROFILE=DENY_TEST_FAILURE"
+            echo "S8_PROJECT=$PROJECT"
+            exit 1
+          fi
+      - name: Remove ephemeral project and log
+        if: always()
+        shell: bash
+        run: rm -rf project "$RUNNER_TEMP/s8-project-smoke.log"
