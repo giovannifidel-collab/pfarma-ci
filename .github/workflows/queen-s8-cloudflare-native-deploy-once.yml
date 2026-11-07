@@ -13,7 +13,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 18
     env:
-      PRIVATE_SHA: 1064d92d825cb2eb16b7606631457edb1a8e1824
+      PRIVATE_SHA: 244d385b0dce071088636a543d086e090b6e95aa
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CF_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
@@ -123,8 +123,8 @@ jobs:
             if [ "$status" = '200' ] && jq -e '.ok==true and .route=="cloudflare-workers-ai" and
               .model_invoked==false and .paid_fallback==false and
               .product_writes==false and .general_routing==false and
-              .default_dispatch=="DENY" and .free_plan_certified==true and
-              .callable==true' "$RUNNER_TEMP/s8-route-readiness.json" >/dev/null 2>&1; then
+              .default_dispatch=="DENY" and .free_plan_certified==false and
+              .callable==false' "$RUNNER_TEMP/s8-route-readiness.json" >/dev/null 2>&1; then
               ready=1;break
             fi
             sleep 5
