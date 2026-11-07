@@ -95,7 +95,7 @@ jobs:
         if: always()
         run: rm -rf source
   one-owner-mission:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'S8-OWNER-ONCE:'))
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'S8-OWNER-ONCE'))
     needs: safe-source-preflight
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
