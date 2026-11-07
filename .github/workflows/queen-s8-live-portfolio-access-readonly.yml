@@ -82,6 +82,22 @@ jobs:
                   print("S8_PAGES_SANITIZED_FAILURE_LINES="+str(len(candidates)))
                   for i,line in enumerate(candidates[-6:]):
                       print("S8_PAGES_FAILURE_"+str(i)+"="+line)
+          st,deployments=get("/accounts/"+account_id+"/pages/projects/hive-alveare/deployments?per_page=20")
+          if st==200 and deployments.get("success") is True:
+              records=deployments.get("result") or []
+              from collections import Counter
+              print("S8_PAGES_RECENT_DEPLOYMENT_RECORDS="+str(len(records)))
+              print("S8_PAGES_RECENT_DEPLOYMENT_STAGES="+str(dict(Counter(
+                  str((x.get("latest_stage") or {}).get("status","unknown"))[:24]
+                  for x in records))))
+              for item in records:
+                  if item.get("environment")!="production":continue
+                  if (item.get("latest_stage") or {}).get("status")!="success":continue
+                  candidate=((item.get("deployment_trigger") or {}).get("metadata") or {}).get("commit_hash","")
+                  if isinstance(candidate,str) and len(candidate)==40 and all(c in "0123456789abcdef" for c in candidate):
+                      print("S8_PAGES_PREVIOUS_SUCCESSFUL_PRODUCTION_SHA="+candidate)
+                      print("S8_PAGES_ROLLBACK_UNVERIFIED=TRUE")
+                      break
           print("S8_PAGES_DIAGNOSTIC=READONLY_ONLY_NO_REDEPLOY")
           PY
       - name: Read live Queen portfolio; no deployment, inference or products accessed
