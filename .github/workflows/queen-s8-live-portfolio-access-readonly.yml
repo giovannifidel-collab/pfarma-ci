@@ -19,6 +19,52 @@ jobs:
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
+      - name: Diagnose authoritative Queen Pages deployment (Cloudflare GET only)
+        shell: bash
+        env:
+          CF_DEPLOY_AUDIT_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_DEPLOY_AUDIT_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.request,urllib.error
+          token=os.getenv("CF_DEPLOY_AUDIT_PRIMARY") or os.getenv("CF_DEPLOY_AUDIT_SECONDARY")
+          expected="296677c77946b91ca1c8f9da70d41d87b975c5e4"
+          if not token:
+              print("S8_PAGES_DIAGNOSTIC=DENY_NO_CLOUDFLARE_AUDIT_CREDENTIAL")
+              raise SystemExit(0)
+          def get(path):
+              request=urllib.request.Request("https://api.cloudflare.com/client/v4"+path,
+                  headers={"Authorization":"Bearer "+token,"Accept":"application/json"},method="GET")
+              try:
+                  with urllib.request.urlopen(request,timeout=12) as response:
+                      return response.status,json.load(response)
+              except urllib.error.HTTPError as err:
+                  return err.code,{}
+              except Exception:return 0,{}
+          s,accounts=get("/accounts?per_page=50")
+          if s!=200 or accounts.get("success") is not True:
+              print("S8_PAGES_DIAGNOSTIC=DENY_ACCOUNT_UNVERIFIED");raise SystemExit(0)
+          matched=[]
+          for account in accounts.get("result",[]):
+              aid=account.get("id","")
+              if not isinstance(aid,str) or len(aid)!=32:continue
+              st,p=get("/accounts/"+aid+"/pages/projects/hive-alveare")
+              if st==200 and p.get("success") is True and (p.get("result") or {}).get("name")=="hive-alveare":
+                  matched.append(p["result"])
+          print("S8_PAGES_PROJECT_COUNT="+str(len(matched)))
+          if len(matched)!=1:
+              print("S8_PAGES_DIAGNOSTIC=DENY_PROJECT_NOT_UNIQUE");raise SystemExit(0)
+          p=matched[0]
+          branch=((p.get("source") or {}).get("config") or {}).get("production_branch")
+          latest=p.get("latest_deployment") or {}
+          actual=((latest.get("deployment_trigger") or {}).get("metadata") or {}).get("commit_hash")
+          stage=(latest.get("latest_stage") or {}).get("status")
+          print("S8_PAGES_MAIN_BRANCH="+str(branch=="main"))
+          print("S8_PAGES_LATEST_DEPLOYMENT_STATUS="+str(stage in ("success","active","completed")))
+          print("S8_PAGES_LATEST_PRIVATE_SHA_MATCH="+str(actual==expected))
+          print("S8_PAGES_DIAGNOSTIC=READONLY_ONLY_NO_REDEPLOY")
+          PY
       - name: Read live Queen portfolio; no deployment, inference or products accessed
         shell: bash
         run: |
