@@ -1,0 +1,65 @@
+name: Queen S8 Modern Wrangler Exact Source Compile - NO DEPLOY
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-modern-wrangler-no-deploy.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-modern-wrangler-no-deploy.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-modern-wrangler-compile-only
+  cancel-in-progress: false
+jobs:
+  verify-modern-pages-functions:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      QUEEN_PRIVATE_SHA: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+    steps:
+      - name: Check out exact Queen source without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-queen
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact SHA, S6/S7 guard and full S8 fail-closed tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-queen rev-parse HEAD)" = "$QUEEN_PRIVATE_SHA"
+          node private-queen/ops/queen/autopilot/validate-s6-closeout.mjs
+          node private-queen/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node private-queen/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
+          node --test private-queen/ops/queen/autopilot/s8/tests/*.test.mjs > "$RUNNER_TEMP/s8-source-tests.log" 2>&1 || {
+            echo 'S8_SOURCE_TESTS=DENY'
+            exit 1
+          }
+          echo 'S8_CURRENT_QUEEN_SOURCE_TESTS=PASS'
+      - name: Compile ONLY existing Queen Pages Functions with modern pinned Wrangler
+        shell: bash
+        working-directory: private-queen/cloudflare
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.123.0 pages functions build functions \
+            --outdir "$RUNNER_TEMP/s8-queen-modern-compile" > "$RUNNER_TEMP/s8-compile.log" 2>&1 || {
+              echo 'S8_MODERN_WRANGLER_COMPILE=DENY'
+              echo 'S8_DEPLOY=NEVER_ATTEMPTED'
+              exit 1
+            }
+          test -n "$(find "$RUNNER_TEMP/s8-queen-modern-compile" -type f -print -quit)"
+          echo 'S8_MODERN_WRANGLER_SOURCE_COMPILE=PASS'
+          echo 'S8_CLOUDFLARE_AUTOMATIC_PAGES_COMPILER_IS_NOT_REPLACED=TRUE'
+          echo 'S8_EXTERNAL_RELEASE_APPROVAL_REQUIRED=TRUE'
+          echo 'S8_DEPLOY=NEVER_ATTEMPTED'
+          echo 'S8_MODEL_CALLS=0'
+          echo 'S8_PROJECT_REPOSITORY_WRITES=0'
+      - name: Remove temporary source and compile outputs
+        if: always()
+        shell: bash
+        run: rm -rf private-queen "$RUNNER_TEMP/s8-source-tests.log" "$RUNNER_TEMP/s8-compile.log" "$RUNNER_TEMP/s8-queen-modern-compile"
