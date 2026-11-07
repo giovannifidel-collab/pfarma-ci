@@ -19,6 +19,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   safe-source-preflight:
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 10
@@ -42,6 +45,52 @@ jobs:
           node --test source/ops/queen/autopilot/s8/tests/*.test.mjs
           echo 'S8_UNIFIED_SOURCE_GUARDS_AND_NEGATIVE_TESTS=PASS'
           echo 'S8_UNIFIED_DEFAULT_MODEL_INFERENCE=DENY'
+      - name: Verify live GitHub-signed OIDC against protected Cloudflare S8, zero model calls
+        shell: bash
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const e=process.env;
+          if(!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN||
+             !e.CF_ACCESS_CLIENT_ID||!e.CF_ACCESS_CLIENT_SECRET)
+            throw Error('S8_OIDC_MISSING_PROTECTED_IDENTITY');
+          const audience='hive-queen-s8-auto-repair-controller-v1';
+          const u=e.ACTIONS_ID_TOKEN_REQUEST_URL+
+            (e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+
+            'audience='+encodeURIComponent(audience);
+          const t=await fetch(u,{headers:{authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!t.ok)throw Error('S8_OIDC_ISSUANCE_DENIED');
+          const j=await t.json();
+          if(typeof j.value!=='string'||j.value.length<300)throw Error('S8_OIDC_EMPTY');
+          const response=await fetch('https://hive-alveare.pages.dev/api/queen-s8-repair-handoff',{
+            method:'POST',
+            headers:{
+              'content-type':'application/json',
+              'CF-Access-Client-Id':e.CF_ACCESS_CLIENT_ID,
+              'CF-Access-Client-Secret':e.CF_ACCESS_CLIENT_SECRET,
+              'X-Queen-CI-OIDC':j.value
+            },
+            body:JSON.stringify({
+              action:'identity_preflight',public_sha:e.GITHUB_SHA,
+              run_id:Number(e.GITHUB_RUN_ID),
+              run_attempt:Number(e.GITHUB_RUN_ATTEMPT)
+            })
+          });
+          const data=await response.json().catch(()=>({}));
+          if(response.status!==200||data.ok!==true||
+             data.decision!=='VERIFIED_OIDC_PREFLIGHT'||data.model_invoked!==false) {
+             const safe=['oidc_identity_expired','untrusted_github_workflow_identity',
+               'oidc_signature_invalid','oidc_verification_failed','oidc_signing_key_not_found',
+               'github_run_identity_invalid','github_provenance_unavailable'];
+             console.error('S8_OIDC_LIVE_PRECHECK=DENY_'+(safe.includes(data.reason)?data.reason:'UNKNOWN'));
+             process.exit(1);
+          }
+          console.log('S8_OIDC_LIVE_CRYPTOGRAPHIC_CI_IDENTITY=PASS');
+          console.log('S8_OIDC_NO_MODEL_INFERENCE=PASS');
+          JS
       - name: Scrub private checkout
         if: always()
         run: rm -rf source
