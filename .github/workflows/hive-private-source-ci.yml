@@ -138,7 +138,9 @@ jobs:
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_enqueue_task('hive','CI task smoke',50,'{}'::jsonb,'{}'::uuid[]);"
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_dashboard();"
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_resume_bundle('hive');"
-          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -Atc "select (hive_integrity_audit()->>'ok')::boolean;" | grep -qx true
+          audit="$(psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -Atc "select (hive_integrity_audit()-'invariants'-'generated_at')::text;")"
+          echo "HIVE_CI_INTEGRITY_COUNTS=$audit"
+          printf '%s' "$audit" | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>process.exit(JSON.parse(s).ok===true?0:1));'
 
       - name: HIVE hosted CI summary
         if: always()
