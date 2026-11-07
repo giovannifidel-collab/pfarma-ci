@@ -1,0 +1,125 @@
+name: Queen S8 Unified Owner-Scoped Autonomous Software Cycle
+on:
+  workflow_dispatch:
+    inputs:
+      mission_id:
+        description: Exact pre-approved S8 Neon mission UUID
+        type: string
+        required: true
+      source_sha:
+        description: Current authoritative private HIVE main SHA
+        type: string
+        required: true
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-unified-cycle.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-single-owner-unified-cycle
+  cancel-in-progress: false
+jobs:
+  safe-source-preflight:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: main
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Independent S6/S7 guards and S8 bounded-source suite, NO model calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          node source/ops/queen/autopilot/validate-s6-closeout.mjs
+          node source/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node source/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
+          node --test source/ops/queen/autopilot/s8/tests/*.test.mjs
+          echo 'S8_UNIFIED_SOURCE_GUARDS_AND_NEGATIVE_TESTS=PASS'
+          echo 'S8_UNIFIED_DEFAULT_MODEL_INFERENCE=DENY'
+      - name: Scrub private checkout
+        if: always()
+        run: rm -rf source
+  one-owner-mission:
+    if: github.event_name == 'workflow_dispatch'
+    needs: safe-source-preflight
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 22
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      S8_MISSION_ID: ${{ inputs.mission_id }}
+      S8_SOURCE_SHA: ${{ inputs.source_sha }}
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Owner mission, exact SHA and authority preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          [[ "$S8_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$S8_MISSION_ID" =~ ^[a-f0-9-]{36}$ ]]
+          test "$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')" = "$S8_SOURCE_SHA"
+          echo 'S8_UNIFIED_EXACT_PRIVATE_SHA_AND_OWNER_SCOPE=PASS'
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.S8_SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: hive-private
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Plan from exact Neon owner mission, fresh world and Workers Free cost gate
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs preflight
+      - name: Queen calls Workers AI for first advisory source proposal
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs first
+      - name: Independent no-secret/no-network Docker test and bounded failure verdict
+        id: firsttest
+        shell: bash
+        working-directory: hive-private
+        run: |
+          set -euo pipefail
+          node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs test-first
+          choice="$(jq -r '.attempt' "$RUNNER_TEMP/queen-s8-unified/selection.json")"
+          test "$choice" = '1' -o "$choice" = '2'
+          echo "attempt=$choice" >> "$GITHUB_OUTPUT"
+      - name: Verified GitHub OIDC authenticates CI failure and ATOMICALLY authorizes repair in Neon
+        if: steps.firsttest.outputs.attempt == '2'
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs approve-repair
+      - name: Queen calls Workers AI for precisely ONE final corrective proposal
+        if: steps.firsttest.outputs.attempt == '2'
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs repair
+      - name: Independent final no-network Docker test and sealed SHA-256 eligibility
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs test-final
+      - name: Create private draft PR with one permitted file, no merge
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs draft-pr
+      - name: OIDC verifies private PR and persists scoped Memory/World/Cognitive/School feedback
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs complete
+      - name: Erase ephemeral private source, model proposals and test receipts
+        if: always()
+        shell: bash
+        run: rm -rf hive-private "$RUNNER_TEMP/queen-s8-unified"
