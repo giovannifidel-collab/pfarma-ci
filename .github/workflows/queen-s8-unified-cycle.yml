@@ -111,6 +111,7 @@ jobs:
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
       - name: Resolve exact owner-approved one-shot mission from trusted main commit
+        id: owner_source
         shell: bash
         env:
           S8_TRIGGER_MESSAGE: ${{ github.event.head_commit.message }}
@@ -129,6 +130,7 @@ jobs:
             [[ "$current" =~ ^[a-f0-9]{40}$ ]]
             echo "S8_MISSION_ID=$uuid" >> "$GITHUB_ENV"
             echo "S8_SOURCE_SHA=$current" >> "$GITHUB_ENV"
+            echo "source_sha=$current" >> "$GITHUB_OUTPUT"
             echo 'S8_ONE_SHOT_OWNER_APPROVAL_IDENTITY_RESOLVED=PASS'
           fi
       - name: Owner mission, exact SHA and authority preflight
@@ -143,7 +145,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/hive-alveare
-          ref: ${{ env.S8_SOURCE_SHA }}
+          ref: ${{ steps.owner_source.outputs.source_sha || inputs.source_sha }}
           token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           persist-credentials: false
           path: hive-private
