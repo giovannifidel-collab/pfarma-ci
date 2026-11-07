@@ -16,7 +16,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 12
     env:
-      PRIVATE_SHA: dfd8b55ec6b895d9fbf68ef19ef925a746ae3dd2
+      PRIVATE_SHA: 55eacea9950ae0fc6215259b2e70b89c165d5470
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +36,10 @@ jobs:
           node private-hive/ops/queen/compute/s7/validate-s7-readiness.mjs
           node private-hive/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
           node --test private-hive/ops/queen/autopilot/s8/tests/*.test.mjs
+          node --check private-hive/ops/queen/autopilot/s8/s8-unified-ci-runner.mjs
+          node --check private-hive/cloudflare/functions/api/queen-s8-complete.js
+          node --check private-hive/cloudflare/functions/api/queen-s8-repair-handoff.js
+          echo 'S8_UNIFIED_RUNNER_CONTROLLER_SOURCE_SYNTAX=PASS'
           echo 'S8_REPAIR_INDEPENDENT_RECEIPT_AND_REPLAY_NEGATIVE_TESTS=PASS'
           echo 'S8_MODEL_INFERENCES=0'
       - name: Compile Cloudflare Pages with modern Wrangler, no deployment or inference
