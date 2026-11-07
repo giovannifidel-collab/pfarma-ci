@@ -117,12 +117,21 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            case "$S8_TRIGGER_MESSAGE" in
+            first="$(printf '%s\n' "$S8_TRIGGER_MESSAGE" | head -n 1)"
+            case "$first" in
               S8-OWNER-ONCE:*) ;;
               *) echo 'S8_ONE_SHOT_TRIGGER_DENIED'; exit 1 ;;
             esac
-            uuid="${S8_TRIGGER_MESSAGE#S8-OWNER-ONCE:}"
-            uuid="${uuid%%
+            uuid="$(printf '%s' "$first" | sed -E 's/^S8-OWNER-ONCE:([a-f0-9-]+).*$/\1/')"
+            [[ "$uuid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]
+            test -n "$GH_TOKEN"
+            current="$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')"
+            [[ "$current" =~ ^[a-f0-9]{40}$ ]]
+            echo "S8_MISSION_ID=$uuid" >> "$GITHUB_ENV"
+            echo "S8_SOURCE_SHA=$current" >> "$GITHUB_ENV"
+            echo 'S8_ONE_SHOT_OWNER_APPROVAL_IDENTITY_RESOLVED=PASS'
+          fi
+      - name: Owner mission, exact SHA and authority preflight
         shell: bash
         run: |
           set -euo pipefail
