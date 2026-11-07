@@ -64,6 +64,24 @@ jobs:
           print("S8_PAGES_LATEST_DEPLOYMENT_STATUS="+str(stage in ("success","active","completed")))
           print("S8_PAGES_LATEST_STAGE_ENUM="+str(stage)[:32])
           print("S8_PAGES_LATEST_PRIVATE_SHA_MATCH="+str(actual==expected))
+          deploy_id=latest.get("id","")
+          if stage=="failure" and isinstance(deploy_id,str) and len(deploy_id)==36:
+              st,log_data=get("/accounts/"+next((a.get("id","") for a in accounts.get("result",[]) if isinstance(a.get("id"),str) and len(a.get("id"))==32 and (lambda t:(t[0]==200 and (t[1].get("result") or {}).get("name")=="hive-alveare"))(get("/accounts/"+a.get("id")+"/pages/projects/hive-alveare"))),"")+"/pages/projects/hive-alveare/deployments/"+deploy_id+"/history/logs")
+              print("S8_PAGES_FAILURE_LOG_API_STATUS="+str(st))
+              if st==200 and log_data.get("success") is True:
+                  import re
+                  candidates=[]
+                  for entry in ((log_data.get("result") or {}).get("data") or []):
+                      line=str(entry.get("line",""))
+                      if not re.search(r"error|failed|cannot|resolve|missing|unexpected|exception",line,re.I):continue
+                      if re.search(r"secret|token|password|authorization|private.key|bearer|credential|api.key",line,re.I):continue
+                      line=re.sub(r"https?://\\S+","[url]",line)
+                      line=re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+","[email]",line)
+                      line=re.sub(r"[a-f0-9]{32,}","[sha]",line,flags=re.I)
+                      candidates.append(line.strip()[:220])
+                  print("S8_PAGES_SANITIZED_FAILURE_LINES="+str(len(candidates)))
+                  for i,line in enumerate(candidates[-6:]):
+                      print("S8_PAGES_FAILURE_"+str(i)+"="+line)
           print("S8_PAGES_DIAGNOSTIC=READONLY_ONLY_NO_REDEPLOY")
           PY
       - name: Read live Queen portfolio; no deployment, inference or products accessed
