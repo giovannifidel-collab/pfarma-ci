@@ -1,0 +1,46 @@
+name: Queen S8 Full Scope Authority Release School Contract Test
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/queen-s8-full-scope-authority-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/queen-s8-full-scope-authority-test.yml'
+permissions: {contents: read}
+jobs:
+  source-locked-all-s8-no-model:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      PRIVATE_SHA: 99bfe9420d0c6e40063fdc4dff7f0fedc318f16c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify SHA, independent owner project authority, and S6/S7 and entire S8 test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = "$PRIVATE_SHA"
+          node private-hive/ops/queen/governance/validate-project-authority.mjs
+          node private-hive/ops/queen/autopilot/validate-s6-closeout.mjs
+          node private-hive/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node private-hive/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
+          node --test private-hive/ops/queen/autopilot/s8/tests/*.test.mjs
+          echo 'S8_MULTIPROJECT_OWNER_ADAPTER_AUTHORITY=STATIC_TESTED'
+          echo 'S8_SEPARATE_RELEASE_AND_ROLLBACK_GATE=STATIC_TESTED'
+          echo 'S8_SCHOOL_MASTERY_GENERALIZATION_GATE=STATIC_TESTED'
+          echo 'S8_ACTIVE_MULTIPROJECT_RELEASES=0'
+          echo 'S8_MODEL_CALLS=0'
+      - name: Clear private checkout
+        if: always()
+        run: rm -rf private-hive
