@@ -13,10 +13,10 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 14
     env:
-      PRIVATE_SHA: b281f35a6c8770a805af8987d9ec4afb097c34e1
+      PRIVATE_SHA: 9b227cfaf936932230e4c232f35492fea684355b
       MISSION_ID: 5e9f85b8-517c-4c42-a684-2706ed833716
-      APPROVAL_ISSUED: '2026-11-06T19:27:34.277Z'
-      APPROVAL_EXPIRES: '2026-11-06T19:43:34.277Z'
+      APPROVAL_ISSUED: '2026-11-07T01:17:30.614Z'
+      APPROVAL_EXPIRES: '2026-11-07T01:36:30.614Z'
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -118,7 +118,10 @@ jobs:
               if(!response.ok){
                 const body=await response.clone().json().catch(()=>({}));
                 const safe=new Set(['private_source_token_unavailable',
-                  'github_source_unavailable','stale_authoritative_source_sha',
+                  'github_source_unavailable','github_source_transport_unavailable',
+                  'github_source_http_401','github_source_http_403',
+                  'github_source_http_404','github_source_http_OTHER',
+                  'github_source_json_unavailable','stale_authoritative_source_sha',
                   'source_content_untrusted','source_content_not_authoritative',
                   'source_hash_mismatch','atomic_lease_conflict',
                   'owner_mission_not_authorized','mission_witness_invalid',
