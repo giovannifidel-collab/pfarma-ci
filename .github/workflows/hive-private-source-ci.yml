@@ -109,6 +109,23 @@ jobs:
           ! grep -q "('hive'.*'https://github.com/giovannifidel-collab/project-giovanni'" private-source/db/003_seed_projects.sql
           ! grep -q "('giochem'.*'https://github.com/giovannifidel-collab/project-giovanni'" private-source/db/003_seed_projects.sql
 
+      - name: Prepare PostgREST compatibility roles in ephemeral CI PostgreSQL only
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $roles$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anonymous') THEN
+              CREATE ROLE anonymous NOLOGIN;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              CREATE ROLE authenticated NOLOGIN;
+            END IF;
+          END
+          $roles$;
+          SQL
+
       - name: PostgreSQL recovery smoke
         shell: bash
         run: |
