@@ -1,0 +1,102 @@
+name: Queen S8 Ten Project LIVE Head Drift Guard - No Writes
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-live-head-drift-guard.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-live-head-drift-guard.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-live-head-drift-readonly
+  cancel-in-progress: false
+jobs:
+  exact-current-branch-head:
+    name: live head (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: project-giovanni
+            repository: giovannifidel-collab/project-giovanni
+            ref: main
+            expected_sha: 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
+          - project: hive-field
+            repository: giovannifidel-collab/hive-field
+            ref: main
+            expected_sha: 44c73a353de1ecbbe88cf3221252d34f39799495
+          - project: giochem
+            repository: giovannifidel-collab/giochem
+            ref: main
+            expected_sha: 8d8922171bfdc3554cb7786d08b3594ec681f59a
+          - project: pfarma-cloud
+            repository: giovannifidel-collab/pfarma-cloud
+            ref: main
+            expected_sha: 1d460184944355ed2d4b375bfe03b35a70c7aa41
+          - project: family-cloud
+            repository: giovannifidel-collab/family-cloud
+            ref: agent/bootstrap-family-cloud
+            expected_sha: 17b242eca13d7c73607e0bc52c64146750020cb7
+          - project: gio-os
+            repository: giovannifidel-collab/gio-OS
+            ref: main
+            expected_sha: 31103989996a664dff385896143dccd03072cdf6
+          - project: pfarma-social
+            repository: giovannifidel-collab/pfarma-social
+            ref: main
+            expected_sha: c56bbbd89b2a1bc273d833635dee6b0b10c5cf07
+          - project: rose-mary-beauty
+            repository: giovannifidel-collab/rose-mary-beauty
+            ref: main
+            expected_sha: a439d40761002b499f91be1f22ab00dedcd8915f
+          - project: rocco-rosy-wedding
+            repository: giovannifidel-collab/rocco-rosy-wedding
+            ref: main
+            expected_sha: bc1d75de917e1815e1179b94d06f8f63d1f64ca5
+          - project: pfarma-reel-media
+            repository: giovannifidel-collab/-pfarma-reel-media
+            ref: main
+            expected_sha: ce40bacf9eeb832cbf152f409f70adf5302763d9
+    steps:
+      - name: Checkout CURRENT protected authoritative ref (not historical pinned SHA)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.ref }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: project-ref
+      - name: Fail-closed if actual ref moved since certified baseline
+        shell: bash
+        env:
+          PROJECT_ID: ${{ matrix.project }}
+          AUTH_REF: ${{ matrix.ref }}
+          EXPECTED_SHA: ${{ matrix.expected_sha }}
+        run: |
+          set -euo pipefail
+          head="$(git -C project-ref rev-parse HEAD)"
+          if [[ "$head" != "$EXPECTED_SHA" ]]; then
+            echo "QUEEN_S8_LIVE_HEAD=DRIFT_BLOCKED"
+            echo "QUEEN_S8_PROJECT_ID=$PROJECT_ID"
+            echo "QUEEN_S8_REF=$AUTH_REF"
+            echo "QUEEN_S8_NO_PROJECT_ACTION=TRUE"
+            exit 1
+          fi
+          echo "QUEEN_S8_LIVE_HEAD=MATCHES_PINNED_SOURCE"
+          echo "QUEEN_S8_PROJECT_ID=$PROJECT_ID"
+          echo "QUEEN_S8_REF=$AUTH_REF"
+          echo "QUEEN_S8_HEAD_SHA=$head"
+          echo "QUEEN_S8_OBSERVATION_ONLY=TRUE"
+          echo "QUEEN_S8_OWNER_MISSION_GRANTED=FALSE"
+          echo "QUEEN_S8_MODEL_CALLS=0"
+          echo "QUEEN_S8_PROJECT_MUTATIONS=0"
+          echo "QUEEN_S8_MERGES_DEPLOYS_PUBLICATIONS=0"
+      - name: Remove temporary source checkout
+        if: always()
+        shell: bash
+        run: rm -rf project-ref
