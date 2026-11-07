@@ -1,0 +1,54 @@
+name: Queen S8 Bounded Repair Source-Locked Adversarial CI
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-repair-contract-ci.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-repair-contract-ci.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-repair-readiness
+  cancel-in-progress: false
+jobs:
+  certify-source-contract-without-model:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      PRIVATE_SHA: 790fbbeff1935b6f2e205e4781318589d2475423
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Run canonical S6 S7 source guard, S8 scoped closeout and adversarial repair tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = "$PRIVATE_SHA"
+          node private-hive/ops/queen/autopilot/validate-s6-closeout.mjs
+          node private-hive/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node private-hive/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
+          node --test private-hive/ops/queen/autopilot/s8/tests/*.test.mjs
+          echo 'S8_REPAIR_INDEPENDENT_RECEIPT_AND_REPLAY_NEGATIVE_TESTS=PASS'
+          echo 'S8_MODEL_INFERENCES=0'
+      - name: Compile Cloudflare Pages with modern Wrangler, no deployment or inference
+        shell: bash
+        working-directory: private-hive/cloudflare
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.123.0 pages functions build functions \
+            --outdir "$RUNNER_TEMP/queen-s8-repair-compile"
+          test -n "$(find "$RUNNER_TEMP/queen-s8-repair-compile" -type f -print -quit)"
+          echo 'S8_REPAIR_WORKERS_COMPILE=PASS'
+          echo 'S8_DEPLOY_PERFORMED=FALSE'
+      - name: Secure checkout cleanup
+        if: always()
+        shell: bash
+        run: rm -rf private-hive "$RUNNER_TEMP/queen-s8-repair-compile"
