@@ -109,6 +109,23 @@ jobs:
           ! grep -q "('hive'.*'https://github.com/giovannifidel-collab/project-giovanni'" private-source/db/003_seed_projects.sql
           ! grep -q "('giochem'.*'https://github.com/giovannifidel-collab/project-giovanni'" private-source/db/003_seed_projects.sql
 
+      - name: Prepare PostgREST compatibility roles in ephemeral CI PostgreSQL only
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $roles$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anonymous') THEN
+              CREATE ROLE anonymous NOLOGIN;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              CREATE ROLE authenticated NOLOGIN;
+            END IF;
+          END
+          $roles$;
+          SQL
+
       - name: PostgreSQL recovery smoke
         shell: bash
         run: |
@@ -121,7 +138,9 @@ jobs:
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_enqueue_task('hive','CI task smoke',50,'{}'::jsonb,'{}'::uuid[]);"
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_dashboard();"
           psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -c "select hive_resume_bundle('hive');"
-          psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -Atc "select (hive_integrity_audit()->>'ok')::boolean;" | grep -qx true
+          audit="$(psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -Atc "select (hive_integrity_audit()-'invariants'-'generated_at')::text;")"
+          echo "HIVE_CI_INTEGRITY_COUNTS=$audit"
+          printf '%s' "$audit" | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>process.exit(JSON.parse(s).ok===true?0:1));'
 
       - name: HIVE hosted CI summary
         if: always()
