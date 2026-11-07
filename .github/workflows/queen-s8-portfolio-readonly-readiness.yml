@@ -1,0 +1,164 @@
+name: Queen S8 Full Portfolio Source Readiness - No Writes
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-portfolio-readonly-readiness.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-portfolio-readonly-readiness.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-full-portfolio-readonly
+  cancel-in-progress: false
+jobs:
+  inspect-exact-project-sources:
+    name: read-only source profile (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: project-giovanni
+            repository: giovannifidel-collab/project-giovanni
+            authoritative_ref: main
+            source_sha: 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
+            test_profile: giovanni-node
+          - project: hive-field
+            repository: giovannifidel-collab/hive-field
+            authoritative_ref: main
+            source_sha: 44c73a353de1ecbbe88cf3221252d34f39799495
+            test_profile: field-node
+          - project: giochem
+            repository: giovannifidel-collab/giochem
+            authoritative_ref: main
+            source_sha: 8d8922171bfdc3554cb7786d08b3594ec681f59a
+            test_profile: giochem-syntax
+          - project: pfarma-cloud
+            repository: giovannifidel-collab/pfarma-cloud
+            authoritative_ref: main
+            source_sha: 1d460184944355ed2d4b375bfe03b35a70c7aa41
+            test_profile: pfarma-python-syntax
+          - project: family-cloud
+            repository: giovannifidel-collab/family-cloud
+            authoritative_ref: agent/bootstrap-family-cloud
+            source_sha: 17b242eca13d7c73607e0bc52c64146750020cb7
+            test_profile: family-branch-syntax
+          - project: gio-os
+            repository: giovannifidel-collab/gio-OS
+            authoritative_ref: main
+            source_sha: 31103989996a664dff385896143dccd03072cdf6
+            test_profile: gio-os-syntax
+          - project: pfarma-social
+            repository: giovannifidel-collab/pfarma-social
+            authoritative_ref: main
+            source_sha: c56bbbd89b2a1bc273d833635dee6b0b10c5cf07
+            test_profile: social-python-syntax
+          - project: rose-mary-beauty
+            repository: giovannifidel-collab/rose-mary-beauty
+            authoritative_ref: main
+            source_sha: a439d40761002b499f91be1f22ab00dedcd8915f
+            test_profile: rose-readonly
+          - project: rocco-rosy-wedding
+            repository: giovannifidel-collab/rocco-rosy-wedding
+            authoritative_ref: main
+            source_sha: bc1d75de917e1815e1179b94d06f8f63d1f64ca5
+            test_profile: wedding-static
+          - project: pfarma-reel-media
+            repository: giovannifidel-collab/-pfarma-reel-media
+            authoritative_ref: main
+            source_sha: ce40bacf9eeb832cbf152f409f70adf5302763d9
+            test_profile: reel-python-syntax
+    steps:
+      - name: Exact project source checkout (ephemeral)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.source_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: project-source
+      - name: Verify exact pinned SHA, approved test profile and run isolated readonly check
+        shell: bash
+        env:
+          PROJECT: ${{ matrix.project }}
+          SOURCE_SHA: ${{ matrix.source_sha }}
+          REFERENCE: ${{ matrix.authoritative_ref }}
+          PROFILE: ${{ matrix.test_profile }}
+        run: |
+          set -euo pipefail
+          test "$(git -C project-source rev-parse HEAD)" = "$SOURCE_SHA"
+          case "$PROFILE:$PROJECT" in
+            giovanni-node:project-giovanni)
+              IMAGE=node:22-alpine
+              set -- node --test factory/continuous-loop.test.mjs factory/lean-coach-core-regression.test.mjs
+              ;;
+            field-node:hive-field)
+              IMAGE=node:22-alpine
+              set -- node --test src/data-v2-adapter.test.mjs
+              ;;
+            giochem-syntax:giochem)
+              IMAGE=node:22-alpine
+              set -- sh -c 'node --check scripts/check.mjs && node --check tests/discovery_smoke.mjs'
+              ;;
+            pfarma-python-syntax:pfarma-cloud)
+              test -s project-source/PILOT_STATUS.md
+              IMAGE=python:3.13-alpine
+              set -- python -c 'import ast,pathlib; [ast.parse(pathlib.Path(p).read_text(encoding="utf-8-sig")) for p in ("tools/preview_inventory_dashboard.py","tools/preview_sales_session.py")]'
+              ;;
+            family-branch-syntax:family-cloud)
+              test "$REFERENCE" = agent/bootstrap-family-cloud
+              test -s project-source/README.md
+              IMAGE=node:22-alpine
+              set -- sh -c 'node --check src/durable-auth-store.mjs && node --check scripts/dev-server.mjs'
+              ;;
+            gio-os-syntax:gio-os)
+              test -s project-source/docs/STATUS.md
+              IMAGE=python:3.13-alpine
+              set -- python -c 'import ast,pathlib; [ast.parse(pathlib.Path(p).read_text(encoding="utf-8")) for p in ("updater/validate_manifest.py","tests/test_assembler_plan.py")]'
+              ;;
+            social-python-syntax:pfarma-social)
+              test -s project-source/MIGRATION_STATUS.json
+              IMAGE=python:3.13-alpine
+              set -- python -c 'import ast,json,pathlib;json.loads(pathlib.Path("MIGRATION_STATUS.json").read_text());[ast.parse(pathlib.Path(p).read_text(encoding="utf-8")) for p in ("tools/public_ci_bundle.py","social/meta/meta_collector.py")]'
+              ;;
+            rose-readonly:rose-mary-beauty)
+              IMAGE=python:3.13-alpine
+              set -- python -c 'import ast,pathlib;[ast.parse(pathlib.Path(p).read_text(encoding="utf-8")) for p in ("tools/public_ci_bundle.py","tools/validate_public_repo.py")]'
+              ;;
+            wedding-static:rocco-rosy-wedding)
+              test -s project-source/README.md
+              IMAGE=node:22-alpine
+              set -- node -e 'const p=require("./package.json");if(!p||typeof p!=="object")process.exit(1)'
+              ;;
+            reel-python-syntax:pfarma-reel-media)
+              IMAGE=python:3.13-alpine
+              set -- python -c 'import ast,pathlib;[ast.parse(pathlib.Path(p).read_text(encoding="utf-8")) for p in ("scripts/create-week-2026-10-26.py","tools/generate_social_oct26.py")]'
+              ;;
+            *)
+              echo 'S8_PORTFOLIO_ALLOWLIST=DENY'
+              exit 1
+              ;;
+          esac
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 90 --memory 512m --user 65534:65534 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/project-source,target=/project,readonly" \
+            --workdir /project "$IMAGE" "$@" > "$RUNNER_TEMP/s8-portfolio-check.log" 2>&1 || {
+              echo "S8_PORTFOLIO_EXACT_PROFILE_FAILED=$PROJECT"
+              exit 1
+            }
+          echo "S8_PROJECT=$PROJECT"
+          echo "S8_AUTHORITATIVE_REF=$REFERENCE"
+          echo "S8_EXACT_SHA=$SOURCE_SHA"
+          echo "S8_PROFILE=$PROFILE"
+          echo 'S8_PARTIAL_SOURCE_PROFILE=PASS'
+          echo 'S8_PRIVILEGES_GRANTED=NONE'
+          echo 'S8_MODEL_CALLS=0'
+          echo 'S8_NO_NETWORK_AND_NO_SECRETS_IN_TEST=TRUE'
+          echo 'S8_NO_PRODUCT_WRITES_OR_RELEASES=TRUE'
+      - name: Clear ephemeral checkout and test log
+        if: always()
+        shell: bash
+        run: rm -rf project-source "$RUNNER_TEMP/s8-portfolio-check.log"
