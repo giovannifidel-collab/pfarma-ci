@@ -36,6 +36,10 @@ jobs:
           node private-hive/ops/queen/compute/s7/validate-s7-readiness.mjs
           node private-hive/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
           node --test private-hive/ops/queen/autopilot/s8/tests/*.test.mjs
+          node --check private-hive/ops/queen/autopilot/s8/s8-unified-ci-runner.mjs
+          node --check private-hive/cloudflare/functions/api/queen-s8-complete.js
+          node --check private-hive/cloudflare/functions/api/queen-s8-repair-handoff.js
+          echo 'S8_UNIFIED_RUNNER_CONTROLLER_SOURCE_SYNTAX=PASS'
           echo 'S8_REPAIR_INDEPENDENT_RECEIPT_AND_REPLAY_NEGATIVE_TESTS=PASS'
           echo 'S8_MODEL_INFERENCES=0'
       - name: Compile Cloudflare Pages with modern Wrangler, no deployment or inference
