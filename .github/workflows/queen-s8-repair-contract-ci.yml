@@ -16,7 +16,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 12
     env:
-      PRIVATE_SHA: 56103b9d2b172dda762d5e3e6333202c99dafb94
+      PRIVATE_SHA: 244d385b0dce071088636a543d086e090b6e95aa
     steps:
       - uses: actions/checkout@v4
         with:
