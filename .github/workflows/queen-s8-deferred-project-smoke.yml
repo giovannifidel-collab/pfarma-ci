@@ -24,7 +24,7 @@ jobs:
           - project: family-cloud
             repository: giovannifidel-collab/family-cloud
             source_sha: 17b242eca13d7c73607e0bc52c64146750020cb7
-            profile: ui-contract
+            profile: ui-source-contract
           - project: gio-os
             repository: giovannifidel-collab/gio-OS
             source_sha: 31103989996a664dff385896143dccd03072cdf6
@@ -56,9 +56,9 @@ jobs:
               IMAGE=python:3.13-alpine
               set -- python -B agent/staging/test_migration_dry_run_atomic_status_guard.py
               ;;
-            family-cloud:ui-contract)
+            family-cloud:ui-source-contract)
               IMAGE=node:22-alpine
-              set -- node --test tests/alpha-duplicate-alternate-name-handoff.test.mjs tests/alpha-alternate-name-normalization-preview.test.mjs
+              set -- node factory/alternate-name-enter-save-v2.test.mjs
               ;;
             gio-os:assembler-unit)
               IMAGE=python:3.13-alpine
