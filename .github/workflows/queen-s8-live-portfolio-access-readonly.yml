@@ -82,7 +82,7 @@ jobs:
                   print("S8_PAGES_SANITIZED_FAILURE_LINES="+str(len(candidates)))
                   for i,line in enumerate(candidates[-6:]):
                       print("S8_PAGES_FAILURE_"+str(i)+"="+line)
-          st,deployments=get("/accounts/"+account_id+"/pages/projects/hive-alveare/deployments?per_page=100")
+          st,deployments=get("/accounts/"+account_id+"/pages/projects/hive-alveare/deployments?per_page=20")
           if st==200 and deployments.get("success") is True:
               records=deployments.get("result") or []
               from collections import Counter
