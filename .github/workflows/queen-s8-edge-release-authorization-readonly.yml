@@ -1,0 +1,173 @@
+name: Queen S8 Edge Release Authorization Preflight - Read Only
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-edge-release-authorization-readonly.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-edge-release-authorization-readonly.yml']
+  workflow_dispatch: {}
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-readonly-edge-release-preflight
+  cancel-in-progress: false
+jobs:
+  source-and-rollback-readiness:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      QUEEN_SHA: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+      PRIOR_SUCCESS_SHA: a0ba9b06593f514182ae9fcabdec073c30755066
+      GITHUB_READER: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CLOUDFLARE_READER: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_READER_ALTERNATE: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Verify current main SHA and current public pointer match expected immutable Queen source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$QUEEN_SHA"
+          current="$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          test "$current" = "$QUEEN_SHA" || { echo 'S8_QUEEN_MAIN_SHA=DRIFT_DENY'; exit 1; }
+          ptr="$(gh api /repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$ptr" = "$QUEEN_SHA" || { echo 'S8_PUBLIC_POINTER=DRIFT_DENY'; exit 1; }
+          echo 'S8_QUEEN_SOURCE_AND_POINTER=EXACT_SHA_PASS'
+      - name: Checkout Queen only, not a single application repository
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.QUEEN_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-queen
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Reverify S6/S7 safety and full S8 source tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-queen rev-parse HEAD)" = "$QUEEN_SHA"
+          node private-queen/ops/queen/autopilot/validate-s6-closeout.mjs
+          node private-queen/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node private-queen/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
+          node --test private-queen/ops/queen/autopilot/s8/tests/*.test.mjs > "$RUNNER_TEMP/s8-release-tests.log" 2>&1 || {
+            echo 'S8_RELEASE_SOURCE_REGRESSION=DENY'; exit 1;
+          }
+          echo 'S8_RELEASE_SOURCE_REGRESSION=PASS'
+      - name: Independently compile with pinned modern Wrangler, without calling Pages Deploy
+        working-directory: private-queen/cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.123.0 pages functions build functions \
+            --outdir "$RUNNER_TEMP/s8-release-compile" > "$RUNNER_TEMP/s8-release-compile.log" 2>&1 || {
+              echo 'S8_MODERN_PAGES_COMPILE=DENY'; exit 1;
+            }
+          test -n "$(find "$RUNNER_TEMP/s8-release-compile" -type f -print -quit)"
+          echo 'S8_MODERN_PAGES_COMPILE=PASS'
+          echo 'S8_EXECUTION=NOT_REQUESTED'
+      - name: Independently verify existing successful production rollback target (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error,re
+          token=os.getenv('CLOUDFLARE_READER') or os.getenv('CLOUDFLARE_READER_ALTERNATE')
+          if not token:raise SystemExit('S8_EDGE_ROLLBACK=DENY_NO_CLOUD_READER')
+          def get(path):
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  headers={'Authorization':'Bearer '+token,'Accept':'application/json'},method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=15) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          st,accounts=get('/accounts?per_page=50')
+          if st!=200 or accounts.get('success') is not True:
+              raise SystemExit('S8_EDGE_ROLLBACK=DENY_ACCOUNT_UNAVAILABLE')
+          matched=[]
+          for row in accounts.get('result',[]):
+              aid=row.get('id','')
+              if not isinstance(aid,str) or not re.fullmatch('[a-f0-9]{32}',aid):continue
+              code,p=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+              if code==200 and p.get('success') is True and (p.get('result') or {}).get('name')=='hive-alveare':
+                  matched.append((aid,p['result']))
+          if len(matched)!=1:raise SystemExit('S8_EDGE_ROLLBACK=DENY_NOT_UNIQUE_QUEEN_PAGES')
+          aid,project=matched[0]
+          source=((project.get('source') or {}).get('config') or {})
+          if source.get('production_branch')!='main':
+              raise SystemExit('S8_EDGE_ROLLBACK=DENY_NOT_PRODUCTION_MAIN')
+          if source.get('repo_name') and 'hive-alveare' not in str(source.get('repo_name')):
+              raise SystemExit('S8_EDGE_ROLLBACK=DENY_NOT_QUEEN_SOURCE')
+          wanted=os.environ['PRIOR_SUCCESS_SHA']
+          found=None
+          observed=0
+          for page in range(1,11):
+              code,data=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments?per_page=20&page='+str(page))
+              if code!=200 or data.get('success') is not True:
+                  raise SystemExit('S8_EDGE_ROLLBACK=DENY_HISTORY_INCOMPLETE')
+              batch=data.get('result') or []
+              if not isinstance(batch,list):raise SystemExit('S8_EDGE_ROLLBACK=DENY_INVALID_HISTORY')
+              observed+=len(batch)
+              for item in batch:
+                  sha=str(((item.get('deployment_trigger') or {}).get('metadata') or {}).get('commit_hash',''))
+                  if item.get('environment')=='production' and (item.get('latest_stage') or {}).get('status')=='success' and sha==wanted:
+                      found=item.get('id')
+                      break
+              if found or len(batch)<20:break
+          if not isinstance(found,str) or not re.fullmatch('[a-f0-9-]{36}',found):
+              raise SystemExit('S8_EDGE_ROLLBACK=DENY_NO_HISTORIC_SUCCESSFUL_PRODUCTION_TARGET')
+          code,details=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments/'+found)
+          record=details.get('result') or {}
+          sha=((record.get('deployment_trigger') or {}).get('metadata') or {}).get('commit_hash')
+          if code!=200 or details.get('success') is not True or record.get('id')!=found or sha!=wanted or record.get('environment')!='production' or (record.get('latest_stage') or {}).get('status')!='success':
+              raise SystemExit('S8_EDGE_ROLLBACK=DENY_DEPLOYMENT_DETAIL_INCONSISTENT')
+          latest=project.get('latest_deployment') or {}
+          print('S8_PAGES_AUDIT_RECORDS_SCANNED='+str(observed))
+          print('S8_PAGES_CURRENT_BUILD_FAILED='+str((latest.get('latest_stage') or {}).get('status')=='failure'))
+          print('S8_ROLLBACK_PRODUCTION_TARGET=EXISTS_AND_SUCCESS_AT_EXACT_SHA')
+          print('S8_ROLLBACK_API_OPERATION=NOT_ATTEMPTED')
+          print('S8_EDGE_PROJECT_MUTATIONS=ZERO')
+          PY
+      - name: Verify existing protected Queen runtime remains readable
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          curl --fail --silent --show-error --max-time 25 "${headers[@]}" \
+            -o "$RUNNER_TEMP/s8-original-health.json" \
+            'https://hive-alveare.pages.dev/api/runtime-health'
+          curl --fail --silent --show-error --max-time 25 "${headers[@]}" \
+            -o "$RUNNER_TEMP/s8-original-s7.json" \
+            'https://hive-alveare.pages.dev/api/queen-s7-e2e'
+          jq -e '.ok==true and .stage=="S7" and .general_routing==false and .default_dispatch=="DENY" and .paid_fallback==false' \
+            "$RUNNER_TEMP/s8-original-s7.json" >/dev/null
+          echo 'S8_QUEEN_EXISTING_RUNTIME_HTTP=200'
+          echo 'S8_S7_BASELINE_UNCHANGED=PASS'
+          status="$(curl --silent --show-error --max-time 20 "${headers[@]}" \
+            -o "$RUNNER_TEMP/s8-portfolio-live.json" -w '%{http_code}' \
+            'https://hive-alveare.pages.dev/api/queen-s8-portfolio')"
+          if [ "$status" = 404 ]; then
+            echo 'S8_PORTFOLIO_EDGE=NOT_DEPLOYED_YET'
+          elif [ "$status" = 200 ]; then
+            jq -e '.ok==true and .default_dispatch=="DENY" and .project_count==10' \
+              "$RUNNER_TEMP/s8-portfolio-live.json" >/dev/null
+            echo 'S8_PORTFOLIO_EDGE=PROTECTED_GET_PRESENT'
+          else
+            echo 'S8_PORTFOLIO_EDGE=DENY_UNEXPECTED_STATUS'
+            exit 1
+          fi
+          echo 'S8_SOURCE_COMPILE_AND_ROLLBACK_PREFLIGHT=PASS'
+          echo 'S8_RELEASE_AUTHORITY=DENY_FRESH_EXACT_OWNER_GRANT_REQUIRED'
+          echo 'S8_DEPLOYED_CHANGES=ZERO'
+          echo 'S8_MODEL_CALLS=ZERO'
+          echo 'S8_PAID_FALLBACK=FALSE'
+      - name: Remove all ephemeral source, compile and API payloads
+        if: always()
+        shell: bash
+        run: rm -rf private-queen "$RUNNER_TEMP/s8-release-compile" "$RUNNER_TEMP/s8-release-tests.log" "$RUNNER_TEMP/s8-release-compile.log" "$RUNNER_TEMP/s8-original-health.json" "$RUNNER_TEMP/s8-original-s7.json" "$RUNNER_TEMP/s8-portfolio-live.json"
