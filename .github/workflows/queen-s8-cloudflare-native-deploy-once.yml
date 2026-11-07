@@ -13,7 +13,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 18
     env:
-      PRIVATE_SHA: 244d385b0dce071088636a543d086e090b6e95aa
+      PRIVATE_SHA: 55eacea9950ae0fc6215259b2e70b89c165d5470
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CF_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
