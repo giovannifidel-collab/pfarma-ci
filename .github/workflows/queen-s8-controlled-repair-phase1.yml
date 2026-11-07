@@ -1,0 +1,215 @@
+name: Queen S8 Controlled Repair Phase One
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-controlled-repair-phase1.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-controlled-repair-phase1-0de34ad4
+  cancel-in-progress: false
+jobs:
+  develop-verify-draft-only:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 14
+    env:
+      PRIVATE_SHA: fa126b44b731158c643816f9771804f5d0f93a52
+      MISSION_ID: 0de34ad4-265e-4469-8e8f-ae083723a3e2
+      APPROVAL_ISSUED: '2026-11-07T13:15:34.784Z'
+      APPROVAL_EXPIRES: '2026-11-07T13:40:34.784Z'
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      TARGET: ops/queen/autopilot/s8/sandbox/repair-target.mjs
+    steps:
+      - name: Check fresh explicit approval, main SHA, private GitHub draft PR authority, and zero parallel work
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          test "$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')" = "$PRIVATE_SHA"
+          test "$(gh api /repos/giovannifidel-collab/hive-alveare --jq '.permissions.push')" = 'true'
+          node -e 'const issued=Date.parse(process.env.APPROVAL_ISSUED),end=Date.parse(process.env.APPROVAL_EXPIRES),now=Date.now(); if(!(now>=issued && now<end && end-issued<=1800000))process.exit(1)'
+          echo 'S8_EXACT_OWNER_AND_PRIVATE_MAIN_DRAFT_AUTHORITY=PASS'
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: hive-private
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify S6/S7 and S8 source gate at exact owner scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C hive-private rev-parse HEAD)" = "$PRIVATE_SHA"
+          node hive-private/ops/queen/autopilot/validate-s6-closeout.mjs
+          node hive-private/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node hive-private/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
+          echo 'S8_PRE_MODEL_S7_7_OF_7_AND_S8_POLICY=PASS'
+      - name: Verify Cloudflare free cost stamp and fresh live HIVE world; no inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 25 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -o "$RUNNER_TEMP/s8-edge-readiness.json" \
+            https://hive-alveare.pages.dev/api/queen-s8-workers-ai
+          jq -e '.ok==true and .stage=="S8" and .route=="cloudflare-workers-ai" and
+            .binding_present==true and .free_plan_certified==true and
+            .callable==true and .model_invoked==false and .general_routing==false and
+            .paid_fallback==false and .default_dispatch=="DENY"' \
+            "$RUNNER_TEMP/s8-edge-readiness.json" >/dev/null
+          curl --fail --silent --show-error --max-time 25 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -o "$RUNNER_TEMP/s8-world.json" \
+            https://hive-alveare.pages.dev/api/world-state
+          jq -e '.ok==true and .data.policy=="authoritative-source-first" and (.data.generated_at|type)=="string"' \
+            "$RUNNER_TEMP/s8-world.json" >/dev/null
+          node - <<'JS'
+          const fs=require('node:fs');
+          const w=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/s8-world.json','utf8'));
+          const age=Date.now()-Date.parse(w.data.generated_at);
+          if(!Number.isFinite(age)||age<0||age>120000)throw Error('S8_WORLD_NOT_FRESH_LIVE');
+          console.log('S8_HIVE_WORLD_LIVE_REQUEST_FRESH=PASS');
+          JS
+          echo 'S8_ZERO_COST_CLOUDFLARE_NATIVE_BINDING=LIVE_VERIFIED'
+      - name: Queen plans and invokes exactly one real Workers AI bounded proposal
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/s8-candidate/sandbox" "$RUNNER_TEMP/s8-candidate/tests"
+          node --input-type=module <<'JS'
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          import {planS8,sha256,POLICY} from './hive-private/ops/queen/autopilot/s8/s8-core.mjs';
+          import {requestS8WorkersProposal} from './hive-private/ops/queen/autopilot/s8/s8-workers-adapter.mjs';
+          const id=process.env.MISSION_ID,source=process.env.PRIVATE_SHA;
+          const scope=POLICY.scope;
+          const original=await fs.readFile('hive-private/'+scope.only_source_path,'utf8');
+          const mission={id,kind:'software.development.canary',project_slug:'hive',
+            source_sha:source,repository:scope.authoritative_repository,
+            path:scope.only_source_path,test_path:scope.only_test_path,
+            allowed_paths:[scope.only_source_path],paid_fallback:false,
+            product_writes:false,auto_merge:false,external_execution:'draft_pr_only'};
+          const approval={
+            status:'OWNER_APPROVED_PENDING',source:'trusted-neon-owner-gate',
+            authorized_by:'queen-owner',mission_id:id,project_slug:'hive',
+            repository:scope.authoritative_repository,target_path:scope.only_source_path,
+            issued_at:process.env.APPROVAL_ISSUED,expires_at:process.env.APPROVAL_EXPIRES,
+            max_model_calls:2,attempts_used:0,automatic_merge:false,
+            paid_fallback:false,product_writes:false};
+          const environment={
+            authoritative_main_sha:source,source_verified:true,world_fresh:true,
+            project_manual_active:false,parallel_missions:0,
+            paid_fallback:false,general_routing_enabled:false,
+            ai_fabric:{certified:true,cost_mode:'zero-additional-cost',
+              max_authority:1,reachable_live:true}};
+          const plan=planS8({mission,approval,environment});
+          if(!plan.ok)throw Error('S8_OWNER_PLAN_DENIED_'+plan.reason);
+          const candidate=await requestS8WorkersProposal({plan,original,
+            fetcher:async (url,options)=>{
+              const response=await fetch(url,options);
+              if(!response.ok){
+                const body=await response.clone().json().catch(()=>({}));
+                const safe=new Set(['private_source_token_unavailable',
+                  'github_source_unavailable','github_source_transport_unavailable',
+                  'github_source_http_401','github_source_http_403',
+                  'github_source_http_404','github_source_http_OTHER',
+                  'github_source_json_unavailable','stale_authoritative_source_sha',
+                  'source_content_untrusted','source_content_not_authoritative',
+                  'source_hash_mismatch','atomic_lease_conflict',
+                  'owner_mission_not_authorized','mission_witness_invalid',
+                  'safe_preflight_stage_neon_meta_read','safe_preflight_stage_billing_record_read',
+                  'safe_preflight_stage_owner_approval_read','safe_preflight_stage_witness_validation',
+                  'safe_preflight_stage_private_source_verification','safe_preflight_stage_private_source_verified',
+                  'safe_preflight_stage_owner_neon_lease_atomic_claim',
+                  'safe_preflight_stage_model_inference','safe_preflight_stage_model_receipt_cas']);
+                const classification=safe.has(body?.reason)?body.reason:'OTHER_SAFE_DENIAL';
+                console.log('S8_CLOUDFLARE_EDGE_SAFE_DENIAL='+classification);
+              }
+              return response;
+            }});
+          if(!candidate.ok)throw Error('S8_REAL_MODEL_REJECTED_'+candidate.reason);
+          if(candidate.decision!=='TEST_ONLY'||candidate.authority_to_commit!==false||
+             candidate.provider_agent_id!=='cloudflare-workers-ai'||
+             candidate.model_calls_this_attempt!==1||candidate.path!==scope.only_source_path)
+            throw Error('S8_CANDIDATE_NOT_BOUNDED');
+          const dir=process.env.RUNNER_TEMP+'/s8-candidate';
+          await fs.writeFile(dir+'/sandbox/repair-target.mjs',candidate.content,{mode:0o644});
+          const t=await fs.readFile('hive-private/'+scope.only_test_path,'utf8');
+          await fs.writeFile(dir+'/tests/sandbox-target.test.mjs',t,{mode:0o644});
+          await fs.writeFile(process.env.RUNNER_TEMP+'/s8-attested.json',JSON.stringify({
+            mission_id:id,source_sha:source,witness:plan.witness,
+            base_sha256:candidate.base_sha256,content_sha256:candidate.content_sha256,
+            provider_response_sha256:candidate.provider_response_sha256,
+            provider:'cloudflare-workers-ai',model_calls:1,
+            candidate_path:candidate.path,
+            paid_fallback:false,product_writes:false,automatic_merge:false
+          }));
+          console.log('S8_REAL_CLOUDFLARE_MODEL_RESPONSE=PASS');
+          console.log('S8_MODEL_CANDIDATE_SHA256='+candidate.content_sha256);
+          console.log('S8_MODEL_PROPOSAL_UNTRUSTED_NO_COMMIT=TRUE');
+          JS
+      - name: Test actual model candidate, then prove isolated failed test via labeled controlled fault injection
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 64 --memory 256m --user 65534:65534 \
+            --mount "type=bind,source=$RUNNER_TEMP/s8-candidate,target=/s8,readonly" \
+            -w /s8 node:22-alpine node --test tests/sandbox-target.test.mjs \
+            > "$RUNNER_TEMP/s8-natural.log" 2>&1
+          natural=$?
+          set -e
+          if [ "$natural" -eq 0 ]; then
+            echo 'S8_FAULT_INJECTION=CONTROLLED'
+            printf '%s\n' 'export function solve(n) { if (!Number.isSafeInteger(n) || n < 0 || n > 1000) throw new RangeError("S8_SANDBOX_INPUT"); return n+n; }' \
+              > "$RUNNER_TEMP/s8-candidate/sandbox/repair-target.mjs"
+          else
+            echo 'S8_FAULT_INJECTION=NOT_NEEDED_REAL_CANDIDATE_FAILED'
+          fi
+          set +e
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 64 --memory 256m --user 65534:65534 \
+            --mount "type=bind,source=$RUNNER_TEMP/s8-candidate,target=/s8,readonly" \
+            -w /s8 node:22-alpine node --test tests/sandbox-target.test.mjs \
+            > "$RUNNER_TEMP/s8-failure.log" 2>&1
+          failed=$?
+          set -e
+          test "$failed" -ne 0
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
+          const dir=process.env.RUNNER_TEMP;
+          const code=fs.readFileSync(dir+'/s8-candidate/sandbox/repair-target.mjs');
+          const logs=fs.readFileSync(dir+'/s8-failure.log','utf8');
+          const first=fs.readFileSync(dir+'/s8-natural.log','utf8');
+          if(!/# fail [1-9]/.test(logs))throw Error('FAILURE_NOT_VERIFIED');
+          const injected=/# fail 0/.test(first);
+          const reason=injected?
+            'Controlled fault injection: scratch candidate used n+n instead of n*n for valid integers; repair to pass bounded solve tests':
+            'First model candidate failed independent integer square and invalid input RangeError acceptance tests';
+          console.log('S8_FAILED_INDEPENDENT_CI_PROOF=PASS');
+          console.log('S8_FAILURE_TEST_TYPE='+(injected?'CONTROLLED_INJECTION':'MODEL_FAILURE'));
+          console.log('S8_FAILURE_RUN_ID='+process.env.GITHUB_RUN_ID);
+          console.log('S8_FAILURE_CONTENT_SHA256='+hash(code));
+          console.log('S8_FAILURE_LOG_SHA256='+hash(logs));
+          console.log('S8_FAILURE_SUMMARY='+reason);
+          console.log('S8_PROD_WRITES=FALSE_DRAFT_PR=NONE');
+          JS
+      - name: Purge temporary source, generated proposal and proof files
+        if: always()
+        shell: bash
+        run: |
+          rm -rf hive-private "$RUNNER_TEMP/s8-candidate" \
+            "$RUNNER_TEMP/s8-edge-readiness.json" "$RUNNER_TEMP/s8-world.json" \
+            "$RUNNER_TEMP/s8-attested.json" "$RUNNER_TEMP/s8-verdict.json" \
+            "$RUNNER_TEMP/s8-independent-test.log" "$RUNNER_TEMP/s8-natural.log" "$RUNNER_TEMP/s8-failure.log"
