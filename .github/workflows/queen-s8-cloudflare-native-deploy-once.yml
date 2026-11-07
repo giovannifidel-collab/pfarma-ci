@@ -13,7 +13,7 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 18
     env:
-      PRIVATE_SHA: 55eacea9950ae0fc6215259b2e70b89c165d5470
+      PRIVATE_SHA: a0ba9b06593f514182ae9fcabdec073c30755066
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CF_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
@@ -132,6 +132,16 @@ jobs:
           test "$ready" = 1 || { echo 'S8_PAGES_PROTECTED_ROUTE_UNAVAILABLE=DENY'; exit 1; }
           echo 'S8_PAGES_PROTECTED_ROUTE_READONLY=PASS'
           jq -r '"S8_WORKERS_AI_BINDING_PRESENT=" + (.binding_present|tostring)' "$RUNNER_TEMP/s8-route-readiness.json"
+          for endpoint in queen-s8-repair-handoff queen-s8-complete; do
+            curl --fail --silent --show-error --max-time 20 \
+              "${headers[@]}" -o "$RUNNER_TEMP/s8-$endpoint.json" \
+              "https://hive-alveare.pages.dev/api/$endpoint"
+            jq -e '.ok==true and .stage=="S8" and .model_invoked==false and
+              .default_dispatch=="DENY" and .paid_fallback==false' \
+              "$RUNNER_TEMP/s8-$endpoint.json" >/dev/null
+            echo "S8_UNIFIED_PROTECTED_$endpoint=PASS"
+          done
+          echo 'S8_UNIFIED_CI_APPROVAL_NOT_AUTOMATICALLY_ENABLED=TRUE'
           echo 'S8_PAID_FALLBACK_AND_INFERENCE=DENY'
           runtime="$(curl --silent --show-error --max-time 20 "${headers[@]}" \
             -o /dev/null -w '%{http_code}' 'https://hive-alveare.pages.dev/api/runtime-health' || true)"
@@ -148,4 +158,4 @@ jobs:
       - name: Erase temporary source and audit files
         if: always()
         shell: bash
-        run: rm -rf private-hive "$RUNNER_TEMP/s8-deploy-compile" "$RUNNER_TEMP/s8-route-readiness.json" "$RUNNER_TEMP/s7-readiness.json"
+        run: rm -rf private-hive "$RUNNER_TEMP/s8-deploy-compile" "$RUNNER_TEMP/s8-route-readiness.json" "$RUNNER_TEMP/s7-readiness.json" "$RUNNER_TEMP/s8-queen-s8-repair-handoff.json" "$RUNNER_TEMP/s8-queen-s8-complete.json"
