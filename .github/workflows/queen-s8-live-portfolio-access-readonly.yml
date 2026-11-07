@@ -30,6 +30,7 @@ jobs:
             -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
             -H 'Accept: application/json' \
             -o "$RUNNER_TEMP/queen-s8-edge.json" -w '%{http_code}' "$url")"
+          echo "S8_PORTFOLIO_HTTP_STATUS=$status"
           test "$status" = 200 || { echo 'S8_PORTFOLIO_EDGE=DENY_NOT_DEPLOYED_OR_ACCESS_FAILURE'; exit 1; }
           jq -e '
             .ok==true and .stage=="S8" and
