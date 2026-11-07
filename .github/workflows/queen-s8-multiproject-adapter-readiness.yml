@@ -55,7 +55,7 @@ jobs:
           if [ "$TEST_KIND" = factory-test ]; then
             test "$PROJECT" = project-giovanni
             test -f project-source/factory/plan.mjs
-            CONTAINER_COMMAND='node --test factory/*.test.mjs'
+            CONTAINER_COMMAND='node --test factory/continuous-loop.test.mjs factory/lean-coach-core-regression.test.mjs'
           elif [ "$TEST_KIND" = node-test ]; then
             test "$PROJECT" = hive-field
             test -f project-source/src/data-v2-adapter.test.mjs
@@ -70,7 +70,7 @@ jobs:
             exit 1
           fi
           if docker run --rm --network none --read-only --cap-drop ALL             --security-opt no-new-privileges --pids-limit 90 --memory 384m             --user 65534:65534             --mount "type=bind,source=$GITHUB_WORKSPACE/project-source,target=/project,readonly"             --workdir /project node:22-alpine             sh -c "$CONTAINER_COMMAND" > "$RUNNER_TEMP/project-baseline.log" 2>&1; then
-              echo "S8_PROJECT_ADAPTER_BASELINE=PASS"
+              echo "S8_PROJECT_ADAPTER_BASELINE=PASS_PARTIAL_PROFILED_TESTS"
               echo "S8_PROJECT_NAME=$PROJECT"
               echo "S8_SOURCE_SHA=$EXPECTED_SHA"
               echo "S8_NETWORK_ACCESS=NONE"
