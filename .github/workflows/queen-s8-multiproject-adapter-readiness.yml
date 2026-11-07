@@ -1,0 +1,87 @@
+name: Queen S8 Registered Product Adapters Readiness - No Writes
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-multiproject-adapter-readiness.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-multiproject-adapter-readiness.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-readonly-registered-projects
+  cancel-in-progress: false
+jobs:
+  verify-authorized-project-baseline:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: project-giovanni
+            repository: giovannifidel-collab/project-giovanni
+            sha: 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
+            test_kind: factory-test
+          - project: hive-field
+            repository: giovannifidel-collab/hive-field
+            sha: 44c73a353de1ecbbe88cf3221252d34f39799495
+            test_kind: node-test
+          - project: giochem
+            repository: giovannifidel-collab/giochem
+            sha: 8d8922171bfdc3554cb7786d08b3594ec681f59a
+            test_kind: syntax
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: project-source
+      - name: Verify exact private project source, required baseline files and immutable syntax/test adapter
+        shell: bash
+        env:
+          PROJECT: ${{ matrix.project }}
+          REPOSITORY: ${{ matrix.repository }}
+          EXPECTED_SHA: ${{ matrix.sha }}
+          TEST_KIND: ${{ matrix.test_kind }}
+        run: |
+          set -euo pipefail
+          test "$(git -C project-source rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -f project-source/package.json
+          test "$TEST_KIND" != unknown
+          test "$(node -e 'const p=require("./project-source/package.json");process.stdout.write(String(!!p.scripts))')" = true
+          if [ "$TEST_KIND" = factory-test ]; then
+            test "$PROJECT" = project-giovanni
+            test -f project-source/factory/plan.mjs
+            CONTAINER_COMMAND='node --test factory/continuous-loop.test.mjs factory/lean-coach-core-regression.test.mjs'
+          elif [ "$TEST_KIND" = node-test ]; then
+            test "$PROJECT" = hive-field
+            test -f project-source/src/data-v2-adapter.test.mjs
+            CONTAINER_COMMAND='node --test src/data-v2-adapter.test.mjs'
+          elif [ "$TEST_KIND" = syntax ]; then
+            test "$PROJECT" = giochem
+            test -f project-source/scripts/check.mjs
+            test -f project-source/tests/discovery_smoke.mjs
+            CONTAINER_COMMAND='node --check scripts/check.mjs && node --check tests/discovery_smoke.mjs'
+          else
+            echo 'S8_PROJECT_ADAPTER=DENY'
+            exit 1
+          fi
+          if docker run --rm --network none --read-only --cap-drop ALL             --security-opt no-new-privileges --pids-limit 90 --memory 384m             --user 65534:65534             --mount "type=bind,source=$GITHUB_WORKSPACE/project-source,target=/project,readonly"             --workdir /project node:22-alpine             sh -c "$CONTAINER_COMMAND" > "$RUNNER_TEMP/project-baseline.log" 2>&1; then
+              echo "S8_PROJECT_ADAPTER_BASELINE=PASS_PARTIAL_PROFILED_TESTS"
+              echo "S8_PROJECT_NAME=$PROJECT"
+              echo "S8_SOURCE_SHA=$EXPECTED_SHA"
+              echo "S8_NETWORK_ACCESS=NONE"
+              echo "S8_SECRETS_IN_TEST=NONE"
+              echo "S8_PROJECT_MUTATIONS=NONE"
+              echo "S8_PERMISSION_GRANTED=NONE"
+          else
+              echo "S8_PROJECT_ADAPTER_BASELINE=DENY_TEST_FAILURE"
+              exit 1
+          fi
+      - name: Clear temporary private checkout
+        if: always()
+        shell: bash
+        run: rm -rf project-source "$RUNNER_TEMP/project-baseline.log"
