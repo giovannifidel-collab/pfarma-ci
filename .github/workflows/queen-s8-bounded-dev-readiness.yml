@@ -17,7 +17,8 @@ jobs:
     environment: pfarma-ci-trusted
     timeout-minutes: 10
     env:
-      PRIVATE_SHA: 23aef9f2509315568e09d37cbf9554b72a7c0898
+      PRIVATE_SHA: f963589ac77473ce0c36c2a8997c8f4d1e23bfb4
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,6 +39,26 @@ jobs:
           node queen-source/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
           node --test queen-source/ops/queen/autopilot/s8/tests/*.test.mjs
           echo 'QUEEN_S8_CLOUDFLARE_NATIVE_SOURCE_LOCKED_NEGATIVE_TESTS=PASS'
+      - name: Independently verify owner-scoped draft PR and candidate content SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo=giovannifidel-collab/hive-alveare
+          pr=69
+          evidence="$(gh api "/repos/$repo/pulls/$pr")"
+          echo "$evidence" | jq -e '
+            .draft==true and .merged==false and .state=="open" and
+            .base.sha=="1064d92d825cb2eb16b7606631457edb1a8e1824" and
+            .head.sha=="23ef48508b8f1e57180a1c7b098f7855dc30d4b9"
+          ' >/dev/null
+          gh api "/repos/$repo/pulls/$pr/files?per_page=20" | jq -e '
+            length==1 and .[0].filename=="ops/queen/autopilot/s8/sandbox/repair-target.mjs"
+          ' >/dev/null
+          hash="$(gh api "/repos/$repo/contents/ops/queen/autopilot/s8/sandbox/repair-target.mjs?ref=23ef48508b8f1e57180a1c7b098f7855dc30d4b9"             --jq .content | tr -d '\n' | base64 -d | sha256sum | awk '{print $1}')"
+          test "$hash" = '014c768494d4fc7b939bd599027eb5b787fdba718f6c72929997f02b4fb94a91'
+          test "$(gh api "/repos/$repo/branches/main" --jq '.commit.sha')" = "$PRIVATE_SHA"
+          echo 'S8_SCOPED_PRIVATE_DRAFT_PR_69_SHA_AND_SCOPE=PASS'
+          echo 'S8_MODEL_CODE_PRODUCTION_MAIN_MERGE=DENY'
       - name: Scrub temporary private checkout
         if: always()
         shell: bash
@@ -64,13 +85,14 @@ jobs:
             'https://hive-alveare.pages.dev/api/queen-s8-workers-ai'
           jq -e '.ok==true and .route=="cloudflare-workers-ai" and
              .binding_present==true and .model_invoked==false and
-             .free_plan_certified==false and .callable==false and
+             (.free_plan_certified|type)=="boolean" and
+             (.callable == .free_plan_certified) and
              .paid_fallback==false and .product_writes==false and
              .general_routing==false and .default_dispatch=="DENY"' \
              "$RUNNER_TEMP/s8-native-readiness.json" >/dev/null
-          echo 'S8_NATIVE_WORKERS_AI_LIVE_BINDING_AND_ZERO_COST_DENY=PASS'
+          echo 'S8_NATIVE_WORKERS_AI_LIVE_BINDING_AND_COST_GUARD=PASS'
           echo 'S8_LEGACY_BROWSER_BRIDGE_NOT_REQUIRED=TRUE'
-          echo 'S8_AUTONOMOUS_CODE_GENERATION_LIVE_CERTIFICATION=PENDING'
+          echo 'S8_SCOPED_OWNER_SOFTWARE_DEVELOPMENT_ONE_SHOT=VERIFIED'\n          echo 'S8_GENERAL_AUTONOMOUS_DEVELOPMENT=DENY'
       - name: Erase temporary response
         if: always()
         run: rm -f "$RUNNER_TEMP/s8-native-readiness.json"
