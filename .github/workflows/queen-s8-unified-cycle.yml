@@ -95,7 +95,7 @@ jobs:
         if: always()
         run: rm -rf source
   one-owner-mission:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'S8-OWNER-ONCE:'))
     needs: safe-source-preflight
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
@@ -110,6 +110,90 @@ jobs:
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
+      - name: Resolve exact owner-approved one-shot mission from trusted main commit
+        shell: bash
+        env:
+          S8_TRIGGER_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            case "$S8_TRIGGER_MESSAGE" in
+              S8-OWNER-ONCE:*) ;;
+              *) echo 'S8_ONE_SHOT_TRIGGER_DENIED'; exit 1 ;;
+            esac
+            uuid="${S8_TRIGGER_MESSAGE#S8-OWNER-ONCE:}"
+            uuid="${uuid%%
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          [[ "$S8_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$S8_MISSION_ID" =~ ^[a-f0-9-]{36}$ ]]
+          test "$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')" = "$S8_SOURCE_SHA"
+          echo 'S8_UNIFIED_EXACT_PRIVATE_SHA_AND_OWNER_SCOPE=PASS'
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.S8_SOURCE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: hive-private
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Plan from exact Neon owner mission, fresh world and Workers Free cost gate
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs preflight
+      - name: Queen calls Workers AI for first advisory source proposal
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs first
+      - name: Independent no-secret/no-network Docker test and bounded failure verdict
+        id: firsttest
+        shell: bash
+        working-directory: hive-private
+        run: |
+          set -euo pipefail
+          node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs test-first
+          choice="$(jq -r '.attempt' "$RUNNER_TEMP/queen-s8-unified/selection.json")"
+          test "$choice" = '1' -o "$choice" = '2'
+          echo "attempt=$choice" >> "$GITHUB_OUTPUT"
+      - name: Verified GitHub OIDC authenticates CI failure and ATOMICALLY authorizes repair in Neon
+        if: steps.firsttest.outputs.attempt == '2'
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs approve-repair
+      - name: Queen calls Workers AI for precisely ONE final corrective proposal
+        if: steps.firsttest.outputs.attempt == '2'
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs repair
+      - name: Independent final no-network Docker test and sealed SHA-256 eligibility
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs test-final
+      - name: Create private draft PR with one permitted file, no merge
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs draft-pr
+      - name: OIDC verifies private PR and persists scoped Memory/World/Cognitive/School feedback
+        shell: bash
+        working-directory: hive-private
+        run: node ops/queen/autopilot/s8/s8-unified-ci-runner.mjs complete
+      - name: Erase ephemeral private source, model proposals and test receipts
+        if: always()
+        shell: bash
+        run: rm -rf hive-private "$RUNNER_TEMP/queen-s8-unified"
+\n'*}"
+            uuid="${uuid%% *}"
+            [[ "$uuid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]
+            test -n "$GH_TOKEN"
+            current="$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')"
+            [[ "$current" =~ ^[a-f0-9]{40}$ ]]
+            echo "S8_MISSION_ID=$uuid" >> "$GITHUB_ENV"
+            echo "S8_SOURCE_SHA=$current" >> "$GITHUB_ENV"
+            echo 'S8_ONE_SHOT_OWNER_APPROVAL_IDENTITY_RESOLVED=PASS'
+          fi
       - name: Owner mission, exact SHA and authority preflight
         shell: bash
         run: |
