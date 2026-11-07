@@ -62,6 +62,7 @@ jobs:
           stage=(latest.get("latest_stage") or {}).get("status")
           print("S8_PAGES_MAIN_BRANCH="+str(branch=="main"))
           print("S8_PAGES_LATEST_DEPLOYMENT_STATUS="+str(stage in ("success","active","completed")))
+          print("S8_PAGES_LATEST_STAGE_ENUM="+str(stage)[:32])
           print("S8_PAGES_LATEST_PRIVATE_SHA_MATCH="+str(actual==expected))
           print("S8_PAGES_DIAGNOSTIC=READONLY_ONLY_NO_REDEPLOY")
           PY
