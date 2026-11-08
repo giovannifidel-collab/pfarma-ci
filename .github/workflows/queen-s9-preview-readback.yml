@@ -1,0 +1,102 @@
+name: Queen S9.2 Preview Protected Route Diagnostic - GET ONLY
+on:
+  push:
+    branches:
+      - audit/s9-pages-preview-owner-consent-20261108
+    paths:
+      - .github/workflows/queen-s9-preview-readback.yml
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-preview-readback-only
+  cancel-in-progress: false
+jobs:
+  preview-and-production-readback:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      CF_TOKEN_A: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN_B: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+    steps:
+      - name: Authenticate unique Pages source and inspect exact preview deployment metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error,urllib.parse
+          NAME='hive-alveare'
+          DEPLOY='377c0180-43f5-4976-a055-a439ac1bfbdb'
+          SHA='8920b575defba8d806d8638de66794078d5c5403'
+          BRANCH='convergence/s9-pages-legacy-build-compat-20261108'
+          tokens=list(dict.fromkeys(x for x in (
+            os.getenv('CF_TOKEN_A'),os.getenv('CF_TOKEN_B')) if x))
+          def request(url,token=None,headers={}):
+            h={'Accept':'application/json'}
+            if token:h['Authorization']='Bearer '+token
+            h.update(headers)
+            req=urllib.request.Request(url,headers=h,method='GET')
+            try:
+              with urllib.request.urlopen(req,timeout=25) as resp:
+                return resp.status,resp.headers.get('content-type'),resp.read(2500)
+            except urllib.error.HTTPError as exc:
+              return exc.code,exc.headers.get('content-type'),exc.read(2000)
+            except Exception:return 0,None,b''
+          api='https://api.cloudflare.com/client/v4'
+          account=None;token=None
+          for t in tokens:
+            st,ct,p=request(api+'/accounts?per_page=50',t)
+            if st!=200:continue
+            try:data=json.loads(p)
+            except:continue
+            hits=[]
+            for a in data.get('result',[]):
+              aid=a.get('id','')
+              if not re.fullmatch('[a-f0-9]{32}',aid):continue
+              status,_,buf=request(api+'/accounts/'+aid+'/pages/projects/'+NAME,t)
+              try:project=json.loads(buf).get('result') if status==200 else None
+              except:project=None
+              if project and project.get('name')==NAME:hits.append(aid)
+            if len(hits)==1:account=hits[0];token=t;break
+          if not account:raise SystemExit('S9_READBACK=DENY_ACCOUNT_MISSING')
+          url=api+'/accounts/'+account+'/pages/projects/'+NAME+'/deployments/'+DEPLOY
+          st,_,raw=request(url,token)
+          if st!=200:raise SystemExit('S9_READBACK=DENY_DEPLOYMENT_MISSING')
+          dep=json.loads(raw).get('result') or {}
+          meta=((dep.get('deployment_trigger') or {}).get('metadata') or {})
+          if dep.get('environment')!='preview' or meta.get('commit_hash')!=SHA or meta.get('branch')!=BRANCH:
+            raise SystemExit('S9_READBACK=DENY_PREVIEW_PROVENANCE_MISMATCH')
+          stage=(dep.get('latest_stage') or {}).get('status')
+          print('S9_PREVIEW_DEPLOY_STAGE='+str(stage))
+          base=dep.get('url') or ''
+          if not base.startswith('https://') or not base.endswith('.hive-alveare.pages.dev'):
+            raise SystemExit('S9_READBACK=DENY_PREVIEW_URL_INVALID')
+          print('S9_PREVIEW_CANONICAL_URL='+base)
+          print('S9_PREVIEW_ALIASES_COUNT='+str(len(dep.get('aliases') or [])))
+          def verify(prefix,hostname):
+            for mode in ('service-token','service-plus-bearer','no-auth'):
+              headers={}
+              if mode in ('service-token','service-plus-bearer'):
+                if os.getenv('CF_ACCESS_CLIENT_ID'):
+                  headers['CF-Access-Client-Id']=os.environ['CF_ACCESS_CLIENT_ID']
+                if os.getenv('CF_ACCESS_CLIENT_SECRET'):
+                  headers['CF-Access-Client-Secret']=os.environ['CF_ACCESS_CLIENT_SECRET']
+              if mode=='service-plus-bearer' and os.getenv('HIVE_RUNTIME_BEARER_TOKEN'):
+                headers['Authorization']='Bearer '+os.environ['HIVE_RUNTIME_BEARER_TOKEN']
+              for path in ('/api/runtime-health','/api/queen-s8-portfolio'):
+                status,ct,body=request(hostname+path,headers=headers)
+                kind='json' if ct and 'json' in ct else ('html' if ct and 'html' in ct else 'other')
+                reason=''
+                if kind=='json':
+                  try:
+                    o=json.loads(body)
+                    reason=str(o.get('reason') or o.get('error') or '')[:90]
+                  except Exception:pass
+                info={'origin':prefix,'mode':mode,'route':path,'status':status,
+                      'type':kind,'reason':re.sub('[^a-zA-Z0-9_ .:-]','_',reason)}
+                print('S9_ENDPOINT_DIAGNOSTIC='+json.dumps(info,separators=(',',':')))
+          verify('preview',base)
+          verify('production','https://hive-alveare.pages.dev')
+          print('S9_READBACK_NO_MUTATION=TRUE')
+          PY
