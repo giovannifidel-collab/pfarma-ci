@@ -100,3 +100,26 @@ jobs:
           verify('production','https://hive-alveare.pages.dev')
           print('S9_READBACK_NO_MUTATION=TRUE')
           PY
+
+      - name: Crosscheck known trusted curl transport and Access response metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          for base in 'https://377c0180.hive-alveare.pages.dev' 'https://hive-alveare.pages.dev'; do
+            if [[ "$base" == *377c0180* ]]; then target='preview'; else target='production'; fi
+            for path in api/runtime-health api/queen-s8-portfolio api/queen-s7-e2e; do
+              args=(-sS --max-time 25 -o "$RUNNER_TEMP/s9-curl.json" -w '%{http_code}' -H 'Accept: application/json')
+              if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+                args+=(-H "Cf-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "Cf-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+              fi
+              code="$(curl "${args[@]}" "$base/$path")"
+              echo "S9_CURL_${target}_${path//\//_}=$code"
+              if [[ "$code" == "200" ]] && jq -e . "$RUNNER_TEMP/s9-curl.json" >/dev/null 2>&1; then
+                jq -c '{ok,stage,component,default_dispatch,paid_fallback,reason,error}' "$RUNNER_TEMP/s9-curl.json" | sed 's/.{300}.*/& [TRUNCATED]/' | cut -c 1-300
+              else
+                if jq -e . "$RUNNER_TEMP/s9-curl.json" >/dev/null 2>&1; then
+                  jq -c '{success,errors:(.errors|if type=="array" then map({code}) else null end),error:(.error|if type=="string" then .[0:80] else null end)}' "$RUNNER_TEMP/s9-curl.json" | cut -c 1-250
+                fi
+              fi
+            done
+          done
