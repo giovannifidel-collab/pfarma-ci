@@ -1,0 +1,75 @@
+name: Queen S9.2 Cloudflare Pages Build Configuration Diagnostic - READ ONLY
+on:
+  push:
+    branches:
+      - audit/s9-cloudflare-pages-build-settings-20261108
+    paths:
+      - .github/workflows/queen-s9-pages-build-config-readonly.yml
+permissions:
+  contents: read
+concurrency:
+  group: queen-s9-pages-build-readonly
+  cancel-in-progress: false
+jobs:
+  pages-configuration-observation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: pfarma-ci-trusted
+    env:
+      CF_TOKEN_A: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN_B: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Read-only unique Cloudflare Pages configuration without printing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,re,json,urllib.request,urllib.error
+          token=os.environ.get('CF_TOKEN_A') or os.environ.get('CF_TOKEN_B')
+          if not token:raise SystemExit('S9_PAGES_CONFIG=DENY_NO_READER_TOKEN')
+          def get(path):
+              request=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  headers={'Authorization':'Bearer '+token,'Accept':'application/json'},
+                  method='GET')
+              try:
+                  with urllib.request.urlopen(request,timeout=20) as resp:
+                      return resp.status,json.load(resp)
+              except urllib.error.HTTPError as exc:return exc.code,{}
+              except Exception:return 0,{}
+          status,accounts=get('/accounts?per_page=50')
+          if status!=200 or accounts.get('success') is not True:
+              raise SystemExit('S9_PAGES_CONFIG=DENY_ACCOUNTS_UNAVAILABLE')
+          matched=[]
+          for account in accounts.get('result',[]):
+              aid=account.get('id','')
+              if not isinstance(aid,str) or not re.fullmatch('[a-f0-9]{32}',aid):continue
+              st,record=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+              project=record.get('result') if record.get('success') is True else None
+              if st==200 and isinstance(project,dict) and project.get('name')=='hive-alveare':
+                  matched.append(project)
+          if len(matched)!=1:raise SystemExit('S9_PAGES_CONFIG=DENY_PROJECT_NOT_UNIQUE')
+          project=matched[0]
+          build=project.get('build_config') or {}
+          source=project.get('source') or {}
+          source_config=source.get('config') or {}
+          latest=project.get('latest_deployment') or {}
+          metadata=((latest.get('deployment_trigger') or {}).get('metadata') or {})
+          allowed={ 'build_command','destination_dir','root_dir','build_caching',
+                    'web_analytics_token_present','build_system_version' }
+          summary={
+              'project':'hive-alveare',
+              'source_type':source.get('type'),
+              'connected_repo_name':source_config.get('repo_name'),
+              'production_branch':source_config.get('production_branch'),
+              'build':{k:v for k,v in build.items() if k in allowed and type(v) in (str,bool,int)},
+              'build_keys':sorted(k for k in build if isinstance(k,str) and k!='web_analytics_token'),
+              'latest_deployment_status':(latest.get('latest_stage') or {}).get('status'),
+              'latest_deployment_source_sha':metadata.get('commit_hash'),
+              'latest_environment':latest.get('environment'),
+              'production_deployments_enabled':source_config.get('production_deployments_enabled'),
+          }
+          print('S9_PAGES_READONLY_CONFIG='+json.dumps(summary,sort_keys=True,separators=(',',':')))
+          print('S9_PAGES_BUILD_CONFIG_READ=PASS')
+          print('S9_PAGES_CHANGES=ZERO')
+          print('S9_PAGES_RELEASE=NOT_ATTEMPTED')
+          PY
