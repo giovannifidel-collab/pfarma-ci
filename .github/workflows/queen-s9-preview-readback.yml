@@ -221,3 +221,58 @@ jobs:
           print('S9_ACCESS_APP_AUDIT=GET_ONLY')
           print('S9_ACCESS_POLICIES_MUTATED=FALSE')
           PY
+
+      - name: Cross-account Cloudflare Access app visibility audit (GET-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error
+          token=os.getenv('CF_TOKEN_A') or os.getenv('CF_TOKEN_B')
+          if not token:
+              raise SystemExit('S9_ACCESS_CROSS_ACCOUNT=DENY_TOKEN_MISSING')
+          def api(path):
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  headers={'Authorization':'Bearer '+token,'Accept':'application/json'},
+                  method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=22) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          status,accounts=api('/accounts?per_page=50')
+          if status!=200 or accounts.get('success') is not True:
+              raise SystemExit('S9_ACCESS_CROSS_ACCOUNT=DENY_ACCOUNT_LIST_UNAVAILABLE')
+          scanned=0;pages=0;match=0;problems=0
+          for a in accounts.get('result',[]):
+              aid=a.get('id','')
+              if not isinstance(aid,str) or not re.fullmatch('[a-f0-9]{32}',aid):
+                  continue
+              scanned+=1
+              st,p=api('/accounts/'+aid+'/pages/projects/hive-alveare')
+              if st==200 and p.get('success') is True and (p.get('result') or {}).get('name')=='hive-alveare':
+                  pages+=1
+              st,r=api('/accounts/'+aid+'/access/apps?per_page=100')
+              if st!=200 or r.get('success') is not True:
+                  problems+=1
+                  continue
+              data=r.get('result') or []
+              for app in data:
+                  if not isinstance(app,dict):continue
+                  domain=str(app.get('domain') or '')
+                  name=str(app.get('name') or '')
+                  destinations=str(app.get('destinations') or '')[:1000]
+                  if ('hive-alveare' in domain or 'hive-alveare' in name.lower() or
+                      'hive-alveare' in destinations.lower()):
+                      match+=1
+                      print('S9_ACCESS_RELEVANT_APP='+json.dumps({
+                       'name':name[:80],'domain':domain[:140],
+                       'type':app.get('type'),
+                       'inline_policy_count':len(app.get('policies') or []),
+                       'destination_count':len(app.get('destinations') or [])
+                      },separators=(',',':')))
+          print('S9_ACCESS_ACCOUNTS_SCANNED='+str(scanned))
+          print('S9_PAGES_PROJECT_ACCOUNT_MATCHES='+str(pages))
+          print('S9_ACCESS_APPS_READ_FAILURES='+str(problems))
+          print('S9_ACCESS_APPS_MATCHING_QUEEN='+str(match))
+          print('S9_ACCESS_AUDIT=GET_ONLY_NO_POLICY_CHANGE')
+          PY
