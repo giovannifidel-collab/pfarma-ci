@@ -32,7 +32,7 @@ jobs:
           BRANCH='convergence/s9-pages-legacy-build-compat-20261108'
           tokens=list(dict.fromkeys(x for x in (
             os.getenv('CF_TOKEN_A'),os.getenv('CF_TOKEN_B')) if x))
-          def request(url,token=None,headers={}):
+          def request(url,token=None,headers={},limit=2500):
             h={'Accept':'application/json'}
             if token:h['Authorization']='Bearer '+token
             h.update(headers)
@@ -41,12 +41,12 @@ jobs:
               with urllib.request.urlopen(req,timeout=25) as resp:
                 return resp.status,resp.headers.get('content-type'),resp.read(2500)
             except urllib.error.HTTPError as exc:
-              return exc.code,exc.headers.get('content-type'),exc.read(2000)
+              return exc.code,exc.headers.get('content-type'),exc.read(limit)
             except Exception:return 0,None,b''
           api='https://api.cloudflare.com/client/v4'
           account=None;token=None
           for t in tokens:
-            st,ct,p=request(api+'/accounts?per_page=50',t)
+            st,ct,p=request(api+'/accounts?per_page=50',t,limit=500000)
             if st!=200:continue
             try:data=json.loads(p)
             except:continue
@@ -54,14 +54,14 @@ jobs:
             for a in data.get('result',[]):
               aid=a.get('id','')
               if not re.fullmatch('[a-f0-9]{32}',aid):continue
-              status,_,buf=request(api+'/accounts/'+aid+'/pages/projects/'+NAME,t)
+              status,_,buf=request(api+'/accounts/'+aid+'/pages/projects/'+NAME,t,limit=500000)
               try:project=json.loads(buf).get('result') if status==200 else None
               except:project=None
               if project and project.get('name')==NAME:hits.append(aid)
             if len(hits)==1:account=hits[0];token=t;break
           if not account:raise SystemExit('S9_READBACK=DENY_ACCOUNT_MISSING')
           url=api+'/accounts/'+account+'/pages/projects/'+NAME+'/deployments/'+DEPLOY
-          st,_,raw=request(url,token)
+          st,_,raw=request(url,token,limit=500000)
           if st!=200:raise SystemExit('S9_READBACK=DENY_DEPLOYMENT_MISSING')
           dep=json.loads(raw).get('result') or {}
           meta=((dep.get('deployment_trigger') or {}).get('metadata') or {})
