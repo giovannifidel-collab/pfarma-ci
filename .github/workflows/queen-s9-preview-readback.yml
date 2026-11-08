@@ -146,3 +146,65 @@ jobs:
           print('S9_PREVIEW_REDIRECT_HAS_QUERY='+str(bool(u.query)))
           print('S9_PREVIEW_REDIRECT_FOLLOWED=FALSE')
           PY
+
+      - name: Inspect matching Cloudflare Access app and service-token policy metadata, GET only
+        shell: bash
+        env:
+          CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,re,json,urllib.request,urllib.error
+          API='https://api.cloudflare.com/client/v4'
+          tokens=list(dict.fromkeys(x for x in (os.getenv('CF_PRIMARY'),os.getenv('CF_SECONDARY')) if x))
+          def get(token,path):
+              req=urllib.request.Request(API+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'},method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          found=[]
+          for token in tokens:
+              st,accounts=get(token,'/accounts?per_page=50')
+              if st!=200 or accounts.get('success') is not True:continue
+              for row in accounts.get('result',[]):
+                  aid=row.get('id','')
+                  if not re.fullmatch('[a-f0-9]{32}',str(aid)):continue
+                  x,p=get(token,'/accounts/'+aid+'/pages/projects/hive-alveare')
+                  if x==200 and p.get('success') is True and (p.get('result') or {}).get('name')=='hive-alveare':
+                      found.append((token,aid))
+              if found:break
+          if len(found)!=1:
+              print('S9_ACCESS_AUDIT=DENY_PROJECT_NOT_UNIQUE')
+              raise SystemExit(0)
+          token,aid=found[0]
+          st,apps=get(token,'/accounts/'+aid+'/access/apps?per_page=100')
+          print('S9_ACCESS_APPS_HTTP='+str(st))
+          if st!=200 or apps.get('success') is not True:
+              print('S9_ACCESS_AUDIT=DENY_READ_SCOPE_MISSING')
+              raise SystemExit(0)
+          relevant=[]
+          for app in apps.get('result',[]):
+              if not isinstance(app,dict):continue
+              domains=[app.get('domain','')]
+              domains += [x.get('public_domain','') if isinstance(x,dict) else '' for x in (app.get('destinations') or [])]
+              if any('hive-alveare.pages.dev' in str(s) for s in domains):
+                  relevant.append(app)
+          print('S9_ACCESS_MATCHING_APPS='+str(len(relevant)))
+          for app in relevant:
+              app_id=app.get('id','')
+              st2,pol=get(token,'/accounts/'+aid+'/access/apps/'+str(app_id)+'/policies?per_page=100')
+              policies=pol.get('result') or [] if st2==200 else []
+              out={'name':str(app.get('name') or '')[:80],
+                   'domain':str(app.get('domain') or '')[:130],
+                   'type':app.get('type'),
+                   'policies_http':st2,
+                   'policy_count':len(policies),
+                   'decision_types':[p.get('decision') for p in policies if isinstance(p,dict)],
+                   'service_auth_policy_present':any(p.get('decision')=='non_identity' or p.get('decision')=='service_auth' for p in policies if isinstance(p,dict)),
+                   'allow_policy_present':any(p.get('decision')=='allow' for p in policies if isinstance(p,dict))}
+              print('S9_ACCESS_APP_SUMMARY='+json.dumps(out,separators=(',',':')))
+          print('S9_ACCESS_APP_AUDIT=GET_ONLY')
+          print('S9_ACCESS_POLICIES_MUTATED=FALSE')
+          PY
