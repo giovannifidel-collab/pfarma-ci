@@ -204,7 +204,7 @@ jobs:
                   summary={'name':name[:80],'domain':domain[:130],'type':app.get('type'),
                            'destinations_count':len(destinations),'keys':sorted(x for x in app if x in ('domain','destinations','app_domain','type','name','policies'))}
                   print('S9_ACCESS_POTENTIAL_APP='+json.dumps(summary,separators=(',',':')))
-                    print('S9_ACCESS_MATCHING_APPS='+str(len(relevant)))
+          print('S9_ACCESS_MATCHING_APPS='+str(len(relevant)))
           for app in relevant:
               app_id=app.get('id','')
               st2,pol=get(token,'/accounts/'+aid+'/access/apps/'+str(app_id)+'/policies?per_page=100')
