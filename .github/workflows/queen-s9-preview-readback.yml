@@ -191,7 +191,20 @@ jobs:
               domains += [x.get('public_domain','') if isinstance(x,dict) else '' for x in (app.get('destinations') or [])]
               if any('hive-alveare.pages.dev' in str(s) for s in domains):
                   relevant.append(app)
-          print('S9_ACCESS_MATCHING_APPS='+str(len(relevant)))
+          print('S9_ACCESS_TOTAL_APPS='+str(len(apps.get('result') or [])))
+          print('S9_ACCESS_PAGINATION_TOTAL='+str((apps.get('result_info') or {}).get('total_count')))
+          for app in apps.get('result',[]):
+              if not isinstance(app,dict):continue
+              domain=str(app.get('domain') or '')
+              name=str(app.get('name') or '')
+              destinations=app.get('destinations') or []
+              if ('hive' in domain.lower() or 'pages.dev' in domain.lower() or
+                  'queen' in name.lower() or 'hive' in name.lower() or
+                  any('hive' in str(d).lower() for d in destinations)):
+                  summary={'name':name[:80],'domain':domain[:130],'type':app.get('type'),
+                           'destinations_count':len(destinations),'keys':sorted(x for x in app if x in ('domain','destinations','app_domain','type','name','policies'))}
+                  print('S9_ACCESS_POTENTIAL_APP='+json.dumps(summary,separators=(',',':')))
+                    print('S9_ACCESS_MATCHING_APPS='+str(len(relevant)))
           for app in relevant:
               app_id=app.get('id','')
               st2,pol=get(token,'/accounts/'+aid+'/access/apps/'+str(app_id)+'/policies?per_page=100')
