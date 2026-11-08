@@ -1,0 +1,63 @@
+name: Queen S9.2 OWNER Preview Only - Reversible Pages Build Verification
+on:
+  push:
+    branches:
+      - audit/s9-pages-preview-owner-consent-20261108
+    paths:
+      - '.github/workflows/queen-s9-owner-preview-once.yml'
+permissions:
+  contents: read
+concurrency:
+  group: queen-s9-exact-pages-project-preview-singleton
+  cancel-in-progress: false
+jobs:
+  owner-approved-preview-with-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      S9_AUTHORIZED_SCOPE: BUILD_CONFIG_TEMPORARY_PREVIEW_ONLY_2026_11_08
+      S9_EXACT_PRIVATE_MAIN: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+    steps:
+      - name: Checkout public trusted relay without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Independently revalidate exact private main, PR90 preview SHA and public pointer
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          python -m py_compile ops/s9/queen_pages_temporary_preview.py
+          main="$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          test "$main" = "$S9_EXACT_PRIVATE_MAIN" || { echo 'S9_MAIN_SHA_CHANGED=DENY'; exit 1; }
+          gh api /repos/giovannifidel-collab/hive-alveare/pulls/90 \
+            --jq '.draft and .state=="open" and .merged==false and .head.sha=="8920b575defba8d806d8638de66794078d5c5403" and .base.ref=="main"' \
+            | grep -Fx true
+          pointer="$(gh api /repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$S9_EXACT_PRIVATE_MAIN" || { echo 'S9_PUBLIC_SOURCE_POINTER_CHANGED=DENY'; exit 1; }
+          echo 'S9_OWNER_PREVIEW_SOURCE_AND_DRAFT=EXACT_SHA_PASS'
+          echo 'S9_PREVIEW_BRANCH=convergence/s9-pages-legacy-build-compat-20261108'
+          echo 'S9_OWNER_SCOPE=TEMPORARY_PREVIEW_ONLY_NO_PRODUCTION'
+      - name: One-time Cloudflare build-command preview diagnostic and guaranteed restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          python ops/s9/queen_pages_temporary_preview.py
+      - name: Final safety summary
+        if: always()
+        run: |
+          echo 'S9_2_AUTHORIZATION_SCOPE=BUILD_CONFIG_PREVIEW_ONLY'
+          echo 'S9_2_MAIN_MERGE=NOT_REQUESTED'
+          echo 'S9_2_PRODUCTION_DEPLOYMENT=NOT_REQUESTED'
+          echo 'S9_2_MODEL_CALLS=0'
+          echo 'S9_2_NEON_WRITES=0'
+          echo 'S9_2_PROJECT_REPOSITORY_MUTATIONS=0'
