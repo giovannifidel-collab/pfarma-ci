@@ -130,3 +130,5 @@ jobs:
         run: rm -f "$RUNNER_TEMP/s8-readonly.json"
 
 # Owner-triggered read-only billing attestation rerun, 2026-11-06. No AI inference.
+# Read-only owner-requested fresh Queen S8 billing attestation: 2026-11-08.
+# No model inference, deployment, payment or changes to any project repo.
