@@ -123,3 +123,26 @@ jobs:
               fi
             done
           done
+
+      - name: Identify preview redirect destination safely, without following authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sS --max-time 25 -D "$RUNNER_TEMP/s9-location-headers.txt" -o /dev/null \
+            -H "Cf-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "Cf-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            'https://377c0180.hive-alveare.pages.dev/api/runtime-health'
+          python - <<'PY'
+          import os,urllib.parse
+          p=os.environ['RUNNER_TEMP']+'/s9-location-headers.txt'
+          raw=open(p,'r',encoding='utf8',errors='replace').read().splitlines()
+          status=[line.strip() for line in raw if line.lower().startswith('http/')]
+          locations=[line.split(':',1)[1].strip() for line in raw if line.lower().startswith('location:')]
+          u=urllib.parse.urlsplit(locations[-1] if locations else '')
+          kind='ACCESS_LOGIN_REDIRECT' if u.hostname and u.hostname.endswith('cloudflareaccess.com') else 'OTHER_REDIRECT'
+          print('S9_PREVIEW_REDIRECT_HTTP='+str(status[-1].split(' ')[1] if status else 'unknown'))
+          print('S9_PREVIEW_REDIRECT_KIND='+kind)
+          print('S9_PREVIEW_REDIRECT_HOST='+str(u.hostname or 'none'))
+          print('S9_PREVIEW_REDIRECT_HAS_QUERY='+str(bool(u.query)))
+          print('S9_PREVIEW_REDIRECT_FOLLOWED=FALSE')
+          PY
