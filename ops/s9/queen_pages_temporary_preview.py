@@ -154,6 +154,14 @@ def patch_build(token, account, command):
 def restore(token, account, initial, changed_prod, changed_build):
     """Restore original build command FIRST, then production auto-deploy setting."""
     errors = []
+    # Detect any applied change even if an API response was lost.
+    current_build, current_config = ensure_identity(get_project(token, account), initial)
+    if current_build.get("build_command") not in (initial["build_command"], COMMAND):
+        raise Abort("UNRECOGNIZED_BUILD_COMMAND_MANUAL_HOLD")
+    if current_config.get("production_deployments_enabled") not in (False, initial["production_enabled"]):
+        raise Abort("UNRECOGNIZED_PRODUCTION_DEPLOY_SETTING_MANUAL_HOLD")
+    changed_build = changed_build or current_build.get("build_command") == COMMAND
+    changed_prod = changed_prod or current_config.get("production_deployments_enabled") is False
     if changed_build:
         try:
             patch_build(token, account, initial["build_command"])
