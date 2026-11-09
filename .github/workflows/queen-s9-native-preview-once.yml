@@ -1,0 +1,170 @@
+name: Queen S9.2 Native Wrangler Protected Preview ONLY
+on:
+  push:
+    branches:
+      - audit/s9-native-wrangler-preview-20261109
+    paths:
+      - '.github/workflows/queen-s9-native-preview-once.yml'
+permissions:
+  contents: read
+concurrency:
+  group: queen-hive-s9-preview-native-20261109
+  cancel-in-progress: false
+jobs:
+  source-locked-queen-preview:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 18
+    env:
+      PRIVATE_MAIN: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+      PRIVATE_PREVIEW_SHA: 79be3ea45859d2c5916e4e12c3680cc640c893e4
+      PREVIEW_BRANCH: queen-s9-api-preview-20261109
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_API_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_API_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Verify private current main, relay source pointer, PR89 exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          actual="$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          test "$actual" = "$PRIVATE_MAIN" || { echo 'S9_DENY_MAIN_SHA_CHANGED'; exit 1; }
+          gh api /repos/giovannifidel-collab/hive-alveare/pulls/89 \
+            --jq '.state=="open" and .draft==true and .head.sha=="79be3ea45859d2c5916e4e12c3680cc640c893e4" and .base.ref=="main"' \
+            | grep -Fx true
+          pointer="$(gh api /repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$PRIVATE_MAIN" || { echo 'S9_DENY_RELAY_POINTER_DRIFT';exit 1; }
+          test "$PREVIEW_BRANCH" != main
+          echo S9_NATIVE_PREVIEW_SHA_AND_RELAY_LOCK=PASS
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_PREVIEW_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-preview
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Source regression, Queen S9.1 exact SHA, and modern Wrangler build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen-preview rev-parse HEAD)" = "$PRIVATE_PREVIEW_SHA"
+          node queen-preview/ops/queen/core/validate-s1-core.mjs
+          node queen-preview/ops/queen/autopilot/validate-s6-closeout.mjs
+          node queen-preview/ops/queen/compute/s7/validate-s7-readiness.mjs
+          node queen-preview/ops/queen/autopilot/s8/validate-s8-bootstrap.mjs
+          node --test queen-preview/ops/queen/s9/tests/s9-s8-to-s1-handoff.test.mjs
+          cd queen-preview/cloudflare
+          npx --yes wrangler@4.123.0 pages functions build functions \
+            --outdir "$RUNNER_TEMP/s9-preview-modern-build"
+          test -n "$(find "$RUNNER_TEMP/s9-preview-modern-build" -type f -print -quit)"
+          echo S9_NATIVE_PREVIEW_COMPILE=PASS
+      - name: Verify unique Pages project and production branch before preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,re,urllib.request,urllib.error
+          t=os.getenv('CF_API_PRIMARY') or os.getenv('CF_API_SECONDARY')
+          if not t:raise SystemExit('S9_NO_CLOUDFLARE_API_TOKEN')
+          def get(path):
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                   headers={'Authorization':'Bearer '+t,'Accept':'application/json'},method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          a,accounts=get('/accounts?per_page=50')
+          if a!=200 or accounts.get('success') is not True:raise SystemExit('S9_CF_ACCOUNT_UNVERIFIED')
+          hits=[]
+          for row in accounts.get('result',[]):
+              aid=row.get('id','')
+              if not isinstance(aid,str) or not re.fullmatch('[0-9a-f]{32}',aid):continue
+              code,data=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+              project=data.get('result') if data.get('success') else None
+              if code==200 and isinstance(project,dict) and project.get('name')=='hive-alveare':
+                  hits.append((aid,project))
+          if len(hits)!=1:raise SystemExit('S9_CF_PAGES_PROJECT_NOT_UNIQUE')
+          aid,project=hits[0]
+          source=project.get('source') or {}
+          src=source.get('config') or {}
+          if (source.get('type')!='github' or src.get('repo_name')!='hive-alveare' or
+              src.get('production_branch')!='main'):
+              raise SystemExit('S9_CF_SOURCE_WRONG')
+          if ((project.get('build_config') or {}).get('root_dir')!='cloudflare' or
+              (project.get('build_config') or {}).get('destination_dir')!='public'):
+              raise SystemExit('S9_CF_SOURCE_LAYOUT_WRONG')
+          if os.getenv('HIVE_CF_ACCOUNT_ID') and os.environ['HIVE_CF_ACCOUNT_ID']!=aid:
+              raise SystemExit('S9_CF_ACCOUNT_MISMATCH')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('CLOUDFLARE_ACCOUNT_ID='+aid+'\n')
+          print('S9_CF_EXISTING_PROJECT_AND_MAIN_PRODUCTION_BRANCH=PASS')
+          print('S9_CF_PROJECT_CONFIGURATION_CHANGED=FALSE')
+          PY
+          if [[ -n "$CF_API_PRIMARY" ]]; then
+            echo "CLOUDFLARE_API_TOKEN=$CF_API_PRIMARY" >> "$GITHUB_ENV"
+          else
+            echo "CLOUDFLARE_API_TOKEN=$CF_API_SECONDARY" >> "$GITHUB_ENV"
+          fi
+      - name: Deploy source-locked PREVIEW with Wrangler Pages API (never main)
+        shell: bash
+        working-directory: queen-preview/cloudflare
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          [[ "$PREVIEW_BRANCH" == queen-s9-api-preview-* ]]
+          npx --yes wrangler@4.123.0 pages deploy public \
+            --project-name hive-alveare \
+            --branch "$PREVIEW_BRANCH" \
+            --commit-hash "$PRIVATE_PREVIEW_SHA" \
+            --commit-message "S9.2 owner preview ONLY, modern Wrangler, no production"
+          echo S9_NATIVE_WRANGLER_PREVIEW_DEPLOY_TRIGGERED=TRUE
+      - name: Inspect exact Pages deployment via authenticated Cloudflare API, GET only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error,time
+          aid=os.environ['CLOUDFLARE_ACCOUNT_ID']
+          token=os.environ['CLOUDFLARE_API_TOKEN']
+          url='https://api.cloudflare.com/client/v4/accounts/'+aid+'/pages/projects/hive-alveare/deployments?per_page=30'
+          def get():
+              q=urllib.request.Request(url,method='GET',headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(q,timeout=25) as r:return json.load(r)
+              except Exception:return {}
+          found=None
+          for i in range(12):
+              obj=get()
+              for d in obj.get('result') or []:
+                  meta=((d.get('deployment_trigger') or {}).get('metadata') or {})
+                  if (meta.get('commit_hash')==os.environ['PRIVATE_PREVIEW_SHA'] and
+                      meta.get('branch')==os.environ['PREVIEW_BRANCH'] and
+                      d.get('environment')=='preview'):
+                      found=d;break
+              if found and (found.get('latest_stage') or {}).get('status')=='success':break
+              time.sleep(5)
+          if not found:
+              raise SystemExit('S9_DIRECT_PREVIEW_EXACT_DEPLOY_NOT_FOUND')
+          state=(found.get('latest_stage') or {}).get('status')
+          if state!='success':raise SystemExit('S9_DIRECT_PREVIEW_UNVERIFIED_'+str(state))
+          print('S9_NATIVE_PREVIEW_API_DEPLOYMENT=SUCCESS')
+          print('S9_NATIVE_PREVIEW_DEPLOYMENT_ID='+str(found.get('id')))
+          print('S9_NATIVE_PREVIEW_PRODUCTION_DEPLOYMENT=FALSE')
+          print('S9_NATIVE_PREVIEW_SOURCE_SHA_MATCH=TRUE')
+          print('S9_ACCESS_POLICY_MUTATIONS=ZERO')
+          PY
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf queen-preview "$RUNNER_TEMP/s9-preview-modern-build"
+          echo S9_MODEL_CALLS=0
+          echo S9_NEON_WRITES=0
+          echo S9_PRODUCT_WRITES=0
+          echo S9_PRODUCTION_RELEASE=NOT_ATTEMPTED
