@@ -1,0 +1,70 @@
+name: Queen S9 Native Preview Cloudflare API Receipt Readonly
+on:
+  push:
+    branches:
+      - audit/s9-native-wrangler-preview-20261109
+    paths:
+      - '.github/workflows/queen-s9-native-receipt-readonly.yml'
+permissions: {contents: read}
+jobs:
+  verify-direct-preview:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      CF_A: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_B: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Cloudflare API GET for direct Wrangler preview receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error,re
+          token=os.getenv('CF_A') or os.getenv('CF_B')
+          if not token:raise SystemExit('S9_API_RECEIPT=TOKEN_MISSING')
+          prefix='https://api.cloudflare.com/client/v4'
+          def get(path):
+            req=urllib.request.Request(prefix+path,
+               headers={'Authorization':'Bearer '+token,'Accept':'application/json'},method='GET')
+            try:
+              with urllib.request.urlopen(req,timeout=22) as res:return res.status,json.load(res)
+            except urllib.error.HTTPError as exc:return exc.code,{}
+            except Exception:return 0,{}
+          code,accounts=get('/accounts?per_page=50')
+          if code!=200 or accounts.get('success') is not True:
+            raise SystemExit('S9_API_RECEIPT=ACCOUNT_NOT_READABLE')
+          found=[]
+          for a in accounts.get('result',[]):
+            ident=a.get('id','')
+            if not isinstance(ident,str) or not re.fullmatch('[a-f0-9]{32}',ident):continue
+            st,pr=get('/accounts/'+ident+'/pages/projects/hive-alveare')
+            if st==200 and pr.get('success') is True and (pr.get('result') or {}).get('name')=='hive-alveare':
+              found.append(ident)
+          if len(found)!=1:raise SystemExit('S9_API_RECEIPT=PROJECT_NOT_UNIQUE')
+          account=found[0]
+          matches=[]
+          for page in range(1,5):
+            st,rs=get('/accounts/'+account+'/pages/projects/hive-alveare/deployments?per_page=25&page='+str(page))
+            if st!=200 or rs.get('success') is not True:raise SystemExit('S9_API_RECEIPT=LIST_UNAVAILABLE')
+            rows=rs.get('result') or []
+            print('S9_API_RECEIPT_PAGE_'+str(page)+'_COUNT='+str(len(rows)))
+            for d in rows:
+              trig=d.get('deployment_trigger') or {}
+              m=trig.get('metadata') or {}
+              status=(d.get('latest_stage') or {}).get('status')
+              uid=str(d.get('id') or '')
+              b=str(m.get('branch') or '')
+              sha=str(m.get('commit_hash') or '')
+              url=str(d.get('url') or '')
+              if (uid.startswith('a99c440e') or 'queen-s9' in b or
+                  sha.startswith('79be3ea45859')):
+                out={'id':uid,'env':d.get('environment'),
+                  'sha':sha,'branch':b,'status':status,
+                  'url':url[:100]}
+                print('S9_DIRECT_PREVIEW_CANDIDATE='+json.dumps(out,separators=(',',':')))
+                matches.append(out)
+            if len(rows)<25:break
+          print('S9_DIRECT_PREVIEW_MATCH_COUNT='+str(len(matches)))
+          print('S9_API_RECEIPT_READONLY=PASS')
+          PY
