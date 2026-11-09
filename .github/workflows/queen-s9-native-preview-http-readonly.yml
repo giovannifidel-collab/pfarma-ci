@@ -1,0 +1,53 @@
+name: Queen S9 Direct Preview Protected HTTP Witness - READ ONLY
+on:
+  push:
+    branches: [audit/s9-native-wrangler-preview-20261109]
+    paths: ['.github/workflows/queen-s9-native-preview-http-readonly.yml']
+permissions: {contents: read}
+jobs:
+  protected-access-observer:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Read-only protected GET and exact redirect classification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_ACCESS_CLIENT_ID"
+          test -n "$CF_ACCESS_CLIENT_SECRET"
+          for host in a99c440e.hive-alveare.pages.dev hive-alveare.pages.dev; do
+            if [[ "$host" == a99c440e.* ]]; then label=preview;else label=production;fi
+            for endpoint in runtime-health queen-s8-portfolio queen-s7-e2e; do
+              headers="$RUNNER_TEMP/s9-${label}-${endpoint}.headers"
+              body="$RUNNER_TEMP/s9-${label}-${endpoint}.json"
+              code="$(curl -sS --max-time 25 -D "$headers" -o "$body" \
+                -w '%{http_code}' \
+                -H "Cf-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+                -H "Cf-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+                -H 'Accept: application/json' \
+                "https://$host/api/$endpoint")"
+              echo "S9_HTTPS_${label}_${endpoint//-/_}=$code"
+              if [[ "$code" == 200 ]];then
+                if jq -e 'type=="object" and .ok==true' "$body" >/dev/null 2>&1;then
+                  echo "S9_HTTPS_${label}_${endpoint//-/_}_JSON_OK=TRUE"
+                else
+                  echo "S9_HTTPS_${label}_${endpoint//-/_}_JSON_OK=FALSE"
+                fi
+              elif [[ "$code" == 302 || "$code" == 301 ]];then
+                python - "$headers" "$label" "$endpoint" <<'PY'
+          import sys,urllib.parse
+          raw=open(sys.argv[1],errors='replace').read().splitlines()
+          loc=next((l.split(':',1)[1].strip() for l in reversed(raw) if l.lower().startswith('location:')),None)
+          host=urllib.parse.urlsplit(loc or '').hostname or ''
+          print('S9_HTTPS_'+sys.argv[2]+'_'+sys.argv[3].replace('-','_')+'_REDIRECT_TO_ACCESS='+str(host.endswith('.cloudflareaccess.com')))
+          PY
+              fi
+            done
+          done
+          echo S9_HTTPS_READ_ONLY=PASS
+          echo S9_PREVIEW_ACCESS_POLICY_MODIFIED=FALSE
+          echo S9_HTTPS_AUTHENTICATED_PREVIEW_CERTIFICATION=NOT_ASSUMED
