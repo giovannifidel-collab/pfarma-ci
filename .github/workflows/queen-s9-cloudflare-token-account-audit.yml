@@ -87,16 +87,23 @@ jobs:
                        'type':app.get('type'),
                        'destination_count':len(app.get('destinations') or []),
                        'policies_count':len(app.get('policies') or [])},sort_keys=True,separators=(',',':')))
-                  if matching:
-                      cid=os.getenv('CF_ACCESS_CLIENT_ID','')
-                      service_st,service=read(token,'/accounts/'+aid+'/access/service_tokens?per_page=100')
-                      matches=[]
-                      if service_st==200:
-                          matches=[t for t in service.get('result') or [] if isinstance(t,dict) and
-                                   t.get('client_id')==cid and bool(cid)]
-                      print('S9_CF_SERVICE_TOKEN_LOOKUP='+json.dumps({
-                          'credential':credential_name,'account':account_label,
-                          'http':service_st,'existing_ci_token_match':len(matches)==1},sort_keys=True,separators=(',',':')))
+                  # Service token identity does not depend on Access application visibility.
+                  cid=os.getenv('CF_ACCESS_CLIENT_ID','')
+                  service_st,service=read(token,'/accounts/'+aid+'/access/service_tokens?per_page=100')
+                  tokens=service.get('result') or [] if service_st==200 else []
+                  matches=[t for t in tokens if isinstance(t,dict) and
+                           t.get('client_id')==cid and bool(cid)]
+                  print('S9_CF_SERVICE_TOKEN_LOOKUP='+json.dumps({
+                      'credential':credential_name,'account':account_label,
+                      'http':service_st,'token_count':len(tokens),
+                      'existing_ci_token_match':len(matches)==1},sort_keys=True,separators=(',',':')))
+                  org_st,org=read(token,'/accounts/'+aid+'/access/organizations')
+                  team=(org.get('result') or {}).get('auth_domain') if org_st==200 else None
+                  print('S9_CF_ACCESS_ORGANIZATION='+json.dumps({
+                      'credential':credential_name,'account':account_label,
+                      'http':org_st,
+                      'team_domain_matches_pages_redirect':bool(team and 'hive-alveare-pages' in str(team))},
+                      sort_keys=True,separators=(',',':')))
           print('S9_CF_ACCESS_AUDIT_MODE=GET_ONLY')
           print('S9_CF_ACCESS_TOKEN_VALUES_EXPOSED=FALSE')
           print('S9_CF_ACCESS_APPLICATION_CHANGED=FALSE')
