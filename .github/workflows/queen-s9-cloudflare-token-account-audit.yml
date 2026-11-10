@@ -1,0 +1,103 @@
+name: Queen S9 Cloudflare Legacy Token and Access Ownership Audit - READ ONLY
+on:
+  push:
+    branches: [audit/s9-compare-cloudflare-legacy-token-20261110]
+    paths:
+      - '.github/workflows/queen-s9-cloudflare-token-account-audit.yml'
+permissions:
+  contents: read
+jobs:
+  compare-trusted-cloudflare-token-scopes:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      HIVE_CF_AIG_TOKEN: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+      HIVE_CF_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      PFARMA_CLOUDFLARE_API_TOKEN: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+    steps:
+      - name: Compare historically configured HIVE/S7 token with S8 token, without printing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error
+          ROOT='https://api.cloudflare.com/client/v4'
+          known={'hive':'6f6de52331e398c395d3de97c83011cd',
+                 'alternate':'796dd8ead6f58d66e5213ea2abc882a9'}
+          if re.fullmatch('[0-9a-f]{32}',os.getenv('HIVE_CF_ACCOUNT_ID','')):
+              known['hive_legacy_secret']=os.environ['HIVE_CF_ACCOUNT_ID']
+          creds={'legacy_s7':os.getenv('HIVE_CF_AIG_TOKEN',''),
+                 's8_primary':os.getenv('CLOUDFLARE_API_TOKEN',''),
+                 's8_secondary':os.getenv('PFARMA_CLOUDFLARE_API_TOKEN','')}
+          print('S9_ACCESS_CI_TOKEN_NAMES_PRESENT='+json.dumps({k:bool(v) for k,v in creds.items()}))
+          print('S9_ACCESS_CI_SERVICE_TOKEN_ID_PRESENT='+str(bool(os.getenv('CF_ACCESS_CLIENT_ID'))))
+          def read(token,path):
+              req=urllib.request.Request(ROOT+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'},method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=23) as res:
+                      return res.status,json.load(res)
+              except urllib.error.HTTPError as exc:
+                  return exc.code,{}
+              except Exception:return 0,{}
+          examined=set()
+          for credential_name,token in creds.items():
+              if not token:
+                  print('S9_CREDENTIAL_'+credential_name+'=MISSING');continue
+              status,response=read(token,'/accounts?per_page=50')
+              ids=[]
+              if status==200 and response.get('success') is True:
+                  ids=[a.get('id') for a in response.get('result') or [] if isinstance(a,dict) and
+                       re.fullmatch('[0-9a-f]{32}',str(a.get('id') or ''))]
+              targets=dict(known)
+              for n,i in enumerate(ids):
+                  targets['enumerated_'+str(n)]=i
+              print('S9_CREDENTIAL_'+credential_name+'_ACCOUNT_LIST_HTTP='+str(status))
+              print('S9_CREDENTIAL_'+credential_name+'_ACCOUNT_COUNT='+str(len(ids)))
+              for account_label,aid in targets.items():
+                  marker=(credential_name,aid)
+                  if marker in examined:continue
+                  examined.add(marker)
+                  page_status,pages=read(token,'/accounts/'+aid+'/pages/projects/hive-alveare')
+                  got_pages=(page_status==200 and pages.get('success') is True and
+                             (pages.get('result') or {}).get('name')=='hive-alveare')
+                  apps_status,apps=read(token,'/accounts/'+aid+'/access/apps?per_page=100')
+                  app_list=apps.get('result') or [] if apps_status==200 else []
+                  matching=[]
+                  if isinstance(app_list,list):
+                      for app in app_list:
+                          if not isinstance(app,dict):continue
+                          names=' '.join([str(app.get('domain') or ''),str(app.get('name') or ''),
+                                          str(app.get('destinations') or '')])
+                          if 'hive-alveare' in names.lower():
+                              matching.append(app)
+                  print('S9_CF_ACCOUNT_AUDIT='+json.dumps({
+                      'credential':credential_name,'account':account_label,
+                      'pages_http':page_status,'pages_match':got_pages,
+                      'access_apps_http':apps_status,
+                      'access_apps_count':len(app_list) if isinstance(app_list,list) else -1,
+                      'hive_access_apps':len(matching)},sort_keys=True,separators=(',',':')))
+                  for app in matching:
+                      print('S9_CF_HIVE_ACCESS_APP='+json.dumps({
+                       'credential':credential_name,'account':account_label,
+                       'name':str(app.get('name') or '')[:80],
+                       'domain':str(app.get('domain') or '')[:150],
+                       'type':app.get('type'),
+                       'destination_count':len(app.get('destinations') or []),
+                       'policies_count':len(app.get('policies') or [])},sort_keys=True,separators=(',',':')))
+                  if matching:
+                      cid=os.getenv('CF_ACCESS_CLIENT_ID','')
+                      service_st,service=read(token,'/accounts/'+aid+'/access/service_tokens?per_page=100')
+                      matches=[]
+                      if service_st==200:
+                          matches=[t for t in service.get('result') or [] if isinstance(t,dict) and
+                                   t.get('client_id')==cid and bool(cid)]
+                      print('S9_CF_SERVICE_TOKEN_LOOKUP='+json.dumps({
+                          'credential':credential_name,'account':account_label,
+                          'http':service_st,'existing_ci_token_match':len(matches)==1},sort_keys=True,separators=(',',':')))
+          print('S9_CF_ACCESS_AUDIT_MODE=GET_ONLY')
+          print('S9_CF_ACCESS_TOKEN_VALUES_EXPOSED=FALSE')
+          print('S9_CF_ACCESS_APPLICATION_CHANGED=FALSE')
+          PY
