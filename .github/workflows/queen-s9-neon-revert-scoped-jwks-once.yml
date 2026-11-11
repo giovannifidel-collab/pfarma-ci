@@ -1,0 +1,95 @@
+name: Queen S9 Neon Restore Original Single Production JWKS Only
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-neon-revert-scoped-jwks-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-single-original-jwks-restore
+  cancel-in-progress: false
+jobs:
+  revert-only-s9-preview-jwks:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      NEON_TOKEN: ${{ secrets.HIVE_NEON_PLATFORM_API_KEY }}
+      ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Exact immutable prod JWKS, remove S9 branch-only key, independently verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error,subprocess,tempfile,time
+          API='https://console.neon.tech/api/v2/projects/muddy-recipe-65646643/jwks'
+          owner=os.getenv('NEON_TOKEN','')
+          cid=os.getenv('ID','');secret=os.getenv('SECRET','')
+          if not owner or not cid or not secret: raise SystemExit('S9_JWKS_RECOVERY_SECRETS_MISSING')
+          prod_id='9a335fd8-a540-4200-881f-a8b384264271'
+          scoped_id='a18fda7a-85d0-4688-8a23-2987cfc8b3b3'
+          prod_aud='32da6a9d6274076ca909cd4f7e1870765e26792f7325e14e72abe0fd2569c5ba'
+          prev_aud='b7194f9f6080bf91f189e8582c8d7694b1540ebba989fc34cce29afabe99cf32'
+          def req(method,url):
+            request=urllib.request.Request(url,method=method,
+               headers={'Authorization':'Bearer '+owner,'Accept':'application/json'})
+            try:
+              with urllib.request.urlopen(request,timeout=22) as r:
+                try:return r.status,json.load(r)
+                except:return r.status,{}
+            except urllib.error.HTTPError as e:
+              try:return e.code,json.load(e)
+              except:return e.code,{}
+            except Exception:return 0,{}
+          def must(x,label):
+            if not x:raise RuntimeError(label)
+          code,obj=req('GET',API)
+          must(code==200 and isinstance(obj.get('jwks'),list),'JWKS_NO_READ')
+          found={z.get('id'):z for z in obj['jwks'] if isinstance(z,dict)}
+          must(set(found)=={prod_id,scoped_id},'JWKS_UNEXPECTED_KEYS_DENY')
+          prod=found[prod_id];preview=found[scoped_id]
+          must(prod.get('branch_id') is None and prod.get('jwt_audience')==prod_aud and
+               prod.get('provider_name')=='other','PROD_JWKS_PROVENANCE_INVALID')
+          must(preview.get('branch_id')=='br-dark-waterfall-afr6i3ln' and
+               preview.get('jwt_audience')==prev_aud and
+               preview.get('provider_name')=='Queen S9 Cloudflare Preview Access branch-scoped',
+               'SCOPED_S9_JWKS_PROVENANCE_INVALID')
+          print('S9_JWKS_ORIGINAL_PRODUCTION_AND_PREVIEW_EXACT_MATCH=PASS')
+          status,_=req('DELETE',API+'/'+scoped_id)
+          print('S9_JWKS_SCOPED_PREVIEW_DELETE_HTTP='+str(status))
+          must(status==200,'S9_JWKS_SCOPED_PREVIEW_DELETE_FAILED')
+          for attempt in range(6):
+            code,body=req('GET',API)
+            if code==200 and isinstance(body.get('jwks'),list) and
+                 len(body['jwks'])==1 and body['jwks'][0].get('id')==prod_id:break
+            time.sleep(3)
+          must(code==200 and isinstance(body.get('jwks'),list) and len(body['jwks'])==1 and
+                body['jwks'][0].get('id')==prod_id and
+                body['jwks'][0].get('jwt_audience')==prod_aud and
+                body['jwks'][0].get('branch_id') is None,
+               'S9_ORIGINAL_JWKS_READBACK_UNVERIFIED')
+          print('S9_JWKS_ORIGINAL_PRODUCTION_ONLY_RESTORED=PASS')
+          def http():
+            with tempfile.TemporaryDirectory() as d:
+              p=subprocess.run(['curl','-sS','--max-time','20','-o',d+'/b','-w','%{http_code}',
+                 '-H','Cf-Access-Client-Id: '+cid,
+                 '-H','Cf-Access-Client-Secret: '+secret,
+                 'https://hive-alveare.pages.dev/api/runtime-health'],
+                 capture_output=True,text=True,timeout=23)
+              status=int(p.stdout.strip()) if p.returncode==0 and p.stdout.strip().isdigit() else 0
+              try:body=json.load(open(d+'/b'))
+              except Exception:body={}
+              return status,body
+          ok=False
+          for i in range(9):
+            code,result=http()
+            print('S9_JWKS_PRODUCTION_HTTP_ATTEMPT_'+str(i+1)+'='+str(code))
+            if code==200 and isinstance(result,dict) and result.get('ok') is True:
+              ok=True;break
+            time.sleep(6)
+          print('S9_JWKS_PRODUCTION_HEALTH_RESTORED='+str(ok))
+          print('S9_NEON_PRODUCTION_DATABASE_WRITES=ZERO')
+          print('S9_CLOUDFLARE_PRODUCTION_CONFIG_WRITES=ZERO')
+          must(ok,'S9_PROD_HEALTH_STILL_UNVERIFIED_OR_REQUIRES_NEON_DATA_API_REFRESH')
+          PY
