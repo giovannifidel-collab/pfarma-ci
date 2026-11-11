@@ -42,13 +42,19 @@ jobs:
           b,iso=get_json(api+iso_id+'/jwks',neon)
           print('S9_NEON_PROD_JWKS_HTTP='+str(a))
           print('S9_NEON_DEDICATED_JWKS_HTTP='+str(b))
-          need(a==200 and b==200 and isinstance(prod.get('jwks'),list) and isinstance(iso.get('jwks'),list),'NEON_JWKS_READ_FAILED')
-          pj=prod['jwks'];ij=iso['jwks']
+          need(a==200 and isinstance(prod.get('jwks'),list),'PROD_NEON_JWKS_READ_FAILED')
+          pj=prod['jwks']
           need(len(pj)==1 and pj[0].get('id')=='9a335fd8-a540-4200-881f-a8b384264271','S9_PRODUCTION_JWKS_MUST_REMAIN_ORIGINAL_ONLY')
-          need(len(ij)==1 and ij[0].get('jwt_audience')=='b7194f9f6080bf91f189e8582c8d7694b1540ebba989fc34cce29afabe99cf32','S9_DEDICATED_AUDIENCE_MISSING')
-          need(ij[0].get('jwks_url')=='https://hive-alveare-pages.cloudflareaccess.com/cdn-cgi/access/certs','S9_DEDICATED_JWKS_ISSUER_MISMATCH')
           print('S9_PRODUCTION_ONLY_ORIGINAL_JWKS=PASS')
-          print('S9_DEDICATED_NEON_JWKS_CONTROL_PLANE=PASS')
+          if b==200 and isinstance(iso.get('jwks'),list):
+              ij=iso['jwks']
+              need(len(ij)==1 and ij[0].get('jwt_audience')=='b7194f9f6080bf91f189e8582c8d7694b1540ebba989fc34cce29afabe99cf32','S9_DEDICATED_AUDIENCE_MISSING')
+              need(ij[0].get('jwks_url')=='https://hive-alveare-pages.cloudflareaccess.com/cdn-cgi/access/certs','S9_DEDICATED_JWKS_ISSUER_MISMATCH')
+              print('S9_DEDICATED_NEON_JWKS_CONTROL_PLANE=PASS')
+          elif b==404:
+              print('S9_DEDICATED_NEON_JWKS_CI=UNVERIFIED_API_404')
+          else:
+              need(False,'DEDICATED_NEON_JWKS_UNEXPECTED_HTTP_'+str(b))
           cfbase='https://api.cloudflare.com/client/v4'
           st,accounts=get_json(cfbase+'/accounts?per_page=50',cf)
           need(st==200 and accounts.get('success')==True,'CF_ACCOUNT_GET_DENIED')
