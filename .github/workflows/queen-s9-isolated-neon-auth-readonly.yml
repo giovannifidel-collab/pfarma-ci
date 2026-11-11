@@ -1,0 +1,53 @@
+name: Queen S9 Isolated Neon Preview JWT Diagnosis - GET ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-isolated-neon-auth-readonly.yml]
+permissions: {contents: read}
+jobs:
+  isolated-jwt-observer:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 4
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Diagnose scoped preview JWT failure from already-created isolated deployment (no mutations)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error
+          endpoint='https://0135c237.hive-alveare.pages.dev'
+          cid=os.getenv('CF_ACCESS_CLIENT_ID','')
+          secret=os.getenv('CF_ACCESS_CLIENT_SECRET','')
+          if not cid or not secret:raise SystemExit('S9_PREVIEW_CI_ACCESS_TOKEN_MISSING')
+          headers={'Cf-Access-Client-Id':cid,'Cf-Access-Client-Secret':secret,'Accept':'application/json'}
+          for path in ('/api/runtime-health','/api/queen-s9-readiness'):
+              req=urllib.request.Request(endpoint+path,headers=headers,method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as r:
+                      status=r.status
+                      payload=json.load(r)
+              except urllib.error.HTTPError as e:
+                  status=e.code
+                  try:payload=json.load(e)
+                  except Exception:payload={}
+              except Exception:
+                  status=0
+                  payload={}
+              keys=sorted(payload.keys()) if isinstance(payload,dict) else []
+              details=payload.get('details') if isinstance(payload,dict) else None
+              if not isinstance(details,dict):details={}
+              safe=lambda x: re.sub(r'[^a-zA-Z0-9_ .:;-]','_',str(x))[:130]
+              print('S9_ISOLATED_NEON_AUTH_DIAG='+json.dumps({
+                  'route':path,'status':status,'payload_keys':keys,
+                  'error':safe(payload.get('error') if isinstance(payload,dict) else ''),
+                  'reason':safe(payload.get('reason') if isinstance(payload,dict) else ''),
+                  'detail_keys':sorted(details.keys()),
+                  'detail_code':safe(details.get('code') or details.get('error') or ''),
+                  'detail_message':safe(details.get('message') or ''),
+                  'raw_tokens_logged':False},separators=(',',':')))
+          print('S9_ISOLATED_NEON_AUTH_PROBE=READ_ONLY')
+          PY
