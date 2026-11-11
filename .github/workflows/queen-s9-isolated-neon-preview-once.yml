@@ -129,7 +129,7 @@ jobs:
           require('HIVE_DATA_API_URL' not in preview_vars,'PREVIEW_DB_BASELINE_CHANGED')
           original_preview=json.dumps(preview,sort_keys=True)
           original_prod=json.dumps(prod,sort_keys=True)
-          print('S9_ISOLATED_NEON_BRANCH=EXISTING_S7_NONPRODUCTION')
+          print('S9_ISOLATED_NEON_BRANCH=FRESH_S9_PREVIEW_NONPRODUCTION')
           print('S9_PRODUCTION_CONFIG_BASELINE_SHA_MATCH=TRUE')
           print('S9_PREVIEW_STARTS_WITHOUT_NEON_BINDING=TRUE')
           def patch_value(value):
