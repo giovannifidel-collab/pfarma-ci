@@ -1,0 +1,45 @@
+name: Queen S9 Production HTTP Baseline Independence READ ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-production-baseline-readonly.yml]
+permissions: {contents: read}
+jobs:
+  observe-production:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      CLIENT: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      OWNER_ACCESS: ${{ secrets.HIVE_CF_ACCESS_POLICY_TOKEN }}
+    steps:
+      - name: Compare current prod Cloudflare Access authenticated endpoints and policy, no mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,subprocess,tempfile,time,re
+          cli=os.getenv('CLIENT','');sec=os.getenv('SECRET','')
+          if not cli or not sec: raise SystemExit('S9_PROD_ACCESS_SECRETS_MISSING')
+          host='https://hive-alveare.pages.dev'
+          for path in ('runtime-health','queen-s7-e2e','queen-s8-portfolio'):
+              for authed in (False,True):
+                  with tempfile.TemporaryDirectory() as t:
+                      args=['curl','-sS','--max-time','25','-D',t+'/headers','-o',t+'/body','-w','%{http_code}',
+                          '-H','Accept: application/json']
+                      if authed:args+=['-H','Cf-Access-Client-Id: '+cli,'-H','Cf-Access-Client-Secret: '+sec]
+                      args+=[host+'/api/'+path]
+                      p=subprocess.run(args,capture_output=True,text=True,timeout=27)
+                      status=int(p.stdout.strip()) if p.returncode==0 and p.stdout.strip().isdigit() else 0
+                      try:body=json.load(open(t+'/body'))
+                      except Exception:body={}
+                      if not isinstance(body,dict):body={}
+                      rawkeys=sorted([k for k in body.keys() if len(k)<70])
+                      safe=lambda v:re.sub('[^a-zA-Z0-9_ -]','_',str(v))[:120]
+                      label=('AUTH' if authed else 'ANON')+'_'+path.upper().replace('-','_')
+                      out={'status':status,'ok':body.get('ok'),'keys':rawkeys,
+                           'error':safe(body.get('error') or ''),'reason':safe(body.get('reason') or '')}
+                      print('S9_PROD_BASELINE_'+label+'='+json.dumps(out,separators=(',',':')))
+          print('S9_PROD_BASELINE_AUDIT_GET_ONLY=TRUE')
+          PY
