@@ -1,0 +1,60 @@
+name: Queen S9 Neon JWKS Audit and Production 401 Diagnosis GET ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-neon-jwks-and-prod-audience-readonly.yml]
+permissions: {contents: read}
+jobs:
+  inspect-audience:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      NEON_ADMIN: ${{ secrets.HIVE_NEON_PLATFORM_API_KEY }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Inspect issuer and audience metadata only, no secrets/JWK material
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,urllib.request,urllib.error,json,subprocess,tempfile,re
+          token=os.getenv('NEON_ADMIN','')
+          if not token:raise SystemExit('S9_NEON_AUDIT_TOKEN_MISSING')
+          path='https://console.neon.tech/api/v2/projects/muddy-recipe-65646643/jwks'
+          req=urllib.request.Request(path,method='GET',headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+          try:
+              with urllib.request.urlopen(req,timeout=25) as r: status=r.status;body=json.load(r)
+          except urllib.error.HTTPError as e: status=e.code;body={}
+          print('S9_NEON_JWKS_AUDIT_HTTP='+str(status))
+          if status!=200 or not isinstance(body.get('jwks'),list):raise SystemExit('S9_NEON_JWKS_LIST_UNREADABLE')
+          for x in body['jwks']:
+              if not isinstance(x,dict):continue
+              print('S9_NEON_JWKS_AUDIT_ENTRY='+json.dumps({
+                  'id':x.get('id'),
+                  'branch':x.get('branch_id'),
+                  'provider':x.get('provider_name'),
+                  'audience':x.get('jwt_audience'),
+                  'jwks_domain':(x.get('jwks_url') or '').split('/')[2] if isinstance(x.get('jwks_url'),str) and '://' in x.get('jwks_url') else None
+                  },sort_keys=True,separators=(',',':')))
+          c=os.environ['CF_ACCESS_CLIENT_ID'];s=os.environ['CF_ACCESS_CLIENT_SECRET']
+          for origin in ('https://hive-alveare.pages.dev','https://0662f713.hive-alveare.pages.dev'):
+              with tempfile.TemporaryDirectory() as t:
+                  args=['curl','-sS','--max-time','20','-o',t+'/body','-w','%{http_code}',
+                    '-H','Accept: application/json','-H','Cf-Access-Client-Id: '+c,
+                    '-H','Cf-Access-Client-Secret: '+s,
+                    origin+'/api/runtime-health']
+                  p=subprocess.run(args,capture_output=True,text=True,timeout=24)
+                  status=int(p.stdout.strip()) if p.returncode==0 and p.stdout.strip().isdigit() else 0
+                  try:r=json.load(open(t+'/body'))
+                  except Exception:r={}
+                  details=r.get('details') if isinstance(r,dict) else {}
+                  if not isinstance(details,dict):details={}
+                  msg=str(details.get('message',''))
+                  msg=re.sub(r'[^a-zA-Z0-9_ .:;-]','_',msg)[:450]
+                  print('S9_PROD_AUD_DIAG='+json.dumps({'host':'prod' if '0662' not in origin else 'old_preview',
+                       'status':status,'error':r.get('error') if isinstance(r,dict) else None,
+                       'code':details.get('code'),'message':msg},separators=(',',':')))
+          print('S9_NEON_JWKS_AUDIT_MODE=READ_ONLY')
+          PY
