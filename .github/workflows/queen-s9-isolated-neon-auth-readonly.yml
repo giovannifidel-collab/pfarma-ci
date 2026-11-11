@@ -19,7 +19,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import os,json,re,subprocess,tempfile
-          endpoint='https://0135c237.hive-alveare.pages.dev'
+          endpoint='https://e93dbde6.hive-alveare.pages.dev'
           cid=os.getenv('CF_ACCESS_CLIENT_ID','')
           secret=os.getenv('CF_ACCESS_CLIENT_SECRET','')
           if not cid or not secret:raise SystemExit('S9_PREVIEW_CI_ACCESS_TOKEN_MISSING')
