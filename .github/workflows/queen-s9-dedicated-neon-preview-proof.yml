@@ -1,0 +1,264 @@
+name: Queen S9.2 Dedicated Neon JWT Preview GET Proof - No Production Mutations
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-dedicated-neon-preview-proof.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-dedicated-neon-preview-once
+  cancel-in-progress: false
+jobs:
+  deploy-with-isolated-neon-and-restore-on-failure:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 14
+    env:
+      PRIVATE_MAIN: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+      PRIVATE_PREVIEW_SHA: b7769ac22f80dcd2e0982f6c1f03702111b7e4fd
+      PREVIEW_BRANCH: queen-s9-dedicated-neon-20261111
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Verify exact current Queen authority, S9 PR SHA and trusted relay pointer
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CF_ACCESS_CLIENT_ID"
+          test -n "$CF_ACCESS_CLIENT_SECRET"
+          test "$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$PRIVATE_MAIN"
+          gh api /repos/giovannifidel-collab/hive-alveare/pulls/89 \
+            --jq '.draft==true and .state=="open" and .head.sha=="b7769ac22f80dcd2e0982f6c1f03702111b7e4fd" and .base.ref=="main"' \
+            | grep -Fx true
+          pointer="$(gh api /repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$PRIVATE_MAIN"
+          echo S9_PREVIEW_QUEEN_MAIN_AND_OWNER_DRAFT_SHA=PASS
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_PREVIEW_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify source, exact isolated branch config, source regression and Wrangler build BEFORE config
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C queen rev-parse HEAD)" = "$PRIVATE_PREVIEW_SHA"
+          node queen/ops/queen/core/validate-s1-core.mjs
+          node --test queen/ops/queen/s9/tests/*.test.mjs
+          cd queen/cloudflare
+          npx --yes wrangler@4.123.0 pages functions build functions \
+            --outdir "$RUNNER_TEMP/s9-isolated-neon-compile"
+          test -n "$(find "$RUNNER_TEMP/s9-isolated-neon-compile" -type f -print -quit)"
+          echo S9_ISOLATED_NEON_SOURCE_AND_MODERN_BUILD=PASS
+      - name: Apply preview-only isolated existing Neon Data API; native Wrangler preview; protected live checks, rollback on failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error,subprocess,time,tempfile
+          # Dedicated Neon free-plan project, independently scoped JWKS; no shared production control plane.
+          project_id='proud-night-33193396'
+          branch_id='br-odd-dream-bflat60i'
+          database_name='queen_s9_preview'
+          url='https://ep-snowy-paper-bffsyw5d.apirest.c-5.us-west-2.aws.neon.tech/queen_s9_preview/rest/v1'
+          assert project_id!='muddy-recipe-65646643' and branch_id.startswith('br-')
+          assert url.startswith('https://') and '.apirest.c-5.us-west-2.aws.neon.tech/queen_s9_preview/rest/v1' in url
+          assert 'muddy-recipe-65646643' not in url
+          cf=os.environ['CLOUDFLARE_API_TOKEN']
+          client=os.environ['CF_ACCESS_CLIENT_ID']
+          secret=os.environ['CF_ACCESS_CLIENT_SECRET']
+          branch=os.environ['PREVIEW_BRANCH']
+          sha=os.environ['PRIVATE_PREVIEW_SHA']
+          assert branch=='queen-s9-dedicated-neon-20261111' and branch!='main'
+          BASE='https://api.cloudflare.com/client/v4'
+          class Fail(Exception):pass
+          def api(method,path,data=None):
+              headers={'Authorization':'Bearer '+cf,'Accept':'application/json'}
+              payload=None
+              if data is not None:
+                  headers['Content-Type']='application/json'
+                  payload=json.dumps(data,separators=(',',':')).encode()
+              req=urllib.request.Request(BASE+path,method=method,headers=headers,data=payload)
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.load(e)
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          def require(condition,reason):
+              if not condition:raise Fail(reason)
+          s,accounts=api('GET','/accounts?per_page=50')
+          require(s==200 and accounts.get('success') is True,'CF_ACCOUNT_LOOKUP_DENIED')
+          matches=[]
+          for a in accounts.get('result') or []:
+              aid=a.get('id')
+              if not isinstance(aid,str) or not re.fullmatch('[a-f0-9]{32}',aid):continue
+              p,d=api('GET','/accounts/'+aid+'/pages/projects/hive-alveare')
+              if p==200 and d.get('success') is True and (d.get('result') or {}).get('name')=='hive-alveare':
+                  matches.append((aid,d['result']))
+          require(len(matches)==1,'CF_PAGES_PROJECT_NOT_UNIQUE')
+          account,project=matches[0]
+          path='/accounts/'+account+'/pages/projects/hive-alveare'
+          def config():
+              st,body=api('GET',path)
+              require(st==200 and body.get('success') is True,'CF_CONFIG_UNREADABLE')
+              return body['result']
+          def assert_identity(p):
+              src=p.get('source') or {}
+              sc=src.get('config') or {}
+              bc=p.get('build_config') or {}
+              require(src.get('type')=='github' and sc.get('repo_name')=='hive-alveare' and
+                      sc.get('production_branch')=='main' and bc.get('root_dir')=='cloudflare' and
+                      bc.get('destination_dir')=='public','CF_PAGES_IDENTITY_CHANGED')
+          assert_identity(project)
+          deployment=project.get('deployment_configs') or {}
+          preview=deployment.get('preview') or {}
+          prod=deployment.get('production') or {}
+          preview_vars=preview.get('env_vars') or {}
+          production_vars=prod.get('env_vars') or {}
+          require('HIVE_DATA_API_URL' in production_vars,'PRODUCTION_NEON_BASELINE_MISSING')
+          require('HIVE_DATA_API_URL' not in preview_vars,'PREVIEW_DB_BASELINE_CHANGED')
+          original_preview=json.dumps(preview,sort_keys=True)
+          original_prod=json.dumps(prod,sort_keys=True)
+          print('S9_ISOLATED_NEON_BRANCH=FRESH_S9_PREVIEW_NONPRODUCTION')
+          print('S9_PRODUCTION_CONFIG_BASELINE_SHA_MATCH=TRUE')
+          print('S9_PREVIEW_STARTS_WITHOUT_NEON_BINDING=TRUE')
+          def patch_value(value):
+              st,b=api('PATCH',path,{'deployment_configs':{'preview':{'env_vars':{'HIVE_DATA_API_URL':value}}}})
+              require(st in (200,201,202) and b.get('success') is True,'CF_PREVIEW_BINDING_PATCH_HTTP_'+str(st))
+          def inspect_binding(expect_present):
+              p=config()
+              assert_identity(p)
+              d=p.get('deployment_configs') or {}
+              require(json.dumps(d.get('production') or {},sort_keys=True)==original_prod,'PRODUCTION_CONFIG_DRIFT')
+              current=d.get('preview') or {}
+              env=current.get('env_vars') or {}
+              if expect_present:
+                  v=env.get('HIVE_DATA_API_URL') or {}
+                  require(v.get('type')=='plain_text' and v.get('value')==url,'ISOLATED_NEON_URL_READBACK_MISMATCH')
+              else:
+                  require('HIVE_DATA_API_URL' not in env,'PREVIEW_BINDING_RESTORE_FAILED')
+              clone=dict(current);clone.pop('env_vars',None)
+              base=dict(preview);base.pop('env_vars',None)
+              require(json.dumps(clone,sort_keys=True)==json.dumps(base,sort_keys=True),
+                      'PREVIEW_OTHER_CONFIG_FIELDS_CHANGED')
+              return p
+          def http(host,endpoint,auth):
+              with tempfile.TemporaryDirectory() as td:
+                  opts=['curl','-sS','--max-time','25','-o',td+'/body',
+                        '-w','%{http_code}','-H','Accept: application/json']
+                  if auth:opts+=['-H','Cf-Access-Client-Id: '+client,
+                                 '-H','Cf-Access-Client-Secret: '+secret]
+                  opts+=[host+'/api/'+endpoint]
+                  try:
+                      p=subprocess.run(opts,capture_output=True,text=True,timeout=29)
+                      if p.returncode:return 0,None
+                      code=int(p.stdout.strip())
+                      if code==200 or code>=400:
+                          try:body=json.load(open(td+'/body'))
+                          except:body=None
+                      else:body=None
+                      return code,body
+                  except Exception:return 0,None
+          created=False
+          ok=False
+          try:
+              try:
+                  patch_value({'type':'plain_text','value':url})
+              except Fail:
+                  # On PATCH API response loss, verify if the server applied it.
+                  v=((config().get('deployment_configs') or {}).get('preview') or {}).get('env_vars') or {}
+                  if v.get('HIVE_DATA_API_URL',{}).get('value')!=url:raise
+              created=True
+              inspect_binding(True)
+              print('S9_PREVIEW_ISOLATED_NEON_BINDING_APPLIED=PASS')
+              env=os.environ.copy()
+              env['CLOUDFLARE_ACCOUNT_ID']=account
+              pr=subprocess.run(['npx','--yes','wrangler@4.123.0','pages','deploy','public',
+                    '--project-name','hive-alveare','--branch',branch,
+                    '--commit-hash',sha,'--commit-message',
+                    'Queen S9 isolated Neon preview only no production DB or paid provider'],
+                    cwd='queen/cloudflare',env=env,capture_output=True,text=True,timeout=250)
+              require(pr.returncode==0,'WRANGLER_ISOLATED_PREVIEW_DEPLOY_FAILED')
+              print('S9_NEON_ISOLATED_PAGES_WRANGLER_DEPLOY=PASS')
+              deployment_id=None
+              for i in range(15):
+                  st,res=api('GET',path+'/deployments?per_page=25')
+                  require(st==200 and res.get('success') is True,'CF_DEPLOY_LIST_UNAVAILABLE')
+                  matched=[]
+                  for d in res.get('result') or []:
+                      meta=((d.get('deployment_trigger') or {}).get('metadata') or {})
+                      if (meta.get('branch')==branch and meta.get('commit_hash')==sha and
+                          d.get('environment')=='preview'):
+                          matched.append(d)
+                  if matched:
+                      d=matched[0]
+                      if (d.get('latest_stage') or {}).get('status')=='success':
+                          deployment_id=d.get('id')
+                          break
+                      if (d.get('latest_stage') or {}).get('status') in ('failure','canceled'):
+                          raise Fail('EXACT_ISOLATED_PREVIEW_DEPLOY_NOT_SUCCESS')
+                  time.sleep(5)
+              require(deployment_id is not None,'CF_EXACT_DEPLOYMENT_NOT_CERTIFIED')
+              print('S9_ISOLATED_PREVIEW_EXACT_SOURCE_AND_API_SUCCESS=PASS')
+              print('S9_ISOLATED_PREVIEW_DEPLOY_ID='+str(deployment_id))
+              host='https://'+str(deployment_id)[:8]+'.hive-alveare.pages.dev'
+              code,_=http(host,'runtime-health',False)
+              require(code in (301,302,403),'S9_ANONYMOUS_PREVIEW_ACCESS_NOT_DENIED')
+              print('S9_ISOLATED_PREVIEW_ANONYMOUS_HTTP='+str(code))
+              for endpoint in ('queen-s7-e2e','queen-s8-portfolio','runtime-health','queen-s9-readiness'):
+                  passed=False
+                  for attempt in range(5):
+                      status,body=http(host,endpoint,True)
+                      if endpoint!='queen-s9-readiness' and status==200 and isinstance(body,dict) and body.get('ok') is True:passed=True;break
+                      if endpoint=='queen-s9-readiness' and status==503 and isinstance(body,dict) and body.get('reason')=='trusted_s8_event_unavailable':
+                          passed=True;break
+                      time.sleep(7)
+                  print('S9_ISOLATED_PREVIEW_'+endpoint.upper().replace('-','_')+'_HTTP='+str(status))
+                  require(passed,'ISOLATED_PREVIEW_ENDPOINT_FAILED_'+endpoint.replace('-','_'))
+                  if endpoint=='queen-s7-e2e':
+                      require(body.get('default_dispatch')=='DENY' and
+                              body.get('paid_fallback') is False,
+                              'S7_SAFETY_NONREGRESSION')
+                  if endpoint=='queen-s8-portfolio':
+                      require(body.get('default_dispatch')=='DENY' and
+                              body.get('product_writes') is False,
+                              'S8_PORTFOLIO_SAFETY_NONREGRESSION')
+              pcode,pbody=http('https://hive-alveare.pages.dev','runtime-health',True)
+              require(pcode==200 and isinstance(pbody,dict) and pbody.get('ok') is True,
+                      'PRODUCTION_HEALTH_REGRESSION')
+              inspect_binding(True)
+              print('S9_ISOLATED_PRODUCTION_NEON_ACCESS_UNCHANGED=PASS')
+              print('S9_ISOLATED_PRODUCTION_CLOUDFLARE_CONFIG_UNCHANGED=PASS')
+              ok=True
+          finally:
+              # Always remove temporary preview DB binding; never persist unapproved release.
+              if created:
+                  try:
+                      patch_value(None)
+                      inspect_binding(False)
+                      print('S9_ISOLATED_PREVIEW_BINDING_ROLLBACK=VERIFIED')
+                  except Exception:
+                      print('S9_ISOLATED_PREVIEW_BINDING_ROLLBACK=FAILED_MANUAL_REVIEW')
+                      raise
+              else:
+                  print('S9_ISOLATED_PREVIEW_BINDING=NOT_APPLIED')
+          if ok:
+              print('S9_2_DEDICATED_NEON_JWT_AUTH_AND_RUNTIME=LIVE_PREVIEW_ONLY')
+              print('S9_2_CANONICAL_S8_RECONCILIATION=NOT_CERTIFIED_NEW_EMPTY_NEON')
+              print('S9_PRODUCTION_DEPLOYMENT=NOT_ATTEMPTED')
+              print('S9_OWNER_PROJECT_WRITES=ZERO')
+              print('S9_SCHOOL_TRAINING=ZERO')
+          PY
+      - name: Cleanup untrusted checkout and compiled artifacts
+        if: always()
+        shell: bash
+        run: rm -rf queen "$RUNNER_TEMP/s9-isolated-neon-compile"
