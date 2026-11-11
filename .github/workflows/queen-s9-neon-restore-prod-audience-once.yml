@@ -1,0 +1,105 @@
+name: Queen S9 Restore Neon Original Production JWKS Scope ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: ['.github/workflows/queen-s9-neon-restore-prod-audience-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-neon-original-prod-jwks-recovery
+  cancel-in-progress: false
+jobs:
+  revert-accidental-unscoped-preview-jwks:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      NEON_OWNER: ${{ secrets.HIVE_NEON_PLATFORM_API_KEY }}
+      ACCESS_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      ACCESS_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Remove only duplicate unscoped preview JWKS created during S9; retain original prod and branch-scoped preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error,re,subprocess,tempfile,time
+          owner=os.getenv('NEON_OWNER','')
+          cid=os.getenv('ACCESS_ID','')
+          sec=os.getenv('ACCESS_SECRET','')
+          if not owner or not cid or not sec:raise SystemExit('S9_NEON_RECOVERY_CREDENTIAL_MISSING')
+          URL='https://console.neon.tech/api/v2/projects/muddy-recipe-65646643/jwks'
+          PREVIEW_AUD='b7194f9f6080bf91f189e8582c8d7694b1540ebba989fc34cce29afabe99cf32'
+          PROD_AUD='32da6a9d6274076ca909cd4f7e1870765e26792f7325e14e72abe0fd2569c5ba'
+          BR='br-dark-waterfall-afr6i3ln'
+          TARGET_ID='bce9c308-8599-4bc8-8df8-05d68e338a41'
+          PROD_ID='9a335fd8-a540-4200-881f-a8b384264271'
+          PREVIEW_ID='a18fda7a-85d0-4688-8a23-2987cfc8b3b3'
+          CERT='https://hive-alveare-pages.cloudflareaccess.com/cdn-cgi/access/certs'
+          def req(method,url):
+              r=urllib.request.Request(url,method=method,headers={'Authorization':'Bearer '+owner,'Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(r,timeout=22) as f:
+                      try:return f.status,json.load(f)
+                      except:return f.status,{}
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.load(e)
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          def require(condition,reason):
+              if not condition:raise RuntimeError(reason)
+          st,d=req('GET',URL)
+          require(st==200 and isinstance(d.get('jwks'),list),'JWKS_GET_DENIED')
+          all=d['jwks']
+          match={x.get('id'):x for x in all if isinstance(x,dict)}
+          require(len(match)==3 and set(match)=={TARGET_ID,PROD_ID,PREVIEW_ID},
+                  'JWKS_SET_UNEXPECTED_NO_DELETE')
+          prod=match[PROD_ID];preview=match[PREVIEW_ID];target=match[TARGET_ID]
+          require(prod.get('branch_id') is None and prod.get('jwt_audience')==PROD_AUD and
+                  prod.get('jwks_url')==CERT,'PRODUCTION_JWKS_UNEXPECTED')
+          require(preview.get('branch_id')==BR and preview.get('jwt_audience')==PREVIEW_AUD and
+                  preview.get('jwks_url')==CERT,'SCOPED_PREVIEW_JWKS_UNEXPECTED')
+          require(target.get('branch_id') is None and target.get('jwt_audience')==PREVIEW_AUD and
+                  target.get('jwks_url')==CERT and target.get('provider_name')=='Cloudflare Access HIVE Preview',
+                  'UNSCOPED_PREVIEW_TARGET_UNEXPECTED')
+          print('S9_UNSCOPED_DUPLICATE_JWKS_EXACT_SCOPE_MATCH=PASS')
+          status,reply=req('DELETE',URL+'/'+TARGET_ID)
+          print('S9_UNSCOPED_PREVIEW_JWKS_DELETE_HTTP='+str(status))
+          require(status in (200,202,204),'UNSCOPED_PREVIEW_JWKS_DELETE_FAILED')
+          for i in range(7):
+              st,d=req('GET',URL)
+              items=d.get('jwks') or [] if st==200 else []
+              ids={x.get('id') for x in items if isinstance(x,dict)}
+              if ids=={PROD_ID,PREVIEW_ID}:break
+              time.sleep(3)
+          require(ids=={PROD_ID,PREVIEW_ID},'JWKS_READBACK_UNEXPECTED_AFTER_DELETE')
+          require(all(x.get('branch_id') is None and x.get('jwt_audience')==PROD_AUD
+                      for x in items if x.get('id')==PROD_ID),'PRODUCTION_JWKS_NOT_PRESERVED')
+          require(all(x.get('branch_id')==BR and x.get('jwt_audience')==PREVIEW_AUD
+                      for x in items if x.get('id')==PREVIEW_ID),'PREVIEW_JWKS_NOT_PRESERVED')
+          print('S9_PROJECT_JWKS_RESTORED_ORIGINAL_PROD_PLUS_BRANCH_ONLY_PREVIEW=PASS')
+          print('S9_PROD_JWKS_ID_UNCHANGED=TRUE')
+          print('S9_PREVIEW_BRANCH_JWKS_UNCHANGED=TRUE')
+          def http():
+              with tempfile.TemporaryDirectory() as t:
+                  p=subprocess.run(['curl','-sS','--max-time','20','-o',t+'/body','-w','%{http_code}',
+                     '-H','Accept: application/json',
+                     '-H','Cf-Access-Client-Id: '+cid,
+                     '-H','Cf-Access-Client-Secret: '+sec,
+                     'https://hive-alveare.pages.dev/api/runtime-health'],capture_output=True,text=True,timeout=23)
+                  if p.returncode:return 0,{}
+                  status=int(p.stdout.strip()) if p.stdout.strip().isdigit() else 0
+                  try:body=json.load(open(t+'/body'))
+                  except Exception:body={}
+                  return status,body
+          prod_ok=False
+          for i in range(8):
+              code,payload=http()
+              print('S9_PRODUCTION_RUNTIME_RECOVERY_ATTEMPT_'+str(i+1)+'='+str(code))
+              if code==200 and isinstance(payload,dict) and payload.get('ok') is True:
+                  prod_ok=True;break
+              time.sleep(6)
+          print('S9_PRODUCTION_RUNTIME_RECOVERED='+str(prod_ok))
+          print('S9_PRODUCTION_CLOUDFLARE_CONFIG_UNCHANGED=TRUE')
+          print('S9_PRODUCT_WRITES=ZERO')
+          require(prod_ok,'PRODUCTION_RUNTIME_NOT_YET_RECOVERED_AFTER_JWKS_CLEANUP')
+          PY
