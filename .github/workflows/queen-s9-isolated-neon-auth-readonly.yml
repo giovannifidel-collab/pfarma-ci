@@ -37,7 +37,7 @@ jobs:
               keys=sorted(payload.keys()) if isinstance(payload,dict) else []
               details=payload.get('details') if isinstance(payload,dict) else None
               if not isinstance(details,dict):details={}
-              safe=lambda x: re.sub(r'[^a-zA-Z0-9_ .:;-]','_',str(x))[:130]
+              safe=lambda x: re.sub(r'[^a-zA-Z0-9_ .:;-]','_',str(x))[:500]
               print('S9_ISOLATED_NEON_AUTH_DIAG='+json.dumps({
                   'route':path,'status':status,'payload_keys':keys,
                   'error':safe(payload.get('error') if isinstance(payload,dict) else ''),
