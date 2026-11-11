@@ -1,0 +1,103 @@
+name: Queen S9 Independent Preview Access and Runtime Readback - GET ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-preview-independent-readback.yml]
+permissions: {contents: read}
+jobs:
+  independently-verify:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      OWNER_ACCESS_TOKEN: ${{ secrets.HIVE_CF_ACCESS_POLICY_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Verify exact service token policy and preview GET evidence with production unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,tempfile,subprocess,urllib.request,urllib.error
+          token=os.getenv('OWNER_ACCESS_TOKEN','')
+          ci=os.getenv('CF_ACCESS_CLIENT_ID','')
+          secret=os.getenv('CF_ACCESS_CLIENT_SECRET','')
+          if not token or not ci or not secret:raise SystemExit('S9_ACCESS_READBACK_CREDENTIALS_MISSING')
+          def get(path):
+            req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,method='GET',
+                headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+            try:
+              with urllib.request.urlopen(req,timeout=25) as f:return f.status,json.load(f)
+            except urllib.error.HTTPError as e:return e.code,{}
+            except Exception:return 0,{}
+          s,accounts=get('/accounts?per_page=50')
+          if s!=200 or accounts.get('success') is not True:raise SystemExit('S9_ACCESS_ACCOUNT_LOOKUP_DENIED')
+          pair=[]
+          for a in accounts.get('result') or []:
+            aid=a.get('id','')
+            if not re.fullmatch('[0-9a-f]{32}',str(aid)):continue
+            st,apps=get('/accounts/'+aid+'/access/apps?per_page=100')
+            if st!=200 or apps.get('success') is not True:continue
+            app=[a for a in apps.get('result') or [] if a.get('domain') in
+                  ('hive-alveare.pages.dev','*.hive-alveare.pages.dev') and a.get('type')=='self_hosted']
+            if len(app)==2 and {x['domain'] for x in app}=={'hive-alveare.pages.dev','*.hive-alveare.pages.dev'}:
+              pair.append((aid,app))
+          if len(pair)!=1:raise SystemExit('S9_ACCESS_APPS_NOT_UNIQUE')
+          aid,app=pair[0]
+          st,toks=get('/accounts/'+aid+'/access/service_tokens?per_page=100')
+          matches=[t for t in toks.get('result') or [] if t.get('client_id')==ci] if st==200 else []
+          if len(matches)!=1:raise SystemExit('S9_ACCESS_CI_TOKEN_NOT_FOUND')
+          tid=matches[0]['id']
+          for x in app:
+            st,d=get('/accounts/'+aid+'/access/apps/'+x['id']+'/policies?per_page=100')
+            if st!=200:raise SystemExit('S9_ACCESS_POLICIES_UNREADABLE')
+            policies=d.get('result') or []
+            named=[p for p in policies if p.get('decision')=='non_identity' and
+                   len(p.get('include') or [])==1 and
+                   (p['include'][0].get('service_token') or {}).get('token_id')==tid]
+            if len(named)!=1 or any(p.get('decision')=='bypass' for p in policies):
+              raise SystemExit('S9_SERVICE_AUTH_EXACT_MATCH_MISSING_OR_BYPASS_PRESENT')
+            print('S9_ACCESS_'+('PREVIEW' if x['domain'].startswith('*') else 'PRODUCTION')+'_SERVICE_AUTH_VALID=TRUE')
+          def http(origin,path,auth):
+            with tempfile.TemporaryDirectory() as d:
+              args=['curl','-sS','--max-time','22','-o',d+'/body','-w','%{http_code}','-H','Accept: application/json']
+              if auth:args+=['-H','Cf-Access-Client-Id: '+ci,'-H','Cf-Access-Client-Secret: '+secret]
+              args+=[origin+'/api/'+path]
+              p=subprocess.run(args,capture_output=True,text=True,timeout=25)
+              if p.returncode: return 0,None
+              try:code=int(p.stdout.strip())
+              except Exception:return 0,None
+              try:body=json.load(open(d+'/body'))
+              except Exception:body=None
+              return code,body
+          preview='https://a99c440e.hive-alveare.pages.dev'
+          prod='https://hive-alveare.pages.dev'
+          status,_=http(preview,'runtime-health',False)
+          if status not in (301,302,403):raise SystemExit('S9_PREVIEW_ANON_ACCESS_NOT_DENIED')
+          print('S9_PREVIEW_ANON_ACCESS_HTTP='+str(status))
+          for path in ('queen-s7-e2e','queen-s8-portfolio','queen-s9-readiness','runtime-health'):
+            code,body=http(preview,path,True)
+            print('S9_PREVIEW_'+path.replace('-','_').upper()+'_HTTP='+str(code))
+            if path=='queen-s7-e2e':
+              if not (code==200 and isinstance(body,dict) and body.get('ok') is True and
+                      body.get('default_dispatch')=='DENY' and body.get('paid_fallback') is False):
+                raise SystemExit('S9_PREVIEW_S7_NONREGRESSION_DENY')
+              print('S9_PREVIEW_S7_POLICY_PASS=TRUE')
+            if path=='queen-s8-portfolio':
+              if code==200 and isinstance(body,dict) and body.get('ok') is True:
+                print('S9_PREVIEW_PORTFOLIO_READONLY=PASS')
+              else:print('S9_PREVIEW_PORTFOLIO_READONLY=NOT_CERTIFIED')
+            if path=='queen-s9-readiness':
+              print('S9_PREVIEW_CANONICAL_RUNTIME_READY='+str(code==200 and
+                    isinstance(body,dict) and body.get('ok') is True and
+                    body.get('can_dispatch') is True))
+            if path=='runtime-health':
+              print('S9_PREVIEW_DATA_API_ENV_MISSING_ERROR='+str(code==500 and
+                  isinstance(body,dict) and body.get('error')=='HIVE_DATA_API_URL is not configured'))
+          code,body=http(prod,'runtime-health',True)
+          if code!=200 or not isinstance(body,dict) or body.get('ok') is not True:
+            raise SystemExit('S9_PRODUCTION_HEALTH_REGRESSION')
+          print('S9_PRODUCTION_HEALTH=PASS')
+          print('S9_READBACK_NO_MUTATION=TRUE')
+          PY
