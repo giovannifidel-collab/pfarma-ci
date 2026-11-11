@@ -1,0 +1,70 @@
+{
+  "schema": "queen.s9.dedicated-neon-live-preview-evidence.v1",
+  "date": "2026-11-11",
+  "authority": {
+    "private_repo": "giovannifidel-collab/hive-alveare",
+    "private_main_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+    "draft_pr_89_sha": "b7769ac22f80dcd2e0982f6c1f03702111b7e4fd",
+    "relay": "giovannifidel-collab/pfarma-ci",
+    "relay_audit_branch": "audit/s9-access-policy-owner-token-20261111",
+    "relay_ci_commit": "697dbf2f885db78e78b17228bfe94e9c8b68b3a5"
+  },
+  "isolated_neon": {
+    "project_id": "proud-night-33193396",
+    "project_name": "queen-s9-auth-isolated-20261111",
+    "branch_id": "br-odd-dream-bflat60i",
+    "database": "queen_s9_preview",
+    "region": "aws-us-west-2",
+    "plan": "free",
+    "data_api_url": "https://ep-snowy-paper-bffsyw5d.apirest.c-5.us-west-2.aws.neon.tech/queen_s9_preview/rest/v1",
+    "data_api_status": "active",
+    "auth_provider": "external",
+    "jwt_audience_not_logged": true,
+    "shared_production_neon_project": false,
+    "source_tables_applied": "db/001_tables.sql",
+    "source_dashboard_derived": "db/002_functions.sql",
+    "read_only_rls": true,
+    "anonymous_authenticated_roles_only_select": true,
+    "events": 0,
+    "meta": 0,
+    "school_view_rows": 0,
+    "canonical_school_recreated": false,
+    "production_data_copied": false
+  },
+  "proof": {
+    "ci_run_id": 43086753161,
+    "ci_job_id": 130753027919,
+    "ci_conclusion": "success",
+    "ci_url": "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43086753161",
+    "preview_deployment_id": "e6882039-a075-494b-aa84-e725d72ebe17",
+    "preview_unauthenticated_http": 302,
+    "preview_service_authenticated_http": {
+      "queen_s7_e2e": 200,
+      "queen_s8_portfolio": 200,
+      "runtime_health": 200,
+      "queen_s9_readiness": 503
+    },
+    "readiness_expected_reason": "trusted_s8_event_unavailable",
+    "production_service_authenticated_runtime_health_http": 200,
+    "production_config_unchanged": true,
+    "preview_env_binding_rolled_back": true,
+    "production_deployments": 0,
+    "product_writes": 0,
+    "school_training_promotions": 0
+  },
+  "gate_status": {
+    "s9_2_dedicated_jwt_preview_live_proof": true,
+    "s9_2_total_exit_certified": false,
+    "s9_1_live_canonical_feedback_certified": false,
+    "s9_3_bounded_owner_mission_certified": false,
+    "s9_4_per_project_write_authority": false,
+    "s9_5_live_interruption_recovery_certified": false,
+    "s9_6_integrated_exit_certified": false
+  },
+  "blockers": [
+    "Git-connected Pages release and full S9.2 certification not evidenced by this native Wrangler preview",
+    "Canonical trusted S8->S2 feedback and S1 wake remain unverified; new preview intentionally lacks S8 canonical evidence",
+    "No current exact owner-approved S9 mission (0 in canonical Neon at verification)",
+    "No per-project write authority or live recovery certification"
+  ]
+}
