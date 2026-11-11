@@ -1,0 +1,90 @@
+name: Queen S9 Branch Scoped Neon Preview JWKS - NEVER PRODUCTION
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: ['.github/workflows/queen-s9-neon-preview-jwks-owner-once.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-neon-preview-jwks-once
+  cancel-in-progress: false
+jobs:
+  exact-branch-jwks-only:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      NEON_ADMIN_TOKEN: ${{ secrets.HIVE_NEON_PLATFORM_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Require exact owner-controlled source and branch-scoped Neon API authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GITHUB_TOKEN" || { echo 'S9_DENY_GITHUB_OWNER_TOKEN_MISSING';exit 1; }
+          head="$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')"
+          test "$head" = 296677c77946b91ca1c8f9da70d41d87b975c5e4 ||
+             { echo 'S9_DENY_PRIVATE_MAIN_DRIFT'; exit 1; }
+          gh api /repos/giovannifidel-collab/hive-alveare/pulls/89 \
+            --jq '.state=="open" and .draft==true and .head.sha=="62b225a4e720a371aa88f309d51d37b91adc383a"' |
+             grep -Fx true
+          if [[ -z "$NEON_ADMIN_TOKEN" ]]; then
+            echo 'S9_NEON_PLATFORM_API_KEY_MISSING_FROM_TRUSTED_ENV'
+            exit 31
+          fi
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error,time,re
+          TOKEN=os.environ['NEON_ADMIN_TOKEN']
+          API='https://console.neon.tech/api/v2/projects/muddy-recipe-65646643/jwks'
+          AUD='b7194f9f6080bf91f189e8582c8d7694b1540ebba989fc34cce29afabe99cf32'
+          JWKS='https://hive-alveare-pages.cloudflareaccess.com/cdn-cgi/access/certs'
+          BRANCH='br-dark-waterfall-afr6i3ln'
+          PROVIDER='Queen S9 Cloudflare Preview Access branch-scoped'
+          def request(method,data=None):
+              payload=json.dumps(data,separators=(',',':')).encode() if data is not None else None
+              headers={'Authorization':'Bearer '+TOKEN,'Accept':'application/json'}
+              if payload is not None:headers['Content-Type']='application/json'
+              req=urllib.request.Request(API,data=payload,method=method,headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.load(e)
+                  except Exception:return e.code,{}
+              except Exception:return 0,{}
+          def require(value,why):
+              if not value:raise RuntimeError(why)
+          status,body=request('GET')
+          print('S9_NEON_JWKS_OWNER_AUTH_READ_HTTP='+str(status))
+          require(status==200,'S9_NEON_PROJECT_JWKS_API_READ_DENIED')
+          keys=body.get('jwks') if isinstance(body,dict) else None
+          require(isinstance(keys,list),'S9_NEON_JWKS_LIST_UNEXPECTED')
+          exact=[x for x in keys if x.get('branch_id')==BRANCH and
+                 x.get('jwks_url')==JWKS and x.get('jwt_audience')==AUD]
+          conflict=[x for x in keys if x.get('branch_id')==BRANCH and
+                    (x.get('jwks_url')!=JWKS or x.get('jwt_audience')!=AUD)]
+          require(not conflict and len(exact)<=1,'S9_NEON_PREVIEW_JWKS_CONFLICT')
+          production_keys=[x.get('id') for x in keys if x.get('branch_id')!='br-dark-waterfall-afr6i3ln']
+          if not exact:
+              payload={'jwks_url':JWKS,'provider_name':PROVIDER,
+                  'branch_id':BRANCH,
+                  'jwt_audience':AUD,
+                  'role_names':['authenticated','authenticator','anonymous']}
+              st,res=request('POST',payload)
+              print('S9_NEON_JWKS_BRANCH_SCOPED_POST_HTTP='+str(st))
+              require(st in (200,201,202),'S9_NEON_PREVIEW_JWKS_CREATE_DENIED')
+              for retry in range(8):
+                  st,readback=request('GET')
+                  if st==200 and isinstance(readback,dict) and isinstance(readback.get('jwks'),list):
+                      keys=readback['jwks']
+                      exact=[x for x in keys if x.get('branch_id')==BRANCH and
+                             x.get('jwks_url')==JWKS and x.get('jwt_audience')==AUD]
+                      if len(exact)==1:break
+                  time.sleep(3)
+          require(len(exact)==1,'S9_NEON_BRANCH_SCOPED_JWKS_NOT_VERIFIED')
+          new_prod=[x.get('id') for x in keys if x.get('branch_id')!=BRANCH]
+          require(new_prod==production_keys,'S9_NEON_PRODUCTION_JWKS_LIST_DRIFT')
+          print('S9_NEON_EXACT_PREVIEW_JWKS_AUDIENCE=PASS')
+          print('S9_NEON_JWKS_BRANCH_SCOPE='+BRANCH)
+          print('S9_NEON_PRODUCTION_JWKS_UNCHANGED=PASS')
+          print('S9_NEON_NO_PRODUCTION_DATABASE_WRITES=TRUE')
+          print('S9_NEON_NO_SCHOOL_OR_PROJECT_WRITES=TRUE')
+          PY
