@@ -61,8 +61,8 @@ jobs:
           must(status==200,'S9_JWKS_SCOPED_PREVIEW_DELETE_FAILED')
           for attempt in range(6):
             code,body=req('GET',API)
-            if code==200 and isinstance(body.get('jwks'),list) and
-                 len(body['jwks'])==1 and body['jwks'][0].get('id')==prod_id:break
+            if (code==200 and isinstance(body.get('jwks'),list) and
+                 len(body['jwks'])==1 and body['jwks'][0].get('id')==prod_id):break
             time.sleep(3)
           must(code==200 and isinstance(body.get('jwks'),list) and len(body['jwks'])==1 and
                 body['jwks'][0].get('id')==prod_id and
