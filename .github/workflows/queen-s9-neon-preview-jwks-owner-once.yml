@@ -25,7 +25,7 @@ jobs:
           test "$head" = 296677c77946b91ca1c8f9da70d41d87b975c5e4 ||
              { echo 'S9_DENY_PRIVATE_MAIN_DRIFT'; exit 1; }
           gh api /repos/giovannifidel-collab/hive-alveare/pulls/89 \
-            --jq '.state=="open" and .draft==true and .head.sha=="62b225a4e720a371aa88f309d51d37b91adc383a"' |
+            --jq '.state=="open" and .draft==true and .head.sha=="1f6d876dfa480fbf82f31952a02257c910ac626d"' |
              grep -Fx true
           if [[ -z "$NEON_ADMIN_TOKEN" ]]; then
             echo 'S9_NEON_PLATFORM_API_KEY_MISSING_FROM_TRUSTED_ENV'
