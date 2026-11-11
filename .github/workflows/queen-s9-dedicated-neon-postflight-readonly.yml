@@ -40,6 +40,8 @@ jobs:
           api='https://console.neon.tech/api/v2/projects/'
           a,prod=get_json(api+prod_id+'/jwks',neon)
           b,iso=get_json(api+iso_id+'/jwks',neon)
+          print('S9_NEON_PROD_JWKS_HTTP='+str(a))
+          print('S9_NEON_DEDICATED_JWKS_HTTP='+str(b))
           need(a==200 and b==200 and isinstance(prod.get('jwks'),list) and isinstance(iso.get('jwks'),list),'NEON_JWKS_READ_FAILED')
           pj=prod['jwks'];ij=iso['jwks']
           need(len(pj)==1 and pj[0].get('id')=='9a335fd8-a540-4200-881f-a8b384264271','S9_PRODUCTION_JWKS_MUST_REMAIN_ORIGINAL_ONLY')
