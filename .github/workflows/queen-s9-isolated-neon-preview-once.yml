@@ -192,7 +192,7 @@ jobs:
               print('S9_NEON_ISOLATED_PAGES_WRANGLER_DEPLOY=PASS')
               deployment_id=None
               for i in range(15):
-                  st,res=api('GET',path+'/deployments?per_page=35')
+                  st,res=api('GET',path+'/deployments?per_page=25')
                   require(st==200 and res.get('success') is True,'CF_DEPLOY_LIST_UNAVAILABLE')
                   matched=[]
                   for d in res.get('result') or []:
