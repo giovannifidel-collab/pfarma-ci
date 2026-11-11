@@ -18,25 +18,22 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os,json,re,urllib.request,urllib.error
+          import os,json,re,subprocess,tempfile
           endpoint='https://0135c237.hive-alveare.pages.dev'
           cid=os.getenv('CF_ACCESS_CLIENT_ID','')
           secret=os.getenv('CF_ACCESS_CLIENT_SECRET','')
           if not cid or not secret:raise SystemExit('S9_PREVIEW_CI_ACCESS_TOKEN_MISSING')
           headers={'Cf-Access-Client-Id':cid,'Cf-Access-Client-Secret':secret,'Accept':'application/json'}
           for path in ('/api/runtime-health','/api/queen-s9-readiness'):
-              req=urllib.request.Request(endpoint+path,headers=headers,method='GET')
-              try:
-                  with urllib.request.urlopen(req,timeout=25) as r:
-                      status=r.status
-                      payload=json.load(r)
-              except urllib.error.HTTPError as e:
-                  status=e.code
-                  try:payload=json.load(e)
+              with tempfile.TemporaryDirectory() as td:
+                  args=['curl','-sS','--max-time','25','-o',td+'/body','-w','%{http_code}',
+                    '-H','Cf-Access-Client-Id: '+cid,'-H','Cf-Access-Client-Secret: '+secret,
+                    '-H','Accept: application/json',endpoint+path]
+                  done=subprocess.run(args,capture_output=True,text=True,timeout=28)
+                  try:status=int(done.stdout.strip()) if done.returncode==0 else 0
+                  except Exception:status=0
+                  try:payload=json.load(open(td+'/body'))
                   except Exception:payload={}
-              except Exception:
-                  status=0
-                  payload={}
               keys=sorted(payload.keys()) if isinstance(payload,dict) else []
               details=payload.get('details') if isinstance(payload,dict) else None
               if not isinstance(details,dict):details={}
