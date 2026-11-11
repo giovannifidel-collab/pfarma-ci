@@ -1,0 +1,64 @@
+name: Queen S9 Cloudflare Pages Preview Runtime Environment Readonly Audit
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-pages-preview-env-readonly.yml]
+permissions: {contents: read}
+jobs:
+  compare-preview-and-production-binding-names:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: pfarma-ci-trusted
+    env:
+      CF_A: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_B: ${{ secrets.HIVE_CF_AIG_TOKEN }}
+    steps:
+      - name: Inspect existing Pages production and preview environment key names without values
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error,re
+          API='https://api.cloudflare.com/client/v4'
+          for name in ('CF_A','CF_B'):
+            token=os.getenv(name)
+            if not token:continue
+            def get(path):
+              req=urllib.request.Request(API+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'},method='GET')
+              try:
+                with urllib.request.urlopen(req,timeout=22) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+            n,accts=get('/accounts?per_page=50')
+            if n!=200 or accts.get('success') is not True:continue
+            for acct in accts.get('result') or []:
+              aid=acct.get('id','')
+              if not re.fullmatch('[0-9a-f]{32}',str(aid)):continue
+              st,p=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+              if st!=200 or p.get('success') is not True:continue
+              project=p.get('result') or {}
+              if project.get('name')!='hive-alveare':continue
+              print('S9_PAGES_SOURCE_TOKEN='+name)
+              dc=project.get('deployment_configs') or {}
+              for scope in ('production','preview'):
+                data=dc.get(scope) or {}
+                out={}
+                for key,val in data.items():
+                  if key=='env_vars' and isinstance(val,dict):
+                    out[key]=sorted(val.keys())
+                  elif key in ('kv_namespaces','d1_databases','r2_buckets','services',
+                    'durable_object_namespaces','hyperdrive_bindings','analytics_engine_datasets',
+                    'ai_bindings','vectorize_bindings','vars','secrets') and isinstance(val,dict):
+                    out[key]=sorted(val.keys())
+                  elif key in ('compatibility_date','compatibility_flags','always_use_latest_compatibility_date'):
+                    out[key]=val
+                print('S9_PAGES_CONFIG_'+scope.upper()+'='+json.dumps(out,sort_keys=True,separators=(',',':')))
+              print('S9_PAGES_BUILD_CONFIG='+json.dumps({
+                'root_dir':(project.get('build_config') or {}).get('root_dir'),
+                'destination_dir':(project.get('build_config') or {}).get('destination_dir'),
+                'build_command_present':bool((project.get('build_config') or {}).get('build_command'))},
+                sort_keys=True,separators=(',',':')))
+              print('S9_PAGES_RUNTIME_CONFIG_READONLY=PASS')
+              raise SystemExit(0)
+          raise SystemExit('S9_PAGES_RUNTIME_CONFIG_ACCOUNT_NOT_READABLE')
+          PY
