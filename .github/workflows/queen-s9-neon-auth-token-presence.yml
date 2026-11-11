@@ -1,0 +1,51 @@
+name: Queen S9 Neon JWKS API Authority Presence - GET ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-neon-auth-token-presence.yml]
+permissions: {contents: read}
+jobs:
+  check-existing-trusted-token-names:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_API_TOKEN: ${{ secrets.NEON_API_TOKEN }}
+      HIVE_NEON_API_KEY: ${{ secrets.HIVE_NEON_API_KEY }}
+      HIVE_NEON_TOKEN: ${{ secrets.HIVE_NEON_TOKEN }}
+      HIVE_NEON_ADMIN_TOKEN: ${{ secrets.HIVE_NEON_ADMIN_TOKEN }}
+      NEON_TOKEN: ${{ secrets.NEON_TOKEN }}
+      NEON_DATABASE_API_KEY: ${{ secrets.NEON_DATABASE_API_KEY }}
+    steps:
+      - name: Report only presence and safe JWKS read authorization (no token or JWKS keys)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,urllib.request,urllib.error,json
+          names=['NEON_API_KEY','NEON_API_TOKEN','HIVE_NEON_API_KEY',
+            'HIVE_NEON_TOKEN','HIVE_NEON_ADMIN_TOKEN','NEON_TOKEN','NEON_DATABASE_API_KEY']
+          for name in names:
+              tok=os.getenv(name,'')
+              print('S9_NEON_CI_SECRET_'+name+'_PRESENT='+str(bool(tok)))
+              if not tok:continue
+              req=urllib.request.Request('https://console.neon.tech/api/v2/projects/muddy-recipe-65646643/jwks',
+                  headers={'Authorization':'Bearer '+tok,'Accept':'application/json'},method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=15) as res:
+                      result=json.load(res)
+                      st=res.status
+              except urllib.error.HTTPError as e:
+                  st=e.code
+                  result={}
+              except Exception:
+                  st=0
+                  result={}
+              keys=(result.get('jwks') or []) if isinstance(result,dict) else []
+              matched=sum(1 for x in keys if isinstance(x,dict) and
+                 x.get('branch_id')=='br-dark-waterfall-afr6i3ln')
+              print('S9_NEON_PROJECT_JWKS_API_HTTP_'+name+'='+str(st))
+              print('S9_NEON_PROJECT_JWKS_PREVIEW_SCOPED_COUNT_'+name+'='+str(matched))
+          print('S9_NEON_SECRET_INSPECTION_READ_ONLY=TRUE')
+          PY
