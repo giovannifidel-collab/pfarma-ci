@@ -1,0 +1,88 @@
+name: Queen S9.2 Independent Dedicated Neon JWKS and CF Postflight - GET ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-dedicated-neon-postflight-readonly.yml]
+permissions: {contents: read}
+jobs:
+  independent-postflight:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      NEON_TOKEN: ${{ secrets.HIVE_NEON_PLATFORM_API_KEY }}
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ACCESS_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      ACCESS_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Inspect distinct JWKS control planes, CF config rollback and production health without mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error,subprocess,tempfile
+          neon=os.environ.get('NEON_TOKEN','')
+          cf=os.environ.get('CF_TOKEN','')
+          ci=os.environ.get('ACCESS_ID','')
+          cs=os.environ.get('ACCESS_SECRET','')
+          assert all([neon,cf,ci,cs]),'S9_POSTFLIGHT_EXISTING_CREDENTIAL_MISSING'
+          def get_json(url,token):
+              req=urllib.request.Request(url,method='GET',headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.load(e)
+                  except:return e.code,{}
+          def need(ok,reason):
+              if not ok:raise RuntimeError(reason)
+          prod_id='muddy-recipe-65646643'
+          iso_id='proud-night-33193396'
+          api='https://console.neon.tech/api/v2/projects/'
+          a,prod=get_json(api+prod_id+'/jwks',neon)
+          b,iso=get_json(api+iso_id+'/jwks',neon)
+          need(a==200 and b==200 and isinstance(prod.get('jwks'),list) and isinstance(iso.get('jwks'),list),'NEON_JWKS_READ_FAILED')
+          pj=prod['jwks'];ij=iso['jwks']
+          need(len(pj)==1 and pj[0].get('id')=='9a335fd8-a540-4200-881f-a8b384264271','S9_PRODUCTION_JWKS_MUST_REMAIN_ORIGINAL_ONLY')
+          need(len(ij)==1 and ij[0].get('jwt_audience')=='b7194f9f6080bf91f189e8582c8d7694b1540ebba989fc34cce29afabe99cf32','S9_DEDICATED_AUDIENCE_MISSING')
+          need(ij[0].get('jwks_url')=='https://hive-alveare-pages.cloudflareaccess.com/cdn-cgi/access/certs','S9_DEDICATED_JWKS_ISSUER_MISMATCH')
+          print('S9_PRODUCTION_ONLY_ORIGINAL_JWKS=PASS')
+          print('S9_DEDICATED_NEON_JWKS_CONTROL_PLANE=PASS')
+          cfbase='https://api.cloudflare.com/client/v4'
+          st,accounts=get_json(cfbase+'/accounts?per_page=50',cf)
+          need(st==200 and accounts.get('success')==True,'CF_ACCOUNT_GET_DENIED')
+          matches=[]
+          for account in accounts.get('result') or []:
+              aid=account.get('id','')
+              if not re.fullmatch('[a-f0-9]{32}',str(aid)):continue
+              status,data=get_json(cfbase+'/accounts/'+aid+'/pages/projects/hive-alveare',cf)
+              if status==200 and data.get('success')==True:matches.append(data.get('result') or {})
+          need(len(matches)==1,'CF_HIVE_PAGES_PROJECT_AMBIGUOUS')
+          cfg=matches[0].get('deployment_configs') or {}
+          preview=(cfg.get('preview') or {}).get('env_vars') or {}
+          production=(cfg.get('production') or {}).get('env_vars') or {}
+          need('HIVE_DATA_API_URL' not in preview,'S9_PREVIEW_VARIABLE_NOT_ROLLED_BACK')
+          value=(production.get('HIVE_DATA_API_URL') or {}).get('value','')
+          need(isinstance(value,str) and 'ep-gentle-cloud-afadq2x1.apirest.c-2.us-west-2.aws.neon.tech/neondb/rest/v1' in value,'S9_PROD_BINDING_DRIFT')
+          print('S9_PREVIEW_DATA_API_BINDING_ROLLED_BACK=PASS')
+          print('S9_PRODUCTION_DATA_API_BINDING_UNCHANGED=PASS')
+          def http(origin,path,authenticated):
+              with tempfile.TemporaryDirectory() as d:
+                  cmd=['curl','-sS','--max-time','25','-o',d+'/body','-w','%{http_code}','-H','Accept: application/json']
+                  if authenticated:cmd+=['-H','Cf-Access-Client-Id: '+ci,'-H','Cf-Access-Client-Secret: '+cs]
+                  cmd+=[origin+'/api/'+path]
+                  p=subprocess.run(cmd,capture_output=True,text=True,timeout=29)
+                  if p.returncode:return 0,{}
+                  try:status=int(p.stdout.strip())
+                  except:return 0,{}
+                  try:body=json.load(open(d+'/body'))
+                  except:body={}
+                  return status,body
+          status,body=http('https://hive-alveare.pages.dev','runtime-health',True)
+          need(status==200 and isinstance(body,dict) and body.get('ok') is True,'S9_PRODUCTION_HEALTH_POSTFLIGHT_FAILED')
+          print('S9_INDEPENDENT_PRODUCTION_HEALTH_HTTP=200')
+          host='https://e6882039.hive-alveare.pages.dev'
+          anon,_=http(host,'runtime-health',False)
+          need(anon in (301,302,403),'S9_PREVIEW_POSTFLIGHT_ANON_BYPASS')
+          print('S9_INDEPENDENT_PREVIEW_ANONYMOUS_HTTP='+str(anon))
+          print('S9_INDEPENDENT_POSTFLIGHT_READ_ONLY=PASS')
+          PY
