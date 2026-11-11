@@ -1,0 +1,199 @@
+name: Queen S9 Owner Preview Service Auth Scoped Fix
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-preview-service-auth-fix.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-preview-access-policy-singleton
+  cancel-in-progress: false
+jobs:
+  add-exact-preview-only-service-auth:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      OWNER_ACCESS_TOKEN: ${{ secrets.HIVE_CF_ACCESS_POLICY_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Assert owner-granted policy token and run fail-closed exact preview-only Access edit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.request,urllib.error,re,subprocess,tempfile,time
+          token=os.getenv('OWNER_ACCESS_TOKEN','')
+          ci=os.getenv('CF_ACCESS_CLIENT_ID','')
+          secret=os.getenv('CF_ACCESS_CLIENT_SECRET','')
+          if not token or not ci or not secret:
+              raise SystemExit('S9_POLICY_FIX_NO_REQUIRED_TRUSTED_SECRETS')
+          ROOT='https://api.cloudflare.com/client/v4'
+          NAME='Queen S9 CI existing service token - protected preview only'
+          DOMAIN_PROD='hive-alveare.pages.dev'
+          DOMAIN_PREVIEW='*.hive-alveare.pages.dev'
+          URL_PREVIEW='https://a99c440e.hive-alveare.pages.dev'
+          URL_PROD='https://hive-alveare.pages.dev'
+          def api(method,path,data=None):
+              headers={'Authorization':'Bearer '+token,'Accept':'application/json'}
+              raw=None
+              if data is not None:
+                  headers['Content-Type']='application/json'
+                  raw=json.dumps(data,separators=(',',':')).encode()
+              req=urllib.request.Request(ROOT+path,headers=headers,data=raw,method=method)
+              try:
+                  with urllib.request.urlopen(req,timeout=22) as h:return h.status,json.load(h)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.load(e)
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          def require(condition,reason):
+              if not condition:raise RuntimeError(reason)
+          def policies(aid,appid):
+              s,d=api('GET','/accounts/'+aid+'/access/apps/'+appid+'/policies?per_page=100')
+              require(s==200 and d.get('success') is True and isinstance(d.get('result'),list),'POLICY_GET_UNAVAILABLE')
+              return d['result']
+          def has_ci_token(p,tok):
+              return (p.get('decision')=='non_identity' and
+                  len(p.get('include') or [])==1 and
+                  isinstance((p.get('include') or [None])[0],dict) and
+                  (p['include'][0].get('service_token') or {}).get('token_id')==tok and
+                  not p.get('require') and not p.get('exclude'))
+          def http(host,route,authenticated):
+              with tempfile.TemporaryDirectory() as td:
+                  headers=td+'/head'
+                  body=td+'/body'
+                  args=['curl','--silent','--show-error','--max-time','20','-D',headers,
+                        '-o',body,'-w','%{http_code}','-H','Accept: application/json']
+                  if authenticated:
+                      args+=['-H','Cf-Access-Client-Id: '+ci,
+                             '-H','Cf-Access-Client-Secret: '+secret]
+                  args+=[host+'/api/'+route]
+                  try:
+                      cp=subprocess.run(args,capture_output=True,text=True,timeout=23,check=False)
+                  except Exception:return 0,None,None
+                  if cp.returncode!=0:return 0,None,None
+                  try:status=int(cp.stdout.strip())
+                  except Exception:return 0,None,None
+                  try:
+                      data=json.load(open(body)) if status==200 else None
+                  except Exception:data=None
+                  try:
+                      h=open(headers).read().splitlines()
+                      loc=next((x.split(':',1)[1].strip() for x in reversed(h) if x.lower().startswith('location:')),None)
+                  except Exception:loc=None
+                  return status,data,loc
+          s,acct=api('GET','/accounts?per_page=50')
+          require(s==200 and acct.get('success') is True,'ACCOUNT_LIST_NOT_AUTHORIZED')
+          found=[]
+          for a in acct.get('result') or []:
+              aid=str(a.get('id') or '')
+              if not re.fullmatch('[0-9a-f]{32}',aid):continue
+              s,d=api('GET','/accounts/'+aid+'/access/apps?per_page=100')
+              if s!=200 or d.get('success') is not True:continue
+              matched=[a for a in d.get('result') or [] if isinstance(a,dict) and
+                       a.get('domain') in (DOMAIN_PROD,DOMAIN_PREVIEW) and a.get('type')=='self_hosted']
+              if matched:found.append((aid,matched))
+          require(len(found)==1,'NOT_ONE_EXACT_ACCESS_ACCOUNT')
+          aid,apps=found[0]
+          require(len(apps)==2 and set(a['domain'] for a in apps)=={DOMAIN_PROD,DOMAIN_PREVIEW},
+                  'NOT_TWO_EXACT_PROTECTED_APPS')
+          prod=next(a for a in apps if a['domain']==DOMAIN_PROD)
+          prev=next(a for a in apps if a['domain']==DOMAIN_PREVIEW)
+          uuid=r'[0-9a-f-]{36}'
+          require(re.fullmatch(uuid,str(prod.get('id') or '')) and
+                  re.fullmatch(uuid,str(prev.get('id') or '')),'INVALID_APP_IDS')
+          s,tok=api('GET','/accounts/'+aid+'/access/service_tokens?per_page=100')
+          require(s==200 and tok.get('success') is True,'SERVICE_TOKEN_LIST_UNAVAILABLE')
+          match=[v for v in tok.get('result') or [] if isinstance(v,dict) and v.get('client_id')==ci]
+          require(len(match)==1 and re.fullmatch(uuid,str(match[0].get('id') or '')),
+                  'EXISTING_CI_SERVICE_TOKEN_NOT_UNIQUE')
+          token_id=match[0]['id']
+          before_prod=policies(aid,prod['id'])
+          before_prev=policies(aid,prev['id'])
+          require(len(before_prod)==2 and
+                  {p.get('decision') for p in before_prod}=={'allow','non_identity'} and
+                  any(has_ci_token(p,token_id) for p in before_prod),'PROD_SERVICE_AUTH_INVARIANT_FAILED')
+          require(len(before_prev)==1 and before_prev[0].get('decision')=='allow',
+                  'PREVIEW_BASELINE_CHANGED_NO_WRITE')
+          require(not any(p.get('decision') in ('bypass','deny') for p in before_prev),
+                  'PREVIEW_HAS_UNEXPECTED_POLICY')
+          base_unauth,_,loc=http(URL_PREVIEW,'runtime-health',False)
+          base_auth,_,_=http(URL_PREVIEW,'runtime-health',True)
+          print('S9_PREVIEW_BASELINE_UNAUTH_HTTP='+str(base_unauth))
+          print('S9_PREVIEW_BASELINE_CI_HTTP='+str(base_auth))
+          require(base_unauth in (301,302,403) and base_auth in (301,302,403),
+                  'PREVIEW_BASELINE_NOT_CLOSED')
+          print('S9_OWNER_POLICY_PREFLIGHT=PASS')
+          path='/accounts/'+aid+'/access/apps/'+prev['id']+'/policies'
+          created_id=None
+          success=False
+          try:
+              s,data=api('POST',path,{
+                  'name':NAME,'decision':'non_identity',
+                  'include':[{'service_token':{'token_id':token_id}}]})
+              if s not in (200,201) or data.get('success') is not True:
+                  print('S9_PREVIEW_SERVICE_AUTH_POST_HTTP='+str(s))
+                  raise RuntimeError('PREVIEW_POLICY_POST_REJECTED')
+              created_id=(data.get('result') or {}).get('id')
+              require(isinstance(created_id,str) and re.fullmatch(uuid,created_id),
+                      'PREVIEW_POLICY_POST_NO_POLICY_ID')
+              print('S9_PREVIEW_SERVICE_AUTH_POLICY_CREATED=TRUE')
+              for i in range(10):
+                  current=policies(aid,prev['id'])
+                  new=[p for p in current if p.get('id')==created_id]
+                  require(len(current)==2 and len(new)==1 and
+                          new[0].get('name')==NAME and has_ci_token(new[0],token_id) and
+                          all(p.get('decision')!='bypass' for p in current),
+                          'PREVIEW_POLICY_UNEXPECTED_READBACK')
+                  status,body,_=http(URL_PREVIEW,'runtime-health',True)
+                  print('S9_PREVIEW_CI_GET_ATTEMPT_'+str(i+1)+'_HTTP='+str(status))
+                  if status==200 and isinstance(body,dict) and body.get('ok') is True:
+                      break
+                  time.sleep(9)
+              require(status==200 and isinstance(body,dict) and body.get('ok') is True,
+                      'PREVIEW_AUTHENTICATED_HEALTH_DID_NOT_PASS')
+              negative,_,redirect=http(URL_PREVIEW,'runtime-health',False)
+              require(negative in (301,302,403),
+                      'UNAUTHENTICATED_PREVIEW_NO_LONGER_PROTECTED')
+              print('S9_PREVIEW_UNAUTHENTICATED_GET_DENY_HTTP='+str(negative))
+              s7,s7json,_=http(URL_PREVIEW,'queen-s7-e2e',True)
+              require(s7==200 and isinstance(s7json,dict) and s7json.get('ok') is True and
+                      s7json.get('default_dispatch')=='DENY' and
+                      s7json.get('paid_fallback') is False,
+                      'PREVIEW_S7_POLICY_NONREGRESSION_FAILED')
+              print('S9_PREVIEW_S7_FAIL_CLOSED_LIVE=PASS')
+              current_prod=policies(aid,prod['id'])
+              require({p.get('id') for p in current_prod}=={p.get('id') for p in before_prod} and
+                      any(has_ci_token(p,token_id) for p in current_prod),
+                      'PRODUCTION_ACCESS_POLICY_DRIFT')
+              prodcode,pbody,_=http(URL_PROD,'runtime-health',True)
+              require(prodcode==200 and isinstance(pbody,dict) and pbody.get('ok') is True,
+                      'PRODUCTION_HEALTH_REGRESSION')
+              print('S9_PRODUCTION_ACCESS_POLICY_UNCHANGED=PASS')
+              print('S9_PRODUCTION_RUNTIME_HEALTH=PASS')
+              success=True
+          finally:
+              if not success:
+                  print('S9_PREVIEW_ACCESS_LIVE_ATTESTATION=DENY_ROLLBACK_REQUIRED')
+                  if not created_id:
+                      try:
+                          p=policies(aid,prev['id'])
+                          matches=[x for x in p if x.get('name')==NAME and has_ci_token(x,token_id)]
+                          if len(matches)==1:created_id=matches[0].get('id')
+                      except Exception:pass
+                  if created_id and re.fullmatch(uuid,str(created_id)):
+                      rs,rr=api('DELETE',path+'/'+created_id)
+                      try:
+                          left=policies(aid,prev['id'])
+                          restored={x.get('id') for x in left}=={before_prev[0].get('id')}
+                      except Exception:restored=False
+                      print('S9_PREVIEW_ACCESS_ROLLBACK_API_HTTP='+str(rs))
+                      print('S9_PREVIEW_ACCESS_ROLLBACK_VERIFIED='+str(restored))
+                      if not restored:raise RuntimeError('ACCESS_ROLLBACK_NOT_VERIFIED_MANUAL_ATTENTION_REQUIRED')
+              else:
+                  print('S9_PREVIEW_SERVICE_AUTH_SCOPED_LIVE=PASS')
+                  print('S9_PREVIEW_PUBLIC_BYPASS_CREATED=FALSE')
+                  print('S9_PRODUCTION_RELEASE=NOT_ATTEMPTED')
+                  print('S9_NEON_OR_SCHOOL_WRITES=ZERO')
+          PY
