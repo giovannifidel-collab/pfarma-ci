@@ -65,6 +65,28 @@
     "Git-connected Pages release and full S9.2 certification not evidenced by this native Wrangler preview",
     "Canonical trusted S8->S2 feedback and S1 wake remain unverified; new preview intentionally lacks S8 canonical evidence",
     "No current exact owner-approved S9 mission (0 in canonical Neon at verification)",
-    "No per-project write authority or live recovery certification"
-  ]
+    "No per-project write authority or live recovery certification",
+    "Independent CI HIVE_NEON_PLATFORM_API_KEY reads production JWKS HTTP 200 but dedicated Neon project JWKS HTTP 404; exact cause unverified, requiring project-scoped authenticated proof later"
+  ],
+  "independent_postflight": {
+    "ci_run_id": 43087659777,
+    "ci_job_id": 130756191944,
+    "ci_conclusion": "success",
+    "ci_url": "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43087659777",
+    "production_jwks_exact_original_one": true,
+    "production_health_http": 200,
+    "production_neon_url_unchanged": true,
+    "preview_environment_binding_rolled_back": true,
+    "preview_anonymous_http": 302,
+    "dedicated_jwks_platform_api_ci_http": 404,
+    "dedicated_jwks_platform_api_ci_claim": "UNVERIFIED_NOT_PASS",
+    "dedicated_neon_data_api_connector_status": "active",
+    "interpretation": "CI platform token does not confirm new project JWKS via its /projects/{id}/jwks endpoint; do not infer sole cause of 404"
+  },
+  "budget_control": {
+    "neon_plan": "free",
+    "dedicated_compute_id": "ep-snowy-paper-bffsyw5d",
+    "compute_manual_suspend_result": "idle",
+    "compute_suspended_after_test": true
+  }
 }
