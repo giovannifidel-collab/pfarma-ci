@@ -1,0 +1,59 @@
+name: Queen S9 Exact Preview Access JWT Audience Readonly
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: ['.github/workflows/queen-s9-preview-audience-readonly.yml']
+permissions: {contents: read}
+jobs:
+  read-exact-audience:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      TOKEN: ${{ secrets.HIVE_CF_ACCESS_POLICY_TOKEN }}
+      CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+    steps:
+      - name: Read exact app aud tags and validate existing service auth without exposing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,re,json,urllib.request,urllib.error
+          tok=os.getenv('TOKEN','')
+          if not tok:raise SystemExit('S9_ACCESS_TOKEN_ABSENT')
+          def get(path):
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  method='GET',headers={'Authorization':'Bearer '+tok,'Accept':'application/json'})
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          status,a=get('/accounts?per_page=50')
+          if status!=200 or a.get('success') is not True:raise SystemExit('S9_NO_ACCESS_ACCOUNT')
+          pairs=[]
+          for ac in a.get('result',[]):
+              aid=ac.get('id','')
+              if not re.fullmatch('[a-f0-9]{32}',str(aid)):continue
+              st,apps=get('/accounts/'+aid+'/access/apps?per_page=100')
+              if st!=200 or apps.get('success') is not True:continue
+              found=[x for x in apps.get('result',[]) if isinstance(x,dict) and
+                  x.get('domain') in ('hive-alveare.pages.dev','*.hive-alveare.pages.dev') and
+                  x.get('type')=='self_hosted']
+              if len(found)==2:pairs.append((aid,found))
+          if len(pairs)!=1:raise SystemExit('S9_ACCESS_APP_SCOPE_NOT_UNIQUE')
+          aid,apps=pairs[0]
+          for app in apps:
+              domain=app['domain']
+              audience=app.get('aud')
+              if not isinstance(audience,str) or not re.fullmatch('[0-9a-f]{64}',audience):
+                  raise SystemExit('S9_AUDIENCE_UNEXPECTED_FORMAT_'+domain)
+              st,pol=get('/accounts/'+aid+'/access/apps/'+app['id']+'/policies?per_page=100')
+              if st!=200 or pol.get('success') is not True:raise SystemExit('S9_POLICY_READ_DENIED')
+              policies=pol.get('result') or []
+              service=[p for p in policies if p.get('decision')=='non_identity']
+              if len(service)!=1 or any(p.get('decision')=='bypass' for p in policies):
+                  raise SystemExit('S9_SERVICE_AUTH_INVARIANT_FAILURE')
+              print('S9_ACCESS_APP_AUDIENCE_'+('PREVIEW' if domain.startswith('*') else 'PROD')+'='+audience)
+              print('S9_ACCESS_APP_SERVICE_AUTH_'+('PREVIEW' if domain.startswith('*') else 'PROD')+'=PASS')
+          print('S9_AUDIENCE_READONLY_PASS=TRUE')
+          PY
