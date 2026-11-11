@@ -1,0 +1,87 @@
+name: Queen S9 Cloudflare Access Owner Token Discovery - READ ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-access-owner-discovery.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-access-owner-token-discovery
+  cancel-in-progress: false
+jobs:
+  cloudflare-access-discovery:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 6
+    env:
+      HIVE_CF_ACCESS_POLICY_TOKEN: ${{ secrets.HIVE_CF_ACCESS_POLICY_TOKEN }}
+      HIVE_CF_ACCOUNT_ID: ${{ secrets.HIVE_CF_ACCOUNT_ID }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+    steps:
+      - name: Verify owner-token presence and read exact protected application without exposing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error
+          token=os.getenv('HIVE_CF_ACCESS_POLICY_TOKEN','')
+          if not token:
+              raise SystemExit('S9_NEW_ACCESS_POLICY_TOKEN_NOT_FOUND_IN_TRUSTED_ENV')
+          print('S9_NEW_ACCESS_POLICY_TOKEN_PRESENT=TRUE')
+          api='https://api.cloudflare.com/client/v4'
+          def get(path):
+              req=urllib.request.Request(api+path,
+                  headers={'Authorization':'Bearer '+token,'Accept':'application/json'},method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as f: return f.status,json.load(f)
+              except urllib.error.HTTPError as e: return e.code,{}
+              except Exception: return 0,{}
+          st,accounts=get('/accounts?per_page=50')
+          aids=[]
+          if st==200 and accounts.get('success') is True:
+              aids=[a.get('id') for a in accounts.get('result',[]) if isinstance(a,dict) and
+                    re.fullmatch('[0-9a-f]{32}',str(a.get('id') or ''))]
+          legacy=os.getenv('HIVE_CF_ACCOUNT_ID','')
+          if re.fullmatch('[0-9a-f]{32}',legacy) and legacy not in aids: aids.append(legacy)
+          print('S9_OWNER_TOKEN_ACCOUNTS_LIST_HTTP='+str(st))
+          print('S9_OWNER_TOKEN_ACCOUNTS_TO_CHECK='+str(len(aids)))
+          matched=[]
+          for index,aid in enumerate(aids):
+              page_status,pages=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+              page_match=page_status==200 and pages.get('success') is True and (pages.get('result') or {}).get('name')=='hive-alveare'
+              st_apps,apps=get('/accounts/'+aid+'/access/apps?per_page=100')
+              arr=apps.get('result') or [] if st_apps==200 and apps.get('success') is True else []
+              if not isinstance(arr,list):arr=[]
+              print('S9_OWNER_ACCOUNT_SCAN='+json.dumps({
+                  'ordinal':index,'pages_project_match':page_match,'pages_http':page_status,
+                  'access_apps_http':st_apps,'access_apps_count':len(arr)},sort_keys=True,separators=(',',':')))
+              for a in arr:
+                  if not isinstance(a,dict): continue
+                  name=str(a.get('name') or '')
+                  domain=str(a.get('domain') or '')
+                  hosts=[domain]+[str(x.get('public_domain') or x.get('domain') or '') for x in (a.get('destinations') or []) if isinstance(x,dict)]
+                  if any('hive-alveare' in h.lower() or 'hive-alveare-pages' in h.lower() for h in hosts) or 'hive-alveare' in name.lower():
+                      appid=str(a.get('id') or '')
+                      if not re.fullmatch('[0-9a-f-]{36}',appid): continue
+                      st_p,pol=get('/accounts/'+aid+'/access/apps/'+appid+'/policies?per_page=100')
+                      policies=pol.get('result') or [] if st_p==200 and pol.get('success') is True else []
+                      if not isinstance(policies,list):policies=[]
+                      entry={'account_index':index,'app_name':name[:90],'app_domain':domain[:140],
+                             'app_type':a.get('type'),'destinations_count':len(a.get('destinations') or []),
+                             'policies_http':st_p,'policies':len(policies),
+                             'policy_decisions':[p.get('decision') for p in policies if isinstance(p,dict)]}
+                      matched.append((aid,appid,entry))
+                      print('S9_OWNER_ACCESS_APP='+json.dumps(entry,sort_keys=True,separators=(',',':')))
+              st_token,tokens=get('/accounts/'+aid+'/access/service_tokens?per_page=100')
+              toks=tokens.get('result') or [] if st_token==200 and tokens.get('success') is True else []
+              if not isinstance(toks,list):toks=[]
+              ci=os.getenv('CF_ACCESS_CLIENT_ID','')
+              ci_match=bool(ci) and sum(t.get('client_id')==ci for t in toks if isinstance(t,dict))==1
+              print('S9_OWNER_SERVICE_TOKEN_AUDIT='+json.dumps({
+                  'account_index':index,'http':st_token,
+                  'existing_ci_service_token_found':ci_match,'token_count':len(toks)},sort_keys=True,separators=(',',':')))
+          print('S9_OWNER_MATCHED_ACCESS_APPS='+str(len(matched)))
+          print('S9_CLOUDFLARE_ACCESS_POLICY_CHANGED=FALSE')
+          if len(matched)!=1:
+              raise SystemExit('S9_ACCESS_DISCOVERY_DENY_NO_UNIQUE_PROTECTED_APP')
+          print('S9_ACCESS_DISCOVERY_UNIQUE_APP=PASS')
+          PY
