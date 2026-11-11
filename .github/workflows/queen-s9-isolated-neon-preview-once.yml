@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 14
     env:
       PRIVATE_MAIN: 296677c77946b91ca1c8f9da70d41d87b975c5e4
-      PRIVATE_PREVIEW_SHA: 8080d8ea9a9d5e366c1dac6abb5629949b57bc95
+      PRIVATE_PREVIEW_SHA: 8870d7401a1fc093e52213bc76f2253413a208bc
       PREVIEW_BRANCH: queen-s9-neon-isolated-20261111
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -31,7 +31,7 @@ jobs:
           test -n "$CF_ACCESS_CLIENT_SECRET"
           test "$(gh api /repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$PRIVATE_MAIN"
           gh api /repos/giovannifidel-collab/hive-alveare/pulls/89 \
-            --jq '.draft==true and .state=="open" and .head.sha=="8080d8ea9a9d5e366c1dac6abb5629949b57bc95" and .base.ref=="main"' \
+            --jq '.draft==true and .state=="open" and .head.sha=="8870d7401a1fc093e52213bc76f2253413a208bc" and .base.ref=="main"' \
             | grep -Fx true
           pointer="$(gh api /repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
           test "$pointer" = "$PRIVATE_MAIN"
@@ -69,7 +69,7 @@ jobs:
           assert target['schema']=='queen.s9.isolated-neon-preview-target.v1'
           assert target['project_id']=='muddy-recipe-65646643'
           assert target['database_name']=='neondb'
-          assert target['branch_id']=='br-broad-band-af8vzat2'
+          assert target['branch_id']=='br-dark-waterfall-afr6i3ln'
           url=target['data_api_url']
           assert url.startswith('https://') and '.apirest.c-2.us-west-2.aws.neon.tech/neondb/rest/v1' in url
           assert target['allowed_cloudflare_target']=='hive-alveare deployment_configs.preview.env_vars.HIVE_DATA_API_URL ONLY'
