@@ -1,0 +1,110 @@
+name: Queen S9.1 Existing S2 School Provisional Independent S8 Once
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-s8-canonical-school-provisional-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-s8-to-existing-school-1183-once
+  cancel-in-progress: false
+jobs:
+  s8-provisional-existing-school:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Independently validate exact old S8 signed CI, one draft PR and final file SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = '296677c77946b91ca1c8f9da70d41d87b975c5e4'
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/78 \
+          | jq -e '.state=="open" and .draft==true and .merged==false and .head.sha=="aace87c35fe5ca4543aaa4e97f6a6d824d7cc583" and .changed_files==1' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/42395750840 \
+          | jq -e '.conclusion=="success" and .status=="completed" and .head_sha=="762854f8f100327e222146dc05a88fac509d75d4" and .event=="push"' >/dev/null
+          gh api 'repos/giovannifidel-collab/hive-alveare/contents/ops/queen/autopilot/s8/sandbox/repair-target.mjs?ref=aace87c35fe5ca4543aaa4e97f6a6d824d7cc583' --jq .content | tr -d '\n' | base64 -d > "$RUNNER_TEMP/s9-s8-candidate"
+          test "$(sha256sum "$RUNNER_TEMP/s9-s8-candidate" | cut -d' ' -f1)" = '3deb5d621df4b12bb9edf8dbc1968a42c7e336474f349da9173e33bb308cbf3f'
+          rm -f "$RUNNER_TEMP/s9-s8-candidate"
+          echo 'S9_1_S8_INDEPENDENT_CI_AND_EXACT_CANDIDATE_SHA256=PASS'
+      - name: Record verified S8 as strictly provisional School experience through EXISTING S2 endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,subprocess,tempfile
+          base='https://hive-alveare.pages.dev/api/queen-state'
+          mission='54155332-409f-46c1-9f83-94407fe33c53'
+          candidate='3deb5d621df4b12bb9edf8dbc1968a42c7e336474f349da9173e33bb308cbf3f'
+          def request(method,body=None):
+              with tempfile.TemporaryDirectory() as d:
+                  f=d+'/body'
+                  args=['curl','-sS','--max-time','35','-o',f,'-w','%{http_code}',
+                     '-H','Accept: application/json','-H','Content-Type: application/json',
+                     '-H','CF-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+                     '-H','CF-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET'],
+                     '-X',method,base]
+                  if body is not None:args+=['--data-binary',json.dumps(body,separators=(',',':'))]
+                  result=subprocess.run(args,capture_output=True,text=True,timeout=40)
+                  assert result.returncode==0,'CLOUDFLARE_CALL_FAILED'
+                  try:code=int(result.stdout.strip())
+                  except:code=0
+                  try:payload=json.load(open(f))
+                  except:payload={}
+                  return code,payload
+          code,current=request('GET')
+          assert code==200 and current.get('ok') is True,'S2_EXISTING_READBACK_MISSING'
+          school=((current.get('state') or {}).get('school') or {}).get('value') or {}
+          last=(school.get('last_experience') or {})
+          if school.get('last_correlation_id')==mission:
+              assert last.get('provenance',{}).get('evidence_id')==candidate
+              assert last.get('training_eligible') is False and last.get('mastery_eligible') is False
+              print('S9_1_SCHOOL_PROVISIONAL_ALREADY_PRESENT_NO_REPLAY=PASS')
+          else:
+              before=(school.get('mastery') or {}).get('coding')
+              body={'action':'school.record_verified_experience','correlation_id':mission,'data':{
+                  'competency':'coding','score':1,'verified':True,
+                  'verification_method':'s8-github-oidc-independent-ci-docker-provisional',
+                  'attempt_source':'S8_INDEPENDENT_CI_DRAFT_PR78',
+                  'prompt':'S8 one-file HIVE-only scoped software repair, independently verified; provisional evidence only',
+                  'student_attempt':{'source_sha':'a0ba9b06593f514182ae9fcabdec073c30755066',
+                                     'candidate_sha256':candidate,'github_ci_run_id':42395750840,'pr_number':78,
+                                     'synthetic_fault_injection':True,'draft':True,'merged':False,
+                                     'paid_fallback':False,'product_writes':False},
+                  'teacher':{'id':'s8-ci-independent-uncertified-provisional-only'},
+                  'response_hash':candidate,
+                  'verification_metadata':{
+                    'fail_closed':True,'model_family_independence':True,
+                    'worker_independence_group':'cloudflare-workers-ai-llama-s8',
+                    'verifier_independence_group':'github-actions-oidc-docker-s8',
+                    'worker_provider':'Cloudflare Workers AI',
+                    'worker_model':'@cf/meta/llama-3.1-8b-instruct-fp8',
+                    'verifier_provider':'GitHub independent CI',
+                    'verifier_model':'github-oidc-docker-s8-42395750840',
+                    'transport_independence':True}}}
+              code,result=request('POST',body)
+              print('S9_1_CANONICAL_SCHOOL_POST_HTTP='+str(code))
+              assert code==200 and result.get('ok') is True,'S9_SCHOOL_CANONICAL_WRITE_UNVERIFIED'
+              eligible=result.get('eligibility') or {}
+              exp=result.get('experience') or {}
+              assert eligible.get('training_eligible') is False and eligible.get('mastery_eligible') is False,'S9_SCHOOL_FORBIDDEN_MASTERY'
+              assert exp.get('training_eligible') is False and exp.get('mastery_eligible') is False,'S9_SCHOOL_PROVISIONAL_NOT_ENFORCED'
+              assert (exp.get('provenance') or {}).get('correlation_id')==mission
+              assert (exp.get('provenance') or {}).get('evidence_id')==candidate
+              assert exp.get('verification',{}).get('verified') is True
+              assert (result.get('state') or {}).get('mastery',{}).get('coding')==before,'S9_SCHOOL_MASTERY_CHANGED'
+              print('S9_1_EXISTING_SCHOOL_VERIFIED_PROVISIONAL_ONLY=PASS')
+          code,new=request('GET')
+          assert code==200 and new.get('ok') is True,'S9_SCHOOL_POST_INDEPENDENT_READBACK_MISSING'
+          school=((new.get('state') or {}).get('school') or {}).get('value') or {}
+          last=school.get('last_experience') or {}
+          assert school.get('last_correlation_id')==mission,'S9_SCHOOL_DURABLE_CORRELATION_MISSING'
+          assert (last.get('provenance') or {}).get('evidence_id')==candidate
+          assert last.get('mastery_eligible') is False and last.get('training_eligible') is False
+          print('S9_1_EXISTING_S2_SCHOOL_DURABLE_FEEDBACK=PASS')
+          print('S9_1_SCHOOL_TRAINING_PROMOTIONS=ZERO')
+          PY
