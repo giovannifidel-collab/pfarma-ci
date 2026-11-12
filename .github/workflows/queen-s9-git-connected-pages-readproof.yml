@@ -11,13 +11,15 @@ jobs:
     timeout-minutes: 8
     env:
       CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
       - name: Independently query existing Git-connected Pages builds without writes
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os,json,re,urllib.request,urllib.error
+          import os,json,re,urllib.request,urllib.error,subprocess,tempfile
           token=os.environ['CF_TOKEN']
           assert len(token)>10,'CF_READ_ONLY_CREDENTIAL_ABSENT'
           base='https://api.cloudflare.com/client/v4'
@@ -62,5 +64,30 @@ jobs:
           full=[d for d in found if d['sha_match'] and d['source_type']=='github' and d['stage_status']=='success']
           if full:print('S9_2_GIT_CONNECTED_EXACT_SHA_SUCCESS=FOUND_NEEDS_PROTECTED_RUNTIME')
           else:print('S9_2_GIT_CONNECTED_EXACT_SHA_SUCCESS=NOT_CERTIFIED')
+          def protected_http(origin,authenticated):
+              with tempfile.TemporaryDirectory() as d:
+                  h=['curl','-sS','--max-time','25','-o',d+'/body','-w','%{http_code}','-H','Accept: application/json']
+                  if authenticated:
+                      h+=['-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+                          '-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET']]
+                  h+=[origin+'/api/runtime-health']
+                  process=subprocess.run(h,text=True,capture_output=True,timeout=29)
+                  if process.returncode:return 0,{}
+                  try:status=int(process.stdout.strip())
+                  except:return 0,{}
+                  try:body=json.load(open(d+'/body'))
+                  except:body={}
+                  return status,body
+          if full:
+              origin='https://377c0180.hive-alveare.pages.dev'
+              anonymous,_=protected_http(origin,False)
+              verified_body_status,verified_body=protected_http(origin,True)
+              print('S9_2_GIT_CONNECTED_PREVIEW_ANONYMOUS_HTTP='+str(anonymous))
+              print('S9_2_GIT_CONNECTED_PREVIEW_SERVICE_HTTP='+str(verified_body_status))
+              assert anonymous in (301,302,403),'GIT_CONNECTED_PREVIEW_ANON_AUTH_BYPASS'
+              if verified_body_status==200 and verified_body.get('ok') is True:
+                  print('S9_2_GIT_CONNECTED_PREVIEW_PROTECTED_RUNTIME=PASS')
+              else:
+                  print('S9_2_GIT_CONNECTED_PREVIEW_PROTECTED_RUNTIME=NOT_CERTIFIED_FAIL_CLOSED')
           print('S9_2_CLOUDFLARE_PAGES_GET_ONLY=PASS')
           PY
