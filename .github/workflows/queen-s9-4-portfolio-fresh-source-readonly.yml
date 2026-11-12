@@ -41,13 +41,11 @@ jobs:
           for(const p of portfolio.projects){
             if(!['MISSION_SCOPED_ONLY','DENY'].includes(p.registry_access))throw Error('S9_4_UNEXPECTED_PREEXISTING_WRITE_AUTHORITY');
             const branch=sourceRefs.get(p.repository)||'main';
-            const raw=execFileSync('gh',['api','repos/'+p.repository+'/branches?per_page=100'],{encoding:'utf8'});
-            const branches=JSON.parse(raw);
-            const hit=branches.find(x=>x.name===branch);
-            if(!hit || !/^[a-f0-9]{40}$/.test(hit.commit.sha))throw Error('S9_4_TRUSTED_SOURCE_REF_UNREADABLE_'+p.id);
+            const currentSha=execFileSync('gh',['api','repos/'+p.repository+'/branches/'+branch,'--jq','.commit.sha'],{encoding:'utf8'}).trim();
+            if(!/^[a-f0-9]{40}$/.test(currentSha))throw Error('S9_4_TRUSTED_SOURCE_REF_UNREADABLE_'+p.id);
             findings.push({
               project:p.id,repository:p.repository,ref:branch,expected_sha:p.source_sha,
-              current_sha:hit.commit.sha,drift:hit.commit.sha!==p.source_sha,
+              current_sha:currentSha,drift:currentSha!==p.source_sha,
               source_visibility:p.registry_access,project_writes_authorized:false,
               note:p.registry_access==='DENY'?'DENY_ALWAYS':'REQUIRES_NEW_EXACT_MISSION_OWNER_AND_PROJECT_GRANTS'
             });
