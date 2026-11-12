@@ -41,8 +41,9 @@ jobs:
           aid,project=projects[0]
           source=project.get('source') or {}
           assert source.get('type')=='github' and (source.get('config') or {}).get('repo_name')=='hive-alveare','CF_SOURCE_IS_NOT_EXPECTED_GITHUB'
-          st,res=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments?per_page=100')
+          st,res=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments?env=preview&per_page=20&page=1')
           print('S9_2_PAGES_DEPLOYMENTS_GET_HTTP='+str(st))
+          if st!=200:print('S9_2_PAGES_GET_ERROR_CODES='+str([(e.get('code'),str(e.get('message',''))[:100]) for e in res.get('errors',[])]))
           assert st==200 and res.get('success') is True,'CF_PAGES_DEPLOYMENTS_READ_DENIED'
           deployments=res.get('result') or []
           exact_sha='8920b575defba8d806d8638de66794078d5c5403'
@@ -51,8 +52,8 @@ jobs:
           for d in deployments:
               src=d.get('source') or {}
               cfg=src.get('config') or {}
-              c=cfg.get('commit_hash') or ''
-              branch=cfg.get('branch') or ''
+              c=(d.get('deployment_trigger') or {}).get('metadata',{}).get('commit_hash') or cfg.get('commit_hash') or ''
+              branch=(d.get('deployment_trigger') or {}).get('metadata',{}).get('branch') or cfg.get('branch') or ''
               if c==exact_sha or branch==exact_branch:
                   found.append({'id':d.get('id'),'deployment_type':d.get('deployment_type'),'source_type':src.get('type'),'sha_match':c==exact_sha,'branch_match':branch==exact_branch,'stage':(d.get('latest_stage') or {}).get('name'),'stage_status':(d.get('latest_stage') or {}).get('status'),'environment':d.get('environment'),'created_on':d.get('created_on')})
           print('S9_2_GIT_CONNECTED_PROJECT_SOURCE=PASS')
