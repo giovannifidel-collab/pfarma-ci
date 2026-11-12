@@ -1,0 +1,80 @@
+name: Queen S9.1 Existing World Model Correlated S8 Verified Evidence Once
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-s8-canonical-world-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-s8-world-1183-once
+  cancel-in-progress: false
+jobs:
+  world-correlate:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Verify source and independent S8 proof not draft merge
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = '296677c77946b91ca1c8f9da70d41d87b975c5e4'
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/42395750840 | jq -e '.conclusion=="success" and .status=="completed"' > /dev/null
+          echo S9_1_S8_PROOF_SOURCE_PIN=PASS
+      - name: Use existing Queen S2 runtime to persist fresh World correlation without project writes
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,subprocess,tempfile,datetime
+          base='https://hive-alveare.pages.dev/api/queen-state'
+          mission='54155332-409f-46c1-9f83-94407fe33c53'
+          candidate='3deb5d621df4b12bb9edf8dbc1968a42c7e336474f349da9173e33bb308cbf3f'
+          digest='3401fabb129784af661663d01faafa8b79072d0227126719dfffef504fd76b74'
+          def call(method,body=None):
+              with tempfile.TemporaryDirectory() as tmp:
+                  args=['curl','-sS','--max-time','35','-o',tmp+'/body','-w','%{http_code}',
+                    '-H','Content-Type: application/json','-H','Accept: application/json',
+                    '-H','CF-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+                    '-H','CF-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET'],
+                    '-X',method,base]
+                  if body is not None:args+=['-d',json.dumps(body,separators=(',',':'))]
+                  p=subprocess.run(args,text=True,capture_output=True,timeout=40)
+                  assert p.returncode==0,'CF_TRUSTED_S2_TRANSPORT_FAILURE'
+                  try:status=int(p.stdout.strip())
+                  except:status=0
+                  try:data=json.load(open(tmp+'/body'))
+                  except:data={}
+                  return status,data
+          status,before=call('GET')
+          assert status==200 and before.get('ok') is True,'S2_READ_DENIED'
+          state=before.get('state') or {}
+          school=((state.get('school') or {}).get('value') or {})
+          memory=((state.get('memory') or {}).get('value') or {})
+          episodes=[e for e in memory.get('episodic',[]) if e.get('correlation_id')==mission and e.get('response_hash')==candidate and e.get('evidence_hash')==digest and e.get('verified') is True and e.get('execution_verified') is False]
+          assert len(episodes)==1,'S9_S8_S2_MEMORY_NOT_EXACTLY_ONE'
+          assert school.get('last_correlation_id')==mission,'S9_S8_S2_SCHOOL_UNVERIFIED'
+          assert (school.get('last_experience') or {}).get('training_eligible') is False,'S9_SCHOOL_TRAINING_NOT_DENIED'
+          world=((state.get('world') or {}).get('value') or {})
+          if world.get('correlation_id')==mission and world.get('verification_ref')==candidate and world.get('policy')=='authoritative-source-first':
+              print('S9_1_WORLD_ALREADY_CORRELATED_NO_REPLAY=PASS')
+          else:
+              status,done=call('POST',{'action':'world.update','correlation_id':mission,'data':{'response_hash':candidate,'evidence_type':'verified_s8_independent_ci_provisional','independent_ci_run_id':42395750840,'execution_verified':False,'product_writes':False,'paid_fallback':False}})
+              print('S9_1_WORLD_CANONICAL_POST_HTTP='+str(status))
+              assert status==200 and done.get('ok') is True,'CANONICAL_WORLD_UPDATE_FAILED'
+              assert (done.get('state') or {}).get('source')=='hive-live-world-model'
+              assert (done.get('state') or {}).get('correlation_id')==mission
+          status,after=call('GET')
+          assert status==200 and after.get('ok') is True,'S2_WORLD_READBACK_FAILED'
+          world=((after.get('state') or {}).get('world') or {}).get('value') or {}
+          assert world.get('correlation_id')==mission
+          assert world.get('verification_ref')==candidate
+          assert world.get('source')=='hive-live-world-model'
+          assert world.get('policy')=='authoritative-source-first'
+          t=datetime.datetime.fromisoformat(world['source_generated_at'].replace('Z','+00:00'))
+          now=datetime.datetime.now(datetime.timezone.utc)
+          assert abs((now-t).total_seconds())<600,'S9_WORLD_FRESHNESS_NOT_VERIFIED'
+          print('S9_1_S2_EXISTING_FRESH_WORLD_CORRELATED=PASS')
+          print('S9_1_WORLD_UPDATED_NO_PRODUCT_WRITES=PASS')
+          PY
