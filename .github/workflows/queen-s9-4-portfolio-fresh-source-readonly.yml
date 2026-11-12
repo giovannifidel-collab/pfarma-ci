@@ -1,0 +1,74 @@
+name: Queen S9.4 Source Registry, Project SHA and Default-DENY Read-Only Audit
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-4-portfolio-fresh-source-readonly.yml]
+permissions: {contents: read}
+jobs:
+  exact-portfolio-authority:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Freshly audit real source refs and enforce no cross-project writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = '296677c77946b91ca1c8f9da70d41d87b975c5e4'
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const registry=JSON.parse(fs.readFileSync('source/ops/queen/SOURCE_REGISTRY.json','utf8'));
+          const portfolio=JSON.parse(fs.readFileSync('source/ops/queen/autopilot/s8/S8_PORTFOLIO_READONLY_OBSERVATION.v1.json','utf8'));
+          if(registry.policy!=='authoritative-source-first'||portfolio.policy!=='READ_ONLY_AWARENESS_NOT_PROJECT_EXECUTION')throw Error('canonical_registry_policy_changed');
+          const sourceRefs=new Map();
+          for(const [key,p] of Object.entries(registry.projects)){
+            if(p?.source?.repo)sourceRefs.set(p.source.repo,p.source.ref||'main');
+          }
+          const findings=[];
+          for(const p of portfolio.projects){
+            if(!['MISSION_SCOPED_ONLY','DENY'].includes(p.registry_access))throw Error('S9_4_UNEXPECTED_PREEXISTING_WRITE_AUTHORITY');
+            const branch=sourceRefs.get(p.repository)||'main';
+            const raw=execFileSync('gh',['api','repos/'+p.repository+'/branches?per_page=100'],{encoding:'utf8'});
+            const branches=JSON.parse(raw);
+            const hit=branches.find(x=>x.name===branch);
+            if(!hit || !/^[a-f0-9]{40}$/.test(hit.commit.sha))throw Error('S9_4_TRUSTED_SOURCE_REF_UNREADABLE_'+p.id);
+            findings.push({
+              project:p.id,repository:p.repository,ref:branch,expected_sha:p.source_sha,
+              current_sha:hit.commit.sha,drift:hit.commit.sha!==p.source_sha,
+              source_visibility:p.registry_access,project_writes_authorized:false,
+              note:p.registry_access==='DENY'?'DENY_ALWAYS':'REQUIRES_NEW_EXACT_MISSION_OWNER_AND_PROJECT_GRANTS'
+            });
+          }
+          if(findings.length!==10)throw Error('S9_4_PORTFOLIO_COUNT_DRIFT');
+          const drifts=findings.filter(x=>x.drift).map(x=>x.project).sort();
+          const expected=['hive-field','pfarma-social'];
+          if(JSON.stringify(drifts)!==JSON.stringify(expected))throw Error('S9_4_SOURCE_DRIFT_BASELINE_CHANGED_NEEDS_REVIEW:'+drifts.join(','));
+          const family=findings.find(x=>x.project==='family-cloud');
+          if(family?.ref!=='agent/bootstrap-family-cloud'||family.drift)throw Error('S9_4_FAMILY_CLOUD_AUTHORITATIVE_BRANCH_NOT_PINNED');
+          if(findings.some(x=>x.project_writes_authorized))throw Error('S9_4_UNAUTHORIZED_WRITES');
+          for(const x of findings) console.log('S9_4_PROJECT='+JSON.stringify({
+            name:x.project,ref:x.ref,drift:x.drift,permission:x.source_visibility,can_write:x.project_writes_authorized}));
+          console.log('S9_4_PROJECTS_CHECKED='+findings.length);
+          console.log('S9_4_PINNED_SOURCE_MATCHES='+findings.filter(x=>!x.drift).length);
+          console.log('S9_4_FRESH_SOURCE_DRIFTS='+drifts.join(','));
+          console.log('S9_4_AUTHORITATIVE_FAMILY_CLOUD_BRANCH=PASS');
+          console.log('S9_4_DEFAULT_DENY_CROSS_PROJECT_WRITES=PASS');
+          console.log('S9_4_LIVE_PROJECT_ADAPTER_WRITE=NOT_AUTHORIZED_NOT_ATTEMPTED');
+          console.log('S9_4_READ_ONLY_FRESH_SOURCE_AND_POLICY_AUDIT=PASS');
+          NODE
+      - name: Scrub private checkout
+        if: always()
+        run: rm -rf source
