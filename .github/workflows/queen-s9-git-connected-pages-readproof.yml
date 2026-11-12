@@ -1,0 +1,65 @@
+name: Queen S9.2 Git-connected Pages Exact Commit Independent GET Proof
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-git-connected-pages-readproof.yml]
+permissions: {contents: read}
+jobs:
+  read-pages:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Independently query existing Git-connected Pages builds without writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error
+          token=os.environ['CF_TOKEN']
+          assert len(token)>10,'CF_READ_ONLY_CREDENTIAL_ABSENT'
+          base='https://api.cloudflare.com/client/v4'
+          def get(path):
+              req=urllib.request.Request(base+path,method='GET',headers={'Authorization':'Bearer '+token,'Accept':'application/json','User-Agent':'S9-Pages-Proof/1'})
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.load(e)
+                  except:return e.code,{}
+          status,accounts=get('/accounts?per_page=50')
+          assert status==200 and accounts.get('success') is True,'CF_ACCOUNT_READ_DENIED'
+          projects=[]
+          for account in accounts.get('result') or []:
+              aid=account.get('id','')
+              if not isinstance(aid,str) or not re.fullmatch('[a-f0-9]{32}',aid):continue
+              st,p=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+              if st==200 and p.get('success') is True and (p.get('result') or {}).get('name')=='hive-alveare':
+                  projects.append((aid,p['result']))
+          assert len(projects)==1,'CF_HIVE_PAGES_IDENTITY_NOT_UNIQUE'
+          aid,project=projects[0]
+          source=project.get('source') or {}
+          assert source.get('type')=='github' and (source.get('config') or {}).get('repo_name')=='hive-alveare','CF_SOURCE_IS_NOT_EXPECTED_GITHUB'
+          st,res=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments?per_page=100')
+          print('S9_2_PAGES_DEPLOYMENTS_GET_HTTP='+str(st))
+          assert st==200 and res.get('success') is True,'CF_PAGES_DEPLOYMENTS_READ_DENIED'
+          deployments=res.get('result') or []
+          exact_sha='8920b575defba8d806d8638de66794078d5c5403'
+          exact_branch='convergence/s9-pages-legacy-build-compat-20261108'
+          found=[]
+          for d in deployments:
+              src=d.get('source') or {}
+              cfg=src.get('config') or {}
+              c=cfg.get('commit_hash') or ''
+              branch=cfg.get('branch') or ''
+              if c==exact_sha or branch==exact_branch:
+                  found.append({'id':d.get('id'),'deployment_type':d.get('deployment_type'),'source_type':src.get('type'),'sha_match':c==exact_sha,'branch_match':branch==exact_branch,'stage':(d.get('latest_stage') or {}).get('name'),'stage_status':(d.get('latest_stage') or {}).get('status'),'environment':d.get('environment'),'created_on':d.get('created_on')})
+          print('S9_2_GIT_CONNECTED_PROJECT_SOURCE=PASS')
+          print('S9_2_EXACT_PR90_DEPLOYMENT_RECORDS='+str(len(found)))
+          for entry in found[:10]:print('S9_2_PR90_BUILD_RECORD='+json.dumps(entry,separators=(',',':')))
+          full=[d for d in found if d['sha_match'] and d['source_type']=='github' and d['stage_status']=='success']
+          if full:print('S9_2_GIT_CONNECTED_EXACT_SHA_SUCCESS=FOUND_NEEDS_PROTECTED_RUNTIME')
+          else:print('S9_2_GIT_CONNECTED_EXACT_SHA_SUCCESS=NOT_CERTIFIED')
+          print('S9_2_CLOUDFLARE_PAGES_GET_ONLY=PASS')
+          PY
