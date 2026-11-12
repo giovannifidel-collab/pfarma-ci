@@ -39,7 +39,11 @@ jobs:
           test "$GITHUB_ACTOR" = "giovannifidel-collab"
           test "$GITHUB_TRIGGERING_ACTOR" = "giovannifidel-collab"
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$APPROVE_SCOPE" = "true"
+          if [ "$APPROVE_SCOPE" != "true" ]; then
+            echo "::error title=Approvazione S9.3 mancante::Hai riavviato un run con approve_hive_only_one_shot=false. Non usare Re-run jobs. Apri Actions > Queen S9.3 Owner Identity Attestation > Run workflow, seleziona main, spunta approve_hive_only_one_shot e avvia una NUOVA esecuzione."
+            echo "S9_OWNER_APPROVAL_FLAG=FALSE_FAIL_CLOSED"
+            exit 42
+          fi
           test -n "$GH_TOKEN"
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           current="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')"
