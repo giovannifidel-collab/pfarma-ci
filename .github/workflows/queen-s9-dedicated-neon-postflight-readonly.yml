@@ -84,7 +84,7 @@ jobs:
               st,doc=get_json(cfbase+'/accounts/'+aid+'/pages/projects/hive-alveare',cf)
               if st==200 and doc.get('success') is True and (doc.get('result') or {}).get('name')=='hive-alveare':selected.append(aid)
           need(len(selected)==1,'S9_CF_ACCOUNT_NOT_UNIQUE_AT_POSTFLIGHT')
-          st,deployments=get_json(cfbase+'/accounts/'+selected[0]+'/pages/projects/hive-alveare/deployments?env=preview&per_page=50&page=1',cf)
+          st,deployments=get_json(cfbase+'/accounts/'+selected[0]+'/pages/projects/hive-alveare/deployments?env=preview&per_page=20&page=1',cf)
           need(st==200 and deployments.get('success') is True,'S9_EXACT_GIT_DEPLOYMENT_GET_DENIED')
           sha='88ea17edcc932348dcbf3754ab2246cea772717b'
           match=[d for d in (deployments.get('result') or []) if
