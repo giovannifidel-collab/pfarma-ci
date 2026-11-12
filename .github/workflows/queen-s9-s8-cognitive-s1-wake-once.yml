@@ -78,12 +78,14 @@ jobs:
               print('S9_1_EXISTING_S2_COGNITIVE_POST_HTTP='+str(code))
               assert code==200 and data.get('ok') is True,'S9_S2_COGNITIVE_EXECUTION_FAILED'
               assert (data.get('state') or {}).get('correlation_id')==mission
-              assert any(e.get('id')==episode[0].get('id') for e in (((data.get('state') or {}).get('memory') or {}).get('episodes') or [])),'S9_COGNITIVE_MEMORY_NOT_CONSUMED'
+              retrieved=((data.get('state') or {}).get('memory') or {}).get('episodes') or []
+              assert any(e.get('id')==episode[0].get('id') for e in retrieved),'S9_COGNITIVE_MEMORY_NOT_CONSUMED'
           code,after=call('GET')
           assert code==200 and after.get('ok') is True,'S9_COGNITIVE_READBACK_FAILED'
           new=((after.get('state') or {}).get('cognitive') or {}).get('value') or {}
           assert new.get('correlation_id')==mission and (new.get('world') or {}).get('policy')=='authoritative-source-first'
-          assert any(e.get('id')==episode[0].get('id') for e in (((new.get('memory') or {}).get('episodes') or [])),'S9_COGNITIVE_PERSISTENT_MEMORY_NOT_CORRELATED'
+          retrieved=(new.get('memory') or {}).get('episodes') or []
+          assert any(e.get('id')==episode[0].get('id') for e in retrieved),'S9_COGNITIVE_PERSISTENT_MEMORY_NOT_CORRELATED'
           event_id=new.get('event_id')
           assert isinstance(event_id,(int,str)) and str(event_id).isdigit()
           with open(os.environ['GITHUB_ENV'],'a') as f:f.write('S9_COGNITIVE_PRE_DISPATCH_EVENT_ID='+str(event_id)+'\n')
@@ -96,8 +98,12 @@ jobs:
           set -euo pipefail
           # Old runs or ambiguous duplicates must never replay the same wake.
           runs="$(GH_TOKEN="$GH_RELAY_TOKEN" gh api 'repos/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-s8-cognitive-s1-wake-once.yml/runs?per_page=20')"
-          prior="$(jq --argjson current "$GITHUB_RUN_ID" '[.workflow_runs[] | select(.id!=$current and .event=="push")] | length' <<< "$runs")"
-          test "$prior" = '0' || { echo S9_1_S1_REPLAY_DENIED_PRIOR_RUN; exit 1; }
+          previous="$(jq -r --argjson current "$GITHUB_RUN_ID" '.workflow_runs[] | select(.id!=$current and .event=="push") | .id' <<< "$runs")"
+          for rid in $previous; do
+            attempted="$(GH_TOKEN="$GH_RELAY_TOKEN" gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$rid/jobs?per_page=20" | jq '[.jobs[].steps[]? | select(.name=="Dispatch once through existing main S1 event ingress (not a new scheduler)" and (.conclusion=="success" or .conclusion=="failure" or .status=="in_progress"))] | length')"
+            test "$attempted" = '0' || { echo S9_1_S1_REPLAY_DENIED_PRIOR_DISPATCH_ATTEMPT; exit 1; }
+          done
+          echo S9_1_PREVIOUS_FAILED_PRE_DISPATCH_RUN_SAFE_TO_RETRY=PASS
           data="$(jq -cn '{event_type:"queen-cycle",client_payload:{
             schema:"hive.event.v1",correlation_id:"54155332-409f-46c1-9f83-94407fe33c53",
             hop:0,max_hops:8,data:{
