@@ -94,3 +94,5 @@ jobs:
           print('S9_INDEPENDENT_PREVIEW_ANONYMOUS_HTTP='+str(anon))
           print('S9_INDEPENDENT_POSTFLIGHT_READ_ONLY=PASS')
           PY
+
+# S9 2026-11-12 postflight rerun after exact PR90 Git-connected isolated preview rollback.
