@@ -62,11 +62,12 @@
     "s9_6_integrated_exit_certified": false
   },
   "blockers": [
-    "Git-connected Pages release and full S9.2 certification not evidenced by this native Wrangler preview",
-    "Canonical trusted S8->S2 feedback and S1 wake remain unverified; new preview intentionally lacks S8 canonical evidence",
-    "No current exact owner-approved S9 mission (0 in canonical Neon at verification)",
-    "No per-project write authority or live recovery certification",
-    "Independent CI HIVE_NEON_PLATFORM_API_KEY reads production JWKS HTTP 200 but dedicated Neon project JWKS HTTP 404; exact cause unverified, requiring project-scoped authenticated proof later"
+    "S9.1: canonical S8->S2 School, Memory, World and Cognitive correlation absent; no verified S1 wake",
+    "S9.2: Pages source builds and protected production runtime responds 200, but actual Git-connected release and distinct project JWKS control-plane independent readback remain unverified",
+    "S9.3: canonical Neon contains zero exact fresh S9 owner-approved mission records; conversational approval is not a cryptographic trust gate",
+    "S9.4: per-project independent owner write grants and verified releases unavailable; portfolio remains read-only",
+    "S9.5: isolated live CAS and quarantine pass, but independent real-provider interrupted-recovery test absent",
+    "S9.6: full E2E closure impossible while required gates remain false"
   ],
   "independent_postflight": {
     "ci_run_id": 43087659777,
@@ -88,5 +89,56 @@
     "dedicated_compute_id": "ep-snowy-paper-bffsyw5d",
     "compute_manual_suspend_result": "idle",
     "compute_suspended_after_test": true
-  }
+  },
+  "last_reverified_at": "2026-11-12",
+  "independent_integrated_readonly_audit": {
+    "run_id": 43197055541,
+    "conclusion": "success",
+    "url": "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43197055541",
+    "workflow": ".github/workflows/queen-s9-independent-source-runtime-audit.yml",
+    "workflow_commit_sha": "0917a2d03a27fd5211b1b53147d898a4b9ab267f",
+    "pr89_exact_draft_sha_verified": true,
+    "pr90_exact_draft_sha_verified": true,
+    "pr91_exact_draft_sha_verified": true,
+    "s1_s9_1_s9_3_s9_5_regression_suite": "PASS",
+    "pages_source_wrangler_build": "PASS",
+    "git_connected_pages_release": "NOT_VERIFIED",
+    "protected_prod_runtime_health_http": 200,
+    "protected_prod_s2_readback_http": 200,
+    "s8_canonical_memory_episode_matches": 0,
+    "s8_current_world_correlated": false,
+    "s8_current_cognitive_correlated": false,
+    "s8_current_school_last_correlated": false,
+    "independent_canonical_s8_to_s1_wake": "NOT_VERIFIED",
+    "production_writes": 0,
+    "production_deployment": false
+  },
+  "isolated_cas_live_20261112": {
+    "neon_project_id": "proud-night-33193396",
+    "db": "queen_s9_preview",
+    "test_only_keys": [
+      "hive.queen.s9.test.cas.20261112",
+      "hive.queen.s9.test.timeout.20261112"
+    ],
+    "two_racing_claims": "EXACTLY_ONE_WON",
+    "verified_completion": "CAS_ONLY_NO_PROVIDER_EXECUTION",
+    "duplicate_replay": "DENIED",
+    "simulated_timeout": "QUARANTINED",
+    "unauthorized_retry": "DENIED",
+    "automatic_retry": false,
+    "model_calls": 0,
+    "project_writes": 0,
+    "school_training_promotions": 0,
+    "independent_provider_recovery": "NOT_VERIFIED"
+  },
+  "production_canonical_readonly_recheck_20261112": {
+    "s8_verified_event_count": 1,
+    "s8_four_sidecars_match": true,
+    "s9_owner_approved_record_count": 0,
+    "s8_matching_canonical_school_experience_count": 0,
+    "s8_matching_memory_episode_count": 0,
+    "world_correlated": false,
+    "cognitive_correlated": false
+  },
+  "exit_claim_allowed": false
 }
