@@ -1,0 +1,122 @@
+name: Queen S9 Three-PR Source and Canonical Runtime Read-Only Audit
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-independent-source-runtime-audit.yml]
+permissions: {contents: read}
+jobs:
+  independent-audit:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      PRIVATE_MAIN: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+      PR89_SHA: b7769ac22f80dcd2e0982f6c1f03702111b7e4fd
+      PR90_SHA: 8920b575defba8d806d8638de66794078d5c5403
+      PR91_SHA: 22f5d695be52b24a4453eb419cfed4a84b6e7baa
+      S8_MISSION_ID: 54155332-409f-46c1-9f83-94407fe33c53
+    steps:
+      - name: Pin source SHA and exactly three unmerged draft PRs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$PRIVATE_MAIN"
+          pointer="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$PRIVATE_MAIN"
+          for spec in "89:$PR89_SHA" "90:$PR90_SHA" "91:$PR91_SHA"; do
+            number="$(cut -d: -f1 <<< "$spec")"
+            sha="$(cut -d: -f2 <<< "$spec")"
+            gh api repos/giovannifidel-collab/hive-alveare/pulls/"$number" | jq -e --arg sha "$sha" --arg base "$PRIVATE_MAIN" '.state=="open" and .draft==true and .merged==false and .head.sha==$sha and .base.ref=="main" and .base.sha==$base' >/dev/null
+            printf 'S9_PR_%s_EXACT_DRAFT_PIN=PASS\n' "$number"
+          done
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/42395750840 | jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="762854f8f100327e222146dc05a88fac509d75d4"' >/dev/null
+          echo S9_S8_INDEPENDENT_CI_AND_SOURCE_POINTER=PASS
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: b7769ac22f80dcd2e0982f6c1f03702111b7e4fd
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: s91
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: 8920b575defba8d806d8638de66794078d5c5403
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: s92
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: 22f5d695be52b24a4453eb419cfed4a84b6e7baa
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: s935
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Execute existing S1 and S9.1/S9.3/S9.5 source and adversarial tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C s91 rev-parse HEAD)" = "$PR89_SHA"
+          test "$(git -C s92 rev-parse HEAD)" = "$PR90_SHA"
+          test "$(git -C s935 rev-parse HEAD)" = "$PR91_SHA"
+          node s91/ops/queen/core/validate-s1-core.mjs
+          node --test s91/ops/queen/s9/tests/*.test.mjs
+          node --test s935/ops/queen/s9/tests/*.test.mjs
+          echo S9_S1_S91_S93_S95_SOURCE_GUARDS=PASS
+      - name: Compile S9.2 Pages source without publishing or changing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd s92/cloudflare
+          npx --yes wrangler@4.123.0 pages functions build functions --outdir "$RUNNER_TEMP/s9-source-build"
+          test -n "$(find "$RUNNER_TEMP/s9-source-build" -type f -print -quit)"
+          echo S9_2_PAGES_SOURCE_BUILD=PASS
+          echo S9_2_GIT_CONNECTED_RELEASE=NOT_VERIFIED
+      - name: Independently read protected production S2 state without modification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error
+          base='https://hive-alveare.pages.dev'
+          headers={'CF-Access-Client-Id':os.environ['CF_ACCESS_CLIENT_ID'],'CF-Access-Client-Secret':os.environ['CF_ACCESS_CLIENT_SECRET'],'Accept':'application/json','Cache-Control':'no-cache'}
+          def read(path):
+              req=urllib.request.Request(base+path,headers=headers,method='GET')
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as r:return r.status,json.load(r)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.load(e)
+                  except:return e.code,{}
+          code,health=read('/api/runtime-health')
+          print('S9_PRODUCTION_HEALTH_HTTP='+str(code))
+          assert code==200 and health.get('ok') is True,'PRODUCTION_RUNTIME_DENIED'
+          code,state=read('/api/queen-state')
+          print('S9_PRODUCTION_S2_READBACK_HTTP='+str(code))
+          assert code==200 and state.get('ok') is True,'S2_STATE_UNAVAILABLE'
+          s=state.get('state') or {}
+          m=os.environ['S8_MISSION_ID']
+          memory=((s.get('memory') or {}).get('value') or {})
+          world=((s.get('world') or {}).get('value') or {})
+          cognitive=((s.get('cognitive') or {}).get('value') or {})
+          school=((s.get('school') or {}).get('value') or {})
+          correlated=sum(1 for e in memory.get('episodic',[]) if e.get('correlation_id')==m)
+          print('S9_1_MEMORY_EPISODE_CORRELATION='+str(correlated))
+          print('S9_1_WORLD_CORRELATION='+str(world.get('correlation_id')==m).lower())
+          print('S9_1_COGNITIVE_CORRELATION='+str(cognitive.get('correlation_id')==m).lower())
+          print('S9_1_SCHOOL_LAST_CORRELATION='+str(school.get('last_correlation_id')==m).lower())
+          if not(correlated==1 and world.get('correlation_id')==m and cognitive.get('correlation_id')==m and school.get('last_correlation_id')==m):
+              print('S9_1_CANONICAL_LINK=NOT_CERTIFIED_FAIL_CLOSED')
+          else: print('S9_1_CANONICAL_LINK=CORRELATED_NOT_INDEPENDENTLY_SCHOOL_CERTIFIED')
+          print('S9_PROTECTED_READ_ONLY_RUNTIME_AUDIT=PASS')
+          print('S9_UNIFIED_EXIT=NOT_CERTIFIED_BY_THIS_WORKFLOW')
+          PY
+      - name: Scrub private checkout and build outputs
+        if: always()
+        run: rm -rf s91 s92 s935 "$RUNNER_TEMP/s9-source-build"
