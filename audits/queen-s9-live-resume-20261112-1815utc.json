@@ -115,5 +115,20 @@
     },
     "owner_manual_identity_attestation_executed": false,
     "trusted_s9_provider_runner_live_executed": false
+  },
+  "owner_attestation_attempt": {
+    "run_id": 43283189847,
+    "run_url": "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43283189847",
+    "event": "workflow_dispatch",
+    "actor": "giovannifidel-collab",
+    "workflow_head_sha": "119b0e829e1a0710db474f43e2e9394261226635",
+    "conclusion": "failure",
+    "first_step": "Require explicit logged-in owner and exact HIVE source",
+    "source_sha_input": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+    "approve_hive_only_one_shot": false,
+    "oidc_attestation_step": "skipped",
+    "neon_grant_issued": false,
+    "trusted_owner_attestation": false,
+    "next_action": "Rerun new manual dispatch with approve_hive_only_one_shot=true. Re-run-failed-jobs cannot alter original inputs."
   }
 }
