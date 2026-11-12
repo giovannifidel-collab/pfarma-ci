@@ -1,0 +1,99 @@
+{
+  "schema": "queen.s9.live-resume-audit.v1",
+  "audited_at_utc": "2026-11-12T18:15:32Z",
+  "scope": "READ_ONLY_LIVE_VALIDATION_AND_HANDOFF_NOT_S9_CERTIFICATION",
+  "source_of_truth": {
+    "repository": "giovannifidel-collab/hive-alveare",
+    "branch": "main",
+    "sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+    "public_relay": "giovannifidel-collab/pfarma-ci",
+    "relay_pointer_matches": true
+  },
+  "git_draft_prs": [
+    {
+      "number": 78,
+      "head_sha": "aace87c35fe5ca4543aaa4e97f6a6d824d7cc583",
+      "merged": false
+    },
+    {
+      "number": 89,
+      "head_sha": "b7769ac22f80dcd2e0982f6c1f03702111b7e4fd",
+      "merged": false
+    },
+    {
+      "number": 90,
+      "head_sha": "88ea17edcc932348dcbf3754ab2246cea772717b",
+      "merged": false
+    },
+    {
+      "number": 91,
+      "head_sha": "22f5d695be52b24a4453eb419cfed4a84b6e7baa",
+      "merged": false
+    }
+  ],
+  "verified_neon_read_only": {
+    "production_project": "muddy-recipe-65646643",
+    "preview_project": "proud-night-33193396",
+    "production_data_api": "active",
+    "preview_data_api": "active",
+    "isolated_preview_external_jwks": true,
+    "queen_s9_event_count": 0,
+    "latest_neon_event_id": 1226,
+    "owner_grants_existing": 2,
+    "owner_grants_active": 0,
+    "independent_owner_cryptographic_attestation_for_existing_grants": false,
+    "current_s9_mission_status": "OWNER_SCOPED_PLANNED_NO_PROVIDER_YET",
+    "s9_ledger_status": "READY_FOR_NEXT_VERIFIED_ACTION",
+    "s9_ledger_active_missions": 0,
+    "s9_ledger_provider_dispatches": 0,
+    "s9_ledger_applied_event_ids": [],
+    "existing_school_experiences": 18,
+    "school_training_eligible_count": 0,
+    "s9_s8_feedback_experience_present": true,
+    "isolated_cas_test_status": "COMPLETED_VERIFIED_TEST_ONLY",
+    "isolated_timeout_test_status": "QUARANTINED"
+  },
+  "stage_status": {
+    "S9.1": "PASS_LIVE_SCOPED_PRESERVED",
+    "S9.2": "PASS_LIVE_PROTECTED_PREVIEW_AND_ROLLBACK_PRESERVED_NOT_PRODUCTION_RELEASE",
+    "S9.3": "PENDING_NO_FRESH_ATTESTED_OWNER_GRANT_NO_EXECUTION_PROOF",
+    "S9.4": "PASS_READ_ONLY_NO_PROJECT_WRITES",
+    "S9.5": "PARTIAL_ISOLATED_CAS_PASS_LIVE_PROVIDER_RECOVERY_PENDING",
+    "S9.6": "DENY_NO_UNIFIED_LIVE_CERTIFICATION"
+  },
+  "source_drift": {
+    "hive-field": {
+      "source_baseline": "44c73a353de1ecbbe88cf3221252d34f39799495",
+      "current_main": "6816df638304a6decb05b9b4bd6543d8600f5e7c",
+      "can_write": false
+    },
+    "pfarma-social": {
+      "source_baseline": "c56bbbd89b2a1bc273d833635dee6b0b10c5cf07",
+      "current_main": "07918a91c95f16e6f1b8e494f90b2799a551a563",
+      "can_write": false
+    }
+  },
+  "future_gate": "S10_CONTRACT_NOT_FOUND_IN_414_ENTRY_MAIN_TREE",
+  "next_safe_actions": [
+    "Obtain independently authenticated fresh Owner approval via an existing trusted controller, not by editing expired records.",
+    "Run one HIVE-only no-cost source-exact bounded mission through original S1 and Compute Fabric, with independent provider/CI proof and CAS ledger readback.",
+    "Run real provider interruption, duplicate/replay/timeout/quarantine/retry tests on isolated scope, with independently verified output.",
+    "Certify S9.6 only after all live positive and adversarial gates pass."
+  ],
+  "immutable_invariants": {
+    "default_deny": true,
+    "additional_budget_usd": 0,
+    "paid_fallback": false,
+    "auto_merge": false,
+    "production_deploy": false,
+    "other_project_writes": false,
+    "school_training_promotion": false,
+    "no_duplicate_s1_s2": true
+  },
+  "evidence_links": [
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43244152359",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43239944951",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43245571080",
+    "https://github.com/giovannifidel-collab/hive-alveare/actions/runs/42477220311"
+  ]
+}
