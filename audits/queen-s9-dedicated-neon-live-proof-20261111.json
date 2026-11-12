@@ -63,11 +63,11 @@
   },
   "blockers": [
     "S9.1: canonical S8->S2 School, Memory, World and Cognitive correlation absent; no verified S1 wake",
-    "S9.2: Pages source builds and protected production runtime responds 200, but actual Git-connected release and distinct project JWKS control-plane independent readback remain unverified",
     "S9.3: canonical Neon contains zero exact fresh S9 owner-approved mission records; conversational approval is not a cryptographic trust gate",
     "S9.4: per-project independent owner write grants and verified releases unavailable; portfolio remains read-only",
     "S9.5: isolated live CAS and quarantine pass, but independent real-provider interrupted-recovery test absent",
-    "S9.6: full E2E closure impossible while required gates remain false"
+    "S9.6: full E2E closure impossible while required gates remain false",
+    "S9.2: exact Git-connected PR90 original preview deployed successfully, but newer protected Git build fails at legacy Wrangler JSON import syntax; source compatibility adapter exists in draft PR90 but existing project build_command is blank. Cannot alter production-connected global build_command without exact scoped owner release approval. No production deploy, preview env rolled back."
   ],
   "independent_postflight": {
     "ci_run_id": 43087659777,
@@ -140,5 +140,34 @@
     "world_correlated": false,
     "cognitive_correlated": false
   },
-  "exit_claim_allowed": false
+  "exit_claim_allowed": false,
+  "s9_2_git_connected_reverification_20261112": {
+    "first_exact_pr90_sha": "8920b575defba8d806d8638de66794078d5c5403",
+    "first_exact_pr90_git_connected_deployment_id": "377c0180-43f5-4976-a055-a439ac1bfbdb",
+    "first_git_connected_deploy_stage": "success",
+    "first_exact_sha_git_connected_ci": 43197879456,
+    "first_protected_preview_ci": 43198057392,
+    "first_preview_anonymous_http": 302,
+    "first_preview_service_http": 500,
+    "isolated_git_connected_redeploy_attempt_ci": 43198647327,
+    "triggered_source_only_pr90_probe_sha": "0f8e99f59b88b337ba2150171033ff8c9a51fab4",
+    "pr90_remains_draft": true,
+    "pr90_merged": false,
+    "git_connected_redeploy_success": false,
+    "git_connected_redeploy_build_stage": "failure",
+    "git_connected_failure": "Cloudflare Git-connected builder Wrangler 3.114.17 cannot parse Node22 import attribute with {type:json} in cloudflare/functions/_lib/queen-runtime.js:1:60",
+    "git_connected_logs_read_only_ci": 43198934582,
+    "canonical_pr90_compat_source_ci": [
+      43198705878,
+      43198714595
+    ],
+    "canonical_pr90_compat_source_ci_conclusion": "success",
+    "production_main_sha_unchanged": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+    "preview_temporary_neon_binding_removed": true,
+    "independent_preview_rollback_ci": 43198934582,
+    "production_cloudflare_config_unchanged": true,
+    "isolated_compute_state_after_trial": "idle",
+    "preview_build_command_change_applied": false,
+    "safe_next_step": "Exactly scoped owner approval for temporary global Cloudflare Pages build_command change to existing PR90 ephemeral adapter, with exact source and production health check, preview-only deployment, guaranteed rollback; no S9 exit claim"
+  }
 }
