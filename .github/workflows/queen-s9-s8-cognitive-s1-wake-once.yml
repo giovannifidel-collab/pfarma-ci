@@ -1,0 +1,143 @@
+name: Queen S9.1 Canonical S2 Cognitive Readback and Single Existing S1 Wake
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-s8-cognitive-s1-wake-once.yml]
+permissions: {contents: write}
+concurrency:
+  group: queen-s9-s8-1183-existing-s1-once
+  cancel-in-progress: false
+jobs:
+  cognitive-then-s1:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 9
+    env:
+      GH_PRIVATE_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      GH_RELAY_TOKEN: ${{ github.token }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Verify existing S1 canon router is blob-identical and S8 proof signed CI success
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_PRIVATE_TOKEN" && test -n "$GH_RELAY_TOKEN"
+          test "$(GH_TOKEN="$GH_PRIVATE_TOKEN" gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = '296677c77946b91ca1c8f9da70d41d87b975c5e4'
+          GH_TOKEN="$GH_PRIVATE_TOKEN" gh api repos/giovannifidel-collab/hive-alveare/contents/ops/queen/core/event-router.mjs -q .sha > "$RUNNER_TEMP/new-router-blob"
+          GH_TOKEN="$GH_PRIVATE_TOKEN" gh api 'repos/giovannifidel-collab/hive-alveare/contents/ops/queen/core/event-router.mjs?ref=73778e4d040e6ae361401003441f6a9be2c793f5' -q .sha > "$RUNNER_TEMP/old-router-blob"
+          diff "$RUNNER_TEMP/new-router-blob" "$RUNNER_TEMP/old-router-blob"
+          test "$(cat "$RUNNER_TEMP/new-router-blob")" = 'deb59dbe573bea2ab6f970bdeb2163ba1027d281'
+          GH_TOKEN="$GH_PRIVATE_TOKEN" gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/42395750840 | jq -e '.status=="completed" and .conclusion=="success"' >/dev/null
+          echo S9_1_CANONICAL_S1_ROUTER_BLOB_IDENTICAL=PASS
+          echo S9_1_SIGNED_S8_INDEPENDENT_CI=PASS
+      - name: Use EXISTING S2 Cognitive Core to incorporate independent S8 provisional evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,subprocess,tempfile,datetime
+          origin='https://hive-alveare.pages.dev/api/queen-state'
+          mission='54155332-409f-46c1-9f83-94407fe33c53'
+          candidate='3deb5d621df4b12bb9edf8dbc1968a42c7e336474f349da9173e33bb308cbf3f'
+          log='3401fabb129784af661663d01faafa8b79072d0227126719dfffef504fd76b74'
+          def call(method,data=None):
+              with tempfile.TemporaryDirectory() as tmp:
+                  argv=['curl','-sS','--max-time','40','-o',tmp+'/body','-w','%{http_code}',
+                    '-H','Accept: application/json','-H','Content-Type: application/json',
+                    '-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+                    '-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET'],
+                    '-X',method,origin]
+                  if data is not None:argv+=['--data-binary',json.dumps(data,separators=(',',':'))]
+                  r=subprocess.run(argv,capture_output=True,text=True,timeout=45)
+                  if r.returncode:return 0,{}
+                  try:code=int(r.stdout.strip())
+                  except:code=0
+                  try:body=json.load(open(tmp+'/body'))
+                  except:body={}
+                  return code,body
+          code,current=call('GET')
+          assert code==200 and current.get('ok') is True,'S2_CANONICAL_RUNTIME_UNREADABLE'
+          state=current.get('state') or {}
+          school=((state.get('school') or {}).get('value') or {})
+          memory=((state.get('memory') or {}).get('value') or {})
+          world=((state.get('world') or {}).get('value') or {})
+          episode=[x for x in memory.get('episodic',[]) if x.get('correlation_id')==mission and x.get('response_hash')==candidate and x.get('evidence_hash')==log and x.get('verified') is True and x.get('execution_verified') is False]
+          assert len(episode)==1,'S9_MEMORY_INDEPENDENT_RECEIPT_NOT_UNIQUE'
+          assert school.get('last_correlation_id')==mission and (school.get('last_experience') or {}).get('training_eligible') is False,'S9_SCHOOL_PROVISIONAL_MISSING'
+          assert world.get('correlation_id')==mission and world.get('verification_ref')==candidate and world.get('policy')=='authoritative-source-first','S9_WORLD_NOT_CORRELATED'
+          assert world.get('source')=='hive-live-world-model','S9_WORLD_SYNTHETIC'
+          cogn=((state.get('cognitive') or {}).get('value') or {})
+          already=(cogn.get('correlation_id')==mission and
+            any(e.get('id')==episode[0].get('id') for e in ((cogn.get('memory') or {}).get('episodes') or [])) and
+            (cogn.get('world') or {}).get('policy')=='authoritative-source-first')
+          if already:
+              print('S9_1_S2_COGNITIVE_ALREADY_CORRELATED=PASS')
+          else:
+              code,data=call('POST',{'action':'queen.cognitive_cycle','correlation_id':mission,'data':{'s8_event_id':1183,'evidence_sha256':candidate,'school_training_eligible':False,'project_writes':False,'paid_fallback':False}})
+              print('S9_1_EXISTING_S2_COGNITIVE_POST_HTTP='+str(code))
+              assert code==200 and data.get('ok') is True,'S9_S2_COGNITIVE_EXECUTION_FAILED'
+              assert (data.get('state') or {}).get('correlation_id')==mission
+              assert any(e.get('id')==episode[0].get('id') for e in (((data.get('state') or {}).get('memory') or {}).get('episodes') or [])),'S9_COGNITIVE_MEMORY_NOT_CONSUMED'
+          code,after=call('GET')
+          assert code==200 and after.get('ok') is True,'S9_COGNITIVE_READBACK_FAILED'
+          new=((after.get('state') or {}).get('cognitive') or {}).get('value') or {}
+          assert new.get('correlation_id')==mission and (new.get('world') or {}).get('policy')=='authoritative-source-first'
+          assert any(e.get('id')==episode[0].get('id') for e in (((new.get('memory') or {}).get('episodes') or [])),'S9_COGNITIVE_PERSISTENT_MEMORY_NOT_CORRELATED'
+          event_id=new.get('event_id')
+          assert isinstance(event_id,(int,str)) and str(event_id).isdigit()
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('S9_COGNITIVE_PRE_DISPATCH_EVENT_ID='+str(event_id)+'\n')
+          print('S9_1_S2_COGNITIVE_MEMORY_WORLD_CORRELATED=PASS')
+          print('S9_1_NO_SCHOOL_TRAINING_GRANT=PASS')
+          PY
+      - name: Dispatch once through existing main S1 event ingress (not a new scheduler)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Old runs or ambiguous duplicates must never replay the same wake.
+          runs="$(GH_TOKEN="$GH_RELAY_TOKEN" gh api 'repos/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-s8-cognitive-s1-wake-once.yml/runs?per_page=20')"
+          prior="$(jq --argjson current "$GITHUB_RUN_ID" '[.workflow_runs[] | select(.id!=$current and .event=="push")] | length' <<< "$runs")"
+          test "$prior" = '0' || { echo S9_1_S1_REPLAY_DENIED_PRIOR_RUN; exit 1; }
+          data="$(jq -cn '{event_type:"queen-cycle",client_payload:{
+            schema:"hive.event.v1",correlation_id:"54155332-409f-46c1-9f83-94407fe33c53",
+            hop:0,max_hops:8,data:{
+              s8_event_id:1183,candidate_sha256:"3deb5d621df4b12bb9edf8dbc1968a42c7e336474f349da9173e33bb308cbf3f",
+              source_sha:"a0ba9b06593f514182ae9fcabdec073c30755066",
+              s2_canonical_provisional:true,school_training_eligible:false,paid_fallback:false,product_writes:false}}}')"
+          code="$(curl -sS --max-time 25 -o "$RUNNER_TEMP/s9-s1-dispatch-response" -w '%{http_code}' \
+            -X POST -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_RELAY_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            -H 'Content-Type: application/json' \
+            --data-binary "$data" \
+            'https://api.github.com/repos/giovannifidel-collab/pfarma-ci/dispatches')"
+          test "$code" = '204' || { echo S9_1_EXISTING_S1_REPO_DISPATCH_HTTP="$code"; exit 20; }
+          echo S9_1_EXISTING_S1_REPOSITORY_DISPATCH_HTTP=204
+          echo S9_1_SINGLE_CANONICAL_QUEEN_CYCLE_WAKE_SUBMITTED=PASS
+      - name: Independently await S1's new Cognitive event via durable Neon-backed S2 GET
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,subprocess,tempfile,time
+          mission='54155332-409f-46c1-9f83-94407fe33c53'
+          original=str(os.environ['S9_COGNITIVE_PRE_DISPATCH_EVENT_ID'])
+          authenticated=['-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],'-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET']]
+          good=False
+          for n in range(30):
+              with tempfile.TemporaryDirectory() as d:
+                  args=['curl','-sS','--max-time','20','-o',d+'/body','-w','%{http_code}','-H','Accept: application/json']+authenticated+['https://hive-alveare.pages.dev/api/queen-state']
+                  p=subprocess.run(args,capture_output=True,text=True,timeout=25)
+                  if p.returncode:continue
+                  try:body=json.load(open(d+'/body'))
+                  except:body={}
+                  cogn=((((body.get('state') or {}).get('cognitive') or {}).get('value')) or {})
+                  if body.get('ok') is True and cogn.get('correlation_id')==mission and str(cogn.get('event_id',''))!=original and str(cogn.get('event_id','')).isdigit():
+                      eps=((cogn.get('memory') or {}).get('episodes') or [])
+                      if any(e.get('id')=='s9-s8-1183-independent-verification-canonical' for e in eps):
+                          good=True;print('S9_1_EXISTING_S1_EXECUTED_COGNITIVE_EVENT_ID='+str(cogn.get('event_id')));break
+              time.sleep(4)
+          assert good,'S9_S1_DURABLE_COGNITIVE_WAKE_NOT_CERTIFIED'
+          print('S9_1_EXISTING_S1_END_TO_END_WAKE=PASS')
+          print('S9_1_NO_NEW_SCHEDULER=PASS')
+          PY
