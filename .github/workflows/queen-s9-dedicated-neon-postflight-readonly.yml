@@ -65,12 +65,36 @@ jobs:
               status,data=get_json(cfbase+'/accounts/'+aid+'/pages/projects/hive-alveare',cf)
               if status==200 and data.get('success')==True:matches.append(data.get('result') or {})
           need(len(matches)==1,'CF_HIVE_PAGES_PROJECT_AMBIGUOUS')
+          need((matches[0].get('build_config') or {}).get('build_command') in ('',None),'S9_GLOBAL_BUILD_COMMAND_NOT_RESTORED')
+          print('S9_GLOBAL_PAGES_BUILD_COMMAND_ROLLBACK=PASS')
           cfg=matches[0].get('deployment_configs') or {}
           preview=(cfg.get('preview') or {}).get('env_vars') or {}
           production=(cfg.get('production') or {}).get('env_vars') or {}
           need('HIVE_DATA_API_URL' not in preview,'S9_PREVIEW_VARIABLE_NOT_ROLLED_BACK')
           value=(production.get('HIVE_DATA_API_URL') or {}).get('value','')
           need(isinstance(value,str) and 'ep-gentle-cloud-afadq2x1.apirest.c-2.us-west-2.aws.neon.tech/neondb/rest/v1' in value,'S9_PROD_BINDING_DRIFT')
+          # Independent verification of exact Git-connected source deployment;
+          # previous workflow never gets to certify its own result.
+          deployed_account=(matches[0].get('id') or '')
+          # Account was found during the for-loop; locate it again without altering it.
+          selected=[]
+          for account in accounts.get('result') or []:
+              aid=str(account.get('id',''))
+              if not re.fullmatch('[a-f0-9]{32}',aid):continue
+              st,doc=get_json(cfbase+'/accounts/'+aid+'/pages/projects/hive-alveare',cf)
+              if st==200 and doc.get('success') is True and (doc.get('result') or {}).get('name')=='hive-alveare':selected.append(aid)
+          need(len(selected)==1,'S9_CF_ACCOUNT_NOT_UNIQUE_AT_POSTFLIGHT')
+          st,deployments=get_json(cfbase+'/accounts/'+selected[0]+'/pages/projects/hive-alveare/deployments?env=preview&per_page=50&page=1',cf)
+          need(st==200 and deployments.get('success') is True,'S9_EXACT_GIT_DEPLOYMENT_GET_DENIED')
+          sha='88ea17edcc932348dcbf3754ab2246cea772717b'
+          match=[d for d in (deployments.get('result') or []) if
+                 ((d.get('deployment_trigger') or {}).get('metadata') or {}).get('commit_hash')==sha and
+                 ((d.get('deployment_trigger') or {}).get('metadata') or {}).get('branch')=='convergence/s9-pages-legacy-build-compat-20261108' and
+                 (d.get('source') or {}).get('type')=='github' and
+                 d.get('environment')=='preview']
+          need(len(match)==1 and match[0].get('id')=='7bf421bf-5ef2-4cee-8ce2-8c6f07293a8d','S9_GIT_DEPLOYMENT_PROVENANCE_FAILED')
+          need((match[0].get('latest_stage') or {}).get('status')=='success','S9_GIT_DEPLOYMENT_NOT_SUCCESS')
+          print('S9_INDEPENDENT_GIT_CONNECTED_EXACT_SHA_DEPLOYMENT=PASS')
           print('S9_PREVIEW_DATA_API_BINDING_ROLLED_BACK=PASS')
           print('S9_PRODUCTION_DATA_API_BINDING_UNCHANGED=PASS')
           def http(origin,path,authenticated):
