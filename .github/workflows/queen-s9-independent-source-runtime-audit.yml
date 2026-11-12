@@ -84,16 +84,24 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os,json,urllib.request,urllib.error
+          import os,json,subprocess,tempfile
           base='https://hive-alveare.pages.dev'
-          headers={'CF-Access-Client-Id':os.environ['CF_ACCESS_CLIENT_ID'],'CF-Access-Client-Secret':os.environ['CF_ACCESS_CLIENT_SECRET'],'Accept':'application/json','Cache-Control':'no-cache'}
           def read(path):
-              req=urllib.request.Request(base+path,headers=headers,method='GET')
-              try:
-                  with urllib.request.urlopen(req,timeout=25) as r:return r.status,json.load(r)
-              except urllib.error.HTTPError as e:
-                  try:return e.code,json.load(e)
-                  except:return e.code,{}
+              with tempfile.TemporaryDirectory() as tmp:
+                  target=tmp+'/body'
+                  cmd=['curl','-sS','--max-time','25','-o',target,'-w','%{http_code}',
+                       '-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+                       '-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET'],
+                       '-H','Accept: application/json',
+                       '-H','Cache-Control: no-cache',
+                       base+path]
+                  process=subprocess.run(cmd,capture_output=True,text=True,timeout=29)
+                  if process.returncode!=0:return 0,{}
+                  try: status=int(process.stdout.strip())
+                  except:return 0,{}
+                  try: body=json.load(open(target))
+                  except: body={}
+                  return status,body
           code,health=read('/api/runtime-health')
           print('S9_PRODUCTION_HEALTH_HTTP='+str(code))
           assert code==200 and health.get('ok') is True,'PRODUCTION_RUNTIME_DENIED'
