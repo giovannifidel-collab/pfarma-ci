@@ -1,0 +1,84 @@
+{
+  "schema": "queen.s9.resume-checkpoint.v2",
+  "as_of_date": "2026-11-13",
+  "source_authority": {
+    "private_repository": "giovannifidel-collab/hive-alveare",
+    "main_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+    "relay_repository": "giovannifidel-collab/pfarma-ci"
+  },
+  "completed": [
+    {
+      "gate": "S9.1",
+      "outcome": "PASS_LIVE_SCOPED_UNCHANGED"
+    },
+    {
+      "gate": "S9.2",
+      "outcome": "PASS_LIVE_PREVIEW_WITH_ROLLBACK_UNCHANGED"
+    },
+    {
+      "gate": "S9.3",
+      "outcome": "PASS_LIVE_HIVE_ONLY_BOUNDED_ONE_SHOT",
+      "mission_id": "4dc4f64c-ede8-4cb2-a5e9-c62a966db3c8",
+      "evidence": {
+        "owner_oidc_ci": 43381880192,
+        "world_ci": 43382903175,
+        "provider_ci": 43383170987,
+        "s1_ingress_ci": 43383190862,
+        "world_neon_event": 1231,
+        "cognitive_neon_event": 1232,
+        "s9_3_proof_neon_event": 1233,
+        "provider_dispatches": 1,
+        "active_missions": 0,
+        "school_training_promotions": 0
+      },
+      "scope": "ONE_OWNER_APPROVED_HIVE_COGNITIVE_CONTINUATION_NOT_GENERAL_AUTONOMY"
+    },
+    {
+      "gate": "S9.4",
+      "outcome": "PASS_READ_ONLY_10_PROJECTS_2_SOURCE_DRIFTS_NO_WRITES"
+    },
+    {
+      "gate": "S9.5",
+      "outcome": "LIVE_REAL_GITHUB_RUNNER_FAULT_QUARANTINE_PASS_RETRY_PENDING",
+      "evidence": {
+        "fault_ci": 43383707152,
+        "isolated_project": "proud-night-33193396",
+        "ledger_key": "hive.queen.s9.test.real-provider-interruption.20261113",
+        "ledger_status": "QUARANTINED",
+        "retry_count": 0,
+        "unauthorized_retry_denied": true
+      }
+    }
+  ],
+  "pending": [
+    {
+      "gate": "S9.5",
+      "blocker": "A fresh Owner authenticated, exact-scope approval is required for ONE real isolated provider recovery retry; no re-use of the S9.3 one-shot grant",
+      "owner_workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-5-owner-retry-attestation.yml"
+    },
+    {
+      "gate": "S9.6",
+      "blocker": "Do not certify until S9.5 recovery E2E and unified independent acceptance manifest pass"
+    },
+    {
+      "gate": "S10",
+      "blocker": "No authoritative S10 contract in main. Scope must be reconciled and owner ratified"
+    }
+  ],
+  "invariants": {
+    "default_deny": true,
+    "paid_fallback": false,
+    "additional_costs": 0,
+    "auto_merge": false,
+    "auto_deploy": false,
+    "cross_project_writes": false,
+    "school_training_promotions": false,
+    "no_new_event_loop": true,
+    "no_new_school": true
+  },
+  "proof_files": [
+    "audits/queen-s9-3-bounded-live-proof-20261113.json",
+    "audits/queen-s9-5-real-runner-fault-quarantine-20261113.json"
+  ],
+  "user_action_required": "Authorize one isolated S9.5 retry using owner-workflow linked above, selecting main and checking approve_s9_5_isolated_recovery; SHA default is prefilled"
+}
