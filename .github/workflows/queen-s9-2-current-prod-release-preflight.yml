@@ -68,6 +68,17 @@ jobs:
                 'commit_sha':meta.get('commit_hash'),
                 'created_on':d.get('created_on')
               })
+          canonical=proj.get('canonical_deployment') or {}
+          canonical_meta=((canonical.get('deployment_trigger') or {}).get('metadata') or {})
+          canonical_status=(canonical.get('latest_stage') or {}).get('status')
+          latest_success=next((d for d in latest_prod if d.get('status')=='success'),None)
+          rollback_target={
+            'id':canonical.get('id') if canonical_status=='success' else (latest_success or {}).get('id'),
+            'status':canonical_status if canonical_status=='success' else (latest_success or {}).get('status'),
+            'commit_sha':canonical_meta.get('commit_hash') if canonical_status=='success' else (latest_success or {}).get('commit_sha'),
+            'basis':'canonical_production_deployment' if canonical_status=='success' else 'most_recent_successful_listed_production'
+          }
+          print('S9_2_KNOWN_GOOD_ROLLBACK_TARGET='+json.dumps(rollback_target,separators=(',',':')))
           record={
             'schema':'queen.s9.2.current-production-readonly-baseline.v1',
             'checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -80,6 +91,8 @@ jobs:
             'production_has_neon_binding':True,
             'preview_has_shared_prod_neon_binding':False,
             'production_latest':latest_prod[:3],
+            'known_good_rollback_target':rollback_target,
+            'production_release_requires_owner_signature':True,
             'deployments_api_http_status':st,
             'deployments_list_verified':listing_verified,
             'production_release_ready':False,
