@@ -1,0 +1,94 @@
+name: Queen S9.2 Independent Post-Release Git Main, Neon and Cloudflare E2E (READ ONLY)
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-2-postprod-independent-readback.yml]
+permissions: {contents: read}
+jobs:
+  independent-e2e:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Check live authoritative source, exact merge and relay pointer
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_TOKEN"
+          MAIN="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          test "$MAIN" = 'eb9c169219c697fab500b909d34b42bdf43d16f2'
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/92 | jq -e --arg commit "$MAIN" '.merged==true and .merge_commit_sha==$commit and .head.sha=="d9d8d7c8de1ab59dbde628a3605844fe7676d71d"' >/dev/null
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$ptr" = "$MAIN"
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43406742619 | jq -e '.conclusion=="success" and .status=="completed" and .run_attempt==1' >/dev/null
+          echo S9_2_POST_RELEASE_SOURCE_POINTER_MERGE=PASS
+
+      - name: Verify Pages canonical deployment, production binding, and temporary build rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,urllib.request,urllib.error,json,re
+          base='https://api.cloudflare.com/client/v4'
+          def get(url):
+              req=urllib.request.Request(base+url,headers={'Authorization':'Bearer '+os.environ['CF_TOKEN']})
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as f:return f.status,json.load(f)
+              except urllib.error.HTTPError as e:return e.code,{}
+          s,a=get('/accounts?per_page=50')
+          assert s==200 and a.get('success') is True
+          matches=[]
+          for ent in a.get('result') or []:
+              aid=ent.get('id')
+              if not re.fullmatch('[a-f0-9]{32}',str(aid)):continue
+              s,v=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+              if s==200 and v.get('success') is True and (v.get('result') or {}).get('name')=='hive-alveare':matches.append((aid,v['result']))
+          assert len(matches)==1,'HIVE_PAGES_PROJECT_NOT_UNIQUE'
+          aid,p=matches[0]
+          sc=((p.get('source') or {}).get('config') or {})
+          build=p.get('build_config') or {}
+          assert sc.get('repo_name')=='hive-alveare' and sc.get('production_branch')=='main'
+          assert build.get('root_dir')=='cloudflare' and build.get('destination_dir')=='public'
+          assert build.get('build_command') in ('',None),'TEMPORARY_GLOBAL_BUILD_NOT_RESTORED'
+          cfg=p.get('deployment_configs') or {}
+          assert 'HIVE_DATA_API_URL' in (((cfg.get('production') or {}).get('env_vars') or {}))
+          assert 'HIVE_DATA_API_URL' not in (((cfg.get('preview') or {}).get('env_vars') or {}))
+          canon=p.get('canonical_deployment') or {}
+          assert canon.get('id')=='621107aa-9a64-42dc-a84a-8ee8208a515d','PRODUCTION_CANONICAL_DEPLOY_NOT_NEW'
+          assert (canon.get('latest_stage') or {}).get('status')=='success','PROD_BUILD_NOT_SUCCESS'
+          meta=((canon.get('deployment_trigger') or {}).get('metadata') or {})
+          assert meta.get('commit_hash')=='eb9c169219c697fab500b909d34b42bdf43d16f2','PRODUCTION_SHA_MISMATCH'
+          assert meta.get('branch')=='main','PROD_DEPLOY_BRANCH_DRIFT'
+          print('S9_2_CLOUDFLARE_GIT_MAIN_EXACT_DEPLOY=PASS')
+          print('S9_2_GLOBAL_BUILD_COMMAND_RESTORED=PASS')
+          print('S9_2_PROD_NEON_PRESERVED_PREVIEW_ISOLATED=PASS')
+          PY
+
+      - name: Independently test protected production health, canonical Queen state and new S9 readiness GET
+        shell: bash
+        run: |
+          set -euo pipefail
+          for endpoint in runtime-health queen-state queen-s9-readiness; do
+            http="$(curl -sS --max-time 26 -o "$RUNNER_TEMP/$endpoint.json" -w '%{http_code}' \
+              -H "Cf-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "Cf-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              -H 'Accept: application/json' \
+              -H 'Cache-Control: no-cache' \
+              "https://hive-alveare.pages.dev/api/$endpoint")"
+            if test "$endpoint" = queen-s9-readiness; then
+              test "$http" = "200" -o "$http" = "503"
+              jq -e '(.stage=="S9.1") and (.read_only==true) and (.can_deploy==false) and (.can_merge==false) and (.can_train_school==false)' "$RUNNER_TEMP/$endpoint.json" >/dev/null
+              echo "S9_2_S9_1_READINESS_HTTP=$http"
+            else
+              test "$http" = "200"
+              jq -e '.ok==true' "$RUNNER_TEMP/$endpoint.json" >/dev/null
+              echo "S9_2_$endpoint=PASS"
+            fi
+          done
+          echo S9_2_POST_RELEASE_PROTECTED_RUNTIME_AND_SOURCE=PASS
+          echo S9_2_PRODUCTION_WRITES_BY_AUDIT=ZERO
