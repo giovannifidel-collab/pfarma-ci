@@ -1,0 +1,63 @@
+{
+  "schema": "queen.s9.5.independently-verified-isolated-recovery.v2",
+  "verified_at": "2026-11-13T07:54:11.529Z",
+  "source_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+  "original_fault": {
+    "workflow_run_id": 43383707152,
+    "job_id": 131747137893,
+    "expected_exit_code": 76,
+    "isolated_neon_project": "proud-night-33193396",
+    "original_claim_id": "1ed138a8-c671-4bf1-9d31-8569d0a3fe22",
+    "original_status": "QUARANTINED",
+    "original_retry_count": 0,
+    "automatic_retry": false
+  },
+  "signed_recovery_approval": {
+    "workflow_run_id": 43388499218,
+    "oidc_verified": true,
+    "owner": "giovannifidel-collab",
+    "exact_scope": "S9.5_ONE_ISOLATED_RECOVERY_CI_RETRY_ONLY",
+    "approved_mission_id": "15f72765-a783-4053-855d-39f68dbd2d35",
+    "identity_receipt_sha256": "52ded080a80e8465068341019736c600109b7c7074370a78f9e532a5d537b419",
+    "expiry": "2026-11-13T08:04:33.051Z"
+  },
+  "recovery": {
+    "workflow_run_id": 43388823023,
+    "job_id": 131763579122,
+    "status": "completed",
+    "conclusion": "success",
+    "exact_source_commit": "9bb57f67f4cc3d0ed0b6de2bd4f0dd308e37359b",
+    "artifact_id": 14019816794,
+    "artifact_name": "s9-5-owner-recovery-43388823023",
+    "provider_output": 331016634,
+    "provider_output_sha256": "14b0e4030b2029aaba037706e3497aaba53469e2781f816a578599f690fdad13",
+    "independent_computation": "PASS",
+    "isolated_neon_ledger_status": "RECOVERY_COMPLETED_VERIFIED_ISOLATED",
+    "isolated_neon_verification_event_id": 1,
+    "recovery_dispatches": 1,
+    "old_claim_retried": false
+  },
+  "safety": {
+    "production_neon_s9_3_status": "COMPLETED_VERIFIED_BOUNDED_ONE_SHOT",
+    "production_s9_event_count": 1,
+    "production_school_training_eligible": 0,
+    "production_writes": false,
+    "cross_project_writes": false,
+    "additional_cost_usd": 0,
+    "paid_fallback": false,
+    "auto_merge": false,
+    "auto_deploy": false
+  },
+  "certification": "S9_5_CONTROLLED_ISOLATED_REAL_RUNNER_FAILURE_AND_OWNER_APPROVED_REPLACEMENT_PASS",
+  "exclusions": [
+    "NOT autonomous retries without Owner approval",
+    "NOT automatic generic provider failover",
+    "NOT production recovery",
+    "NOT S9.6 generalized autonomy certification"
+  ],
+  "proof_urls": [
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43383707152",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43388499218",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43388823023"
+  ]
+}
