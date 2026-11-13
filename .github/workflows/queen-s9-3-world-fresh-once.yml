@@ -1,0 +1,76 @@
+name: Queen S9.3 Existing S2 World Freshness One-Shot
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-3-world-fresh-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-3-world-4dc4f64c-ede8-4cb2-a5e9-c62a966db3c8
+  cancel-in-progress: false
+jobs:
+  fresh-world-only:
+    if: ${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'S9-WORLD-OWNER-ONCE:4dc4f64c-ede8-4cb2-a5e9-c62a966db3c8') && github.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      PRIVATE_MAIN: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+    steps:
+      - name: Verify exact private main, original relay pointer and Owner identity CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$PRIVATE_MAIN"
+          pointer="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$PRIVATE_MAIN"
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43381880192 \
+            | jq -e '.event=="workflow_dispatch" and .run_attempt==1 and .conclusion=="success" and .status=="completed" and .actor.login=="giovannifidel-collab" and .head_sha=="d4ecd6c9f39e94e40aa17d4be34f678fc89407df"' >/dev/null
+          echo "S9_OWNER_SIGNED_CI_AND_EXACT_SOURCE=PASS"
+      - name: Refresh ONLY existing S2 World from canonical live endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,subprocess,tempfile,datetime
+          base="https://hive-alveare.pages.dev/api/queen-state"
+          mission="4dc4f64c-ede8-4cb2-a5e9-c62a966db3c8"
+          hash="e7314eef60e9d007a5633335b280943ac8426f45b21e7daf959b825b48d44c60"
+          def request(method,body=None):
+              with tempfile.TemporaryDirectory() as tmp:
+                  args=["curl","-sS","--max-time","28","-o",tmp+"/out","-w","%{http_code}",
+                     "-H","Accept: application/json","-H","Content-Type: application/json",
+                     "-H","CF-Access-Client-Id: "+os.environ["CF_ACCESS_CLIENT_ID"],
+                     "-H","CF-Access-Client-Secret: "+os.environ["CF_ACCESS_CLIENT_SECRET"],
+                     "-X",method,base]
+                  if body is not None:args+=["--data-binary",json.dumps(body,separators=(",",":"))]
+                  p=subprocess.run(args,capture_output=True,text=True,timeout=33)
+                  assert p.returncode==0,"S9_S2_TRANSPORT_DENIED"
+                  try:status=int(p.stdout.strip())
+                  except:status=0
+                  try:data=json.load(open(tmp+"/out"))
+                  except:data={}
+                  return status,data
+          status,before=request("GET")
+          assert status==200 and before.get("ok") is True,"S9_S2_READ_DENIED"
+          status,result=request("POST",{"action":"world.update","correlation_id":mission,
+              "data":{"response_hash":hash,"source_sha":os.environ["PRIVATE_MAIN"],
+                  "school_training_eligible":False,"product_writes":False,"paid_fallback":False}})
+          assert status==200 and result.get("ok") is True,"S9_WORLD_UPDATE_FAILED"
+          status,after=request("GET")
+          assert status==200 and after.get("ok") is True,"S9_WORLD_INDEPENDENT_READBACK_FAILED"
+          world=(((after.get("state") or {}).get("world") or {}).get("value") or {})
+          assert world.get("correlation_id")==mission and world.get("verification_ref")==hash
+          assert world.get("source")=="hive-live-world-model"
+          assert world.get("policy")=="authoritative-source-first"
+          dt=datetime.datetime.fromisoformat(world["source_generated_at"].replace("Z","+00:00"))
+          diff=(datetime.datetime.now(datetime.timezone.utc)-dt).total_seconds()
+          assert -3<=diff<=300,"S9_WORLD_STALE"
+          print("S9_3_EXISTING_S2_FRESH_WORLD=PASS")
+          print("S9_3_WORLD_EVENT_ID="+str(world.get("event_id")))
+          print("S9_3_WORLD_SOURCE_GENERATED_AT="+world["source_generated_at"])
+          print("S9_3_NO_S1_DISPATCH_NO_CROSS_PROJECT_WRITE=PASS")
+          PY
