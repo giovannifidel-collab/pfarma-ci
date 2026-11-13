@@ -1,0 +1,38 @@
+{
+  "schema": "queen.s9.2.owner-release-attempt-recovery.v1",
+  "observed_on": "2026-11-13",
+  "original_owner_dispatch": {
+    "run_id": 43404581427,
+    "actor": "giovannifidel-collab",
+    "event": "workflow_dispatch",
+    "result": "failure",
+    "explicit_approval_received": true,
+    "input_main_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+    "input_candidate_sha": "d9d8d7c8de1ab59dbde628a3605844fe7676d71d",
+    "scope_approved_in_dispatch": true,
+    "source_ci_check": "pass",
+    "failure_step": "Verify current Cloudflare production identity and known-good rollback deployment, GET only",
+    "failure": "Python urllib GET to protected Pages runtime-health returned HTTP 403; GitHub OIDC signature step skipped",
+    "owner_oidc_receipt_issued": false,
+    "provider_dispatches": 0,
+    "release_attempted": false,
+    "production_mutations": false
+  },
+  "remediation": {
+    "workflow": "queen-s9-2-owner-production-release-attestation.yml",
+    "main_commit": "1bac510668b353298f8f4b36f50868f39825098e",
+    "change": "replace Python urllib protected health check with exact CURL CF service-auth GET used in previous successful CI",
+    "trusted_readonly_smoke_ci_run_id": 43404786086,
+    "trusted_readonly_smoke_conclusion": "success",
+    "smoke_executed_same_preflight_step": true,
+    "owner_oidc_step_remains_manual_signature_only": true,
+    "release_privileges_not_widened": true
+  },
+  "next_required_action": "A NEW manual workflow_dispatch, branch main, same main/candidate SHA and approve_s9_2_production_release checked. Do not re-run failed jobs because the original run never created the cryptographic Owner receipt.",
+  "global_s9_status": "NOT_CERTIFIED",
+  "release_permissions_now": "DENY_UNTIL_NEW_VERIFIED_OWNER_OIDC_RECEIPT",
+  "proof_urls": [
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43404581427",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43404786086"
+  ]
+}
