@@ -1,0 +1,99 @@
+{
+  "schema": "queen.s9.release-preflight-and-blockers.v1",
+  "authored_at_utc": "2026-11-13",
+  "status": "SOURCE_INTEGRATION_READY_PRODUCTION_RELEASE_NOT_AUTHORIZED",
+  "authoritative": {
+    "repo": "giovannifidel-collab/hive-alveare",
+    "main_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+    "relay": "giovannifidel-collab/pfarma-ci",
+    "no_changes_to_production_main": true
+  },
+  "stages": {
+    "S9_1": "PASS_LIVE_EXISTING_S2_S1_SCOPED",
+    "S9_2": "ISOLATED_PREVIEW_PASS_AND_PROD_RELEASE_PREFLIGHT_PASS__DEPLOY_NOT_ATTEMPTED",
+    "S9_3": "OWNER_ONE_MISSION_LIVE_PASS_NEON_EVENT_1233",
+    "S9_4": "FRESH_10_OF_10_AUTHORITATIVE_REPOSITORY_READONLY_PASS__NO_PER_PROJECT_WRITE",
+    "S9_5": "REAL_RUNNER_FAILURE_QUARANTINE_AND_OWNER_SIGNED_ISOLATED_REPLACEMENT_PASS__NOT_UNATTENDED_FAILOVER",
+    "S9_6": "INDEPENDENT_SCOPED_EVIDENCE_PASS_GLOBAL_SUPER_QUEEN_COMPLETION_DENY"
+  },
+  "integration_candidate": {
+    "pr": 92,
+    "url": "https://github.com/giovannifidel-collab/hive-alveare/pull/92",
+    "head_sha": "d9d8d7c8de1ab59dbde628a3605844fe7676d71d",
+    "draft": true,
+    "merged": false,
+    "mergeable": true,
+    "exact_imported_modules": 7,
+    "exclude_old_shared_neon_preview_spec": true,
+    "source_ci_runs": [
+      43390242822,
+      43391379950,
+      43391387125
+    ],
+    "source_ci_pass": true,
+    "tests": "S1/S6/S7/S8 source guards; S9.1/2/3/5 module integration; modern Wrangler Pages build; legacy parser adapter only in temporary scratch checkout; no deploy"
+  },
+  "fresh_portfolio": {
+    "ci_run": 43390580494,
+    "results": "10/10 source SHA read; no product mutations",
+    "changed_from_historic_snapshot": [
+      "hive-field",
+      "pfarma-social"
+    ],
+    "per_project_auth_required": true
+  },
+  "cloudflare_prod": {
+    "protected_readonly_preflight_ci": 43391721233,
+    "current_production_health": "PASS HTTP 200",
+    "current_git_main_production_latest_deployment": {
+      "id": "e7d288b5-79e2-4bf8-bd35-77dcd7a7c463",
+      "source_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+      "result": "failure"
+    },
+    "canonical_known_good": {
+      "deployment_id": "1f5176b8-5538-42ff-ab5d-1738eaeebe39",
+      "source_sha": "a0ba9b06593f514182ae9fcabdec073c30755066",
+      "result": "success"
+    },
+    "build_root": "cloudflare",
+    "build_output": "public",
+    "global_build_command_empty": true,
+    "production_neon_data_api_binding_intact": true,
+    "preview_shared_prod_data_api_binding_absent": true,
+    "deployed_new_S9_source": false,
+    "authorization_to_merge_or_deploy": false
+  },
+  "owner_release_workflow": {
+    "url": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-2-owner-production-release-attestation.yml",
+    "manual_checkbox": "approve_s9_2_production_release",
+    "source_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+    "candidate_sha": "d9d8d7c8de1ab59dbde628a3605844fe7676d71d",
+    "proof_requirements": [
+      "Owner GitHub OIDC signature",
+      "Exact PR #92 and base SHA",
+      "Independent CI success on candidate",
+      "Live protected Cloudflare production baseline and known good rollback"
+    ],
+    "no_auto_merge_or_deploy_from_attestation_workflow": true,
+    "signed_release_grant_exists": false
+  },
+  "next_actions": [
+    "Run manual Owner S9.2 exact-source production release attestation on main with checkbox true, then verify OIDC receipt and time limit.",
+    "Only following valid independent Owner release proof, coordinate exact PR #92 promotion with Cloudflare Git-connected build fix and independently verified rollback; do not rely on automatic deploy of failed legacy build.",
+    "Verify live production endpoints, Neon separation, S1/S2, source SHA, and rollback snapshot.",
+    "Per-project candidate/approval remains separately constrained; no blanket writes.",
+    "Unattended provider failure recovery and general cross-project autonomy remain uncertified until independently demonstrated; do not declare total S9 PASS.",
+    "S10 requires its own authoritative signed exit contract; not started."
+  ],
+  "invariants": {
+    "default_deny": true,
+    "extra_paid_cost_usd": 0,
+    "no_self_approval": true,
+    "no_training_promotion": true,
+    "no_cross_project_writes": true,
+    "no_unapproved_merge": true,
+    "no_unapproved_production_deploy": true,
+    "no_duplicate_event_loop": true,
+    "no_duplicate_school": true
+  }
+}
