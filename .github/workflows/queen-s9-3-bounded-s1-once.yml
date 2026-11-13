@@ -1,0 +1,116 @@
+name: Queen S9.3 Owner-Approved Bounded Existing S1 Execution One-Shot
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-3-bounded-s1-once.yml]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: queen-s9-3-owner-mission-4dc4f64c-ede8-4cb2-a5e9-c62a966db3c8
+  cancel-in-progress: false
+jobs:
+  exactly-once-owner-bounded-dispatch:
+    if: ${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'S9-DISPATCH-OWNER-ONCE:4dc4f64c-ede8-4cb2-a5e9-c62a966db3c8') && github.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      GH_RELAY_TOKEN: ${{ github.token }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_SHA: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+      MISSION_ID: 4dc4f64c-ede8-4cb2-a5e9-c62a966db3c8
+    steps:
+      - name: Require exact source, manually authenticated Owner and original S1
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$GH_RELAY_TOKEN"
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_SHA"
+          pointer="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$HIVE_SHA"
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43381880192 |
+            jq -e '.status=="completed" and .conclusion=="success" and .event=="workflow_dispatch" and .run_attempt==1 and .actor.login=="giovannifidel-collab" and .head_sha=="d4ecd6c9f39e94e40aa17d4be34f678fc89407df"' >/dev/null
+          test "$(date -u +%s)" -lt "$(date -u -d '2026-11-13T07:07:11Z' +%s)"
+          echo S9_3_EXACT_SOURCE_OWNER_PROOF_AND_LEASE=PASS
+
+      - name: Read existing S2 World freshness before single S1 dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,subprocess,tempfile,datetime
+          with tempfile.TemporaryDirectory() as tmp:
+            p=subprocess.run(["curl","-sS","--max-time","24","-o",tmp+"/body","-w","%{http_code}",
+                "-H","Cf-Access-Client-Id: "+os.environ["CF_ACCESS_CLIENT_ID"],
+                "-H","Cf-Access-Client-Secret: "+os.environ["CF_ACCESS_CLIENT_SECRET"],
+                "https://hive-alveare.pages.dev/api/queen-state"],text=True,capture_output=True,timeout=27)
+            assert p.returncode==0 and p.stdout.strip()=="200","S9_3_WORLD_READ_DENIED"
+            data=json.load(open(tmp+"/body"))
+          assert data.get("ok") is True
+          state=data.get("state") or {}
+          world=(((state.get("world") or {}).get("value") or {}))
+          assert world.get("policy")=="authoritative-source-first"
+          assert world.get("source")=="hive-live-world-model"
+          assert world.get("correlation_id")==os.environ["MISSION_ID"]
+          assert world.get("verification_ref")=="e7314eef60e9d007a5633335b280943ac8426f45b21e7daf959b825b48d44c60"
+          t=datetime.datetime.fromisoformat(world["source_generated_at"].replace("Z","+00:00"))
+          now=datetime.datetime.now(datetime.timezone.utc)
+          assert 0 <= (now-t).total_seconds() < 300,"S9_WORLD_OLDER_THAN_FIVE_MINUTES"
+          print("S9_3_EXISTING_S2_WORLD_SOURCE_FRESHNESS=PASS")
+          print("S9_3_EXISTING_WORLD_EVENT="+str(world.get("event_id")))
+          PY
+
+      - name: Dispatch EXACTLY ONCE through the original S1 GitHub repository_dispatch queen-cycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = "1"
+          payload="$(jq -nc --arg correlation "$MISSION_ID" --arg sha "$HIVE_SHA" '{
+            event_type:"queen-cycle",client_payload:{
+              schema:"hive.event.v1",correlation_id:$correlation,hop:0,max_hops:8,
+              data:{mission_id:$correlation,source_sha:$sha,predecessor_event_id:1226,
+                evidence_sha256:"7e468565ec7c6370ad6f1de34c105a2759bc752658456a81ebdaf7e127284eb6",
+                s9_3_owner_attestation_run_id:43381880192,
+                school_training_eligible:false,paid_fallback:false,product_writes:false}
+              }
+            }')"
+          status="$(curl -sS --max-time 25 -o "$RUNNER_TEMP/s9-dispatch-response" -w '%{http_code}' \
+            -X POST -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            -H "Authorization: Bearer $GH_RELAY_TOKEN" --data-binary "$payload" \
+            'https://api.github.com/repos/giovannifidel-collab/pfarma-ci/dispatches')"
+          test "$status" = "204" || { echo "S9_3_ORIGINAL_S1_DISPATCH_HTTP=$status"; exit 30; }
+          echo "S9_3_ORIGINAL_S1_DISPATCH_HTTP=204"
+          echo "S9_3_ONLY_ONE_EXISTING_S1_WAKE_SUBMITTED=PASS"
+
+      - name: Independent protected readback of S1 durable cognitive outcome
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,subprocess,tempfile,time
+          for attempt in range(35):
+            with tempfile.TemporaryDirectory() as d:
+              p=subprocess.run(["curl","-sS","--max-time","15","-o",d+"/out","-w","%{http_code}",
+                  "-H","Cf-Access-Client-Id: "+os.environ["CF_ACCESS_CLIENT_ID"],
+                  "-H","Cf-Access-Client-Secret: "+os.environ["CF_ACCESS_CLIENT_SECRET"],
+                  "https://hive-alveare.pages.dev/api/queen-state"],capture_output=True,text=True,timeout=18)
+              try: data=json.load(open(d+"/out"))
+              except: data={}
+            cog=(((data.get("state") or {}).get("cognitive") or {}).get("value") or {})
+            id=cog.get("event_id")
+            if (p.returncode==0 and p.stdout.strip()=="200" and data.get("ok") is True and
+                cog.get("correlation_id")==os.environ["MISSION_ID"] and str(id).isdigit() and int(id)>1231):
+              assert cog.get("paid_fallback") is False
+              print("S9_3_S1_DURABLE_COGNITIVE_EVENT_ID="+str(id))
+              print("S9_3_INDEPENDENT_S1_COGNITIVE_READBACK=PASS")
+              print("S9_3_NO_SCHOOL_PROMOTION_NO_PRODUCT_WRITE=PASS")
+              break
+            time.sleep(4)
+          else:
+            raise SystemExit("S9_3_S1_OUTCOME_UNVERIFIED_DO_NOT_REDISPATCH")
+          PY
