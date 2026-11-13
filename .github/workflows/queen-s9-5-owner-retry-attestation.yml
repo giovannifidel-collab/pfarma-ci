@@ -1,0 +1,164 @@
+name: Queen S9.5 Isolated Recovery Owner Attestation (manual, no dispatch)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact HIVE source SHA for one isolated S9.5 retry, no production changes"
+        default: "296677c77946b91ca1c8f9da70d41d87b975c5e4"
+        type: string
+        required: true
+      approve_s9_5_isolated_recovery:
+        description: "Approve ONE isolated S9.5 recovery CI test; $0, no production/project writes"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: queen-s9-owner-manual-attestation
+  cancel-in-progress: false
+
+jobs:
+  attest-owner-request:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      APPROVE_SCOPE: ${{ inputs.approve_hive_only_one_shot }}
+    steps:
+      - name: Require explicit logged-in owner and exact HIVE source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_ACTOR" = "giovannifidel-collab"
+          test "$GITHUB_TRIGGERING_ACTOR" = "giovannifidel-collab"
+          test "$GITHUB_REF" = "refs/heads/main"
+          if [ "$APPROVE_SCOPE" != "true" ]; then
+            echo "::error title=Approvazione S9.5 mancante::Hai riavviato un run con approve_s9_5_isolated_recovery=false. Non usare Re-run jobs. Apri Actions > Queen S9.5 Owner Identity Attestation > Run workflow, seleziona main, spunta approve_s9_5_isolated_recovery e avvia una NUOVA esecuzione."
+            echo "S9_OWNER_APPROVAL_FLAG=FALSE_FAIL_CLOSED"
+            exit 42
+          fi
+          test -n "$GH_TOKEN"
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          current="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')"
+          test "$current" = "$SOURCE_SHA"
+          pointer="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq '.content' | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$current"
+          echo "S9_OWNER_MANUAL_REQUEST_AND_SOURCE_EXACT=PASS"
+
+      - name: Independently validate GitHub-signed OIDC claims; emit non-privileged evidence only
+        shell: bash
+        env:
+          GH_WORKFLOW_PATH: "giovannifidel-collab/pfarma-ci/.github/workflows/queen-s9-5-owner-retry-attestation.yml@refs/heads/main"
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { webcrypto, createHash, randomUUID } from 'node:crypto';
+          import { appendFileSync } from 'node:fs';
+          const e=process.env;
+          const err=s=>{throw Error(s)};
+          const num=(x)=>Number(x);
+          if(!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)err('OIDC_NOT_AVAILABLE');
+          const audience='hive-queen-s9-5-owner-recovery-v1';
+          const u=e.ACTIONS_ID_TOKEN_REQUEST_URL+
+            (e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+
+            'audience='+encodeURIComponent(audience);
+          const tokResp=await fetch(u,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!tokResp.ok)err('OIDC_ISSUANCE_DENIED');
+          const {value:jwt}=await tokResp.json();
+          if(typeof jwt!=='string'||jwt.length<300||jwt.length>12000)err('OIDC_TOKEN_FORMAT_DENIED');
+          const parts=jwt.split('.');
+          if(parts.length!==3)err('OIDC_PARTS_DENIED');
+          function b64(x){
+            if(!/^[A-Za-z0-9_-]+$/.test(x)||x.length>14000)err('OIDC_ENCODING_DENIED');
+            return Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-x.length%4)%4),'base64');
+          }
+          const header=JSON.parse(b64(parts[0]).toString('utf8'));
+          const claims=JSON.parse(b64(parts[1]).toString('utf8'));
+          if(header.alg!=='RS256'||!header.kid||header.jku||header.jwk||header.x5u||header.crit)
+            err('OIDC_HEADER_DENIED');
+          const validClaims={
+            iss:'https://token.actions.githubusercontent.com',
+            aud:audience,
+            repository:'giovannifidel-collab/pfarma-ci',
+            repository_id:'1308677897',
+            repository_owner_id:'305755860',
+            actor:'giovannifidel-collab',
+            actor_id:'305755860',
+            environment:'pfarma-ci-trusted',
+            workflow_ref:e.GH_WORKFLOW_PATH,
+            ref:'refs/heads/main',
+            event_name:'workflow_dispatch',
+            runner_environment:'github-hosted'
+          };
+          for(const [k,v] of Object.entries(validClaims))if(String(claims[k])!==v)err('OIDC_IDENTITY_DENIED_'+k);
+          if(!/^[a-f0-9]{40}$/.test(claims.sha||'')||claims.sha!==e.GITHUB_SHA)
+            err('OIDC_RELAY_SOURCE_DENIED');
+          if(num(claims.run_id)!==num(e.GITHUB_RUN_ID)||num(claims.run_attempt)!==num(e.GITHUB_RUN_ATTEMPT))
+            err('OIDC_RUN_IDENTITY_DENIED');
+          const now=Date.now();
+          if(!Number.isSafeInteger(claims.iat)||!Number.isSafeInteger(claims.nbf)||!Number.isSafeInteger(claims.exp)||
+             claims.exp-claims.iat<=0||claims.exp-claims.iat>900||
+             claims.exp*1000<=now||claims.iat*1000>now+30000||now-claims.iat*1000>300000||
+             claims.nbf*1000>now+30000)
+            err('OIDC_EXPIRY_DENIED');
+          const jwksResponse=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwksResponse.ok)err('OIDC_JWKS_DENIED');
+          const keys=(await jwksResponse.json()).keys;
+          if(!Array.isArray(keys)||keys.length>30)err('OIDC_JWKS_SHAPE_DENIED');
+          const jwk=keys.find(k=>k.kid===header.kid&&k.kty==='RSA'&&k.use==='sig'&&(!k.alg||k.alg==='RS256'));
+          if(!jwk)err('OIDC_JWK_NOT_FOUND');
+          const key=await webcrypto.subtle.importKey('jwk',{kty:'RSA',n:jwk.n,e:jwk.e,ext:true},
+            {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
+          const verified=await webcrypto.subtle.verify('RSASSA-PKCS1-v1_5',key,b64(parts[2]),
+            Buffer.from(parts[0]+'.'+parts[1]));
+          if(!verified)err('OIDC_SIGNATURE_DENIED');
+          if(!/^[a-f0-9]{40}$/.test(e.SOURCE_SHA||''))err('INVALID_HIVE_SHA');
+          const receipt={
+            schema:'queen.s9.5.owner.isolated-recovery-oidc-attestation.v1',
+            owner:'giovannifidel-collab',
+            actor_id:'305755860',
+            repository:'giovannifidel-collab/hive-alveare',
+            source_sha:e.SOURCE_SHA, 
+            original_fault_claim_id:'1ed138a8-c671-4bf1-9d31-8569d0a3fe22',
+            isolated_neon_project:'proud-night-33193396',
+            mission_id:randomUUID(),
+            project_slug:'hive',
+            scope:'S9.5_ONE_ISOLATED_RECOVERY_CI_RETRY_ONLY',
+            max_additional_cost_usd:0,
+            max_provider_dispatches:1,
+            paid_fallback:false,
+            product_writes:false,
+            school_training_eligible:false,
+            auto_merge:false,
+            auto_deploy:false,
+            auto_approve:false,
+            oidc_signature_verified:true,
+            action_run_id:num(e.GITHUB_RUN_ID),
+            action_run_attempt:num(e.GITHUB_RUN_ATTEMPT),
+            verified_at:new Date(now).toISOString(),
+            expires_at:new Date(now+15*60*1000).toISOString(),
+            state:'IDENTITY_ATTESTED_NOT_A_NEON_GRANT_NOT_EXECUTED'
+          };
+          const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S9_OWNER_INDEPENDENT_OIDC_VERIFICATION=PASS');
+          console.log('S9_OWNER_ATTESTATION_RECEIPT='+JSON.stringify({...receipt,evidence_sha256:digest}));
+          console.log('S9_OWNER_NEON_GRANTS_WRITTEN=0');
+          console.log('S9_OWNER_PROVIDER_DISPATCHES=0');
+          console.log('S9_OWNER_PRODUCTION_DEPLOYS=0');
+          appendFileSync(e.GITHUB_STEP_SUMMARY,
+            '### S9 Owner authentication — no execution\n'+
+            '- Exact HIVE SHA: '+e.SOURCE_SHA+'\n'+
+            '- Owner verified with GitHub-signed OIDC: PASS\n'+
+            '- Mission ID: '+receipt.mission_id+'\n'+
+            '- Receipt SHA-256: '+digest+'\n'+
+            '- Owner grant: NOT CREATED, requires independent gate\n'+
+            '- Provider execution: NOT ATTEMPTED\n');
+          JS
