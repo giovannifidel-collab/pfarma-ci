@@ -1,6 +1,6 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v2",
-  "as_of_date": "2026-11-13",
+  "schema": "queen.s9.resume-checkpoint.v3",
+  "as_of_date": "2026-11-13T07:56:55Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
     "main_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
@@ -39,30 +39,51 @@
     },
     {
       "gate": "S9.5",
-      "outcome": "LIVE_REAL_GITHUB_RUNNER_FAULT_QUARANTINE_PASS_RETRY_PENDING",
+      "outcome": "CONTROLLED_LIVE_REAL_GITHUB_RUNNER_FAULT_AND_OWNER_APPROVED_ISOLATED_REPLACEMENT_PASS",
       "evidence": {
         "fault_ci": 43383707152,
-        "isolated_project": "proud-night-33193396",
-        "ledger_key": "hive.queen.s9.test.real-provider-interruption.20261113",
-        "ledger_status": "QUARANTINED",
-        "retry_count": 0,
-        "unauthorized_retry_denied": true
-      }
+        "owner_retry_ci": 43388499218,
+        "recovery_ci": 43388823023,
+        "artifact_id": 14019816794,
+        "isolated_neon_project": "proud-night-33193396",
+        "original_claim_state": "QUARANTINED",
+        "recovery_ledger_state": "RECOVERY_COMPLETED_VERIFIED_ISOLATED",
+        "recovery_proof_event_id": 1,
+        "new_provider_dispatches": 1,
+        "original_fault_retry_count": 0,
+        "duplicate_cas_claims_allowed": 0,
+        "independently_recomputed_sha256": "14b0e4030b2029aaba037706e3497aaba53469e2781f816a578599f690fdad13"
+      },
+      "remaining_constraint": "No general unapproved automatic retries or cross-provider failover"
+    },
+    {
+      "gate": "S9.6",
+      "outcome": "INDEPENDENT_SCOPED_EVIDENCE_COHERENCE_PASS_GLOBAL_EXIT_DENIED",
+      "ci": 43389333929,
+      "production_protected_s2_live_get": "200_OK",
+      "exit_contract_fully_met": false
     }
   ],
   "pending": [
     {
+      "gate": "S9.2",
+      "blocker": "Production Pages release separately approved, tested Git-connected deployment/rollback not performed; preview-only success must not be conflated with production"
+    },
+    {
+      "gate": "S9.4",
+      "blocker": "Portfolio adapter write authority absent; only 10-project read-only scope passed, with drift in hive-field and pfarma-social"
+    },
+    {
       "gate": "S9.5",
-      "blocker": "A fresh Owner authenticated, exact-scope approval is required for ONE real isolated provider recovery retry; no re-use of the S9.3 one-shot grant",
-      "owner_workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-5-owner-retry-attestation.yml"
+      "blocker": "If full unattended resilience is required, signed recovery test does not prove automatic provider failover; need canonical unattended bounded recovery gate"
     },
     {
       "gate": "S9.6",
-      "blocker": "Do not certify until S9.5 recovery E2E and unified independent acceptance manifest pass"
+      "blocker": "General Super Queen autonomous, complete S9 exit remains DENY until production release, per-project acceptance and any unattended recovery required by canonical exit"
     },
     {
       "gate": "S10",
-      "blocker": "No authoritative S10 contract in main. Scope must be reconciled and owner ratified"
+      "blocker": "No authoritative S10 contract in main; do not invent one"
     }
   ],
   "invariants": {
@@ -78,7 +99,9 @@
   },
   "proof_files": [
     "audits/queen-s9-3-bounded-live-proof-20261113.json",
-    "audits/queen-s9-5-real-runner-fault-quarantine-20261113.json"
+    "audits/queen-s9-5-real-runner-fault-quarantine-20261113.json",
+    "audits/queen-s9-5-isolated-recovery-verified-20261113.json",
+    "audits/queen-s9-6-independent-exit-decision-20261113.json"
   ],
-  "user_action_required": "Authorize one isolated S9.5 retry using owner-workflow linked above, selecting main and checking approve_s9_5_isolated_recovery; SHA default is prefilled"
+  "user_action_required": "No immediate repeat of S9.5 Owner attestation. Later production release, project writes, or unattended recovery require separate exact owner/acceptance gates."
 }
