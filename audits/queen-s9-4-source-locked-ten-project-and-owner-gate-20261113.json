@@ -1,0 +1,84 @@
+{
+  "schema": "queen.s9.4.project-source-bound-autonomy-handoff.v1",
+  "date_utc": "2026-11-13",
+  "current_hive_main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+  "source_candidate": {
+    "repo": "giovannifidel-collab/hive-alveare",
+    "draft_pr_number": 93,
+    "branch": "convergence/s9-4-project-scoped-adapters-20261113",
+    "head_sha": "853ef0933eb89620664685bc01a9f241093c6411",
+    "status": "DRAFT_UNMERGED_SOURCE_ONLY",
+    "files": [
+      "ops/queen/s9/S9_4_PROJECT_SOURCE_LOCK.v1.json",
+      "ops/queen/s9/s9-portfolio-authority.mjs",
+      "ops/queen/s9/tests/s9-portfolio-authority.test.mjs",
+      ".github/workflows/queen-s9-4-source-authority-gate.yml"
+    ]
+  },
+  "proofs": [
+    {
+      "type": "independent_source_and_adversarial_tests",
+      "ci_run_id": 43486674887,
+      "result": "SUCCESS"
+    },
+    {
+      "type": "independent_live_ten_authoritative_repo_lookups",
+      "ci_run_id": 43486864546,
+      "result": "SUCCESS",
+      "receipt_sha256": "32ea00c21ba3060f7dd4db09077f25961d50d941afc930d50d817a7bf98ddbcd"
+    },
+    {
+      "type": "authenticated_Owner_workflow_preflight_yaml_and_six_exact_source_locks",
+      "ci_run_id": 43487768458,
+      "result": "SUCCESS"
+    }
+  ],
+  "authority": {
+    "eligible_for_separately_authenticated_mission_contract": [
+      "project-giovanni",
+      "hive-field",
+      "giochem",
+      "pfarma-cloud",
+      "family-cloud",
+      "gio-os"
+    ],
+    "deny_until_explicitly_separate_project_owner_mission": [
+      "pfarma-social",
+      "rose-mary-beauty",
+      "rocco-rosy-wedding",
+      "pfarma-reel-media"
+    ],
+    "source_drift_from_historical_snapshot": [
+      "hive-field",
+      "pfarma-social"
+    ],
+    "current_pf_social_sha": "bf98666f218a92356ab72700b78cfaf2d390d8be",
+    "family_cloud_authoritative_ref": "agent/bootstrap-family-cloud"
+  },
+  "owner_gate": {
+    "workflow_url": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-six-project-owner-attestation.yml",
+    "manual_branch": "main",
+    "input_source_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "input_candidate_sha": "853ef0933eb89620664685bc01a9f241093c6411",
+    "boolean_field": "approve_s9_4_six_project_draft_canaries",
+    "issued_signed_oidc_receipt": false,
+    "grant_runtime_neon_issued": false,
+    "owner_grant_signing_is_nondelegable": "GitHub Owner must personally click Run workflow. Source-only chat authorization does not satisfy independent OIDC.",
+    "proposed_mission_policy": "SIX DISTINCT PER-REPO DOCS-ONLY ONE-FILE DRAFT PR CANARIES, NO MERGE, DEPLOY, PRODUCT DATA, CROSS PROJECT EXECUTION, SCHOOL OR COST",
+    "can_advance_to_draft_project_canary_after_new_signed_receipt": true
+  },
+  "source_only_contract_status": "PASS_10_OF_10",
+  "project_draft_canaries": "NOT_STARTED_NO_SIGNED_OWNER_ATTESTATION",
+  "independent_project_ci_and_domain_acceptance": "PENDING",
+  "s9_4_global_certified": false,
+  "no_repository_product_writes": true,
+  "no_deploy": true,
+  "paid_fallback": false,
+  "next_operations_after_signed_owner": [
+    "Verify manual GitHub run authentic actor, OIDC signature and fresh exact 15-minute receipt, checking six exact per-project mission scopes",
+    "Create only six separate source-locked, one-file docs draft canary branches after independent CAS",
+    "Obtain independent project source CI/diff receipts and no-duplicates proof",
+    "Keep four denied projects untouched",
+    "Certify only the actually proven bounded S9.4 scope; do not conflate it with general permanent autonomous cross-project execution"
+  ]
+}
