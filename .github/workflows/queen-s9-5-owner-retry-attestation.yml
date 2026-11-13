@@ -19,7 +19,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: queen-s9-owner-manual-attestation
+  group: queen-s9-5-owner-manual-isolated-recovery
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       SOURCE_SHA: ${{ inputs.source_sha }}
-      APPROVE_SCOPE: ${{ inputs.approve_hive_only_one_shot }}
+      APPROVE_SCOPE: ${{ inputs.approve_s9_5_isolated_recovery }}
     steps:
       - name: Require explicit logged-in owner and exact HIVE source
         shell: bash
