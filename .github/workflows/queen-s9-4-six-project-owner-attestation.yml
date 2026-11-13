@@ -68,7 +68,7 @@ jobs:
           done <<'PROJECTS'
           project-giovanni|giovannifidel-collab/project-giovanni|main|4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
           hive-field|giovannifidel-collab/hive-field|main|6816df638304a6decb05b9b4bd6543d8600f5e7c
-          giochem|giovannifidel-collab/giochem|main|8d8922171bfdc3554cb7786d08b3594ecf59a
+          giochem|giovannifidel-collab/giochem|main|8d8922171bfdc3554cb7786d08b3594ec681f59a
           pfarma-cloud|giovannifidel-collab/pfarma-cloud|main|1d460184944355ed2d4b375bfe03b35a70c7aa41
           family-cloud|giovannifidel-collab/family-cloud|agent/bootstrap-family-cloud|17b242eca13d7c73607e0bc52c64146750020cb7
           gio-os|giovannifidel-collab/gio-OS|main|31103989996a664dff385896143dccd03072cdf6
@@ -148,7 +148,7 @@ jobs:
           const exactSix=[
             ['project-giovanni','giovannifidel-collab/project-giovanni','main','4f67bda2e1bf63db12c1d9d7311b57f12b7bc707','application-no-product-change'],
             ['hive-field','giovannifidel-collab/hive-field','main','6816df638304a6decb05b9b4bd6543d8600f5e7c','isf-no-operational-change'],
-            ['giochem','giovannifidel-collab/giochem','main','8d8922171bfdc3554cb7786d08b3594ecf59a','scientific-content-untouched'],
+            ['giochem','giovannifidel-collab/giochem','main','8d8922171bfdc3554cb7786d08b3594ec681f59a','scientific-content-untouched'],
             ['pfarma-cloud','giovannifidel-collab/pfarma-cloud','main','1d460184944355ed2d4b375bfe03b35a70c7aa41','erp-data-untouched'],
             ['family-cloud','giovannifidel-collab/family-cloud','agent/bootstrap-family-cloud','17b242eca13d7c73607e0bc52c64146750020cb7','no-main-branch-reconciliation'],
             ['gio-os','giovannifidel-collab/gio-OS','main','31103989996a664dff385896143dccd03072cdf6','hardware-not-touched']
