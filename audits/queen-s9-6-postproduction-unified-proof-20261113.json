@@ -1,0 +1,111 @@
+{
+  "schema": "queen.s9.6.postproduction-authoritative-evidence.v1",
+  "checked_at": "2026-11-13T10:18:30Z",
+  "source": {
+    "authoritative_repo": "giovannifidel-collab/hive-alveare",
+    "authoritative_main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "public_relay_repo": "giovannifidel-collab/pfarma-ci",
+    "relay_hive_source_ref": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "pr92": {
+      "merged": true,
+      "merge_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+      "exact_approved_candidate_sha": "d9d8d7c8de1ab59dbde628a3605844fe7676d71d"
+    },
+    "obsolete_draft_prs_closed_without_merge": [
+      89,
+      90,
+      91
+    ]
+  },
+  "gates": {
+    "S9_1": {
+      "result": "PASS_LIVE",
+      "scope": "canonical S2-to-existing-S1 protected readback; no additional S1, S2",
+      "postprod_http_readiness": 200,
+      "read_only": true
+    },
+    "S9_2": {
+      "result": "PASS_OWNER_SIGNED_GIT_CONNECTED_PRODUCTION_RELEASE",
+      "owner_oidc_ci": 43405119995,
+      "preview_git_build_proof_ci": 43406087354,
+      "production_controller_ci": 43406742619,
+      "postrelease_independent_ci": 43407353778,
+      "deploy_id": "621107aa-9a64-42dc-a84a-8ee8208a515d",
+      "neon_event_id": 1236,
+      "global_build_command_restored": true,
+      "canonical_rollback_id": "1f5176b8-5538-42ff-ab5d-1738eaeebe39",
+      "persistent_build_command_configured": false
+    },
+    "S9_3": {
+      "result": "PASS_ONE_OWNER_APPROVED_HIVE_LIVE_MISSION",
+      "owner_ci": 43381880192,
+      "compute_ci": 43383170987,
+      "original_s1_ingress_ci": 43383190862,
+      "neon_event_id": 1233,
+      "one_dispatch": true,
+      "general_dispatch_authority": false
+    },
+    "S9_4": {
+      "result": "PASS_FRESH_READ_ONLY_10_OF_10_REPOS",
+      "ci": 43390580494,
+      "source_drift": [
+        "hive-field",
+        "pfarma-social"
+      ],
+      "write_authority": false,
+      "per_project_signed_candidate_proof": false
+    },
+    "S9_5": {
+      "result": "PASS_CONTROLLED_ISOLATED_FAULT_AND_SIGNED_REPLACEMENT",
+      "failure_ci": 43383707152,
+      "new_owner_ci": 43388499218,
+      "recovery_ci": 43388823023,
+      "isolated_neon_project": "proud-night-33193396",
+      "old_claim": "QUARANTINED",
+      "new_claim": "RECOVERY_COMPLETED_VERIFIED_ISOLATED",
+      "old_retries": 0,
+      "unattended_recovery_certified": false
+    },
+    "S9_6": {
+      "result": "PASS_INDEPENDENT_SCOPED_E2E_ONLY",
+      "independent_postprod_ci": 43408117150,
+      "live_protected_health_pass": true,
+      "global_exit_certified": false
+    }
+  },
+  "neon": {
+    "prod_project": "muddy-recipe-65646643",
+    "prod_s9_event_count": 2,
+    "prod_school_training_promotions": 0,
+    "preview_project": "proud-night-33193396",
+    "isolated_recovery_proof_event_id": 1
+  },
+  "global_completion": {
+    "certified": false,
+    "blocking_requirements": [
+      "S9.4 individually authenticated Owner/project candidates, tests and separate project release approval remain absent; no blanket cross-project authority",
+      "S9.5 unattended bounded provider failover without re-approval was not proved; only isolated owner-signed replacement is certified",
+      "Future ordinary Cloudflare Git-connected deployments will need a permanent authorized build fix; temporary build command was restored per prior Owner authorization, so generalized reliable CD is not certified",
+      "S9.6 full general autonomy cannot be certified on scoped read-only and one-shot evidence"
+    ]
+  },
+  "safety_invariants": {
+    "default_deny": true,
+    "extra_paid_spend_usd": 0,
+    "paid_fallback": false,
+    "no_unapproved_project_writes": true,
+    "no_school_mastery_promotion": true,
+    "no_new_s1_or_s2": true,
+    "no_autonomous_merge_or_deploy": true,
+    "no_unapproved_production_release": true,
+    "immutable_original_s8_scoped_certification": true
+  },
+  "exact_source_of_evidence": [
+    "https://github.com/giovannifidel-collab/hive-alveare/pull/92",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43406742619",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43407353778",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43408117150",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43390580494",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43388823023"
+  ]
+}
