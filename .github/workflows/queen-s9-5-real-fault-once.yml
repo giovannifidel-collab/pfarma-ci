@@ -1,0 +1,33 @@
+name: Queen S9.5 Isolated Real GitHub Runner Interruption (Expected Failure)
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-5-real-fault-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-5-isolated-fault-1ed138a8-c671-4bf1-9d31-8569d0a3fe22
+  cancel-in-progress: false
+jobs:
+  fault-after-independent-isolated-claim:
+    if: ${{ github.event_name == 'push' && github.run_attempt == 1 && startsWith(github.event.head_commit.message, 'S9-FAULT-ONCE:1ed138a8-c671-4bf1-9d31-8569d0a3fe22') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify exact isolated fault scope with NO app secrets or production access
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = '1'
+          echo "S9_5_FAULT_SCOPE=ISOLATED_NEON_ONLY_CLAIM_ALREADY_RECORDED_OUTSIDE_CI"
+          echo "S9_5_PROVIDER=REAL_GITHUB_ACTIONS_HOSTED_RUNNER"
+          echo "S9_5_PROD_DB_ACCESS=NONE"
+          echo "S9_5_PROJECT_WRITES=NONE"
+          echo "S9_5_PROVIDER_RECEIPT_NOT_YET_ISSUED=TRUE"
+      - name: Deliberate real provider process failure between durable claim and receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "console.log('S9_5_REAL_RUNNER_INTERRUPTED_BEFORE_RECEIPT'); process.exit(76)"
+      - name: This receipt MUST NEVER run on fault path
+        run: |
+          echo "::error::Unexpected success after fault"
+          exit 99
