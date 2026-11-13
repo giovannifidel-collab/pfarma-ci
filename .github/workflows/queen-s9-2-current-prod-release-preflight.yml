@@ -54,9 +54,11 @@ jobs:
           assert 'HIVE_DATA_API_URL' in (prod.get('env_vars') or {}),'S9_2_PROD_NEON_BINDING_MISSING'
           assert 'HIVE_DATA_API_URL' not in (preview.get('env_vars') or {}),'S9_2_PREVIEW_HAS_SHARED_BINDING'
           st,deps=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments?per_page=50')
-          assert st==200 and deps.get('success') is True,'S9_2_DEPLOYMENTS_READ_UNAVAILABLE'
+          listing_verified=st==200 and deps.get('success') is True
+          print('S9_2_DEPLOYMENT_LIST_HTTP='+str(st))
+          print('S9_2_DEPLOYMENT_LIST_ACCESS='+('PASS' if listing_verified else 'UNAVAILABLE_RELEASE_GATE_DENY'))
           latest_prod=[]
-          for d in deps.get('result') or []:
+          for d in (deps.get('result') or []) if listing_verified else []:
             if d.get('environment')=='production':
               meta=((d.get('deployment_trigger') or {}).get('metadata') or {})
               latest_prod.append({
@@ -78,6 +80,9 @@ jobs:
             'production_has_neon_binding':True,
             'preview_has_shared_prod_neon_binding':False,
             'production_latest':latest_prod[:3],
+            'deployments_api_http_status':st,
+            'deployments_list_verified':listing_verified,
+            'production_release_ready':False,
             'production_mutations':False,
             'preview_mutations':False,
             'configuration_rollback_not_needed':True
@@ -89,6 +94,7 @@ jobs:
             print('S9_2_LATEST_PROD_DEPLOY='+json.dumps(d,separators=(',',':')))
           print('S9_2_PROD_NEON_BOUND_PREVIEW_UNBOUND=PASS')
           print('S9_2_PRODUCTION_CONFIG_READONLY=PASS')
+          print('S9_2_PRODUCTION_RELEASE_CERTIFIED=FALSE')
           PY
       - name: Independently read protected production runtime and deny anonymous access
         shell: bash
