@@ -1,0 +1,105 @@
+name: Queen S9.4 fresh 10-project scoped adapter acceptance — independent READ ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-4-scoped-adapter-live-acceptance.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-4-adapter-live-readonly-20261113
+  cancel-in-progress: false
+jobs:
+  independent-project-source-verifier:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CANDIDATE_SHA: '853ef0933eb89620664685bc01a9f241093c6411'
+      PROD_BASE_SHA: 'eb9c169219c697fab500b909d34b42bdf43d16f2'
+    steps:
+      - name: Checkout exact HIVE S9.4 source candidate without storing token
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.CANDIDATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: hive_candidate
+      - name: Independently verify exact source, canonical 10-project registry and live branch heads
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          test "$(git -C hive_candidate rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$PROD_BASE_SHA"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import cp from 'node:child_process';
+          import crypto from 'node:crypto';
+          const root='hive_candidate/ops/queen/';
+          const read=p=>JSON.parse(fs.readFileSync(root+p,'utf8'));
+          const lock=read('s9/S9_4_PROJECT_SOURCE_LOCK.v1.json');
+          const registry=read('governance/PROJECT_AUTHORITY_REGISTRY.v1.json');
+          const portfolio=read('autopilot/s8/S8_PORTFOLIO_READONLY_OBSERVATION.v1.json');
+          const repoAccess=new Map(registry.projects.map(x=>[x.id,x]));
+          const old=new Map(portfolio.projects.map(x=>[x.id,x]));
+          if(lock.schema!=='queen.s9.4.current-source-bound-portfolio.v1'
+             ||lock.project_sources.length!==10
+             ||portfolio.projects.length!==10
+             ||registry.authority.default_mutation_policy!=='DENY')
+            throw Error('S9_4_CANONICAL_REGISTRY_INVALID');
+          const proof=[];const seen=new Set();
+          for(const s of lock.project_sources){
+            if(seen.has(s.id))throw Error('S9_4_DUPLICATE_SOURCE');
+            seen.add(s.id);
+            const a=repoAccess.get(s.id),b=old.get(s.id);
+            if(!a||!b||a.repository!==s.repository||a.authoritative_ref!==s.ref
+              ||a.queen_access!==s.access||b.repository!==s.repository
+              ||b.source_ref!==s.ref||b.registry_access!==s.access)
+              throw Error('S9_4_AUTHORITY_MISMATCH_'+s.id);
+            const raw=cp.execFileSync('gh',['api','repos/'+s.repository+'/branches/'+s.ref],{encoding:'utf8'});
+            const data=JSON.parse(raw);
+            if(data.commit?.sha!==s.sha)throw Error('S9_4_LIVE_SOURCE_SHA_DRIFT_'+s.id);
+            const result={id:s.id,repository:s.repository,ref:s.ref,
+              sha:s.sha,access:s.access,source_read_ok:true,
+              historical_source_drift:b.source_sha!==s.sha,
+              can_write:false,can_merge:false,can_deploy:false,
+              independent_domain_acceptance:false};
+            proof.push(result);
+            console.log('S9_4_LIVE_PROJECT_SOURCE='+JSON.stringify(result));
+          }
+          const eligible=proof.filter(x=>x.access==='MISSION_SCOPED_ONLY');
+          const denied=proof.filter(x=>x.access==='DENY');
+          if(eligible.length!==6||denied.length!==4)throw Error('S9_4_ACCESS_CLASSIFICATION_CHANGED');
+          const receipt={
+            schema:'queen.s9.4.ten-repo-fresh-source-independent-readonly.v1',
+            source_hive_main_sha:process.env.PROD_BASE_SHA,
+            adapter_candidate_sha:process.env.CANDIDATE_SHA,
+            verified_at:new Date().toISOString(),
+            project_count:10,eligible_project_count:6,denied_project_count:4,
+            source_read_verification:'ALL_EXACT_SHA_MATCH',
+            authorized_external_project_writes:0,
+            provider_dispatches:0,auto_merge:false,auto_deploy:false,
+            paid_fallback:false,school_training_eligible:false,
+            live_source_drift_from_historic:proof.filter(x=>x.historical_source_drift).map(x=>x.id),
+            projects:proof
+          };
+          const body=JSON.stringify(receipt,null,2)+'\n';
+          const out=process.env.RUNNER_TEMP+'/queen-s9-4-live-source-receipt.json';
+          fs.writeFileSync(out,body);
+          console.log('S9_4_10_OF_10_LIVE_SOURCE_HEAD=PASS');
+          console.log('S9_4_6_OWNER_MISSION_SCOPED_4_DENY=PASS');
+          console.log('S9_4_SAFE_OBSERVATION_RECEIPT_SHA256='+crypto.createHash('sha256').update(body).digest('hex'));
+          console.log('S9_4_EXTERNAL_PRODUCT_WRITES=0');
+          console.log('S9_4_AUTONOMOUS_EXECUTION_GRANTED=FALSE');
+          NODE
+      - name: Upload sealed no-sensitive-data source observation
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-s9-4-ten-source-readonly-${{ github.run_id }}
+          path: ${{ runner.temp }}/queen-s9-4-live-source-receipt.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf hive_candidate
