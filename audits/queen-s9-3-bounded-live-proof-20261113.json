@@ -1,0 +1,49 @@
+{
+  "schema": "queen.s9.3.bounded-live-mission-proof.v1",
+  "audited_at": "2026-11-13T07:07:20.514Z",
+  "authority": "Independent GitHub Actions CI + Neon production post-readback",
+  "hivedoc_cutoff": "2026-11-12T17:30:57Z",
+  "source_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+  "mission_id": "4dc4f64c-ede8-4cb2-a5e9-c62a966db3c8",
+  "approval": {
+    "provider": "GitHub Actions OIDC",
+    "run_id": 43381880192,
+    "success": true,
+    "receipt_sha256": "e7314eef60e9d007a5633335b280943ac8426f45b21e7daf959b825b48d44c60",
+    "scope": "ONE HIVE-ONLY MISSION",
+    "valid_at_dispatch": true
+  },
+  "execution": {
+    "world_refresh_ci_run": 43382903175,
+    "world_neon_event": 1231,
+    "provider_runner_ci_run": 43383170987,
+    "provider_ci_success": true,
+    "canonical_original_s1_ingress_ci_run": 43383190862,
+    "canonical_s1_ci_success": true,
+    "cognitive_neon_event": 1232,
+    "independently_postverified_s9_3_neon_event": 1233,
+    "provider_dispatches": 1,
+    "active_missions_after": 0,
+    "ledger_status": "COMPLETED_VERIFIED_BOUNDED_ONE_SHOT",
+    "evidence_scope": "HIVE_ONLY_ONE_MISSION",
+    "auto_merge": false,
+    "auto_deploy": false,
+    "project_writes": false,
+    "training_eligible_count": 0,
+    "additional_cost_usd": 0
+  },
+  "no_reuse_of_old_grants": true,
+  "not_certified": [
+    "S9.5_REAL_PROVIDER_CRASH_RECOVERY_E2E",
+    "S9.6_UNIFIED_SUPER_QUEEN",
+    "GENERAL_AUTONOMY",
+    "CROSS_PROJECT_WRITES",
+    "S10"
+  ],
+  "actions_links": [
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43381880192",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43382903175",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43383170987",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43383190862"
+  ]
+}
