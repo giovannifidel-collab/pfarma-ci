@@ -1,0 +1,91 @@
+name: Queen S9.6 Independent Unified Exit Scope Audit (READ ONLY)
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-6-independent-exit-audit.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-6-independent-readonly-20261113
+  cancel-in-progress: false
+jobs:
+  scope-truth-gate:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      PRIVATE_MAIN: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+    steps:
+      - name: Check immutable authoritative private main and four explicitly unmerged drafts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')" = "$PRIVATE_MAIN"
+          pointer="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$PRIVATE_MAIN"
+          for pair in 78:aace87c35fe5ca4543aaa4e97f6a6d824d7cc583 89:b7769ac22f80dcd2e0982f6c1f03702111b7e4fd 90:88ea17edcc932348dcbf3754ab2246cea772717b 91:a6676ed12382e4a880480f24676b461db04f6a9f; do
+            n="${pair%%:*}"; sha="${pair#*:}"
+            gh api "repos/giovannifidel-collab/hive-alveare/pulls/$n" \
+              | jq -e --arg sha "$sha" '.state=="open" and .draft==true and .merged==false and .base.ref=="main" and .head.sha==$sha' >/dev/null
+            echo "S9_6_PR_${n}_UNMERGED_SOURCE=PASS"
+          done
+          echo S9_6_SOURCE_AUTHORITATIVE_EXACT=PASS
+
+      - name: Independently verify all scoped GitHub CI receipts and expected failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo='repos/giovannifidel-collab/pfarma-ci/actions/runs'
+          for run in 43381880192 43382903175 43383170987 43383190862 43245571080 43388499218 43388823023; do
+            gh api "$repo/$run" | jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+            echo "S9_6_SCOPED_SUCCESS_CI_${run}=PASS"
+          done
+          gh api "$repo/43383707152" | jq -e '.status=="completed" and .conclusion=="failure" and .run_attempt==1' >/dev/null
+          gh api 'repos/giovannifidel-collab/pfarma-ci/actions/runs/43383707152/jobs?per_page=20' \
+            | jq -e '[.jobs[].steps[]? | select(.name=="Deliberate real provider process failure between durable claim and receipt" and .conclusion=="failure")] | length==1' >/dev/null
+          gh api 'repos/giovannifidel-collab/pfarma-ci/actions/runs/43388823023/artifacts?per_page=30' \
+            | jq -e '[.artifacts[] | select(.id==14019816794 and .expired==false and .name=="s9-5-owner-recovery-43388823023")] | length==1' >/dev/null
+          echo S9_6_REAL_RUNNER_FAULT_QUARANTINE_AND_OWNER_RECOVERY_CI=PASS
+
+      - name: Verify live existing protected production Cloudflare S2 without write
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          for endpoint in runtime-health queen-state; do
+            code="$(curl -sS --max-time 28 -o "$RUNNER_TEMP/s9-6-$endpoint.json" -w '%{http_code}' \
+              -H "Cf-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "Cf-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              -H 'Accept: application/json' \
+              -H 'Cache-Control: no-cache' \
+              "https://hive-alveare.pages.dev/api/$endpoint")"
+            test "$code" = "200" || { echo "S9_6_PRODUCTION_${endpoint}_HTTP=$code"; exit 70; }
+            jq -e '.ok==true' "$RUNNER_TEMP/s9-6-$endpoint.json" >/dev/null
+            echo "S9_6_PRODUCTION_${endpoint}_PROTECTED_GET=PASS"
+          done
+          jq -e '.state.world.value.policy=="authoritative-source-first" and .state.cognitive.value.paid_fallback==false and (.state.school.value.last_experience.training_eligible==false)' "$RUNNER_TEMP/s9-6-queen-state.json" >/dev/null
+          echo S9_6_ORIGINAL_S2_SCHOOL_WORLD_COGNITIVE_SAFETY=PASS
+          echo S9_6_CLOUDFLARE_PRODUCTION_MUTATIONS=0
+
+      - name: Publish scoped evidence result and deny any unsupported global S9 exit claim
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Independent S9.6 bounded-scope audit'
+            echo '- S9.1: PASS (historically live, not re-run)'
+            echo '- S9.2: PASS isolated protected preview + rollback only; production release NOT approved'
+            echo '- S9.3: PASS one exact Owner-scoped original S1/HIVE continuation'
+            echo '- S9.4: PASS read-only ten-project source audit; no project adapter write'
+            echo '- S9.5: PASS real runner failure/quarantine + ONE signed replacement in isolated Neon'
+            echo '- S9.6 scoped evidence coherence: PASS'
+            echo '- S9.6 global Super Queen/autonomous cross-project release: NOT CERTIFIED'
+            echo '- No new School/Event Loop; no auto-merge/deploy; no additional paid cost'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo S9_6_SCOPED_LIVE_AND_ADVERSARIAL_EVIDENCE=PASS
+          echo S9_6_GENERAL_AUTONOMY_CERTIFIED=FALSE
+          echo S9_6_PRODUCTION_RELEASE_AUTHORIZED=FALSE
+          echo S9_6_CROSS_PROJECT_WRITE_AUTHORIZED=FALSE
