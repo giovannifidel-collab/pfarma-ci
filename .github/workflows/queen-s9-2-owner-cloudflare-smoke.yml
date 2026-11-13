@@ -1,0 +1,77 @@
+name: Queen S9.2 Owner-Preflight Exact Cloudflare GET Smoke (no signature)
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-2-owner-cloudflare-smoke.yml]
+permissions: {contents: read}
+jobs:
+  inspect-existing-config-only:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    steps:
+      - name: Verify current Cloudflare production identity and known-good rollback deployment, GET only
+        shell: bash
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error
+          for k in ('CF_TOKEN','CF_ACCESS_CLIENT_ID','CF_ACCESS_CLIENT_SECRET'):
+            if not os.environ.get(k): raise SystemExit('CLOUDFLARE_RELEASE_PRECHECK_SECRETS_ABSENT')
+          api='https://api.cloudflare.com/client/v4'
+          def get(path):
+            req=urllib.request.Request(api+path,
+                headers={'Authorization':'Bearer '+os.environ['CF_TOKEN']},method='GET')
+            try:
+              with urllib.request.urlopen(req,timeout=25) as x:return x.status,json.load(x)
+            except urllib.error.HTTPError as e:return e.code,{}
+          st,d=get('/accounts?per_page=50')
+          assert st==200 and d.get('success') is True,'CLOUDFLARE_ACCOUNTS_READ_DENIED'
+          projects=[]
+          for a in d.get('result') or []:
+            aid=a.get('id')
+            if not re.fullmatch('[a-f0-9]{32}',str(aid)):continue
+            st,p=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+            if st==200 and p.get('success') is True and (p.get('result') or {}).get('name')=='hive-alveare':
+              projects.append(p['result'])
+          assert len(projects)==1,'HIVE_PAGES_SOURCE_PROJECT_NOT_UNIQUE'
+          p=projects[0]
+          sc=((p.get('source') or {}).get('config') or {})
+          bc=p.get('build_config') or {}
+          assert (p.get('source') or {}).get('type')=='github' and sc.get('repo_name')=='hive-alveare' and sc.get('production_branch')=='main','WRONG_HIVE_PRODUCTION_SOURCE'
+          assert bc.get('root_dir')=='cloudflare' and bc.get('destination_dir')=='public','WRONG_PRODUCTION_BUILD_ROOT'
+          assert bc.get('build_command') in ('',None),'GLOBAL_BUILD_COMMAND_NOT_AT_BASELINE'
+          cfg=p.get('deployment_configs') or {}
+          assert 'HIVE_DATA_API_URL' in (((cfg.get('production') or {}).get('env_vars') or {})),'PROD_NEON_BINDING_ABSENT'
+          assert 'HIVE_DATA_API_URL' not in (((cfg.get('preview') or {}).get('env_vars') or {})),'PREVIEW_SHARED_NEON_BINDING_DENIED'
+          rollback=p.get('canonical_deployment') or {}
+          latest=(rollback.get('latest_stage') or {}).get('status')
+          meta=((rollback.get('deployment_trigger') or {}).get('metadata') or {})
+          assert latest=='success' and re.fullmatch('[a-f0-9-]{36}',str(rollback.get('id') or '')),'KNOWN_GOOD_PRODUCTION_ROLLBACK_MISSING'
+          assert re.fullmatch('[a-f0-9]{40}',str(meta.get('commit_hash') or '')),'KNOWN_GOOD_SHA_MISSING'
+          # Use the already certified curl+Cloudflare Access service-token path.
+          # Python urllib received 403 on the same production endpoint even
+          # though the original trusted CI curl GET succeeded (run 43391721233).
+          import subprocess,tempfile
+          with tempfile.TemporaryDirectory() as d:
+            args=['curl','-sS','--max-time','25','-o',d+'/response.json',
+              '-w','%{http_code}',
+              '-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+              '-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET'],
+              '-H','Accept: application/json',
+              '-H','Cache-Control: no-cache',
+              'https://hive-alveare.pages.dev/api/runtime-health']
+            p=subprocess.run(args,capture_output=True,text=True,timeout=30)
+            assert p.returncode==0,'S9_2_PROTECTED_CURL_TRANSPORT_DENIED'
+            assert p.stdout.strip()=='200','S9_2_PROTECTED_CURL_HTTP_DENIED_'+p.stdout.strip()
+            with open(d+'/response.json',encoding='utf8') as f:health=json.load(f)
+            assert health.get('ok') is True,'S9_2_PROTECTED_PRODUCTION_HEALTH_NOT_OK'
+          print('S9_2_PROD_IDENTITY_AND_PROTECTED_HEALTH=PASS')
+          print('S9_2_ROLLBACK_DEPLOYMENT_ID='+rollback['id'])
+          print('S9_2_ROLLBACK_COMMIT_SHA='+meta['commit_hash'])
+          print('S9_2_NO_CLOUDFLARE_MUTATIONS=TRUE')
+          PY
