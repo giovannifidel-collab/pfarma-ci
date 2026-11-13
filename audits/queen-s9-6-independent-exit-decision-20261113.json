@@ -1,0 +1,102 @@
+{
+  "schema": "queen.s9.6.unified-independent-exit-decision.v1",
+  "verification_time_utc": "2026-11-13T07:56:55Z",
+  "source_of_truth": {
+    "repository": "giovannifidel-collab/hive-alveare",
+    "main_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
+    "relay": "giovannifidel-collab/pfarma-ci",
+    "pointer_identical": true,
+    "unmerged_draft_prs": [
+      78,
+      89,
+      90,
+      91
+    ]
+  },
+  "independent_audit": {
+    "workflow": "queen-s9-6-independent-exit-audit.yml",
+    "github_actions_run_id": 43389333929,
+    "conclusion": "success",
+    "protected_production_s2_health": "HTTP_200_AND_OK_TRUE",
+    "protected_production_s2_state": "HTTP_200_AND_CANONICAL_SAFE",
+    "no_production_mutations_from_audit": true
+  },
+  "gates": [
+    {
+      "id": "S9.1",
+      "result": "SCOPED_LIVE_PASS_PRESERVED",
+      "note": "Canonical S8-to-S2-to-existing-S1 receipt live previously proven; not re-run"
+    },
+    {
+      "id": "S9.2",
+      "result": "PROTECTED_ISOLATED_PREVIEW_PASS_NOT_PRODUCTION_RELEASE",
+      "note": "Preview/rollback proved, production release separate and unapproved"
+    },
+    {
+      "id": "S9.3",
+      "result": "ONE_BOUND_OWNER_MISSION_PASS_LIVE",
+      "owner_ci": 43381880192,
+      "world_ci": 43382903175,
+      "runner_ci": 43383170987,
+      "existing_s1_ci": 43383190862,
+      "neon_cognitive_event_id": 1232,
+      "neon_s9_3_proof_event_id": 1233
+    },
+    {
+      "id": "S9.4",
+      "result": "READ_ONLY_PORTFOLIO_PASS",
+      "ci": 43245571080,
+      "source_drift_projects": [
+        "hive-field",
+        "pfarma-social"
+      ],
+      "project_writes_authorized": false
+    },
+    {
+      "id": "S9.5",
+      "result": "CONTROLLED_ISOLATED_REAL_RUNNER_FAULT_AND_OWNER_SIGNED_REPLACEMENT_PASS",
+      "failure_ci": 43383707152,
+      "owner_retry_ci": 43388499218,
+      "recovery_ci": 43388823023,
+      "original_quarantine_preserved": true,
+      "new_recovery_provider_dispatches": 1,
+      "independent_output_hash": "14b0e4030b2029aaba037706e3497aaba53469e2781f816a578599f690fdad13",
+      "isolated_neon_verification_event": 1,
+      "automatic_retry_after_crash": false
+    },
+    {
+      "id": "S9.6",
+      "result": "SCOPED_EVIDENCE_COHERENCE_PASS_GENERAL_SUPER_QUEEN_EXIT_DENY",
+      "audit_ci": 43389333929
+    }
+  ],
+  "global_S9_completion": {
+    "certified": false,
+    "reasons": [
+      "PR #89/#90/#91 remain open draft; source changes not merged",
+      "S9.2 production release has no separately approved grant and was not attempted",
+      "S9.4 is read-only; no independently authorized cross-project adapter write/release",
+      "S9.5 demonstrates bounded Owner-approved replacement in isolated scope, not general unattended provider failover",
+      "S9.6 general full-autonomy runtime and complete project acceptance not proven"
+    ],
+    "production_deploy_allowed": false,
+    "auto_merge_allowed": false,
+    "cross_project_writes_allowed": false,
+    "paid_provider_fallback_allowed": false
+  },
+  "next_required_gates": [
+    "Define exact owner-approved production release and rollback scope for PR #89/#90/#91 after source compatibility and preview proof; do not merge/deploy automatically",
+    "Perform independently authenticated per-project S9.4 adapter candidate/acceptance proofs with separate owner grants, preserving original project source authority",
+    "Prove bounded unattended provider recovery or explicitly retain manual recovery boundary in revised canonical S9 exit contract",
+    "Re-run independent S9.6 full E2E only after these live gates; no S10 until canonical scope is approved"
+  ],
+  "no_new_s1_s2": true,
+  "no_school_training_promotion": true,
+  "related_evidence_urls": [
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43389333929",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43388823023",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43383190862",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43388499218",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43245571080"
+  ]
+}
