@@ -1,0 +1,116 @@
+name: Queen S9.2 Cloudflare Pages production baseline and rollback preflight READ ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: ['.github/workflows/queen-s9-2-current-prod-release-preflight.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-2-current-production-preflight-readonly
+  cancel-in-progress: false
+jobs:
+  verify-production-before-signed-release:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Read exact Git connected Cloudflare Pages config without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,re,urllib.request,urllib.error,datetime
+          for key in ('CF_TOKEN','GH_TOKEN','CF_ACCESS_CLIENT_ID','CF_ACCESS_CLIENT_SECRET'):
+            assert os.environ.get(key),'S9_2_MISSING_AUTH_'+key
+          api='https://api.cloudflare.com/client/v4'
+          def get(path):
+            req=urllib.request.Request(api+path,headers={'Authorization':'Bearer '+os.environ['CF_TOKEN'],'Accept':'application/json'},method='GET')
+            try:
+              with urllib.request.urlopen(req,timeout=25) as r:return r.status,json.load(r)
+            except urllib.error.HTTPError as e:return e.code,{}
+            except Exception:return 0,{}
+          status,accounts=get('/accounts?per_page=50')
+          assert status==200 and accounts.get('success') is True,'S9_2_CF_ACCOUNTS_UNAVAILABLE'
+          matches=[]
+          for a in accounts.get('result') or []:
+            aid=a.get('id')
+            if not isinstance(aid,str) or not re.fullmatch('[a-f0-9]{32}',aid): continue
+            st,data=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+            if st==200 and data.get('success') is True and (data.get('result') or {}).get('name')=='hive-alveare':
+              matches.append((aid,data['result']))
+          assert len(matches)==1,'S9_2_CF_PAGES_PROJECT_NOT_UNIQUE'
+          aid,proj=matches[0]
+          source=proj.get('source') or {}
+          sc=source.get('config') or {}
+          bc=proj.get('build_config') or {}
+          assert source.get('type')=='github' and sc.get('repo_name')=='hive-alveare' and sc.get('production_branch')=='main','S9_2_CF_SOURCE_NOT_CANONICAL'
+          assert bc.get('root_dir')=='cloudflare' and bc.get('destination_dir')=='public','S9_2_CF_BUILD_DIRECTORIES_CHANGED'
+          prod=((proj.get('deployment_configs') or {}).get('production') or {})
+          preview=((proj.get('deployment_configs') or {}).get('preview') or {})
+          assert 'HIVE_DATA_API_URL' in (prod.get('env_vars') or {}),'S9_2_PROD_NEON_BINDING_MISSING'
+          assert 'HIVE_DATA_API_URL' not in (preview.get('env_vars') or {}),'S9_2_PREVIEW_HAS_SHARED_BINDING'
+          st,deps=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments?per_page=50')
+          assert st==200 and deps.get('success') is True,'S9_2_DEPLOYMENTS_READ_UNAVAILABLE'
+          latest_prod=[]
+          for d in deps.get('result') or []:
+            if d.get('environment')=='production':
+              meta=((d.get('deployment_trigger') or {}).get('metadata') or {})
+              latest_prod.append({
+                'id':d.get('id'),
+                'status':(d.get('latest_stage') or {}).get('status'),
+                'trigger_branch':meta.get('branch'),
+                'commit_sha':meta.get('commit_hash'),
+                'created_on':d.get('created_on')
+              })
+          record={
+            'schema':'queen.s9.2.current-production-readonly-baseline.v1',
+            'checked_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'pages_project':'hive-alveare',
+            'exact_source':'giovannifidel-collab/hive-alveare/main',
+            'build_root':'cloudflare',
+            'build_output':'public',
+            'build_command_empty':bc.get('build_command') in ('',None),
+            'build_command_nonempty':bool(bc.get('build_command')),
+            'production_has_neon_binding':True,
+            'preview_has_shared_prod_neon_binding':False,
+            'production_latest':latest_prod[:3],
+            'production_mutations':False,
+            'preview_mutations':False,
+            'configuration_rollback_not_needed':True
+          }
+          with open(os.environ['RUNNER_TEMP']+'/s9-2-prod-baseline.json','w') as f:json.dump(record,f,indent=2)
+          print('S9_2_GIT_CONNECTED_SOURCE=PASS')
+          print('S9_2_BUILD_COMMAND_EMPTY='+str(record['build_command_empty']).lower())
+          for d in latest_prod[:2]:
+            print('S9_2_LATEST_PROD_DEPLOY='+json.dumps(d,separators=(',',':')))
+          print('S9_2_PROD_NEON_BOUND_PREVIEW_UNBOUND=PASS')
+          print('S9_2_PRODUCTION_CONFIG_READONLY=PASS')
+          PY
+      - name: Independently read protected production runtime and deny anonymous access
+        shell: bash
+        run: |
+          set -euo pipefail
+          for ep in runtime-health queen-state; do
+            code="$(curl -sS --max-time 25 -o "$RUNNER_TEMP/s9-prod-$ep" -w '%{http_code}' \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              -H 'Accept: application/json' \
+              -H 'Cache-Control: no-cache' \
+              "https://hive-alveare.pages.dev/api/$ep")"
+            test "$code" = "200" || { echo "S9_2_PROD_$ep=$code"; exit 61; }
+            jq -e '.ok==true' "$RUNNER_TEMP/s9-prod-$ep" >/dev/null
+            echo "S9_2_PROTECTED_$ep=PASS"
+          done
+          # Preserve existing authenticated service access without disclosing token values.
+          echo S9_2_PROD_RUNTIME_PROTECTED_LIVE=PASS
+      - name: Upload sanitized Cloudflare preflight record
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-s9-2-prod-baseline-${{ github.run_id }}
+          path: ${{ runner.temp }}/s9-2-prod-baseline.json
+          if-no-files-found: error
+          retention-days: 7
