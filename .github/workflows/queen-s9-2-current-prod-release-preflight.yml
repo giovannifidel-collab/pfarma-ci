@@ -53,7 +53,7 @@ jobs:
           preview=((proj.get('deployment_configs') or {}).get('preview') or {})
           assert 'HIVE_DATA_API_URL' in (prod.get('env_vars') or {}),'S9_2_PROD_NEON_BINDING_MISSING'
           assert 'HIVE_DATA_API_URL' not in (preview.get('env_vars') or {}),'S9_2_PREVIEW_HAS_SHARED_BINDING'
-          st,deps=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments?per_page=25')
+          st,deps=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments?env=production&per_page=25')
           listing_verified=st==200 and deps.get('success') is True
           print('S9_2_DEPLOYMENT_LIST_HTTP='+str(st))
           print('S9_2_DEPLOYMENT_LIST_ACCESS='+('PASS' if listing_verified else 'UNAVAILABLE_RELEASE_GATE_DENY'))
