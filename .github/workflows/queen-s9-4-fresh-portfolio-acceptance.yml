@@ -1,0 +1,102 @@
+name: Queen S9.4 fresh exact portfolio acceptance READ ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: ['.github/workflows/queen-s9-4-fresh-portfolio-acceptance.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-4-live-portfolio-acceptance
+  cancel-in-progress: false
+jobs:
+  authoritative-live-portfolio:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      PRIVATE_MAIN_SHA: 296677c77946b91ca1c8f9da70d41d87b975c5e4
+    steps:
+      - name: Exact private source checkout with non-persistent read token
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_MAIN_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: _source
+      - name: Reconcile the ten project source refs against current GitHub, no writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          test "$(git -C _source rev-parse HEAD)" = "$PRIVATE_MAIN_SHA"
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import cp from 'node:child_process';
+          const registry=JSON.parse(fs.readFileSync('_source/ops/queen/SOURCE_REGISTRY.json','utf8'));
+          const portfolio=JSON.parse(fs.readFileSync('_source/ops/queen/autopilot/s8/S8_PORTFOLIO_READONLY_OBSERVATION.v1.json','utf8'));
+          if(registry.policy!=='authoritative-source-first'||
+             portfolio.policy!=='READ_ONLY_AWARENESS_NOT_PROJECT_EXECUTION'||
+             !Array.isArray(portfolio.projects)||portfolio.projects.length!==10)
+             throw Error('S9_4_CANONICAL_REGISTRY_OR_SNAPSHOT_INVALID');
+          const byRepo=new Map();
+          for(const item of Object.values(registry.projects)){
+            const source=item?.source;
+            if(source?.repo)byRepo.set(source.repo,source.ref||'main');
+          }
+          const findings=[];
+          const seen=new Set();
+          for(const p of portfolio.projects){
+            if(seen.has(p.id)||!p.id||!p.repository)throw Error('S9_4_DUPLICATE_OR_INVALID_PROJECT');
+            seen.add(p.id);
+            if(!['MISSION_SCOPED_ONLY','DENY'].includes(p.registry_access))
+              throw Error('S9_4_UNEXPECTED_WRITE_SCOPE');
+            const ref=byRepo.get(p.repository)||'main';
+            const v=cp.execFileSync('gh',['api','repos/'+p.repository+'/branches/'+ref],{encoding:'utf8'});
+            const info=JSON.parse(v);
+            const current=info?.commit?.sha;
+            if(!/^[a-f0-9]{40}$/.test(current||''))
+              throw Error('S9_4_NO_FRESH_AUTHORITATIVE_REF_'+p.id);
+            findings.push({
+              project:p.id,repository:p.repository,ref,
+              historical_sha:p.source_sha,current_sha:current,
+              changed_since_snapshot:current!==p.source_sha,
+              authority:p.registry_access,
+              write_authorized:false,
+              nonproduction_candidate_authorized:false,
+              production_release_authorized:false
+            });
+          }
+          const family=findings.find(x=>x.project==='family-cloud');
+          if(!family||family.ref!=='agent/bootstrap-family-cloud')
+            throw Error('S9_4_FAMILY_CLOUD_REF_INVALID');
+          const changed=findings.filter(x=>x.changed_since_snapshot);
+          const record={schema:'queen.s9.4.fresh-project-readonly-acceptance.v2',
+            source_main_sha:process.env.PRIVATE_MAIN_SHA,
+            generated_at:new Date().toISOString(),
+            authoritative_source_available:findings.length===10,
+            project_count:findings.length,
+            source_sha_changes:changed.length,
+            changed_projects:changed.map(x=>x.project),
+            total_project_writes:0,
+            total_project_release_permissions:0,
+            all_projects_require_fresh_scoped_owner_release_grant:true,
+            findings};
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/s9-4-fresh-portfolio.json',JSON.stringify(record,null,2)+'\n');
+          for(const x of findings)console.log('S9_4_CURRENT_PROJECT='+JSON.stringify(x));
+          console.log('S9_4_FRESH_SOURCE_COVERAGE=10/10');
+          console.log('S9_4_DRIFT_FROM_HISTORIC_SNAPSHOT='+changed.map(x=>x.project).join(','));
+          console.log('S9_4_ADAPTER_PRODUCT_WRITES=ZERO');
+          console.log('S9_4_MISSION_SCOPED_RELEASE=REQUIRES_SEPARATE_OWNER_APPROVAL');
+          console.log('S9_4_FRESH_PORTFOLIO_READONLY=PASS');
+          JS
+      - name: Upload allowlisted current project source observation
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-s9-4-portfolio-source-readonly-${{ github.run_id }}
+          path: ${{ runner.temp }}/s9-4-fresh-portfolio.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove private source checkout
+        if: always()
+        run: rm -rf _source
