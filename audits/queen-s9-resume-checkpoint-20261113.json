@@ -1,19 +1,16 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v3",
-  "as_of_date": "2026-11-13T07:56:55Z",
+  "schema": "queen.s9.resume-checkpoint.v4",
+  "as_of_date": "2026-11-13T10:18:30Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
-    "main_sha": "296677c77946b91ca1c8f9da70d41d87b975c5e4",
-    "relay_repository": "giovannifidel-collab/pfarma-ci"
+    "main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "relay_repository": "giovannifidel-collab/pfarma-ci",
+    "relay_source_pointer_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2"
   },
   "completed": [
     {
       "gate": "S9.1",
       "outcome": "PASS_LIVE_SCOPED_UNCHANGED"
-    },
-    {
-      "gate": "S9.2",
-      "outcome": "PASS_LIVE_PREVIEW_WITH_ROLLBACK_UNCHANGED"
     },
     {
       "gate": "S9.3",
@@ -57,33 +54,45 @@
       "remaining_constraint": "No general unapproved automatic retries or cross-provider failover"
     },
     {
+      "gate": "S9.2",
+      "outcome": "PASS_LIVE_GIT_CONNECTED_PRODUCTION_RELEASE",
+      "source_pr": 92,
+      "source_merge_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+      "deployment_id": "621107aa-9a64-42dc-a84a-8ee8208a515d",
+      "owner_oidc_ci": 43405119995,
+      "controller_ci": 43406742619,
+      "independent_readback_ci": 43407353778,
+      "neon_prod_proof_event_id": 1236,
+      "global_build_command_restored": true,
+      "isolated_jwks_control_plane_preserved": true
+    },
+    {
       "gate": "S9.6",
-      "outcome": "INDEPENDENT_SCOPED_EVIDENCE_COHERENCE_PASS_GLOBAL_EXIT_DENIED",
-      "ci": 43389333929,
-      "production_protected_s2_live_get": "200_OK",
-      "exit_contract_fully_met": false
+      "outcome": "INDEPENDENT_POSTPROD_SCOPED_EVIDENCE_PASS_GLOBAL_AUTONOMY_DENY",
+      "independent_ci": 43408117150,
+      "full_S9_certified": false
     }
   ],
   "pending": [
     {
-      "gate": "S9.2",
-      "blocker": "Production Pages release separately approved, tested Git-connected deployment/rollback not performed; preview-only success must not be conflated with production"
-    },
-    {
       "gate": "S9.4",
-      "blocker": "Portfolio adapter write authority absent; only 10-project read-only scope passed, with drift in hive-field and pfarma-social"
+      "blocker": "Need individually signed per-project, source-locked candidate/test/acceptance permissions; 10/10 read-only source audit is certified but not a blanket executor grant"
     },
     {
       "gate": "S9.5",
-      "blocker": "If full unattended resilience is required, signed recovery test does not prove automatic provider failover; need canonical unattended bounded recovery gate"
+      "blocker": "Need independently verified bounded unattended provider failure recovery/fallback if canonical full autonomy is required; only Owner-approved isolated replacement is proven"
     },
     {
       "gate": "S9.6",
-      "blocker": "General Super Queen autonomous, complete S9 exit remains DENY until production release, per-project acceptance and any unattended recovery required by canonical exit"
+      "blocker": "Full Super Queen release remains DENY until per-project authority and unattended resilience are proven. Do not treat scope-specific CI PASS as full autonomy"
+    },
+    {
+      "gate": "S9.2 FUTURE CI/CD",
+      "blocker": "Normal future Git-connected Cloudflare builds require a durable owner-authorized compatible build setup; temporary global build command was rolled back after the approved one-off release"
     },
     {
       "gate": "S10",
-      "blocker": "No authoritative S10 contract in main; do not invent one"
+      "blocker": "No canonical signed S10 contract on authoritative main; do not invent or start"
     }
   ],
   "invariants": {
@@ -101,7 +110,8 @@
     "audits/queen-s9-3-bounded-live-proof-20261113.json",
     "audits/queen-s9-5-real-runner-fault-quarantine-20261113.json",
     "audits/queen-s9-5-isolated-recovery-verified-20261113.json",
-    "audits/queen-s9-6-independent-exit-decision-20261113.json"
+    "audits/queen-s9-6-independent-exit-decision-20261113.json",
+    "audits/queen-s9-6-postproduction-unified-proof-20261113.json"
   ],
-  "user_action_required": "No immediate repeat of S9.5 Owner attestation. Later production release, project writes, or unattended recovery require separate exact owner/acceptance gates."
+  "user_action_required": "No repeat of the S9.2 Owner attestation: its one-off production release was successfully consumed. Separate narrowly scoped Owner signatures are needed for future project writes, unattended recovery scope, and a permanent build change."
 }
