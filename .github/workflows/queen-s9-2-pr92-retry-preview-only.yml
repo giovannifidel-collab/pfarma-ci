@@ -1,0 +1,122 @@
+name: Queen S9.2 one-shot exact PR92 Git-connected preview build
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-2-pr92-retry-preview-only.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-2-temporary-build-configuration
+  cancel-in-progress: false
+jobs:
+  source-locked-preview-retry:
+    if: ${{ github.event_name == 'push' && github.run_attempt == 1 && startsWith(github.event.head_commit.message, 'S9-RETRY-EXACT-PR92-ONLY:') }}
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      BASE_SHA: '296677c77946b91ca1c8f9da70d41d87b975c5e4'
+      CANDIDATE_SHA: 'd9d8d7c8de1ab59dbde628a3605844fe7676d71d'
+    steps:
+      - name: Verify signed exact Owner grant and candidate without writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_TOKEN"
+          test "$GITHUB_RUN_ATTEMPT" = "1"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$BASE_SHA"
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/92 | jq -e --arg a "$BASE_SHA" --arg b "$CANDIDATE_SHA" '.state=="open" and .draft==true and .merged==false and .base.sha==$a and .head.sha==$b' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43405119995 | jq -e '.status=="completed" and .conclusion=="success" and .event=="workflow_dispatch" and .run_attempt==1 and .actor.login=="giovannifidel-collab" and .head_sha=="1bac510668b353298f8f4b36f50868f39825098e"' >/dev/null
+          test "$(date -u +%s)" -lt "$(date -u -d '2026-11-13T10:10:27Z' +%s)"
+          echo S9_2_OWNER_SIGNED_PR92_BOUND_PREVIEW=PASS
+
+      - name: Temporary Pages build command and Git-connected PR92 retry, unconditional restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,time,urllib.request,urllib.error
+          API='https://api.cloudflare.com/client/v4'
+          HEADERS={'Authorization':'Bearer '+os.environ['CF_TOKEN'],'Accept':'application/json'}
+          def call(method,path,data=None):
+              h=dict(HEADERS); raw=None
+              if data is not None:
+                  raw=json.dumps(data,separators=(',',':')).encode()
+                  h['Content-Type']='application/json'
+              req=urllib.request.Request(API+path,headers=h,data=raw,method=method)
+              try:
+                  with urllib.request.urlopen(req,timeout=30) as f:return f.status,json.load(f)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.load(e)
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          def need(x,msg):
+              if not x: raise RuntimeError(msg)
+          st,a=call('GET','/accounts?per_page=50')
+          need(st==200 and a.get('success') is True,'CF_ACCOUNT_LOOKUP_FAILED')
+          matches=[]
+          for o in a.get('result') or []:
+              aid=o.get('id')
+              if not re.fullmatch('[a-f0-9]{32}',str(aid)):continue
+              st,j=call('GET','/accounts/'+aid+'/pages/projects/hive-alveare')
+              if st==200 and j.get('success') and (j.get('result') or {}).get('name')=='hive-alveare':matches.append((aid,j['result']))
+          need(len(matches)==1,'CF_PAGES_PROJECT_NOT_UNIQUE')
+          aid,pr=matches[0]; root='/accounts/'+aid+'/pages/projects/hive-alveare'
+          def read():
+              st,j=call('GET',root)
+              need(st==200 and j.get('success') is True,'CF_READBACK_FAILED')
+              return j['result']
+          def invariant(p,command):
+              source=p.get('source') or {};sc=source.get('config') or {};b=p.get('build_config') or {};cfg=p.get('deployment_configs') or {}
+              need(source.get('type')=='github' and sc.get('repo_name')=='hive-alveare' and sc.get('production_branch')=='main','CF_SOURCE_CHANGED')
+              need(b.get('root_dir')=='cloudflare' and b.get('destination_dir')=='public','CF_BUILD_DIR_CHANGED')
+              need(b.get('build_command')==command,'CF_BUILD_COMMAND_READBACK_DRIFT')
+              need('HIVE_DATA_API_URL' in ((cfg.get('production') or {}).get('env_vars') or {}),'CF_PROD_NEON_MISSING')
+              need('HIVE_DATA_API_URL' not in ((cfg.get('preview') or {}).get('env_vars') or {}),'CF_PREVIEW_SHARED_DB')
+          old=(pr.get('build_config') or {}).get('build_command')
+          need(old in ('',None),'CF_BUILD_NOT_BASELINE')
+          invariant(pr,old)
+          canonical=pr.get('canonical_deployment') or {}
+          need(canonical.get('id')=='1f5176b8-5538-42ff-ab5d-1738eaeebe39' and (canonical.get('latest_stage') or {}).get('status')=='success','ROLLBACK_NOT_KNOWN_GOOD')
+          deploy_id='e868ed90-04e5-497b-96ef-d10d0fd15b63'
+          st,j=call('GET',root+'/deployments/'+deploy_id)
+          need(st==200 and j.get('success') is True,'PR92_DEPLOY_NOT_READABLE')
+          d=j['result'];m=((d.get('deployment_trigger') or {}).get('metadata') or {})
+          need(d.get('environment')=='preview' and m.get('commit_hash')==os.environ['CANDIDATE_SHA'] and m.get('branch')!='main','PR92_PREVIEW_SOURCE_UNMATCHED')
+          need((d.get('latest_stage') or {}).get('status')=='failure','PR92_DEPLOY_NOT_FAILED_BASELINE')
+          print('S9_2_EXACT_GIT_PR92_PREVIEW=PASS',flush=True)
+          cmd='QUEEN_S9_EPHEMERAL_BUILD=1 node ../ops/queen/s9/pages-legacy-import-adapter.mjs --apply-ephemeral'
+          attempted=False
+          try:
+              attempted=True
+              st,j=call('PATCH',root,{'build_config':{'build_command':cmd}})
+              need(st in (200,201,202) and j.get('success') is True,'TEMP_PATCH_FAILED_'+str(st))
+              invariant(read(),cmd)
+              print('S9_2_TEMP_BUILD_COMMAND=APPLIED',flush=True)
+              st,j=call('POST',root+'/deployments/'+deploy_id+'/retry')
+              need(st in (200,201,202) and j.get('success') is True,'PREVIEW_RETRY_API_FAILED_'+str(st))
+              new=j.get('result') or {}; new_id=new.get('id')
+              need(isinstance(new_id,str) and re.fullmatch('[a-f0-9-]{36}',new_id),'RETRY_DEPLOY_ID_MISSING')
+              need(new.get('environment')=='preview','RETRY_IS_PRODUCTION_DENIED')
+              print('S9_2_NEW_PREVIEW_RETRY_ID='+new_id,flush=True)
+              status='pending'
+              for _ in range(45):
+                  st,j=call('GET',root+'/deployments/'+new_id)
+                  if st==200 and j.get('success') is True:
+                      d=j['result'];m=((d.get('deployment_trigger') or {}).get('metadata') or {}
+                      need(d.get('environment')=='preview' and m.get('commit_hash')==os.environ['CANDIDATE_SHA'],'RETRY_SOURCE_DRIFT')
+                      status=(d.get('latest_stage') or {}).get('status') or 'pending'
+                      if status in ('success','failure','canceled'):break
+                  time.sleep(5)
+              print('S9_2_RETRY_BUILD_STATUS='+status,flush=True)
+              need(status=='success','GIT_PREVIEW_BUILD_NOT_PROVEN')
+              print('S9_2_GIT_CONNECTED_BUILD_COMPATIBILITY=PASS',flush=True)
+          finally:
+              if attempted:
+                  st,j=call('PATCH',root,{'build_config':{'build_command':old or ''}})
+                  need(st in (200,201,202) and j.get('success') is True,'CRITICAL_BUILD_COMMAND_ROLLBACK_PATCH_FAILED')
+                  invariant(read(),old)
+                  print('S9_2_TEMP_BUILD_COMMAND_RESTORED=VERIFIED',flush=True)
+                  print('S9_2_PROD_BINDING_UNCHANGED_PREVIEW_UNBOUND=PASS',flush=True)
+          PY
