@@ -82,7 +82,7 @@ jobs:
           deploy_id='e868ed90-04e5-497b-96ef-d10d0fd15b63'
           st,j=call('GET',root+'/deployments/'+deploy_id)
           need(st==200 and j.get('success') is True,'PR92_DEPLOY_NOT_READABLE')
-          d=j['result'];m=((d.get('deployment_trigger') or {}).get('metadata') or {})
+          d=j['result'];m=((d.get('deployment_trigger') or {}).get('metadata') or {}))
           need(d.get('environment')=='preview' and m.get('commit_hash')==os.environ['CANDIDATE_SHA'] and m.get('branch')!='main','PR92_PREVIEW_SOURCE_UNMATCHED')
           need((d.get('latest_stage') or {}).get('status')=='failure','PR92_DEPLOY_NOT_FAILED_BASELINE')
           print('S9_2_EXACT_GIT_PR92_PREVIEW=PASS',flush=True)
@@ -104,7 +104,7 @@ jobs:
               for _ in range(45):
                   st,j=call('GET',root+'/deployments/'+new_id)
                   if st==200 and j.get('success') is True:
-                      d=j['result'];m=((d.get('deployment_trigger') or {}).get('metadata') or {}
+                      d=j['result'];m=((d.get('deployment_trigger') or {}).get('metadata') or {})
                       need(d.get('environment')=='preview' and m.get('commit_hash')==os.environ['CANDIDATE_SHA'],'RETRY_SOURCE_DRIFT')
                       status=(d.get('latest_stage') or {}).get('status') or 'pending'
                       if status in ('success','failure','canceled'):break
