@@ -1,0 +1,40 @@
+{
+  "schema": "queen.s9.5.live-real-runner-fault-isolated-proof.v1",
+  "proof_time": "2026-11-13T07:10:31.155Z",
+  "production_unmodified": true,
+  "provenance": {
+    "source_repository": "giovannifidel-collab/pfarma-ci",
+    "fault_workflow_run": 43383707152,
+    "job_id": 131747137893,
+    "workflow_commit": "9f9acb8bd0829a086a7096948de55eeef39844b5",
+    "real_runner_step": "Deliberate real provider process failure between durable claim and receipt",
+    "expected_exit_code": 76,
+    "job_conclusion": "failure",
+    "receipt_step": "skipped"
+  },
+  "isolated_neon": {
+    "project_id": "proud-night-33193396",
+    "branch_id": "br-odd-dream-bflat60i",
+    "database_name": "queen_s9_preview",
+    "key": "hive.queen.s9.test.real-provider-interruption.20261113",
+    "claim_id": "1ed138a8-c671-4bf1-9d31-8569d0a3fe22",
+    "status": "QUARANTINED",
+    "retry_count": 0,
+    "provider_dispatches": 1,
+    "replay_cas_admissible": false,
+    "receipt_step_executed": false,
+    "retry_requires_new_owner_gate": true
+  },
+  "safety": {
+    "production_s9_3_status": "COMPLETED_VERIFIED_BOUNDED_ONE_SHOT",
+    "production_s9_event_count": 1,
+    "production_school_training_eligible_count": 0,
+    "production_write_in_fault_workflow": false
+  },
+  "classification": "S9_5_LIVE_REAL_RUNNER_INTERRUPTION_QUARANTINE_PASS__AUTHENTICATED_RECOVERY_RETRY_STILL_PENDING",
+  "no_s9_6_claim": true,
+  "action_urls": [
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43383707152",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43383170987"
+  ]
+}
