@@ -1,0 +1,251 @@
+name: Queen S9.4+S9.5 One HIVE Release and Durable Cloudflare Build Owner Attestation
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact current private HIVE main SHA"
+        default: "eb9c169219c697fab500b909d34b42bdf43d16f2"
+        type: string
+        required: true
+      release_candidate_sha:
+        description: "Exact verified HIVE PR #95 source candidate SHA"
+        default: "765c3bf53f4fb5ba346473826f852a881f86c089"
+        type: string
+        required: true
+      approve_s9_4_5_one_release_and_durable_build:
+        description: "Approve ONE HIVE PR #95 source release AND permanent Pages compatibility build command with rollback; no project changes/cost"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: queen-s9-4-5-owner-exact-durable-build-release
+  cancel-in-progress: false
+
+jobs:
+  attest-owner-request:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      APPROVE_SCOPE: ${{ inputs.approve_s9_4_5_one_release_and_durable_build }}
+      CANDIDATE_SHA: ${{ inputs.release_candidate_sha }}
+    steps:
+      - name: Require explicit logged-in owner and exact HIVE source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_ACTOR" = "giovannifidel-collab"
+          test "$GITHUB_TRIGGERING_ACTOR" = "giovannifidel-collab"
+          test "$GITHUB_REF" = "refs/heads/main"
+          if [ "$APPROVE_SCOPE" != "true" ]; then
+            echo "::error title=Approvazione S9.4+S9.5 release mancante::Hai riavviato un run con approve_s9_4_5_one_release_and_durable_build=false. Non usare Re-run jobs. Apri Actions > Queen S9.4+S9.5 One HIVE Release and Durable Cloudflare Build Owner Attestation > Run workflow, seleziona main, spunta approve_s9_4_5_one_release_and_durable_build e avvia una NUOVA esecuzione."
+            echo "S9_OWNER_APPROVAL_FLAG=FALSE_FAIL_CLOSED"
+            exit 42
+          fi
+          test -n "$GH_TOKEN"
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          current="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha')"
+          test "$current" = "$SOURCE_SHA"
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'S9_RELEASE_CANDIDATE_SHA_INVALID'; exit 45; }
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/95 | jq -e --arg source "$SOURCE_SHA" --arg candidate "$CANDIDATE_SHA" '.state=="open" and .draft==true and .merged==false and .base.ref=="main" and .base.sha==$source and .head.sha==$candidate' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/43607312049 | jq -e --arg sha "$CANDIDATE_SHA" '.status=="completed" and .conclusion=="success" and .head_sha==$sha' >/dev/null
+          echo "S9_RELEASE_EXACT_PR95_AND_INDEPENDENT_SOURCE_CI=PASS"
+          pointer="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq '.content' | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$current"
+          echo "S9_OWNER_MANUAL_REQUEST_AND_SOURCE_EXACT=PASS"
+
+      - name: Verify current Cloudflare production identity and known-good rollback deployment, GET only
+        shell: bash
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,re,urllib.request,urllib.error
+          for k in ('CF_TOKEN','CF_ACCESS_CLIENT_ID','CF_ACCESS_CLIENT_SECRET'):
+            if not os.environ.get(k): raise SystemExit('CLOUDFLARE_RELEASE_PRECHECK_SECRETS_ABSENT')
+          api='https://api.cloudflare.com/client/v4'
+          def get(path):
+            req=urllib.request.Request(api+path,
+                headers={'Authorization':'Bearer '+os.environ['CF_TOKEN']},method='GET')
+            try:
+              with urllib.request.urlopen(req,timeout=25) as x:return x.status,json.load(x)
+            except urllib.error.HTTPError as e:return e.code,{}
+          st,d=get('/accounts?per_page=50')
+          assert st==200 and d.get('success') is True,'CLOUDFLARE_ACCOUNTS_READ_DENIED'
+          projects=[]
+          for a in d.get('result') or []:
+            aid=a.get('id')
+            if not re.fullmatch('[a-f0-9]{32}',str(aid)):continue
+            st,p=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+            if st==200 and p.get('success') is True and (p.get('result') or {}).get('name')=='hive-alveare':
+              projects.append(p['result'])
+          assert len(projects)==1,'HIVE_PAGES_SOURCE_PROJECT_NOT_UNIQUE'
+          p=projects[0]
+          sc=((p.get('source') or {}).get('config') or {})
+          bc=p.get('build_config') or {}
+          assert (p.get('source') or {}).get('type')=='github' and sc.get('repo_name')=='hive-alveare' and sc.get('production_branch')=='main','WRONG_HIVE_PRODUCTION_SOURCE'
+          assert bc.get('root_dir')=='cloudflare' and bc.get('destination_dir')=='public','WRONG_PRODUCTION_BUILD_ROOT'
+          assert bc.get('build_command') in ('',None),'GLOBAL_BUILD_COMMAND_NOT_AT_BASELINE'
+          cfg=p.get('deployment_configs') or {}
+          assert 'HIVE_DATA_API_URL' in (((cfg.get('production') or {}).get('env_vars') or {})),'PROD_NEON_BINDING_ABSENT'
+          assert 'HIVE_DATA_API_URL' not in (((cfg.get('preview') or {}).get('env_vars') or {})),'PREVIEW_SHARED_NEON_BINDING_DENIED'
+          rollback=p.get('canonical_deployment') or {}
+          latest=(rollback.get('latest_stage') or {}).get('status')
+          meta=((rollback.get('deployment_trigger') or {}).get('metadata') or {})
+          assert latest=='success' and re.fullmatch('[a-f0-9-]{36}',str(rollback.get('id') or '')),'KNOWN_GOOD_PRODUCTION_ROLLBACK_MISSING'
+          assert re.fullmatch('[a-f0-9]{40}',str(meta.get('commit_hash') or '')),'KNOWN_GOOD_SHA_MISSING'
+          assert rollback.get('id')=='621107aa-9a64-42dc-a84a-8ee8208a515d','CANONICAL_PRODUCTION_DEPLOYMENT_CHANGED'
+          assert meta.get('commit_hash')=='eb9c169219c697fab500b909d34b42bdf43d16f2','CANONICAL_PRODUCTION_SOURCE_SHA_CHANGED'
+          print('S9_4_5_DURABLE_PAGES_BUILD_APPROVAL_IS_NOT_EXECUTION=true')
+          # Use the already certified curl+Cloudflare Access service-token path.
+          # Python urllib received 403 on the same production endpoint even
+          # though the original trusted CI curl GET succeeded (run 43391721233).
+          import subprocess,tempfile
+          with tempfile.TemporaryDirectory() as d:
+            args=['curl','-sS','--max-time','25','-o',d+'/response.json',
+              '-w','%{http_code}',
+              '-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+              '-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET'],
+              '-H','Accept: application/json',
+              '-H','Cache-Control: no-cache',
+              'https://hive-alveare.pages.dev/api/runtime-health']
+            p=subprocess.run(args,capture_output=True,text=True,timeout=30)
+            assert p.returncode==0,'S9_2_PROTECTED_CURL_TRANSPORT_DENIED'
+            assert p.stdout.strip()=='200','S9_2_PROTECTED_CURL_HTTP_DENIED_'+p.stdout.strip()
+            with open(d+'/response.json',encoding='utf8') as f:health=json.load(f)
+            assert health.get('ok') is True,'S9_2_PROTECTED_PRODUCTION_HEALTH_NOT_OK'
+          print('S9_4_5_DURABLE_BUILD_PROD_IDENTITY_AND_HEALTH=PASS')
+          print('S9_2_ROLLBACK_DEPLOYMENT_ID='+rollback['id'])
+          print('S9_2_ROLLBACK_COMMIT_SHA='+meta['commit_hash'])
+          print('S9_2_NO_CLOUDFLARE_MUTATIONS=TRUE')
+          PY
+
+      - name: Independently validate GitHub-signed OIDC claims; emit non-privileged evidence only
+        shell: bash
+        env:
+          GH_WORKFLOW_PATH: "giovannifidel-collab/pfarma-ci/.github/workflows/queen-s9-4-5-owner-durable-build-release-attestation.yml@refs/heads/main"
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { webcrypto, createHash, randomUUID } from 'node:crypto';
+          import { appendFileSync } from 'node:fs';
+          const e=process.env;
+          const err=s=>{throw Error(s)};
+          const num=(x)=>Number(x);
+          if(!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)err('OIDC_NOT_AVAILABLE');
+          const audience='hive-queen-s9-4-5-durable-pages-release-v1';
+          const u=e.ACTIONS_ID_TOKEN_REQUEST_URL+
+            (e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+
+            'audience='+encodeURIComponent(audience);
+          const tokResp=await fetch(u,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!tokResp.ok)err('OIDC_ISSUANCE_DENIED');
+          const {value:jwt}=await tokResp.json();
+          if(typeof jwt!=='string'||jwt.length<300||jwt.length>12000)err('OIDC_TOKEN_FORMAT_DENIED');
+          const parts=jwt.split('.');
+          if(parts.length!==3)err('OIDC_PARTS_DENIED');
+          function b64(x){
+            if(!/^[A-Za-z0-9_-]+$/.test(x)||x.length>14000)err('OIDC_ENCODING_DENIED');
+            return Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-x.length%4)%4),'base64');
+          }
+          const header=JSON.parse(b64(parts[0]).toString('utf8'));
+          const claims=JSON.parse(b64(parts[1]).toString('utf8'));
+          if(header.alg!=='RS256'||!header.kid||header.jku||header.jwk||header.x5u||header.crit)
+            err('OIDC_HEADER_DENIED');
+          const validClaims={
+            iss:'https://token.actions.githubusercontent.com',
+            aud:audience,
+            repository:'giovannifidel-collab/pfarma-ci',
+            repository_id:'1308677897',
+            repository_owner_id:'305755860',
+            actor:'giovannifidel-collab',
+            actor_id:'305755860',
+            environment:'pfarma-ci-trusted',
+            workflow_ref:e.GH_WORKFLOW_PATH,
+            ref:'refs/heads/main',
+            event_name:'workflow_dispatch',
+            runner_environment:'github-hosted'
+          };
+          for(const [k,v] of Object.entries(validClaims))if(String(claims[k])!==v)err('OIDC_IDENTITY_DENIED_'+k);
+          if(!/^[a-f0-9]{40}$/.test(claims.sha||'')||claims.sha!==e.GITHUB_SHA)
+            err('OIDC_RELAY_SOURCE_DENIED');
+          if(num(claims.run_id)!==num(e.GITHUB_RUN_ID)||num(claims.run_attempt)!==num(e.GITHUB_RUN_ATTEMPT))
+            err('OIDC_RUN_IDENTITY_DENIED');
+          const now=Date.now();
+          if(!Number.isSafeInteger(claims.iat)||!Number.isSafeInteger(claims.nbf)||!Number.isSafeInteger(claims.exp)||
+             claims.exp-claims.iat<=0||claims.exp-claims.iat>900||
+             claims.exp*1000<=now||claims.iat*1000>now+30000||now-claims.iat*1000>300000||
+             claims.nbf*1000>now+30000)
+            err('OIDC_EXPIRY_DENIED');
+          const jwksResponse=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwksResponse.ok)err('OIDC_JWKS_DENIED');
+          const keys=(await jwksResponse.json()).keys;
+          if(!Array.isArray(keys)||keys.length>30)err('OIDC_JWKS_SHAPE_DENIED');
+          const jwk=keys.find(k=>k.kid===header.kid&&k.kty==='RSA'&&k.use==='sig'&&(!k.alg||k.alg==='RS256'));
+          if(!jwk)err('OIDC_JWK_NOT_FOUND');
+          const key=await webcrypto.subtle.importKey('jwk',{kty:'RSA',n:jwk.n,e:jwk.e,ext:true},
+            {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
+          const verified=await webcrypto.subtle.verify('RSASSA-PKCS1-v1_5',key,b64(parts[2]),
+            Buffer.from(parts[0]+'.'+parts[1]));
+          if(!verified)err('OIDC_SIGNATURE_DENIED');
+          if(!/^[a-f0-9]{40}$/.test(e.SOURCE_SHA||''))err('INVALID_HIVE_SHA');
+          if(!/^[a-f0-9]{40}$/.test(e.CANDIDATE_SHA||''))err('INVALID_RELEASE_CANDIDATE_SHA');
+          const receipt={
+            schema:'queen.s9.4-5.owner.durable-pages-build-release-oidc.v1',
+            owner:'giovannifidel-collab',
+            actor_id:'305755860',
+            repository:'giovannifidel-collab/hive-alveare',
+            source_sha:e.SOURCE_SHA, 
+            release_candidate_sha:e.CANDIDATE_SHA,
+            release_candidate_pr:95,
+            mission_id:randomUUID(),
+            project_slug:'hive',
+            scope:'S9.4_5_ONE_HIVE_RELEASE_AND_DURABLE_PAGES_BUILD_WITH_ROLLBACK',
+            max_additional_cost_usd:0,
+            max_provider_dispatches:0,
+            max_production_releases:1,
+            require_verified_rollback:true,
+            permanent_pages_build_command:'QUEEN_S9_EPHEMERAL_BUILD=1 node ../ops/queen/s9/pages-legacy-import-adapter.mjs --apply-ephemeral',
+            pages_build_command_change_approved:true,
+            max_pages_configuration_mutations:1,
+            restore_prior_build_command_on_failed_release:true,
+            require_separate_merge_decision:true,
+            paid_fallback:false,
+            product_writes:false,
+            school_training_eligible:false,
+            auto_merge:false,
+            auto_deploy:false,
+            auto_approve:false,
+            oidc_signature_verified:true,
+            action_run_id:num(e.GITHUB_RUN_ID),
+            action_run_attempt:num(e.GITHUB_RUN_ATTEMPT),
+            verified_at:new Date(now).toISOString(),
+            expires_at:new Date(now+15*60*1000).toISOString(),
+            state:'IDENTITY_ATTESTED_NOT_A_NEON_GRANT_NOT_EXECUTED'
+          };
+          const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S9_OWNER_INDEPENDENT_OIDC_VERIFICATION=PASS');
+          console.log('S9_OWNER_ATTESTATION_RECEIPT='+JSON.stringify({...receipt,evidence_sha256:digest}));
+          console.log('S9_OWNER_NEON_GRANTS_WRITTEN=0');
+          console.log('S9_OWNER_PROVIDER_DISPATCHES=0');
+          console.log('S9_OWNER_PRODUCTION_DEPLOYS=0');
+          appendFileSync(e.GITHUB_STEP_SUMMARY,
+            '### S9 Owner authentication — no execution\n'+
+            '- Exact HIVE SHA: '+e.SOURCE_SHA+'\n'+
+            '- Owner verified with GitHub-signed OIDC: PASS\n'+
+            '- Mission ID: '+receipt.mission_id+'\n'+
+            '- Receipt SHA-256: '+digest+'\n'+
+            '- Owner grant: NOT CREATED, requires independent gate\n'+
+            '- Provider execution: NOT ATTEMPTED\n');
+          JS
