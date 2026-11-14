@@ -1,0 +1,82 @@
+{
+  "schema": "queen.s9.resume-checkpoint.v6",
+  "generated_at_utc": "2026-11-14T14:57:27.948Z",
+  "authority": {
+    "private_repo": "giovannifidel-collab/hive-alveare",
+    "main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "relay": "giovannifidel-collab/pfarma-ci",
+    "relay_pointer_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "permanent_build_command_currently_applied": false,
+    "fresh_owner_release_signature_exists": false
+  },
+  "still_certified": [
+    "S9.1 protected canonical visibility LIVE",
+    "S9.2 Git-connected production release from PR92 LIVE SHA eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "S9.3 one bounded Owner-signed HIVE S1 live mission",
+    "S9.4 ten project source READONLY; six separately Owner-signed/docs-only draft canaries accepted by CI 43575259096, Neon event 1243",
+    "S9.5 real GitHub runner failure quarantined; one Owner-signed isolated replacement accepted",
+    "S9.6 scoped evidence E2E, NOT general unrestricted autonomy"
+  ],
+  "new_safe_source_work": [
+    {
+      "name": "S9.5 receipt reconciliation pure bounded preflight",
+      "pr": 94,
+      "sha": "8149468ee9b2822f8e35821b3c86fc0a5fa66579",
+      "ci": 43607082415,
+      "outcome": "SOURCE_CI_PASS_UNMERGED",
+      "note": "Existing independently verified provider result only, no redelivery or new dispatcher"
+    },
+    {
+      "name": "S9.4 plus S9.5 unified one-release source candidate",
+      "pr": 95,
+      "sha": "765c3bf53f4fb5ba346473826f852a881f86c089",
+      "ci": 43607312049,
+      "outcome": "SOURCE_TESTS_AND_MODERN_LEGACY_EPHEMERAL_BUILD_PASS_DRAFT_UNMERGED",
+      "note": "Preserves exact PR93/PR94 module blobs and no product code changes"
+    },
+    {
+      "name": "Owner release plus durable Pages build OIDC signer",
+      "url": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-5-owner-durable-build-release-attestation.yml",
+      "smoke_ci": 43607525552,
+      "smoke_conclusion": "success",
+      "status": "READY_FOR_MANUAL_OWNER_AUTHENTICATION_NOT_YET_SIGNED"
+    }
+  ],
+  "current_cloudflare": {
+    "live_production_deployment_id": "621107aa-9a64-42dc-a84a-8ee8208a515d",
+    "live_production_source_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "protected_runtime_health": "PASS",
+    "rollback_deployment_verified": true,
+    "git_connected_pr95_build": "NOT_YET_VERIFIED_SUCCESS_UNDER_PERMANENT_CONFIG",
+    "current_build_command": "EMPTY",
+    "proposed_build_command": "QUEEN_S9_EPHEMERAL_BUILD=1 node ../ops/queen/s9/pages-legacy-import-adapter.mjs --apply-ephemeral",
+    "mutation_performed_this_turn": false
+  },
+  "owner_action": {
+    "git_workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-5-owner-durable-build-release-attestation.yml",
+    "branch": "main",
+    "source_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "release_candidate_sha": "765c3bf53f4fb5ba346473826f852a881f86c089",
+    "checkbox": "approve_s9_4_5_one_release_and_durable_build",
+    "action": "Owner must start NEW GitHub workflow_dispatch and check approval; OIDC binding expires after 15 minutes",
+    "no_reuse_of_old_owner_grants": true
+  },
+  "global_exit_unverified": [
+    "Permanent Pages build and new source production release require freshly signed exact Owner grant",
+    "S9.5 code preflight is not a trusted Neon CAS runtime wired to an unattended verified provider receipt; no live unattended recovery proved",
+    "Per-project functional product code changes and domain acceptance are NOT authorized by the six docs-only OIDC missions",
+    "Four DENY projects remain protected and outside the six-project mission cohort",
+    "General automatic cross-project project execution and unknown-outcome provider retry remain disabled by canonical contract"
+  ],
+  "invariants": {
+    "default_deny": true,
+    "no_new_S1": true,
+    "no_new_S2": true,
+    "paid_fallback": false,
+    "no_auto_merge": true,
+    "no_auto_deploy": true,
+    "no_cross_project_writes": true,
+    "no_unapproved_training": true
+  },
+  "full_s9_certified": false
+}
