@@ -30,15 +30,20 @@ jobs:
           from pathlib import Path
           p=Path('tests/persistence-recovery.test.mjs')
           src=p.read_text()
-          old='assert.match(backupPage, /href="\\\\/persistence-recovery\\\\.html"/);\\nassert.match(backupPage, /Verifica persistenza/);'
-          new='''// The legacy browser-local recovery page is retained for provenance only.
-          // The canonical backup surface must keep users in the account-scoped library.
-          assert.match(backupPage, /Backup locale legacy ritirato/);
-          assert.match(backupPage, /href="\\\\/"/);
-          assert.match(backupPage, /libreria durable account-scoped/);
-          assert.doesNotMatch(backupPage, /href="\\\\/persistence-recovery\\\\.html"/);'''
-          assert src.count(old)==1,'EXPECTED_EXACT_STALE_TEST_GUARD_MISSING'
-          p.write_text(src.replace(old,new))
+          lines=src.splitlines()
+          matches=[i for i,line in enumerate(lines) if line.startswith('assert.match(backupPage,')]
+          assert len(matches)==2 and matches[1]==matches[0]+1,'TWO_ADJACENT_LEGACY_TEST_LINES_REQUIRED'
+          assert 'persistence-recovery' in lines[matches[0]] and 'Verifica persistenza' in lines[matches[1]],'EXPECTED_EXACT_STALE_TEST_GUARD_MISSING'
+          replacement=[
+            '// Legacy browser-local recovery is retained only as archived provenance.',
+            '// The canonical backup surface must keep users in account-scoped storage.',
+            'assert.match(backupPage, /Backup locale legacy ritirato/);',
+            'assert.ok(backupPage.includes(\'href="/"\'));',
+            'assert.match(backupPage, /libreria durable account-scoped/);',
+            'assert.ok(!backupPage.includes(\'href="/persistence-recovery.html"\'));'
+          ]
+          lines[matches[0]:matches[1]+1]=replacement
+          p.write_text('\n'.join(lines)+'\n')
           print('S9_4_FAMILY_ONLY_TEST_ASSERTIONS_SIMULATED_IN_DISPOSABLE_RUNNER=PASS')
           PY
           diff="$(git diff --name-only)"
