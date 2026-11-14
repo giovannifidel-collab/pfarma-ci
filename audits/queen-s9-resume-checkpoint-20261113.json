@@ -1,6 +1,6 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v5",
-  "as_of_date": "2026-11-14T08:20:40.661Z",
+  "schema": "queen.s9.resume-checkpoint.v6",
+  "as_of_date": "2026-11-14T14:57:27.948Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
     "main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
@@ -89,20 +89,20 @@
   "pending": [
     {
       "gate": "S9.4",
-      "blocker": "Six live exact Owner-signed single-doc canary draft PRs and independent negative source/diff proof PASSED, but no functional code-changing project missions, independently accepted domain execution, recurring cross-project dispatch permission, or four DENY-project authorization exist. HIVE S9.4 adapter source PR #93 remains draft.",
+      "blocker": "10 source READONLY+6 owner-signed docs draft PRs verified; candidate integration PR95 tested but unmerged; no real functional project operations or four DENY-project approval",
       "next_required_scope": "Each product must have an exact path-limited project execution + functional acceptance mission, a fresh Owner-authenticated CI signature and distinct merge/deploy gate. Four DENY repositories require their own separate owner grant. Do not silently broaden this consumed six-docs authorization."
     },
     {
       "gate": "S9.5",
-      "blocker": "Need independently verified bounded unattended provider failure recovery/fallback if canonical full autonomy is required; only Owner-approved isolated replacement is proven"
+      "blocker": "Source preflight for safe receipt reconciliation CI PASS #43607082415; no live trusted independent provider-receipt CAS unattended completion, unknown failure still quarantined; no unapproved auto retries"
     },
     {
       "gate": "S9.6",
-      "blocker": "Full Super Queen release remains DENY until per-project authority and unattended resilience are proven. Do not treat scope-specific CI PASS as full autonomy"
+      "blocker": "Scope-limited independent S9.6 PASS retained; global unattended cross-project autonomy still DENY pending separate functional acceptance and verified no-replay recovery"
     },
     {
       "gate": "S9.2 FUTURE CI/CD",
-      "blocker": "Normal future Git-connected Cloudflare builds require a durable owner-authorized compatible build setup; temporary global build command was rolled back after the approved one-off release"
+      "blocker": "Known legacy Pages build command is CI-tested; permanent source/Cloudflare configuration change requires fresh Owner attestation, staged and smoke-tested in #43607525552"
     },
     {
       "gate": "S10",
@@ -126,7 +126,29 @@
     "audits/queen-s9-5-isolated-recovery-verified-20261113.json",
     "audits/queen-s9-6-independent-exit-decision-20261113.json",
     "audits/queen-s9-6-postproduction-unified-proof-20261113.json",
-    "audits/queen-s9-4-six-owner-signed-project-docs-prs-verified-20261114.json"
+    "audits/queen-s9-4-six-owner-signed-project-docs-prs-verified-20261114.json",
+    "audits/queen-s9-v6-source-merge-and-durable-build-owner-handoff-20261114.json"
   ],
-  "user_action_required": "S9.4 six docs-only Owner grant CONSUMED and certified. No repeat necessary; broader real product autonomy would require a NEW explicit narrowly scoped Owner OIDC attestation and project-local functional criteria, including separate authorization for four previously DENY projects."
+  "user_action_required": "Manual NEW Owner GitHub workflow for exact PR95 source release + PERMANENT Cloudflare build command. Workflow URL: https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-5-owner-durable-build-release-attestation.yml ; branch main; SHA source eb9c169219c697fab500b909d34b42bdf43d16f2; candidate 765c3bf53f4fb5ba346473826f852a881f86c089; check approve_s9_4_5_one_release_and_durable_build. This approval does NOT authorize unrelated project changes.",
+  "new_source_candidates": [
+    {
+      "stage": "S9.5",
+      "pr": 94,
+      "head": "8149468ee9b2822f8e35821b3c86fc0a5fa66579",
+      "ci": 43607082415,
+      "status": "SOURCE_ONLY_PASS_DRAFT_NOT_DEPLOYED"
+    },
+    {
+      "stage": "S9.4+S9.5",
+      "pr": 95,
+      "head": "765c3bf53f4fb5ba346473826f852a881f86c089",
+      "ci": 43607312049,
+      "status": "CONSOLIDATED_SOURCE_AND_MODERN_LEGACY_BUILD_PASS_DRAFT_NOT_DEPLOYED"
+    },
+    {
+      "stage": "S9.4+S9.5 Owner+Cloudflare",
+      "ci": 43607525552,
+      "status": "EXACT_OWNER_WORKFLOW_AND_LIVE_PROD_ROLLBACK_PREFLIGHT_PASS_NO_RELEASE_AUTHORIZATION_YET"
+    }
+  ]
 }
