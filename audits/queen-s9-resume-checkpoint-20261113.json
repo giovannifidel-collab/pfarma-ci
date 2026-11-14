@@ -1,6 +1,6 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v4",
-  "as_of_date": "2026-11-13T10:18:30Z",
+  "schema": "queen.s9.resume-checkpoint.v5",
+  "as_of_date": "2026-11-14T08:20:40.661Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
     "main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
@@ -29,10 +29,6 @@
         "school_training_promotions": 0
       },
       "scope": "ONE_OWNER_APPROVED_HIVE_COGNITIVE_CONTINUATION_NOT_GENERAL_AUTONOMY"
-    },
-    {
-      "gate": "S9.4",
-      "outcome": "PASS_READ_ONLY_10_PROJECTS_2_SOURCE_DRIFTS_NO_WRITES"
     },
     {
       "gate": "S9.5",
@@ -71,12 +67,30 @@
       "outcome": "INDEPENDENT_POSTPROD_SCOPED_EVIDENCE_PASS_GLOBAL_AUTONOMY_DENY",
       "independent_ci": 43408117150,
       "full_S9_certified": false
+    },
+    {
+      "gate": "S9.4",
+      "outcome": "TEN_SOURCE_READONLY_PASS_PLUS_SIX_OWNER_SIGNED_PROJECT_DOCS_ONLY_DRAFT_PRS_INDEPENDENTLY_VERIFIED",
+      "source_hive_candidate_pr": 93,
+      "source_hive_candidate_head_sha": "853ef0933eb89620664685bc01a9f241093c6411",
+      "owner_oidc_ci": 43574845080,
+      "six_project_acceptance_ci": 43575259096,
+      "neon_scoped_proof_event_id": 1243,
+      "verified_draft_prs": 6,
+      "source_sha_locked_projects": 6,
+      "product_code_writes": 0,
+      "project_merges": 0,
+      "project_deploys": 0,
+      "four_deny_projects_unmodified_by_this_scope": true,
+      "generalized_execution_certified": false,
+      "owner_grant_consumed": true
     }
   ],
   "pending": [
     {
       "gate": "S9.4",
-      "blocker": "Need individually signed per-project, source-locked candidate/test/acceptance permissions; 10/10 read-only source audit is certified but not a blanket executor grant"
+      "blocker": "Six live exact Owner-signed single-doc canary draft PRs and independent negative source/diff proof PASSED, but no functional code-changing project missions, independently accepted domain execution, recurring cross-project dispatch permission, or four DENY-project authorization exist. HIVE S9.4 adapter source PR #93 remains draft.",
+      "next_required_scope": "Each product must have an exact path-limited project execution + functional acceptance mission, a fresh Owner-authenticated CI signature and distinct merge/deploy gate. Four DENY repositories require their own separate owner grant. Do not silently broaden this consumed six-docs authorization."
     },
     {
       "gate": "S9.5",
@@ -111,7 +125,8 @@
     "audits/queen-s9-5-real-runner-fault-quarantine-20261113.json",
     "audits/queen-s9-5-isolated-recovery-verified-20261113.json",
     "audits/queen-s9-6-independent-exit-decision-20261113.json",
-    "audits/queen-s9-6-postproduction-unified-proof-20261113.json"
+    "audits/queen-s9-6-postproduction-unified-proof-20261113.json",
+    "audits/queen-s9-4-six-owner-signed-project-docs-prs-verified-20261114.json"
   ],
-  "user_action_required": "No repeat of the S9.2 Owner attestation: its one-off production release was successfully consumed. Separate narrowly scoped Owner signatures are needed for future project writes, unattended recovery scope, and a permanent build change."
+  "user_action_required": "S9.4 six docs-only Owner grant CONSUMED and certified. No repeat necessary; broader real product autonomy would require a NEW explicit narrowly scoped Owner OIDC attestation and project-local functional criteria, including separate authorization for four previously DENY projects."
 }
