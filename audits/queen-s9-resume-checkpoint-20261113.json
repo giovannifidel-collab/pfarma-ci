@@ -1,6 +1,6 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v6",
-  "as_of_date": "2026-11-14T14:57:27.948Z",
+  "schema": "queen.s9.resume-checkpoint.v7",
+  "as_of_date": "2026-11-14T15:08:00Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
     "main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
@@ -89,7 +89,7 @@
   "pending": [
     {
       "gate": "S9.4",
-      "blocker": "10 source READONLY+6 owner-signed docs draft PRs verified; candidate integration PR95 tested but unmerged; no real functional project operations or four DENY-project approval",
+      "blocker": "Source-only/one-doc project mission PASS. New independent native functional tests passed 5/6; Family Cloud legacy recovery regression FAIL and exact disposable test correction PASS; Family Cloud default/main vs authoritative branch diverged 1769/19 and must be reconciled before real project code/test change. All six existing docs PRs remain draft; four DENY untouched; no unattended cross-project writes.",
       "next_required_scope": "Each product must have an exact path-limited project execution + functional acceptance mission, a fresh Owner-authenticated CI signature and distinct merge/deploy gate. Four DENY repositories require their own separate owner grant. Do not silently broaden this consumed six-docs authorization."
     },
     {
@@ -129,7 +129,7 @@
     "audits/queen-s9-4-six-owner-signed-project-docs-prs-verified-20261114.json",
     "audits/queen-s9-v6-source-merge-and-durable-build-owner-handoff-20261114.json"
   ],
-  "user_action_required": "Manual NEW Owner GitHub workflow for exact PR95 source release + PERMANENT Cloudflare build command. Workflow URL: https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-5-owner-durable-build-release-attestation.yml ; branch main; SHA source eb9c169219c697fab500b909d34b42bdf43d16f2; candidate 765c3bf53f4fb5ba346473826f852a881f86c089; check approve_s9_4_5_one_release_and_durable_build. This approval does NOT authorize unrelated project changes.",
+  "user_action_required": "Fresh GitHub Owner OIDC to authorize exactly PR95 source merge AND durable HIVE Pages build configuration with independent rollback: https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-5-owner-durable-build-release-attestation.yml ; branch main; source eb9c169219c697fab500b909d34b42bdf43d16f2; candidate 765c3bf53f4fb5ba346473826f852a881f86c089; checkbox approve_s9_4_5_one_release_and_durable_build. Separate Family Cloud branch reconciliation and project-scoped test patch authority remain needed; signed HIVE release cannot cover Family Cloud.",
   "new_source_candidates": [
     {
       "stage": "S9.5",
@@ -147,8 +147,36 @@
     },
     {
       "stage": "S9.4+S9.5 Owner+Cloudflare",
-      "ci": 43607525552,
-      "status": "EXACT_OWNER_WORKFLOW_AND_LIVE_PROD_ROLLBACK_PREFLIGHT_PASS_NO_RELEASE_AUTHORIZATION_YET"
+      "ci": 43607822135,
+      "status": "OWNER_SIGNER_AND_ROLLBACK_SMOKE_PASS_NO_SIGNED_RELEASE_YET"
     }
-  ]
+  ],
+  "s9_4_project_functional_domain_ci": {
+    "run_id": 43608148194,
+    "immutable_source_verified": true,
+    "passed": [
+      "project-giovanni",
+      "hive-field",
+      "giochem",
+      "pfarma-cloud",
+      "gio-os"
+    ],
+    "failed": [
+      "family-cloud"
+    ],
+    "family_failure": "tests/persistence-recovery.test.mjs expects legacy backup.html link to persistence-recovery.html, removed by canonical durable account-scoped product surface",
+    "family_preview_patch_ci_run_id": 43608462526,
+    "family_preview_patch_result": "SUCCESS_ON_DISPOSABLE_CHECKOUT_ONLY_NO_PROJECT_SOURCE_WRITE",
+    "family_preview_patch_artifact_id": 14118572873,
+    "family_authoritative_ref": "agent/bootstrap-family-cloud",
+    "family_authoritative_sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
+    "family_main_sha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
+    "family_ref_comparison": {
+      "status": "diverged",
+      "ahead_by": 1769,
+      "behind_by": 19,
+      "merge_base": "298dbcc78282d28a2da08f8a30eb031afa5357f2"
+    },
+    "warning": "Do not auto-merge/rebase Family Cloud branches or modify product tests without separate branch reconciliation and Owner-authorized project mission."
+  }
 }
