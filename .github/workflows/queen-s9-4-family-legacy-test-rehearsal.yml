@@ -1,0 +1,65 @@
+name: Queen S9.4 Family Cloud canonical recovery test-only patch rehearsal
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-4-family-legacy-test-rehearsal.yml]
+permissions: {contents: read}
+jobs:
+  exact-source-family-canonical-regression:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    steps:
+      - name: Exact immutable Family Cloud authoritative source, no persisted credentials
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: 17b242eca13d7c73607e0bc52c64146750020cb7
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require exact source and create only synthetic test file patch in disposable checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 17b242eca13d7c73607e0bc52c64146750020cb7
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tests/persistence-recovery.test.mjs')
+          src=p.read_text()
+          old='assert.match(backupPage, /href="\\\\/persistence-recovery\\\\.html"/);\\nassert.match(backupPage, /Verifica persistenza/);'
+          new='''// The legacy browser-local recovery page is retained for provenance only.
+          // The canonical backup surface must keep users in the account-scoped library.
+          assert.match(backupPage, /Backup locale legacy ritirato/);
+          assert.match(backupPage, /href="\\\\/"/);
+          assert.match(backupPage, /libreria durable account-scoped/);
+          assert.doesNotMatch(backupPage, /href="\\\\/persistence-recovery\\\\.html"/);'''
+          assert src.count(old)==1,'EXPECTED_EXACT_STALE_TEST_GUARD_MISSING'
+          p.write_text(src.replace(old,new))
+          print('S9_4_FAMILY_ONLY_TEST_ASSERTIONS_SIMULATED_IN_DISPOSABLE_RUNNER=PASS')
+          PY
+          diff="$(git diff --name-only)"
+          test "$diff" = tests/persistence-recovery.test.mjs
+          git diff -- tests/persistence-recovery.test.mjs > "$RUNNER_TEMP/s9-4-family-canonical-test-proposed.patch"
+          echo S9_4_FAMILY_EXACT_ONE_TEST_FILE_CHANGE=PASS
+      - name: Independently verify both canonical Family regressions on patched disposable source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/canonical-product-surface.test.mjs tests/persistence-recovery.test.mjs
+          test "$(git diff --name-only)" = tests/persistence-recovery.test.mjs
+          test -z "$(git diff --name-only -- web scripts api)"
+          echo S9_4_FAMILY_CANONICAL_RECOVERY_CONTRACT_REHEARSAL=PASS
+          echo S9_4_FAMILY_MAIN_BRANCH_WRITE=ZERO
+          echo S9_4_FAMILY_PRODUCT_DATA_MUTATION=ZERO
+          echo S9_4_FAMILY_RELEASE_AUTHORIZATION=NOT_GRANTED
+      - name: Save only non-secret proposed test patch for later per-project Owner-signed PR
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-s9-4-family-test-only-diff-${{ github.run_id }}
+          path: ${{ runner.temp }}/s9-4-family-canonical-test-proposed.patch
+          if-no-files-found: error
+          retention-days: 7
