@@ -37,9 +37,10 @@
     {
       "name": "Owner release plus durable Pages build OIDC signer",
       "url": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-5-owner-durable-build-release-attestation.yml",
-      "smoke_ci": 43607525552,
+      "smoke_ci": 43607822135,
       "smoke_conclusion": "success",
-      "status": "READY_FOR_MANUAL_OWNER_AUTHENTICATION_NOT_YET_SIGNED"
+      "status": "READY_FOR_MANUAL_OWNER_AUTHENTICATION_NOT_YET_SIGNED",
+      "oidc_workflow_main_commit": "733624786da9df7033166b8876e2fd9f29d61734"
     }
   ],
   "current_cloudflare": {
@@ -50,7 +51,8 @@
     "git_connected_pr95_build": "NOT_YET_VERIFIED_SUCCESS_UNDER_PERMANENT_CONFIG",
     "current_build_command": "EMPTY",
     "proposed_build_command": "QUEEN_S9_EPHEMERAL_BUILD=1 node ../ops/queen/s9/pages-legacy-import-adapter.mjs --apply-ephemeral",
-    "mutation_performed_this_turn": false
+    "mutation_performed_this_turn": false,
+    "latest_live_preflight_ci_run_id": 43607822135
   },
   "owner_action": {
     "git_workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-5-owner-durable-build-release-attestation.yml",
