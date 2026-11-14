@@ -1,0 +1,110 @@
+{
+  "schema": "queen.s9.4.six-docs-drafts-independent-live-proof.v1",
+  "verified_at_utc": "2026-11-14T08:20:40.661Z",
+  "classification": "BOUNDED_PROJECT_SCOPED_SOURCE_DOCS_CANARY_ACCEPTANCE_ONLY",
+  "authority": {
+    "owner_oidc_ci_run_id": 43574845080,
+    "owner_oidc_ci_result": "SUCCESS",
+    "owner_identity_verified_by": "GitHub OIDC signed JWKS verification in independently authenticated Owner CI",
+    "owner_oidc_receipt_sha256": "cee1d07a2d9871bc508f0c5681df83150d244b1860ca8dff2fc5503410ce0029",
+    "owner_scope": "S9.4_SIX_INDIVIDUAL_DOCS_ONLY_PROJECT_DRAFT_CANDIDATES",
+    "owner_lease_expires_at_utc": "2026-11-14T08:29:36.067Z",
+    "owner_grant_consumed": true,
+    "source_hive_main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "source_hive_s9_4_draft_pr": 93,
+    "source_hive_s9_4_draft_head_sha": "853ef0933eb89620664685bc01a9f241093c6411"
+  },
+  "independent_verification": {
+    "ci_run_id": 43575259096,
+    "ci_job_id": 132387990498,
+    "conclusion": "success",
+    "receipt_sha256": "3e3ac435a1c7421be79519af00c30d4b76b3354115e5c89896404acbc7b50ccc",
+    "artifact_id": 14106027213,
+    "artifact_name": "queen-s9-4-six-docs-canaries-independent-43575259096",
+    "individually_checked_branch_sha": true,
+    "individually_checked_base_sha": true,
+    "individually_checked_draft_pr": true,
+    "individually_checked_one_file_diff": true,
+    "individually_checked_owner_mission_binding": true,
+    "individually_checked_domain_negative_guard": true,
+    "any_merge": false,
+    "any_deploy": false,
+    "any_code_change": false
+  },
+  "project_prs": [
+    {
+      "id": "project-giovanni",
+      "repo": "giovannifidel-collab/project-giovanni",
+      "pr": 1169,
+      "head": "61252c6b12c8111bb302fb61e547058ca35d68b4",
+      "mission_id": "6afdfda8-a2fd-4bf4-ba12-6e081719fba4"
+    },
+    {
+      "id": "hive-field",
+      "repo": "giovannifidel-collab/hive-field",
+      "pr": 1,
+      "head": "16dbcfb148ba738154d959903d5b7f6eefe5f01e",
+      "mission_id": "cba5e100-a1b0-464a-bb28-9fb112b3252e"
+    },
+    {
+      "id": "giochem",
+      "repo": "giovannifidel-collab/giochem",
+      "pr": 3,
+      "head": "02bc7c38232716512c397ae71366a6baf1c3dca0",
+      "mission_id": "3b625921-8351-4e59-8233-80b3e147bed0"
+    },
+    {
+      "id": "pfarma-cloud",
+      "repo": "giovannifidel-collab/pfarma-cloud",
+      "pr": 2277,
+      "head": "dda1ccfbca19bf7023334810289ef1647d02bc94",
+      "mission_id": "8c6f2f8f-c6d8-4543-8e1b-8dd0d12538fc"
+    },
+    {
+      "id": "family-cloud",
+      "repo": "giovannifidel-collab/family-cloud",
+      "pr": 873,
+      "head": "6a481a6a684c95407baaeb898b3aae95e94cf978",
+      "mission_id": "3ddf0a85-e4d9-4a08-9342-4466036c062a",
+      "base_ref": "agent/bootstrap-family-cloud"
+    },
+    {
+      "id": "gio-os",
+      "repo": "giovannifidel-collab/gio-OS",
+      "pr": 2,
+      "head": "bc63e38410257a2a136940605eebf3907cdc7c3d",
+      "mission_id": "4de48f5d-5ec6-4b71-893a-8828cb2ebb00"
+    }
+  ],
+  "neon": {
+    "prod_project": "muddy-recipe-65646643",
+    "verified_proof_event_id": 1243,
+    "parent_grant_state": "SIX_DOCS_DRAFTS_VERIFIED_ONE_SHOT_CONSUMED",
+    "individual_canary_status": "ONE_DOCS_DRAFT_INDEPENDENTLY_VERIFIED",
+    "count_verified": 6,
+    "draft_pr_count": 6,
+    "active_missions": 0,
+    "school_training_promotions": 0
+  },
+  "four_explicit_denied_projects": [
+    "pfarma-social",
+    "rose-mary-beauty",
+    "rocco-rosy-wedding",
+    "pfarma-reel-media"
+  ],
+  "no_generalized_execution_authority": true,
+  "no_automatic_merge_or_deploy": true,
+  "S9_4_global_operational_autonomy_certified": false,
+  "still_pending": [
+    "Independent project functional/domain acceptance not performed: signed permission limited to one docs file per project",
+    "No product-code project execution or ongoing Queen dispatch authority permitted",
+    "Four DENY projects need distinct explicit authenticated Owner decisions if they are to be included",
+    "HIVE source adapter PR #93 remains open draft; no merge/deploy authority in this six-project signed grant",
+    "No cross-project unattended autonomy claim"
+  ],
+  "sources": [
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43574845080",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43575259096",
+    "https://github.com/giovannifidel-collab/hive-alveare/pull/93"
+  ]
+}
