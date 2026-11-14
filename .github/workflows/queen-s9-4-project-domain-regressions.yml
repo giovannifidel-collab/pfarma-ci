@@ -1,0 +1,90 @@
+name: Queen S9.4 six project-owned functional gates, exact source READ ONLY
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-4-project-domain-regressions.yml]
+permissions: {contents: read}
+jobs:
+  source-locked-domain-regression:
+    name: ${{ matrix.id }} project-owned isolated test
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: pfarma-ci-trusted
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {id: 'project-giovanni', repo: 'giovannifidel-collab/project-giovanni', ref: 'main', sha: '4f67bda2e1bf63db12c1d9d7311b57f12b7bc707'}
+          - {id: 'hive-field', repo: 'giovannifidel-collab/hive-field', ref: 'main', sha: '6816df638304a6decb05b9b4bd6543d8600f5e7c'}
+          - {id: 'giochem', repo: 'giovannifidel-collab/giochem', ref: 'main', sha: '8d8922171bfdc3554cb7786d08b3594ec681f59a'}
+          - {id: 'pfarma-cloud', repo: 'giovannifidel-collab/pfarma-cloud', ref: 'main', sha: '1d460184944355ed2d4b375bfe03b35a70c7aa41'}
+          - {id: 'family-cloud', repo: 'giovannifidel-collab/family-cloud', ref: 'agent/bootstrap-family-cloud', sha: '17b242eca13d7c73607e0bc52c64146750020cb7'}
+          - {id: 'gio-os', repo: 'giovannifidel-collab/gio-OS', ref: 'main', sha: '31103989996a664dff385896143dccd03072cdf6'}
+    steps:
+      - name: Checkout exact immutable project-owned source, no persisted credential
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          ref: ${{ matrix.sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assert project SHA and zero external product deployment authority
+        shell: bash
+        env:
+          PROJECT_ID: ${{ matrix.id }}
+          EXACT_SOURCE_SHA: ${{ matrix.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+          echo "S9_4_PROJECT_DOMAIN_TEST_INITIAL_SOURCE_SHA=${EXACT_SOURCE_SHA}"
+          echo "S9_4_PROJECT_DOMAIN_TEST_REPO=${PROJECT_ID}"
+          echo S9_4_PROJECT_PRODUCT_WRITE_AUTHORITY=DENY
+      - name: Run existing project-owned, non-network/non-production regression or host gate
+        shell: bash
+        env:
+          PROJECT_ID: ${{ matrix.id }}
+        run: |
+          set -euo pipefail
+          case "$PROJECT_ID" in
+            project-giovanni)
+              node --test factory/coach-synthetic-golden-evaluation.test.mjs
+              ;;
+            hive-field)
+              node src/data-v2-adapter.test.mjs
+              ;;
+            giochem)
+              node scripts/cloud-check.mjs
+              node --check cloud/worker.js
+              ;;
+            pfarma-cloud)
+              python3 -m unittest -v tests.test_operational_store tests.test_operational_store_restore_sidecars
+              ;;
+            family-cloud)
+              node --test tests/canonical-product-surface.test.mjs tests/persistence-recovery.test.mjs
+              ;;
+            gio-os)
+              make test
+              ;;
+            *)
+              echo S9_4_UNKNOWN_PROJECT=DENY
+              exit 59
+              ;;
+          esac
+          echo "S9_4_PROJECT_SCOPED_FUNCTIONAL_OR_STATIC_REGRESSION=PASS:$PROJECT_ID"
+          echo S9_4_MODEL_PROVIDER_DISPATCHES=ZERO
+          echo S9_4_CROSS_PROJECT_WRITES=ZERO
+          echo S9_4_DEPLOYS=ZERO
+      - name: Source remains unchanged after test run
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Tests may create isolated untracked output. No tracked source mutation allowed.
+          test -z "$(git diff --name-only --exit-code)"
+          test -z "$(git diff --cached --name-only --exit-code)"
+          echo S9_4_PROJECT_TRACKED_SOURCE_UNCHANGED=PASS
