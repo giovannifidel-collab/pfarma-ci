@@ -25,6 +25,8 @@ jobs:
           ruby -r yaml -e 'YAML.parse_file(ARGV[0]); puts "S9_4_5_OWNER_WORKFLOW_YAML_VALID=PASS"' "$RUNNER_TEMP/s9-4-5-owner.yml"
           grep -q 'approve_s9_4_5_one_release_and_durable_build' "$RUNNER_TEMP/s9-4-5-owner.yml"
           grep -q 'OIDC_SIGNATURE_DENIED' "$RUNNER_TEMP/s9-4-5-owner.yml"
+          grep -q 'max_permanent_build_command_changes:1' "$RUNNER_TEMP/s9-4-5-owner.yml"
+          grep -q 'emergency_rollback_restore_permitted:true' "$RUNNER_TEMP/s9-4-5-owner.yml"
           echo S9_4_5_RELEASE_CANDIDATE_SOURCE_CI_AND_OWNER_POLICY=PASS
       - name: Verify current Cloudflare production identity and known-good rollback deployment, GET only
         shell: bash
