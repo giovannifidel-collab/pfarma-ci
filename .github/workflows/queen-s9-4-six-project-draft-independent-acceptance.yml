@@ -1,0 +1,95 @@
+name: Queen S9.4 Six Owner-Signed Project Draft Canary Independent Acceptance
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-4-six-project-draft-independent-acceptance.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-4-six-owner-signed-project-canaries-43574845080
+  cancel-in-progress: false
+jobs:
+  independent-readonly-review:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Independently recheck Owner and HIVE authority, six exact project draft PRs and one-file diffs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { writeFileSync } from 'node:fs';
+          const root='repos/giovannifidel-collab';
+          const github=(path)=>JSON.parse(execFileSync('gh',['api',path],{encoding:'utf8',timeout:24000,maxBuffer:3e6}));
+          const fail=s=>{throw new Error('S9_4_FAIL_CLOSED_'+s)};
+          const owner=github(root+'/pfarma-ci/actions/runs/43574845080');
+          if(!(owner.status==='completed'&&owner.conclusion==='success'&&owner.run_attempt===1&&owner.event==='workflow_dispatch'&&owner.actor.login==='giovannifidel-collab'))fail('OWNER_CI');
+          if(github(root+'/hive-alveare/branches/main').commit.sha!=='eb9c169219c697fab500b909d34b42bdf43d16f2')fail('MAIN_SOURCE');
+          const candidate=github(root+'/hive-alveare/pulls/93');
+          if(candidate.state!=='open'||!candidate.draft||candidate.merged||candidate.head.sha!=='853ef0933eb89620664685bc01a9f241093c6411')fail('CANDIDATE_DRIFT');
+          const expected=[
+            ['project-giovanni','project-giovanni','main','4f67bda2e1bf63db12c1d9d7311b57f12b7bc707','61252c6b12c8111bb302fb61e547058ca35d68b4','6afdfda8-a2fd-4bf4-ba12-6e081719fba4',1169,'application-no-product-change'],
+            ['hive-field','hive-field','main','6816df638304a6decb05b9b4bd6543d8600f5e7c','16dbcfb148ba738154d959903d5b7f6eefe5f01e','cba5e100-a1b0-464a-bb28-9fb112b3252e',1,'isf-no-operational-change'],
+            ['giochem','giochem','main','8d8922171bfdc3554cb7786d08b3594ec681f59a','02bc7c38232716512c397ae71366a6baf1c3dca0','3b625921-8351-4e59-8233-80b3e147bed0',3,'scientific-content-untouched'],
+            ['pfarma-cloud','pfarma-cloud','main','1d460184944355ed2d4b375bfe03b35a70c7aa41','dda1ccfbca19bf7023334810289ef1647d02bc94','8c6f2f8f-c6d8-4543-8e1b-8dd0d12538fc',2277,'erp-data-untouched'],
+            ['family-cloud','family-cloud','agent/bootstrap-family-cloud','17b242eca13d7c73607e0bc52c64146750020cb7','6a481a6a684c95407baaeb898b3aae95e94cf978','3ddf0a85-e4d9-4a08-9342-4466036c062a',873,'no-main-branch-reconciliation'],
+            ['gio-os','gio-OS','main','31103989996a664dff385896143dccd03072cdf6','bc63e38410257a2a136940605eebf3907cdc7c3d','4de48f5d-5ec6-4b71-893a-8828cb2ebb00',2,'hardware-not-touched']
+          ];
+          const receipts=[];
+          for (const [id,repo,ref,baseSha,headSha,missionId,prNumber,guard] of expected){
+            const prefix=root+'/'+repo;
+            const base=github(prefix+'/branches/'+ref);
+            const pr=github(prefix+'/pulls/'+prNumber);
+            const files=github(prefix+'/pulls/'+prNumber+'/files?per_page=10');
+            if(base.commit.sha!==baseSha||pr.base.ref!==ref||pr.base.sha!==baseSha||pr.head.sha!==headSha)fail(id+'_SOURCE_HEAD');
+            if(pr.state!=='open'||pr.draft!==true||pr.merged!==false||pr.changed_files!==1||pr.additions!==40||pr.deletions!==0)fail(id+'_PR_SCOPE');
+            if(pr.head.ref!==('queen/s9-4-owner-canary-'+missionId))fail(id+'_BRANCH_SCOPE');
+            if(!Array.isArray(files)||files.length!==1||files[0].status!=='added'||files[0].filename!=='docs/queen/s9-4-adapter-canary-20261113.json'||files[0].deletions!==0)fail(id+'_FILE_SCOPE');
+            const b=github(prefix+'/contents/docs/queen/s9-4-adapter-canary-20261113.json?ref='+encodeURIComponent(pr.head.ref));
+            if(b.type!=='file'||b.encoding!=='base64')fail(id+'_DOC_CONTENT_TYPE');
+            const obj=JSON.parse(Buffer.from(b.content.replace(/\s/g,''),'base64').toString('utf8'));
+            if(obj.schema!=='queen.s9.4.docs-only-owner-scoped-canary.v1'||obj.project_id!==id||obj.repository!==('giovannifidel-collab/'+repo)
+               ||obj.authoritative_ref!==ref||obj.authoritative_source_sha!==baseSha||obj.owner_exact_mission_id!==missionId
+               ||obj.owner_oidc_ci_run_id!==43574845080||obj.hive_source_main_sha!=='eb9c169219c697fab500b909d34b42bdf43d16f2'
+               ||obj.hive_s9_4_source_candidate_sha!=='853ef0933eb89620664685bc01a9f241093c6411'
+               ||obj.doc_path!=='docs/queen/s9-4-adapter-canary-20261113.json'||obj.independent_verification_pending!==true
+               ||!Array.isArray(obj.acceptance_criteria)||obj.acceptance_criteria.length!==5
+               ||obj.prohibited?.merge!==true||obj.prohibited?.deployment!==true
+               ||obj.prohibited?.application_code_change!==true||obj.prohibited?.additional_paid_service!==true)
+               fail(id+'_DOC_CONTRACT');
+            if(!obj.acceptance_criteria[4].includes(guard))fail(id+'_DOMAIN_GUARD');
+            const rec={id,repo:'giovannifidel-collab/'+repo,ref,base_sha:baseSha,head_sha:headSha,
+              pr_number:prNumber,mission_id:missionId,changed_files:1,added_doc_only:true,draft:true,
+              owner_ci:43574845080,protected_domain_guard:guard,
+              can_merge:false,can_deploy:false,product_code_changed:false};
+            receipts.push(rec);
+            console.log('S9_4_INDEPENDENT_PROJECT_DRAFT_PASS='+id);
+          }
+          const denied=['pfarma-social','rose-mary-beauty','rocco-rosy-wedding','pfarma-reel-media'];
+          const receipt={schema:'queen.s9.4.six-owner-signed-docs-prs-independently-verified.v1',
+            checked_at:new Date().toISOString(),owner_ci:43574845080,project_canary_count:receipts.length,
+            denied_projects:denied,authorized_product_writes:0,merge_count:0,deploy_count:0,
+            all_project_source_branches_unchanged:true,all_draft_prs_one_doc:true,
+            all_draft_prs_individually_bound:true,auto_merge:false,auto_deploy:false,
+            general_autonomy_certified:false,independent_domain_functional_proof:false,
+            projects:receipts};
+          if(receipts.length!==6)fail('WRONG_COUNT');
+          const body=JSON.stringify(receipt,null,2)+'\n';
+          writeFileSync(process.env.RUNNER_TEMP+'/s9-4-six-independent-receipts.json',body);
+          console.log('S9_4_SIX_SCOPED_DRAFT_PROJECT_CANDIDATES=PASS');
+          console.log('S9_4_NEGATIVE_SCOPE_FOUR_DENY_PROJECTS=UNTOUCHED_BY_THIS_WORKFLOW');
+          console.log('S9_4_RECEIPT_SHA256='+createHash('sha256').update(body).digest('hex'));
+          console.log('S9_4_NO_PRODUCT_MERGE_NO_DEPLOY_NO_MODEL_CALL=PASS');
+          console.log('S9_4_UNATTENDED_PROJECT_DEVELOPMENT_CERTIFIED=FALSE');
+          JS
+      - name: Archive signed-scope independent source-only proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-s9-4-six-docs-canaries-independent-${{ github.run_id }}
+          path: ${{ runner.temp }}/s9-4-six-independent-receipts.json
+          if-no-files-found: error
+          retention-days: 7
