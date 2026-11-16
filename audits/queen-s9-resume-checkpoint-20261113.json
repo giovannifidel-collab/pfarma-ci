@@ -1,6 +1,6 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v13",
-  "as_of_date": "2026-11-16T22:03:25.146Z",
+  "schema": "queen.s9.resume-checkpoint.v14",
+  "as_of_date": "2026-11-16T22:45:00Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
     "main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
@@ -105,16 +105,16 @@
   "pending": [
     {
       "gate": "S9.4",
-      "blocker": "Family PR874 one test-only correction integrated solely into authoritative agent/bootstrap-family-cloud, Owner OIDC CI #43965496615 and independent tests #43966019715 PASS, Neon event #1268. Default main remains divergent and unchanged. This does not grant automated code-writing/product deployment authority across six repos; four DENY unaffected.",
+      "blocker": "Family one-file PR874 signed Owner and merged to source branch only, postmerge CI PASS, main untouched. Other five projects remain read-only/source-locked; broad cross-project product-write autonomy not Owner-certified. Four DENY projects remain excluded.",
       "next_required_scope": "Each product must have an exact path-limited project execution + functional acceptance mission, a fresh Owner-authenticated CI signature and distinct merge/deploy gate. Four DENY repositories require their own separate owner grant. Do not silently broaden this consumed six-docs authorization."
     },
     {
       "gate": "S9.5",
-      "blocker": "S9.5 source draft PR96 tests PASS, but real S1 relay workflow pins legacy private source SHA 73778e4d040e6ae361401003441f6a9be2c793f5, unlike HIVE authoritative main 6d20e61a023748bff36175f1f643c9f5781b3b9f. Existing verifier-result routes to School; must intercept S9.5 subtype before router. Independently trusted GitHub/provider evidence and production Neon atomic CAS not yet wired; isolated Neon event trigger cannot certify live failure recovery."
+      "blocker": "HIVE draft PR96 with protected Cloudflare receipt-only endpoint and private Neon SQL CAS, relay draft PR1295 with S1 pre-router and authoritative pointer, both source CI PASS. Exact SQL migration synthetic isolated Neon tests PASS (valid once, duplicate zero, forged denied, Data API cannot seed). Production HIVE_RUNTIME_BEARER_TOKEN absent in Cloudflare and relay; source not released; no independently trusted automatic real receipt ingestion. New Owner OIDC signer ready, not yet signed."
     },
     {
       "gate": "S9.6",
-      "blocker": "Independent HIVE production and Family PR874 postmerge CI PASS. Full global S9 exit remains denied pending S9.5 live integrated no-redispatch recovery and independently proven authorized recurring cross-project work."
+      "blocker": "Previous scoped independent S9 audits PASS. New S9.5 source tests and isolated SQL PASS but no signed production release or genuine live failover yet, so GLOBAL S9 EXIT still DENY."
     },
     {
       "gate": "S10",
@@ -145,9 +145,10 @@
     "audits/queen-s9-20261116-current-evidence-and-next-owner-scope.json",
     "audits/queen-s9-4-family-owner-pr874-live-independent-20261116.json",
     "audits/queen-s9-operational-v12-after-family-and-s95-source-20261116.json",
-    "audits/queen-s9-4-family-pr874-owner-manual-merge-certified-20261116.json"
+    "audits/queen-s9-4-family-pr874-owner-manual-merge-certified-20261116.json",
+    "audits/queen-s9-5-preowner-source-isolated-cas-20261116.json"
   ],
-  "user_action_required": "NONE for Family PR874 merge: signed Owner run #43965496615 consumed. Next S9.5 engineering: prepare actual trusted receipt verifier, production Neon CAS and S1 relay source pin+ingress hook on exact candidate. Require fresh Owner OIDC for the specific release after CI/read-only preflight and rollback. Do not reuse old Owner signatures, rebuild S1/S2, auto-retry unknown provider outcomes or promote School training.",
+  "user_action_required": "Owner must manually run https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-5-owner-source-release-attestation.yml on main; preserve exact input SHAs, check approve_s9_5_one_source_release_and_runtime_secret, press Run workflow. This issues scoped OIDC signature only, NOT automatic release. After that, trusted controller must install shared relay+Cloudflare runtime bearer, migrate private Neon CAS, validate independently admitted real provider receipts and release exact HIVE PR96 / relay PR1295 with rollback, then independent S9.6 audit; do not declare full autonomy without end-to-end proof.",
   "new_source_candidates": [
     {
       "stage": "S9.5",
@@ -267,5 +268,45 @@
     "real_failover_certified": false,
     "unknown_provider_outcome_retry": false,
     "no_school_propagation": true
+  },
+  "s9_5_source_private_cas_candidate": {
+    "hive_pr": 96,
+    "hive_head": "843e2a0dd9abff8a86c426c2d8ba9090c948e80c",
+    "hive_source_ci": 43970691264,
+    "hive_source_ci_result": "PASS",
+    "relay_pr": 1295,
+    "relay_head": "17baebc3b3505b13354abe86e82af903146bbd9a",
+    "relay_source_ci": 43972281347,
+    "relay_source_ci_result": "PASS",
+    "isolated_neon_schema": "queen_s95_secure",
+    "isolated_neon_project": "proud-night-33193396",
+    "synthetic_first_receipt_applied_once": true,
+    "duplicate_attempt_applied_zero": true,
+    "invalid_digest_denied": true,
+    "untrusted_role_can_seed_proof": false,
+    "production_cas_migration_done": false,
+    "production_s1_ingress_released": false,
+    "trusted_independent_real_provider_receipt_autonomous_ingestion_done": false
+  },
+  "s9_5_runtime_credential_preflight": {
+    "ci": 43972130519,
+    "result": "PASS_MISSING_CREDENTIALS_IS_A_RELEASE_BLOCKER",
+    "cloudflare_prod_runtime_bearer_present": false,
+    "relay_runtime_bearer_present": false,
+    "cloudflare_prod_data_api_binding_present": true,
+    "relay_hive_base_secret_present": false,
+    "canonical_base_url_fallback_prepared_on_draft": true,
+    "github_actions_secret_public_key_smoke_ci": 43972496430,
+    "secret_values_never_exposed": true
+  },
+  "s9_5_new_owner_attestation_gate": {
+    "url": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-5-owner-source-release-attestation.yml",
+    "workflow_registered_on_main": true,
+    "registration_run_id": 43973254591,
+    "independent_preflight_ci": 43973363362,
+    "preflight_conclusion": "success",
+    "fresh_owner_signature_not_yet_received": true,
+    "approval_checkbox": "approve_s9_5_one_source_release_and_runtime_secret",
+    "explicitly_not_a_release": true
   }
 }
