@@ -1,0 +1,90 @@
+{
+  "schema": "queen.s9.4-5.owner-signed-durable-git-prod-release-independent-proof.v1",
+  "checked_at_utc": "2026-11-16T16:19:56.308Z",
+  "status": "EXACT_OWNER_SIGNED_ONE_SHOT_HIVE_PRODUCTION_RELEASE_CERTIFIED",
+  "source": {
+    "authoritative_repo": "giovannifidel-collab/hive-alveare",
+    "original_main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "candidate_pr": 95,
+    "candidate_sha": "765c3bf53f4fb5ba346473826f852a881f86c089",
+    "merged_main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+    "relay_source_pointer_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+    "superseded_unmerged_prs": [
+      93,
+      94
+    ]
+  },
+  "authority": {
+    "independent_owner_oidc_ci_run_id": 43904759752,
+    "owner_oidc_sha256": "eba8065aa76b0ba1df72fea7696a9487fc1436e814118a3a64a7f70b7ac8294c",
+    "mission_id": "0543c03c-d664-41f9-9609-bf4401c50d91",
+    "exact_candidate": true,
+    "owner_lease_expiry_utc": "2026-11-16T16:26:59.133Z",
+    "owner_grant_consumed": true,
+    "no_future_release_authority": true,
+    "project_writes": false,
+    "paid_fallback": false,
+    "school_training": false
+  },
+  "cloudflare": {
+    "site": "hive-alveare",
+    "deployment_id": "9b59bf3f-50f1-4810-ad63-fe913a822015",
+    "environment": "production",
+    "status": "success",
+    "production_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+    "permanent_git_connected_build_command": "QUEEN_S9_EPHEMERAL_BUILD=1 node ../ops/queen/s9/pages-legacy-import-adapter.mjs --apply-ephemeral",
+    "permanent_build_command_readback_verified": true,
+    "rollback_target_previous_production_id": "621107aa-9a64-42dc-a84a-8ee8208a515d",
+    "emergency_rollback_not_required": true,
+    "production_neon_binding_preserved": true,
+    "preview_database_binding_absent": true,
+    "protected_endpoints": [
+      "runtime-health",
+      "queen-state",
+      "queen-s9-readiness"
+    ],
+    "endpoints_pass": true
+  },
+  "ci": {
+    "source_integration": 43607312049,
+    "owner_preflight": 43607822135,
+    "owner_oidc_authentication": 43904759752,
+    "production_release_controller": 43905355845,
+    "independent_postrelease": 43905966416,
+    "results": "ALL_PASS"
+  },
+  "neon": {
+    "project": "muddy-recipe-65646643",
+    "branch": "br-shiny-lab-aftgj3st",
+    "database": "neondb",
+    "release_ledger_status": "PRODUCTION_RELEASED_AND_INDEPENDENTLY_VERIFIED",
+    "event_id": 1264,
+    "s9_event_count": 4,
+    "school_training_promotions": 0
+  },
+  "s9_scope": {
+    "S9_4": "SIX_DOCS_ONLY_PROJECT_CANARIES_VERIFIED; SOURCE_GUARD_RELEASED_HIVE; REAL_PROJECT_OPERATIONS_NOT_CERTIFIED",
+    "S9_5": "SAFE_RECEIPT_RECONCILIATION_PREFLIGHT_RELEASED_HIVE; NOT_GENUINE_UNATTENDED_PROVIDER_RECOVERY",
+    "S9_6": "PARTIAL_SCOPED_PROOF_ONLY; GLOBAL_EXIT_DENY",
+    "full_s9_complete": false,
+    "requires_remaining": [
+      "Project-owned domain-specific functional mission acceptance and separate per-project Owner grants for code writes, with Family Cloud branch divergence resolved first",
+      "Unattended provider confirmed-result recovery integrated with trusted Neon CAS and independent live fault test; unknown outcome must stay quarantined",
+      "S9.6 independent end-to-end full exit test of actual permitted autonomous operations, not only source or one-shot preflights"
+    ],
+    "four_denied_repos_unchanged": [
+      "pfarma-social",
+      "rose-mary-beauty",
+      "rocco-rosy-wedding",
+      "pfarma-reel-media"
+    ],
+    "no_double_provider_execution": true,
+    "no_new_s1_or_school": true
+  },
+  "links": [
+    "https://github.com/giovannifidel-collab/hive-alveare/pull/95",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43904759752",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43905355845",
+    "https://github.com/giovannifidel-collab/pfarma-ci/actions/runs/43905966416"
+  ]
+}
