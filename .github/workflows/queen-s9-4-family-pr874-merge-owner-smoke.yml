@@ -1,0 +1,41 @@
+name: S9.4 Family PR874 Merge Owner Gate Independent Source Smoke
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-4-family-pr874-merge-owner-smoke.yml]
+permissions: {contents: read}
+jobs:
+  exact-pr-owner-attestation-preflight:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Validate Owner workflow YAML and exact separate test-only merge scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s9-4-family-pr874-merge-owner-attestation.yml --jq .content | tr -d '\n' | base64 -d > "$RUNNER_TEMP/family-874-merge-owner.yml"
+          ruby -r yaml -e 'YAML.parse_file(ARGV[0]); puts "S9_4_FAMILY_MERGE_OWNER_YAML_PARSE=PASS"' "$RUNNER_TEMP/family-874-merge-owner.yml"
+          grep -q 'hive-queen-s9-4-family-pr874-exact-merge-v1' "$RUNNER_TEMP/family-874-merge-owner.yml"
+          grep -q 'approve_family_pr874_merge_to_authoritative_branch' "$RUNNER_TEMP/family-874-merge-owner.yml"
+          grep -q 'manual_merge_authorized:true' "$RUNNER_TEMP/family-874-merge-owner.yml"
+          grep -q 'family_main_merge_authorized:false' "$RUNNER_TEMP/family-874-merge-owner.yml"
+          grep -q 'target_pr_head_sha:' "$RUNNER_TEMP/family-874-merge-owner.yml"
+          grep -q "OIDC_SIGNATURE" "$RUNNER_TEMP/family-874-merge-owner.yml"
+          echo S9_4_FAMILY_OWNER_EXACT_ONE_PR_SCOPE=PASS
+      - name: Validate live immutable Family PR, HIVE and certified test runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 6d20e61a023748bff36175f1f643c9f5781b3b9f
+          test "$(gh api repos/giovannifidel-collab/family-cloud/branches/agent/bootstrap-family-cloud --jq .commit.sha)" = 17b242eca13d7c73607e0bc52c64146750020cb7
+          test "$(gh api repos/giovannifidel-collab/family-cloud/branches/main --jq .commit.sha)" = b4e796f0202fd1e6ae89029674d69210e9bbbc8d
+          gh api repos/giovannifidel-collab/family-cloud/pulls/874 | jq -e '.state=="open" and .draft==true and .merged==false and .base.ref=="agent/bootstrap-family-cloud" and .base.sha=="17b242eca13d7c73607e0bc52c64146750020cb7" and .head.sha=="a0620f465576b29381f5f6c3d076ab1f7c786cea" and .changed_files==1' >/dev/null
+          gh api repos/giovannifidel-collab/family-cloud/pulls/874/files | jq -e 'length==1 and .[0].filename=="tests/persistence-recovery.test.mjs" and .[0].status=="modified"' >/dev/null
+          for run in 43919266993 43919820626 43920560977; do
+            gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/$run | jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+          done
+          echo S9_4_FAMILY_PR874_ONE_FILE_TESTS_AND_BRANCH_BOUNDARY=PASS
+          echo S9_4_FAMILY_NO_MERGE_BY_SMOKE=PASS
