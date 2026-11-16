@@ -17,6 +17,13 @@ on:
         description: "Family Cloud divergent main SHA (NO merge)"
         required: true
         default: "b4e796f0202fd1e6ae89029674d69210e9bbbc8d"
+      family_branch_disposition:
+        type: choice
+        description: "Exact scoped canonical decision: keep agent/bootstrap branch for test-only PR; leave main untouched"
+        required: true
+        default: "keep_agent_bootstrap_branch_no_main_merge"
+        options:
+          - "keep_agent_bootstrap_branch_no_main_merge"
       approve_s9_4_family_one_test_patch:
         type: boolean
         description: "Approve exactly ONE draft test-only Family PR; NO merge, deploy or branch reconciliation"
@@ -39,6 +46,7 @@ jobs:
       FAMILY_BASE_SHA: ${{ inputs.family_authoritative_branch_sha }}
       FAMILY_MAIN_SHA: ${{ inputs.family_default_main_sha }}
       OWNER_APPROVE: ${{ inputs.approve_s9_4_family_one_test_patch }}
+      BRANCH_DISPOSITION: ${{ inputs.family_branch_disposition }}
     steps:
       - name: Require actual Owner manual signature, exact SHA, and six-project independent test
         shell: bash
@@ -50,6 +58,7 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$GITHUB_RUN_ATTEMPT" = 1
           test "$OWNER_APPROVE" = true
+          test "$BRANCH_DISPOSITION" = keep_agent_bootstrap_branch_no_main_merge
           test -n "$GH_TOKEN"
           test "$HIVE_SOURCE_SHA" = 6d20e61a023748bff36175f1f643c9f5781b3b9f
           test "$FAMILY_BASE_SHA" = 17b242eca13d7c73607e0bc52c64146750020cb7
@@ -108,7 +117,7 @@ jobs:
           if(!jwk)fail('OIDC_KEY_ABSENT');
           const key=await webcrypto.subtle.importKey('jwk',{kty:'RSA',n:jwk.n,e:jwk.e,ext:true},{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
           if(!await webcrypto.subtle.verify('RSASSA-PKCS1-v1_5',key,b64(bits[2]),Buffer.from(bits[0]+'.'+bits[1])))fail('OIDC_SIGNATURE');
-          if(e.HIVE_SOURCE_SHA!==audit.hiveSha||e.FAMILY_BASE_SHA!==audit.familySha||e.FAMILY_MAIN_SHA!==audit.mainSha||e.OWNER_APPROVE!=='true')fail('PROJECT_SCOPE');
+          if(e.HIVE_SOURCE_SHA!==audit.hiveSha||e.FAMILY_BASE_SHA!==audit.familySha||e.FAMILY_MAIN_SHA!==audit.mainSha||e.OWNER_APPROVE!=='true'||e.BRANCH_DISPOSITION!=='keep_agent_bootstrap_branch_no_main_merge')fail('PROJECT_SCOPE');
           const receipt={schema:'queen.s9.4.owner.family-single-test-patch-oidc.v1',
            owner:audit.owner,scope:'S9.4_FAMILY_SINGLE_TEST_FILE_DRAFT_ONLY',
            mission_id:randomUUID(),hive_source_sha:audit.hiveSha,
@@ -116,6 +125,8 @@ jobs:
            source_ref:audit.ref,source_sha:audit.familySha,
            alternate_main_sha:audit.mainSha,
            source_branch_divergence_acknowledged:true,
+           owner_scoped_branch_disposition:e.BRANCH_DISPOSITION,
+           family_main_merge_authorized:false,
            allowed_paths:['tests/persistence-recovery.test.mjs'],
            acceptance_criteria:[
            'One existing obsolete test updated to validate canonical account-scoped backup page',
