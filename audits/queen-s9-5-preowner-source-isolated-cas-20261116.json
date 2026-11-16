@@ -1,0 +1,101 @@
+{
+  "schema": "queen.s9.5.production-readiness-source-and-isolated-cas.v1",
+  "as_of_utc": "2026-11-16T22:45:00Z",
+  "authority": {
+    "hive_repo": "giovannifidel-collab/hive-alveare",
+    "hive_main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+    "relay_repo": "giovannifidel-collab/pfarma-ci",
+    "relay_main_source_pointer": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+    "prior_family_test_merge": "f9edfc48dc48f76264d8c587aed765d950b18d81",
+    "prior_family_independent_ci": 43966019715,
+    "prior_neon_family_proof_event": 1268
+  },
+  "source_candidates": {
+    "hive": {
+      "pr": 96,
+      "head": "843e2a0dd9abff8a86c426c2d8ba9090c948e80c",
+      "status": "DRAFT_UNMERGED",
+      "ci": 43970691264,
+      "ci_conclusion": "success",
+      "source_files": [
+        "ops/queen/s9/s9-s1-verified-result-ingress.mjs",
+        "cloudflare/functions/api/queen-s9-reconcile.js",
+        "security/QUEEN_S95_PRIVATE_RECEIPT_CAS.v1.sql",
+        "ops/queen/s9/tests/s9-private-neon-reconcile-endpoint.test.mjs"
+      ],
+      "scope": "one-shot existing verified receipt, no new provider, no School"
+    },
+    "relay": {
+      "pr": 1295,
+      "head": "17baebc3b3505b13354abe86e82af903146bbd9a",
+      "status": "DRAFT_UNMERGED",
+      "ci": 43972281347,
+      "ci_conclusion": "success",
+      "source_files": [
+        ".github/workflows/queen-s1-event-ingress.yml",
+        "ops/queen/s9/relay-verified-receipt-bridge.mjs",
+        "ops/queen/s9/relay-verified-receipt-bridge.test.mjs"
+      ],
+      "scope": "Existing S1 event ingress, dynamic authoritative source pointer, pre-School verified-receipt subtype intercept"
+    }
+  },
+  "isolated_neon_proof": {
+    "project_id": "proud-night-33193396",
+    "branch_id": "br-odd-dream-bflat60i",
+    "database_name": "queen_s9_preview",
+    "schema": "queen_s95_secure",
+    "sql_source": "security/QUEEN_S95_PRIVATE_RECEIPT_CAS.v1.sql",
+    "migration_result": "PASS_ISOLATED_ONLY",
+    "synthetic_claim": "1b82fb19-40c2-4451-8a64-91143575455a",
+    "first_verified_cas_updated_claims": 1,
+    "replay_updated_claims": 0,
+    "invalid_digest_status": "QUARANTINE_RECEIPT_NOT_INDEPENDENT",
+    "unknown_mission_status": "DENY_UNKNOWN_MISSION",
+    "authenticated_role_can_insert_owner": false,
+    "authenticated_role_can_insert_receipt": false,
+    "authenticated_role_can_read_private_claims": false,
+    "new_provider_dispatches": 0,
+    "school_training_events": 0,
+    "synthetic_fixture_not_real_provider_proof": true
+  },
+  "release_preflight": {
+    "cloudflare_pages_git_connected": true,
+    "cloudflare_production_HIVE_DATA_API_URL_present": true,
+    "cloudflare_production_HIVE_RUNTIME_BEARER_TOKEN_present": false,
+    "relay_HIVE_RUNTIME_BEARER_TOKEN_secret_present": false,
+    "relay_HIVE_BASE_URL_secret_present": false,
+    "relay_base_url_fixed_canonical_fallback_in_draft": true,
+    "github_secrets_public_key_endpoint_available": true,
+    "cloudflare_credential_presence_ci": 43972130519,
+    "github_secret_public_key_permission_ci": 43972496430,
+    "production_mutations_performed_this_turn": false
+  },
+  "owner": {
+    "workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-5-owner-source-release-attestation.yml",
+    "workflow_registered_run": 43973254591,
+    "preflight_ci": 43973363362,
+    "preflight_conclusion": "success",
+    "owner_new_oidc_mission_issued": false,
+    "inputs": {
+      "hive_main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+      "hive_pr96_head_sha": "843e2a0dd9abff8a86c426c2d8ba9090c948e80c",
+      "relay_pr1295_head_sha": "17baebc3b3505b13354abe86e82af903146bbd9a",
+      "approval_checkbox": "approve_s9_5_one_source_release_and_runtime_secret"
+    },
+    "proposed_permission": "SINGLE_HIVE_PR96_SINGLE_RELAY_PR1295_PRIVATE_NEON_CAS_RUNTIME_BEARER_SECRET_WITH_ROLLBACK",
+    "auto_release": false
+  },
+  "critical_pending": [
+    "Owner must personally issue fresh independent signed GitHub OIDC scope before changes; prior grants consumed",
+    "Protected runtime bearer must be newly provisioned into both GitHub relay and Cloudflare Pages production, using nonprinted shared secret under Owner scope",
+    "Private Neon CAS migration to production must be run by trusted DB Owner, and independently verified proof ingestion must not trust external payload data",
+    "Git connected production release of PR96 plus S1 relay PR1295, with exact source pointer update and rollback",
+    "True live receipt intake from real provider+independent CI, no dispatch on unknown result, no School; independent end-to-end proof",
+    "S9.4 global product-changing autonomy remains scope-limited; six source-locked projects and four DENY cannot receive unbounded writes",
+    "Global S9.6 exit still denied until explicitly named contracts prove completion"
+  ],
+  "no_auto_recovery_of_uncertain_results": true,
+  "no_new_s1_or_s2": true,
+  "no_global_autonomy_claim": true,
+  "s9_global_certified": false
+}
