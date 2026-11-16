@@ -1,0 +1,57 @@
+name: Queen S9.6 Post-Family Owner Proof and Live Boundary (READ ONLY)
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-6-post-family-owner-boundary.yml]
+permissions: {contents: read}
+jobs:
+  post-family-scope-acceptance:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Verify immutable Owner Family signed test-only mission, draft PR and independent acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43919266993 | jq -e '.conclusion=="success" and .status=="completed" and .event=="workflow_dispatch" and .run_attempt==1 and .actor.login=="giovannifidel-collab"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43919820626 | jq -e '.conclusion=="success" and .status=="completed" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/family-cloud/pulls/874 | jq -e '.state=="open" and .draft==true and .merged==false and .changed_files==1 and .base.ref=="agent/bootstrap-family-cloud" and .base.sha=="17b242eca13d7c73607e0bc52c64146750020cb7" and .head.sha=="a0620f465576b29381f5f6c3d076ab1f7c786cea"' >/dev/null
+          gh api repos/giovannifidel-collab/family-cloud/pulls/874/files | jq -e 'length==1 and .[0].filename=="tests/persistence-recovery.test.mjs" and .[0].status=="modified"' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/family-cloud/branches/main --jq .commit.sha)" = 'b4e796f0202fd1e6ae89029674d69210e9bbbc8d'
+          test "$(gh api repos/giovannifidel-collab/family-cloud/branches/agent/bootstrap-family-cloud --jq .commit.sha)" = '17b242eca13d7c73607e0bc52c64146750020cb7'
+          echo S9_6_FAMILY_ONE_TEST_ONLY_INDEPENDENTLY_VERIFIED=PASS
+          echo S9_6_FAMILY_NO_DEFAULT_MAIN_MERGE=PASS
+      - name: Confirm HIVE authoritative production source pointer and six functional test proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = '6d20e61a023748bff36175f1f643c9f5781b3b9f'
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$ptr" = '6d20e61a023748bff36175f1f643c9f5781b3b9f'
+          for run in 43904759752 43905355845 43905966416 43914184651 43918260192; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$run" | jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+          done
+          echo S9_6_HIVE_AND_SIX_PROJECT_SELECTED_TESTS=PASS
+      - name: Read protected production default-deny endpoints without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in runtime-health queen-state queen-s9-readiness; do
+            code="$(curl -sS --max-time 28 -o "$RUNNER_TEMP/$p.json" -w '%{http_code}' \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              -H 'Accept: application/json' -H 'Cache-Control: no-cache' \
+              "https://hive-alveare.pages.dev/api/$p")"
+            test "$code" = 200
+            jq -e '.ok==true' "$RUNNER_TEMP/$p.json" >/dev/null
+          done
+          jq -e '.read_only==true and .can_dispatch==false and .can_merge==false and .can_deploy==false and .can_train_school==false and .paid_fallback==false' "$RUNNER_TEMP/queen-s9-readiness.json" >/dev/null
+          echo S9_6_HIVE_LIVE_PROTECTED_DEFAULT_DENY=PASS
+          echo S9_6_S9_5_REAL_UNATTENDED_PRODUCTION_RECOVERY=NOT_CERTIFIED
+          echo S9_6_GLOBAL_S9_EXIT=NOT_CERTIFIED
