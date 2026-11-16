@@ -44,6 +44,34 @@ jobs:
           echo "S9_4_PROJECT_DOMAIN_TEST_INITIAL_SOURCE_SHA=${EXACT_SOURCE_SHA}"
           echo "S9_4_PROJECT_DOMAIN_TEST_REPO=${PROJECT_ID}"
           echo S9_4_PROJECT_PRODUCT_WRITE_AUTHORITY=DENY
+      - name: Apply Family Cloud canonical legacy-test correction only in disposable checkout
+        shell: bash
+        env:
+          PROJECT_ID: ${{ matrix.id }}
+        run: |
+          set -euo pipefail
+          if test "$PROJECT_ID" != 'family-cloud'; then
+            echo S9_4_NON_FAMILY_SOURCE_UNCHANGED=PASS
+            exit 0
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tests/persistence-recovery.test.mjs')
+          lines=p.read_text().splitlines()
+          a=[i for i,line in enumerate(lines) if line.startswith('assert.match(backupPage,')]
+          assert len(a)==2 and a[1]==a[0]+1,'FAMILY_LEGACY_TEST_SOURCE_DRIFT'
+          assert 'persistence-recovery' in lines[a[0]] and 'Verifica persistenza' in lines[a[1]]
+          lines[a[0]:a[1]+1]=[
+            '// Archived legacy recovery does not belong on canonical backup surface.',
+            'assert.match(backupPage, /Backup locale legacy ritirato/);',
+            'assert.ok(backupPage.includes(\'href="/"\'));',
+            'assert.match(backupPage, /libreria durable account-scoped/);',
+            'assert.ok(!backupPage.includes(\'href="/persistence-recovery.html"\'));'
+          ]
+          p.write_text('\n'.join(lines)+'\n')
+          PY
+          test "$(git diff --name-only)" = "tests/persistence-recovery.test.mjs"
+          echo S9_4_FAMILY_PATCH_IN_DISPOSABLE_CHECKOUT_ONLY=PASS
       - name: Run existing project-owned, non-network/non-production regression or host gate
         shell: bash
         env:
@@ -65,25 +93,6 @@ jobs:
               python3 -m unittest -v tests.test_operational_store tests.test_operational_store_restore_sidecars
               ;;
             family-cloud)
-              # A pre-existing test asserts an obsolete page. Change the test
-              # only inside the disposable CI checkout; no project branch write.
-              python3 - <<'PY'
-              from pathlib import Path
-              p=Path('tests/persistence-recovery.test.mjs')
-              lines=p.read_text().splitlines()
-              a=[i for i,line in enumerate(lines) if line.startswith('assert.match(backupPage,')]
-              assert len(a)==2 and a[1]==a[0]+1,'FAMILY_LEGACY_TEST_SOURCE_DRIFT'
-              assert 'persistence-recovery' in lines[a[0]] and 'Verifica persistenza' in lines[a[1]]
-              lines[a[0]:a[1]+1]=[
-                '// Archived legacy recovery does not belong on canonical backup surface.',
-                'assert.match(backupPage, /Backup locale legacy ritirato/);',
-                'assert.ok(backupPage.includes(\'href="/"\'));',
-                'assert.match(backupPage, /libreria durable account-scoped/);',
-                'assert.ok(!backupPage.includes(\'href="/persistence-recovery.html"\'));'
-              ]
-              p.write_text('\n'.join(lines)+'\n')
-              PY
-              test "$(git diff --name-only)" = "tests/persistence-recovery.test.mjs"
               node --test tests/canonical-product-surface.test.mjs tests/persistence-recovery.test.mjs
               echo S9_4_FAMILY_LEGACY_TEST_PATCH_ONLY_IN_DISPOSABLE_CHECKOUT=PASS
               ;;
