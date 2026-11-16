@@ -1,0 +1,221 @@
+name: Queen S9.4+S9.5 Owner-Signed PR95 Durable Pages Build and Rollback Controller
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-4-5-pr95-durable-release-controller.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-hive-pages-single-global-build-command
+  cancel-in-progress: false
+jobs:
+  exact-owner-source-release:
+    if: ${{ github.event_name == 'push' && github.run_attempt == 1 && startsWith(github.event.head_commit.message, 'S9-PR95-ONE-SIGNED-DURABLE-PAGES-RELEASE:') }}
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 14
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      BASE_SHA: eb9c169219c697fab500b909d34b42bdf43d16f2
+      CANDIDATE_SHA: 765c3bf53f4fb5ba346473826f852a881f86c089
+      OWNER_RUN: '43904759752'
+    steps:
+      - name: Verify independent authenticated Owner release, Git source, production rollback and Neon isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/queen-s9-pr95-control.py" <<'PY'
+          import os,json,re,time,subprocess,urllib.request,urllib.error,sys
+          from datetime import datetime,timezone
+          GH=os.environ['GH_TOKEN'];CF=os.environ['CF_TOKEN']
+          BASE=os.environ['BASE_SHA'];CAND=os.environ['CANDIDATE_SHA']
+          ROOT='https://api.cloudflare.com/client/v4'
+          DEADLINE=datetime.fromisoformat('2026-11-16T16:26:59.133+00:00')
+          ROLLBACK='621107aa-9a64-42dc-a84a-8ee8208a515d'
+          COMPAT='QUEEN_S9_EPHEMERAL_BUILD=1 node ../ops/queen/s9/pages-legacy-import-adapter.mjs --apply-ephemeral'
+          state_path=os.environ['RUNNER_TEMP']+'/s9-pr95-durable-prod-state.json'
+          def require(cond,msg):
+              if not cond:raise RuntimeError(msg)
+          def read_state():
+              try:return json.load(open(state_path))
+              except:return {}
+          def write_state(obj):
+              with open(state_path,'w') as f:json.dump(obj,f,indent=2)
+          def request(domain,method,path,data=None):
+              headers={'Authorization':'Bearer '+(GH if domain=='gh' else CF),'Accept':'application/json'}
+              b=None
+              if data is not None:
+                  b=json.dumps(data,separators=(',',':')).encode()
+                  headers['Content-Type']='application/json'
+              url=('https://api.github.com/' if domain=='gh' else ROOT+'/')+path.lstrip('/')
+              req=urllib.request.Request(url,headers=headers,data=b,method=method)
+              try:
+                  with urllib.request.urlopen(req,timeout=25) as resp:return resp.status,json.load(resp)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.load(e)
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          def gh(path):
+              st,d=request('gh','GET',path)
+              require(st==200,'GITHUB_SOURCE_OR_OWNER_UNAVAILABLE')
+              return d
+          def cf(method,path,data=None):
+              st,d=request('cf',method,path,data)
+              require(st in (200,201,202) and d.get('success') is True,'CLOUDFLARE_API_DENIED_'+method+'_'+str(st))
+              return d['result']
+          def cf_path():
+              accounts=cf('GET','accounts?per_page=50')
+              hits=[]
+              for a in accounts:
+                  aid=a.get('id')
+                  if not re.fullmatch('[a-f0-9]{32}',str(aid)):continue
+                  st,d=request('cf','GET','accounts/'+aid+'/pages/projects/hive-alveare')
+                  if st==200 and d.get('success') and (d.get('result') or {}).get('name')=='hive-alveare':hits.append(aid)
+              require(len(hits)==1,'CLOUDFLARE_HIVE_PROJECT_NOT_UNIQUE')
+              return 'accounts/'+hits[0]+'/pages/projects/hive-alveare'
+          def invariant(p,command):
+              src=p.get('source') or {};sc=src.get('config') or {}
+              b=p.get('build_config') or {};cfg=p.get('deployment_configs') or {}
+              require(src.get('type')=='github' and sc.get('repo_name')=='hive-alveare' and sc.get('production_branch')=='main','SOURCE_IDENTITY_DRIFT')
+              require(b.get('root_dir')=='cloudflare' and b.get('destination_dir')=='public','PAGES_BUILD_DIR_DRIFT')
+              require(b.get('build_command')==command,'BUILD_COMMAND_NOT_EXACT')
+              require('HIVE_DATA_API_URL' in ((cfg.get('production') or {}).get('env_vars') or {}),'PROD_NEON_BINDING_MISSING')
+              require('HIVE_DATA_API_URL' not in ((cfg.get('preview') or {}).get('env_vars') or {}),'PREVIEW_SHARED_DB_DENIED')
+          def health():
+              for ep in ['runtime-health','queen-state','queen-s9-readiness']:
+                  dest=os.environ['RUNNER_TEMP']+'/s9-prod-'+ep+'.json'
+                  p=subprocess.run(['curl','-sS','--max-time','25','-o',dest,'-w','%{http_code}',
+                   '-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+                   '-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET'],
+                   '-H','Accept: application/json','-H','Cache-Control: no-cache',
+                   'https://hive-alveare.pages.dev/api/'+ep],
+                   capture_output=True,text=True,timeout=30)
+                  require(p.returncode==0 and p.stdout.strip()=='200','PROTECTED_PRODUCTION_HEALTH_DENIED_'+ep)
+                  d=json.load(open(dest))
+                  require(d.get('ok') is True,'PROTECTED_PRODUCTION_REPORTED_UNHEALTHY_'+ep)
+                  if ep=='queen-s9-readiness':
+                      require(d.get('read_only') is True and d.get('can_deploy') is False and d.get('can_train_school') is False,'S9_READINESS_AUTHORITY_DRIFT')
+              print('S9_4_5_PROTECTED_THREE_ENDPOINTS_HEALTHY=PASS',flush=True)
+          def check_owner():
+              require(datetime.now(timezone.utc)<DEADLINE,'OWNER_SIGNED_LEASE_EXPIRED')
+              owner=gh('repos/giovannifidel-collab/pfarma-ci/actions/runs/43904759752')
+              require(owner.get('status')=='completed' and owner.get('conclusion')=='success' and owner.get('run_attempt')==1 and owner.get('event')=='workflow_dispatch' and (owner.get('actor') or {}).get('login')=='giovannifidel-collab' and owner.get('head_sha')=='cf099302c12cc8b4559cfb927712af7c8ee94a56','AUTHENTICATED_OWNER_OIDC_CI_MISMATCH')
+          def verify():
+              check_owner()
+              require(gh('repos/giovannifidel-collab/hive-alveare/branches/main')['commit']['sha']==BASE,'BASE_MAIN_CHANGED')
+              pr=gh('repos/giovannifidel-collab/hive-alveare/pulls/95')
+              require(pr['state']=='open' and pr['draft'] is True and pr['merged'] is False and pr['base']['sha']==BASE and pr['head']['sha']==CAND,'EXACT_PR95_LOCK_DENIED')
+              for run in [43607312049,43607822135]:
+                  ci=gh('repos/giovannifidel-collab/pfarma-ci/actions/runs/'+str(run)) if run==43607822135 else gh('repos/giovannifidel-collab/hive-alveare/actions/runs/'+str(run))
+                  require(ci.get('conclusion')=='success' and ci.get('run_attempt')==1,'APPROVED_SOURCE_OR_BUILD_PREFLIGHT_NOT_PASSED')
+              path=cf_path();p=cf('GET',path)
+              invariant(p,p.get('build_config',{}).get('build_command'))
+              require((p.get('build_config') or {}).get('build_command') in ('',None),'BUILD_COMMAND_NOT_ORIGINAL_BASELINE')
+              canon=p.get('canonical_deployment') or {}
+              meta=((canon.get('deployment_trigger') or {}).get('metadata') or {})
+              require(canon.get('id')==ROLLBACK and (canon.get('latest_stage') or {}).get('status')=='success' and meta.get('commit_hash')==BASE,'CANONICAL_ROLLBACK_DEPLOYMENT_CHANGED')
+              health()
+              write_state({'project_path':path,'original_command':(p.get('build_config') or {}).get('build_command'),'patched':False,'ready':True,'merged':False,'released':False,'original_deployment_id':ROLLBACK})
+              print('S9_4_5_SIGNED_OWNER_EXACT_SOURCE_AND_ROLLBACK_PREFLIGHT=PASS',flush=True)
+          def apply():
+              s=read_state()
+              require(s.get('ready') is True and s.get('patched') is False,'NO_VERIFIED_OWNER_PREFLIGHT')
+              check_owner()
+              p=cf('GET',s['project_path']);invariant(p,s['original_command'])
+              s['patched']=True
+              write_state(s)
+              cf('PATCH',s['project_path'],{'build_config':{'build_command':COMPAT}})
+              invariant(cf('GET',s['project_path']),COMPAT)
+              print('S9_4_5_OWNER_AUTHORIZED_DURABLE_BUILD_COMMAND_PATCHED=PASS',flush=True)
+              print('S9_4_5_WAITING_SEPARATE_PR95_MERGE=TRUE',flush=True)
+          def wait():
+              s=read_state()
+              require(s.get('patched') is True,'BUILD_NOT_PATCHED')
+              merge=None
+              for i in range(58):
+                  pr=gh('repos/giovannifidel-collab/hive-alveare/pulls/95')
+                  if pr.get('merged') is True:
+                      merge=pr.get('merge_commit_sha')
+                      require(re.fullmatch('[a-f0-9]{40}',str(merge)) is not None,'MERGE_COMMIT_INVALID')
+                      require(gh('repos/giovannifidel-collab/hive-alveare/branches/main')['commit']['sha']==merge,'PRODUCTION_GIT_MAIN_NOT_EXACT_MERGE')
+                      s['merged']=True;s['merge_sha']=merge;write_state(s)
+                      print('S9_4_5_SEPARATE_OWNER_APPROVED_MERGE_SHA='+merge,flush=True)
+                      break
+                  require(datetime.now(timezone.utc)<DEADLINE,'OWNER_LEASE_EXPIRED_BEFORE_MERGE')
+                  time.sleep(4)
+              require(merge is not None,'SEPARATE_MANUAL_MERGE_DECISION_NOT_RECEIVED')
+              deploy=None;status='pending'
+              for i in range(100):
+                  st,d=request('cf','GET',s['project_path']+'/deployments?env=production&per_page=25')
+                  require(st==200 and d.get('success') is True,'CF_PROD_DEPLOYMENT_READ_DENIED')
+                  for dep in d['result'] or []:
+                      m=((dep.get('deployment_trigger') or {}).get('metadata') or {})
+                      if dep.get('environment')=='production' and m.get('commit_hash')==merge:
+                          deploy=dep;break
+                  if deploy:
+                      status=(deploy.get('latest_stage') or {}).get('status') or 'pending'
+                      if status in ('success','failure','canceled'):break
+                  time.sleep(4)
+              print('S9_4_5_GIT_CONNECTED_PRODUCTION_BUILD_STATUS='+status,flush=True)
+              if status!='success':
+                  raise RuntimeError('NEW_GIT_CONNECTED_PRODUCTION_BUILD_NOT_SUCCESS')
+              invariant(cf('GET',s['project_path']),COMPAT)
+              cur=cf('GET',s['project_path']).get('canonical_deployment') or {}
+              require(cur.get('id')==deploy.get('id'),'NEW_PRODUCTION_CANONICAL_NOT_EXACT')
+              meta=((cur.get('deployment_trigger') or {}).get('metadata') or {})
+              require(meta.get('commit_hash')==merge,'NEW_CANONICAL_DEPLOY_GIT_SHA_MISMATCH')
+              health()
+              s['released']=True;s['deployment_id']=deploy.get('id');s['merge_sha']=merge;write_state(s)
+              print('S9_4_5_DURABLE_BUILD_COMMAND_RETAINED=PASS',flush=True)
+              print('S9_4_5_GIT_CONNECTED_PRODUCTION_RELEASE_VERIFIED=PASS',flush=True)
+              print('S9_4_5_PRODUCTION_DEPLOYMENT_ID='+str(deploy.get('id')),flush=True)
+          def finalize():
+              s=read_state()
+              if not s.get('patched'):
+                  print('S9_4_5_GLOBAL_PAGES_CONFIG_NOT_PATCHED=TRUE',flush=True);return
+              if s.get('released'):
+                  invariant(cf('GET',s['project_path']),COMPAT)
+                  print('S9_4_5_DURABLE_PAGES_COMMAND_PERSISTENT_READBACK=PASS',flush=True)
+                  return
+              print('S9_4_5_RELEASE_UNVERIFIED_REVERT_BUILD_AND_PROD_START=TRUE',flush=True)
+              if s.get('merged'):
+                  cf('POST',s['project_path']+'/deployments/'+ROLLBACK+'/rollback')
+                  restored=cf('GET',s['project_path']).get('canonical_deployment') or {}
+                  require(restored.get('id')==ROLLBACK,'CRITICAL_PRODUCTION_DEPLOY_ROLLBACK_FAILED')
+                  print('S9_4_5_PRODUCTION_DEPLOYMENT_ROLLBACK_VERIFIED=PASS',flush=True)
+              cf('PATCH',s['project_path'],{'build_config':{'build_command':s.get('original_command') or ''}})
+              invariant(cf('GET',s['project_path']),s.get('original_command'))
+              health()
+              print('S9_4_5_GLOBAL_PAGES_BUILD_CONFIG_RESTORED=PASS',flush=True)
+          def main():
+              task=sys.argv[1]
+              {'verify':verify,'apply':apply,'wait':wait,'finalize':finalize}[task]()
+          main()
+          PY
+          python "$RUNNER_TEMP/queen-s9-pr95-control.py" verify
+      - name: Apply permanent Pages build parser compatibility under signed Owner one-shot scope
+        shell: bash
+        run: python "$RUNNER_TEMP/queen-s9-pr95-control.py" apply
+      - name: Await separate exact PR95 Owner-directed GitHub merge and independently verify live production
+        shell: bash
+        run: python "$RUNNER_TEMP/queen-s9-pr95-control.py" wait
+      - name: Always retain verified permanent config on success or rollback everything on failure
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f "$RUNNER_TEMP/queen-s9-pr95-control.py"; then
+            python "$RUNNER_TEMP/queen-s9-pr95-control.py" finalize
+          else
+            echo S9_4_5_NO_GLOBAL_CF_PATCH_ATTEMPTED=TRUE
+          fi
+      - name: Upload nonsecret bounded one-shot release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: queen-s9-pr95-owner-durable-release-${{ github.run_id }}
+          path: ${{ runner.temp }}/s9-pr95-durable-prod-state.json
+          if-no-files-found: warn
+          retention-days: 7
