@@ -1,0 +1,51 @@
+{
+  "schema": "queen.s9.4.family-owner-signed-one-file-pr-independent-proof.v1",
+  "verified_at_utc": "2026-11-16T17:40:00Z",
+  "owner_oidc": {
+    "run_id": 43919266993,
+    "conclusion": "success",
+    "mission_id": "41184953-e962-4476-b503-42b599a8a0b2",
+    "identity_verified": true,
+    "receipt_sha256": "b79fe9aa69f31525e72c3b8f0c700786314f1d378075c12512f721463ccc2d8b",
+    "expiry": "2026-11-16T17:46:39.840Z",
+    "one_shot_consumed": true,
+    "scope": "S9.4_FAMILY_SINGLE_TEST_FILE_DRAFT_ONLY"
+  },
+  "family": {
+    "repository": "giovannifidel-collab/family-cloud",
+    "source_ref": "agent/bootstrap-family-cloud",
+    "exact_source_sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
+    "unrelated_main_ref": "main",
+    "main_sha_unchanged": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
+    "draft_pr": 874,
+    "draft_head_sha": "a0620f465576b29381f5f6c3d076ab1f7c786cea",
+    "single_changed_file": "tests/persistence-recovery.test.mjs",
+    "changed_file_count": 1,
+    "source_tests_pass": true,
+    "independent_acceptance_ci_run_id": 43919820626,
+    "no_main_branch_merge": true,
+    "no_deploy": true,
+    "no_data_writes": true
+  },
+  "neon": {
+    "project": "muddy-recipe-65646643",
+    "event_id": 1265,
+    "ledger_status": "ONE_TEST_ONLY_DRAFT_VERIFIED_OWNER_GRANT_CONSUMED",
+    "active_missions": 0
+  },
+  "s96": {
+    "independent_post_family_ci_run_id": 43920560977,
+    "conclusion": "success",
+    "scope": "LIVE_SCOPE_TRUTH_PASS_FULL_AUTONOMY_DENY"
+  },
+  "remaining": [
+    "New explicit Owner authority needed to merge Family PR #874; keep unrelated default main branch unchanged unless separately reconciled",
+    "Production S9.5 automatic receipt reconciliation must be implemented and independently E2E-proven against existing S1; isolated Neon receipt-trigger proof is not production release authority",
+    "Independent S9.6 full exit after production S9.5 and per-project functional mission authority"
+  ],
+  "no_new_s1": true,
+  "no_new_s2": true,
+  "paid_fallback": false,
+  "school_training": false,
+  "full_s9_certified": false
+}
