@@ -25,6 +25,7 @@ jobs:
           gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s9-4-family-one-test-owner-attestation.yml --jq .content | tr -d '\n' | base64 -d > "$RUNNER_TEMP/s94-family-owner.yml"
           ruby -r yaml -e 'YAML.parse_file(ARGV[0]); puts "S9_4_FAMILY_OWNER_WORKFLOW_YAML=PASS"' "$RUNNER_TEMP/s94-family-owner.yml"
           grep -q 'approve_s9_4_family_one_test_patch' "$RUNNER_TEMP/s94-family-owner.yml"
+          grep -q 'keep_agent_bootstrap_branch_no_main_merge' "$RUNNER_TEMP/s94-family-owner.yml"
           grep -q 'queen.s9.4.owner.family-single-test-patch-oidc.v1' "$RUNNER_TEMP/s94-family-owner.yml"
           grep -q 'OIDC_SIGNATURE' "$RUNNER_TEMP/s94-family-owner.yml"
           grep -q 'tests/persistence-recovery.test.mjs' "$RUNNER_TEMP/s94-family-owner.yml"
