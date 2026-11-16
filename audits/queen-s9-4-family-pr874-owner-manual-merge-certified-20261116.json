@@ -1,0 +1,55 @@
+{
+  "schema": "queen.s9.4.family-one-owner-merge-independent-proof.v1",
+  "checked_at_utc": "2026-11-16T22:03:25.146Z",
+  "scope": "ONE_EXACT_OWNER_SIGNED_MANUAL_TEST_ONLY_MERGE_TO_AGENT_BOOTSTRAP",
+  "owner": {
+    "run_id": 43965496615,
+    "event": "workflow_dispatch",
+    "conclusion": "success",
+    "signature": "OIDC_RSA256_JWKS_VERIFIED_BY_TRUSTED_RUNNER",
+    "mission_id": "cd7f1493-542b-4715-918b-f853f2d43048",
+    "signed_receipt_sha256": "545d917893c07580d12754d443d1cc75c5b3151d842bd7d9aeaec11ceaaba67e",
+    "grant_consumed": true,
+    "usable_for_future_merges": false
+  },
+  "family": {
+    "repo": "giovannifidel-collab/family-cloud",
+    "pr": 874,
+    "exact_pr_source_head_sha": "a0620f465576b29381f5f6c3d076ab1f7c786cea",
+    "base_ref": "agent/bootstrap-family-cloud",
+    "previous_base_sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
+    "merged_commit_sha": "f9edfc48dc48f76264d8c587aed765d950b18d81",
+    "default_main_sha_unchanged": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
+    "only_modified_file": "tests/persistence-recovery.test.mjs",
+    "changed_files": 1,
+    "additions": 6,
+    "deletions": 2,
+    "independent_postmerge_ci_run_id": 43966019715,
+    "independent_postmerge_ci_conclusion": "success",
+    "native_release_gate_run_id": 43965872580,
+    "native_release_gate_conclusion": "success",
+    "no_product_code_changes": true,
+    "no_default_main_merge": true,
+    "no_requested_cloudflare_deployment": true
+  },
+  "neon": {
+    "project": "muddy-recipe-65646643",
+    "branch": "br-shiny-lab-aftgj3st",
+    "proof_event_id": 1268,
+    "exact_ledger_key": "hive.queen.s9.4.family.pr874.merge.owner.cd7f1493-542b-4715-918b-f853f2d43048",
+    "final_status": "ONE_EXACT_FAMILY_TEST_MERGE_INDEPENDENTLY_VERIFIED_CONSUMED",
+    "total_authorized_manual_merges": 1
+  },
+  "s95_related_observation": {
+    "existing_relay_s1_workflow": ".github/workflows/queen-s1-event-ingress.yml",
+    "current_relay_s1_private_ref": "73778e4d040e6ae361401003441f6a9be2c793f5",
+    "current_authoritative_hive_main": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+    "next_source_candidate_pr": 96,
+    "existing_s1_old_pin_requires_exact_approved_migration": true,
+    "default_verified_result_route": "school.record_verified_experience",
+    "production_verified_receipt_CAS_connector_available": false,
+    "caution": "Never route S9.5 receipt subtype through canonical S1 verification result School action; hook must precede current router. PR96 pure preflight alone is insufficient.",
+    "general_autonomy_certified": false
+  },
+  "s9_state": "FAMILY_TEST_ONLY_CORRECTION_MERGED; FULL_S9_EXIT_NOT_CERTIFIED"
+}
