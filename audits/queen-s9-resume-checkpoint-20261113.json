@@ -1,6 +1,6 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v10",
-  "as_of_date": "2026-11-16T17:29:00Z",
+  "schema": "queen.s9.resume-checkpoint.v11",
+  "as_of_date": "2026-11-16T17:40:00Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
     "main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
@@ -105,16 +105,16 @@
   "pending": [
     {
       "gate": "S9.4",
-      "blocker": "Six selected project functional regressions PASS CI 43914184651, including disposable Family legacy test fix. However Family authoritative agent/bootstrap-family-cloud and main still diverge 1769/19 and no fresh Owner-signed exact test-file PR permission. No cross-project production code-write authority; six docs-only PRs still draft; four DENY remain outside.",
+      "blocker": "All 6 source-locked selected domain tests PASS. Family test-only correction now Owner-signed, PR #874 draft with only tests/persistence-recovery.test.mjs; independent CI 43919820626 PASS and Neon proof event 1265. Owner grant consumed. No merge, no default main reconciliation, no product code-writing missions or four DENY-project authority.",
       "next_required_scope": "Each product must have an exact path-limited project execution + functional acceptance mission, a fresh Owner-authenticated CI signature and distinct merge/deploy gate. Four DENY repositories require their own separate owner grant. Do not silently broaden this consumed six-docs authorization."
     },
     {
       "gate": "S9.5",
-      "blocker": "Isolated Neon automatic event-trigger CAS now tested: verified historic receipt completes one test claim; forged and duplicate rejected, uncertain original remains quarantined, 0 dispatches. Integration with actual production existing S1 receipt intake and cryptographic independent trust/Owner gate NOT deployed or certified."
+      "blocker": "Only isolated verified-receipt event-triggered Neon CAS demonstrated (no duplicate/provider replay); NOT deployed to production or automatically connected to trusted real S1 result verifier. Requires new independent source-locked implementation and Owner authenticated release."
     },
     {
       "gate": "S9.6",
-      "blocker": "Independent live scoped CI 43918260192 PASS; final global S9 exit requires authenticated Family per-project write/branch disposition and independently verified live automatic S1 recovery. Full exit DENY."
+      "blocker": "Post-Family live scoped audit CI 43920560977 PASS but global S9 exit not certifiable until functional project permissions and real S1-integrated automatic S9.5 recovery live proof."
     },
     {
       "gate": "S10",
@@ -142,9 +142,10 @@
     "audits/queen-s9-v6-source-merge-and-durable-build-owner-handoff-20261114.json",
     "audits/queen-s9-4-5-live-durable-prod-owner-proof-20261116.json",
     "audits/queen-s9-5-isolated-event-driven-cas-proof-20261116.json",
-    "audits/queen-s9-20261116-current-evidence-and-next-owner-scope.json"
+    "audits/queen-s9-20261116-current-evidence-and-next-owner-scope.json",
+    "audits/queen-s9-4-family-owner-pr874-live-independent-20261116.json"
   ],
-  "user_action_required": "GitHub Owner: run https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-one-test-owner-attestation.yml on main, keep the 3 exact SHAs and branch disposition 'keep_agent_bootstrap_branch_no_main_merge', check approve_s9_4_family_one_test_patch, click Run workflow. This signs only one Family test-file DRAFT PR, no merge/deploy. Separately S9.5 production integration/verified live E2E requires a future exact source candidate and Owner-signed release; no reused authorizations.",
+  "user_action_required": "NONE for completed Family test-only PR874; Owner grant #43919266993 consumed. Separate fresh Owner approval is required before merging Family PR874 or changing default main. S9.5 production integration needs a separately reviewed actual implementation and exact Owner-signed release. Never treat isolated Neon trigger as live production failover.",
   "new_source_candidates": [
     {
       "stage": "S9.5",
@@ -215,5 +216,23 @@
     "run_id": 43918260192,
     "status": "PASS_SCOPED_ONLY",
     "global_exit_certified": false
+  },
+  "family_owner_one_test": {
+    "outcome": "PASS_OWNER_SIGNED_ONE_FILE_DRAFT_INDEPENDENTLY_VERIFIED",
+    "owner_oidc_ci": 43919266993,
+    "owner_mission_id": "41184953-e962-4476-b503-42b599a8a0b2",
+    "owner_scope": "S9.4_FAMILY_SINGLE_TEST_FILE_DRAFT_ONLY",
+    "consumed": true,
+    "family_draft_pr": 874,
+    "family_draft_head_sha": "a0620f465576b29381f5f6c3d076ab1f7c786cea",
+    "changed_file": "tests/persistence-recovery.test.mjs",
+    "independent_test_ci": 43919820626,
+    "independent_post_family_live_ci": 43920560977,
+    "proof_event_id": 1265,
+    "no_deployment": true,
+    "no_default_main_merge": true,
+    "authoritative_ref": "agent/bootstrap-family-cloud",
+    "authoritative_sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
+    "default_main_sha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d"
   }
 }
