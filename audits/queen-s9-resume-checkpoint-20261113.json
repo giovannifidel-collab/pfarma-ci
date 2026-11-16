@@ -1,11 +1,11 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v7",
-  "as_of_date": "2026-11-14T15:08:00Z",
+  "schema": "queen.s9.resume-checkpoint.v8",
+  "as_of_date": "2026-11-16T16:19:56.308Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
-    "main_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2",
+    "main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
     "relay_repository": "giovannifidel-collab/pfarma-ci",
-    "relay_source_pointer_sha": "eb9c169219c697fab500b909d34b42bdf43d16f2"
+    "relay_source_pointer_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f"
   },
   "completed": [
     {
@@ -84,25 +84,37 @@
       "four_deny_projects_unmodified_by_this_scope": true,
       "generalized_execution_certified": false,
       "owner_grant_consumed": true
+    },
+    {
+      "gate": "S9.4-S9.5 LIVE RELEASE",
+      "outcome": "PASS_OWNER_SIGNED_DURABLE_GIT_CONNECTED_PRODUCTION_ONLY",
+      "source_pr": 95,
+      "owner_signed_oidc_run_id": 43904759752,
+      "source_merge_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+      "cloudflare_deployment_id": "9b59bf3f-50f1-4810-ad63-fe913a822015",
+      "durable_build_command_verified": true,
+      "source_pointer_aligned": true,
+      "release_controller_ci_run_id": 43905355845,
+      "independent_postrelease_ci_run_id": 43905966416,
+      "neon_independent_proof_event_id": 1264,
+      "no_extra_project_writes": true,
+      "no_school_promotions": true,
+      "global_autonomy_certified": false
     }
   ],
   "pending": [
     {
       "gate": "S9.4",
-      "blocker": "Source-only/one-doc project mission PASS. New independent native functional tests passed 5/6; Family Cloud legacy recovery regression FAIL and exact disposable test correction PASS; Family Cloud default/main vs authoritative branch diverged 1769/19 and must be reconciled before real project code/test change. All six existing docs PRs remain draft; four DENY untouched; no unattended cross-project writes.",
+      "blocker": "HIVE S9.4 source adapters now integrated into production PR95 with durable Git-connected build and independently verified one-shot Owner release. However project-level functional autonomy remains DENY: six docs-only canaries proved, five selected project regressions passed; Family Cloud legacy test failed but isolated patch rehearsal passed; Family main vs authoritative branch diverged 1769/19. Four DENY repos remain protected; no new project write signed.",
       "next_required_scope": "Each product must have an exact path-limited project execution + functional acceptance mission, a fresh Owner-authenticated CI signature and distinct merge/deploy gate. Four DENY repositories require their own separate owner grant. Do not silently broaden this consumed six-docs authorization."
     },
     {
       "gate": "S9.5",
-      "blocker": "Source preflight for safe receipt reconciliation CI PASS #43607082415; no live trusted independent provider-receipt CAS unattended completion, unknown failure still quarantined; no unapproved auto retries"
+      "blocker": "S9.5 independently verified receipt reconciliation preflight now integrated into HIVE production PR95, but does not perform provider retry or independently verified unattended Neon CAS. Real failure quarantine and Owner-signed isolated replacement remain the only live fault evidence; unknown outcomes still DENY automatic dispatch."
     },
     {
       "gate": "S9.6",
-      "blocker": "Scope-limited independent S9.6 PASS retained; global unattended cross-project autonomy still DENY pending separate functional acceptance and verified no-replay recovery"
-    },
-    {
-      "gate": "S9.2 FUTURE CI/CD",
-      "blocker": "Known legacy Pages build command is CI-tested; permanent source/Cloudflare configuration change requires fresh Owner attestation, staged and smoke-tested in #43607525552"
+      "blocker": "Full S9.6 EXIT still DENY until project-owned functional autonomous operations AND unattended safe recovery are independently executed and certified. Successful source + Cloudflare release is not proof of these."
     },
     {
       "gate": "S10",
@@ -127,9 +139,10 @@
     "audits/queen-s9-6-independent-exit-decision-20261113.json",
     "audits/queen-s9-6-postproduction-unified-proof-20261113.json",
     "audits/queen-s9-4-six-owner-signed-project-docs-prs-verified-20261114.json",
-    "audits/queen-s9-v6-source-merge-and-durable-build-owner-handoff-20261114.json"
+    "audits/queen-s9-v6-source-merge-and-durable-build-owner-handoff-20261114.json",
+    "audits/queen-s9-4-5-live-durable-prod-owner-proof-20261116.json"
   ],
-  "user_action_required": "Fresh GitHub Owner OIDC to authorize exactly PR95 source merge AND durable HIVE Pages build configuration with independent rollback: https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-5-owner-durable-build-release-attestation.yml ; branch main; source eb9c169219c697fab500b909d34b42bdf43d16f2; candidate 765c3bf53f4fb5ba346473826f852a881f86c089; checkbox approve_s9_4_5_one_release_and_durable_build. Separate Family Cloud branch reconciliation and project-scoped test patch authority remain needed; signed HIVE release cannot cover Family Cloud.",
+  "user_action_required": "No further step is required for PR95 HIVE production or durable Cloudflare build. Owner OIDC grant #43904759752 was CONSUMED; do not rerun. To certify full S9, separate per-project write/functional acceptance Owner-authenticated missions and safe live unattended receipt recovery contracts are required; Family Cloud branch reconciliation is independently necessary. Four DENY projects remain outside HIVE project mutations.",
   "new_source_candidates": [
     {
       "stage": "S9.5",
@@ -143,7 +156,12 @@
       "pr": 95,
       "head": "765c3bf53f4fb5ba346473826f852a881f86c089",
       "ci": 43607312049,
-      "status": "CONSOLIDATED_SOURCE_AND_MODERN_LEGACY_BUILD_PASS_DRAFT_NOT_DEPLOYED"
+      "status": "MERGED_AND_GIT_CONNECTED_CLOUDFLARE_PRODUCTION_VERIFIED",
+      "merge_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+      "deployment_id": "9b59bf3f-50f1-4810-ad63-fe913a822015",
+      "owner_ci": 43904759752,
+      "controller_ci": 43905355845,
+      "independent_ci": 43905966416
     },
     {
       "stage": "S9.4+S9.5 Owner+Cloudflare",
