@@ -78,9 +78,11 @@ export async function runTrustedS95IngressFromEnv(
  const check=inspectS95Envelope(event);
  if(!check.handled)return check;
  if(check.decision!=='NEEDS_LIVE_OWNER_GH_AND_PRIVATE_NEON_CAS')return check;
+ const canonicalBase='https://hive-alveare.pages.dev';
+ if(env.HIVE_BASE_URL && env.HIVE_BASE_URL.replace(/\/$/,'')!==canonicalBase)
+   return deny('noncanonical_cloudflare_destination_denied');
  if(!env.GH_TOKEN||!env.HIVE_RUNTIME_BEARER_TOKEN||
-   !env.CF_ACCESS_CLIENT_ID||!env.CF_ACCESS_CLIENT_SECRET||
-   !env.HIVE_BASE_URL)
+   !env.CF_ACCESS_CLIENT_ID||!env.CF_ACCESS_CLIENT_SECRET)
    return deny('trusted_relay_credentials_not_configured');
  const gh=async(id)=>{
   const r=await fetchImpl('https://api.github.com/repos/giovannifidel-collab/pfarma-ci/actions/runs/'+id,{
@@ -91,7 +93,7 @@ export async function runTrustedS95IngressFromEnv(
   return r.json();
  };
  const post=async(body)=>{
-  const res=await fetchImpl(env.HIVE_BASE_URL.replace(/\/$/,'')+'/api/queen-s9-reconcile',{
+  const res=await fetchImpl(canonicalBase+'/api/queen-s9-reconcile',{
    method:'POST',headers:{Authorization:'Bearer '+env.HIVE_RUNTIME_BEARER_TOKEN,
     'Cf-Access-Client-Id':env.CF_ACCESS_CLIENT_ID,
     'Cf-Access-Client-Secret':env.CF_ACCESS_CLIENT_SECRET,
