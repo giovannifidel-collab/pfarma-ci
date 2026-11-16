@@ -1,0 +1,46 @@
+name: Queen S9.5 Exact Owner Signer Independent Source Smoke (NO RELEASE)
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-5-owner-source-signer-smoke.yml]
+permissions: {contents: read}
+jobs:
+  owner-source-and-yaml:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Validate Owner workflow YAML and embedded cryptographic verifier source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s9-5-owner-source-release-attestation.yml --jq .content \
+            | tr -d '\n' | base64 -d > "$RUNNER_TEMP/s9-5-owner.yml"
+          ruby -ryaml -e 'YAML.parse_file(ARGV[0]);puts "S9_5_OWNER_SIGNER_WORKFLOW_YAML=PASS"' "$RUNNER_TEMP/s9-5-owner.yml"
+          grep -q 'workflow_dispatch:' "$RUNNER_TEMP/s9-5-owner.yml"
+          grep -q 'id-token: write' "$RUNNER_TEMP/s9-5-owner.yml"
+          grep -q "approve_s9_5_one_source_release_and_runtime_secret" "$RUNNER_TEMP/s9-5-owner.yml"
+          grep -q 'verify(' "$RUNNER_TEMP/s9-5-owner.yml"
+          grep -q 'ONE_HIVE_PR96_ONE_RELAY_PR1295_PRIVATE_NEON_CAS_AND_RUNTIME_SECRET' "$RUNNER_TEMP/s9-5-owner.yml"
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path(__import__('os').environ['RUNNER_TEMP']+'/s9-5-owner.yml').read_text()
+          pos=s.index("node --input-type=module <<'NODE'")
+          v=s[pos:].split("\n",1)[1].split("\n          NODE",1)[0]
+          Path(__import__('os').environ['RUNNER_TEMP']+'/s9-5-oidc.mjs').write_text("\n".join(line.removeprefix('          ') for line in v.splitlines())+"\n")
+          PY
+          node --check "$RUNNER_TEMP/s9-5-oidc.mjs"
+          echo S9_5_OWNER_SIGNATURE_JS_SYNTAX=PASS
+      - name: Independently recheck two exact source PRs, CI and production main SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 6d20e61a023748bff36175f1f643c9f5781b3b9f
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/96 | jq -e '.draft==true and .state=="open" and .merged==false and .head.sha=="843e2a0dd9abff8a86c426c2d8ba9090c948e80c"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1295 | jq -e '.draft==true and .state=="open" and .merged==false and .head.sha=="17baebc3b3505b13354abe86e82af903146bbd9a"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/43970691264 | jq -e '.conclusion=="success" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43972281347 | jq -e '.conclusion=="success" and .run_attempt==1' >/dev/null
+          echo S9_5_EXACT_SOURCE_AND_CI_GATE=PASS
+          echo S9_5_NO_CLOUDFLARE_OR_DB_MUTATION=TRUE
