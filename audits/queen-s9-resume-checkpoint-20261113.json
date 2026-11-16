@@ -1,6 +1,6 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v8",
-  "as_of_date": "2026-11-16T16:19:56.308Z",
+  "schema": "queen.s9.resume-checkpoint.v9",
+  "as_of_date": "2026-11-16T17:26:00Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
     "main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
@@ -105,16 +105,16 @@
   "pending": [
     {
       "gate": "S9.4",
-      "blocker": "HIVE S9.4 source adapters now integrated into production PR95 with durable Git-connected build and independently verified one-shot Owner release. However project-level functional autonomy remains DENY: six docs-only canaries proved, five selected project regressions passed; Family Cloud legacy test failed but isolated patch rehearsal passed; Family main vs authoritative branch diverged 1769/19. Four DENY repos remain protected; no new project write signed.",
+      "blocker": "Six selected project functional regressions PASS CI 43914184651, including disposable Family legacy test fix. However Family authoritative agent/bootstrap-family-cloud and main still diverge 1769/19 and no fresh Owner-signed exact test-file PR permission. No cross-project production code-write authority; six docs-only PRs still draft; four DENY remain outside.",
       "next_required_scope": "Each product must have an exact path-limited project execution + functional acceptance mission, a fresh Owner-authenticated CI signature and distinct merge/deploy gate. Four DENY repositories require their own separate owner grant. Do not silently broaden this consumed six-docs authorization."
     },
     {
       "gate": "S9.5",
-      "blocker": "S9.5 independently verified receipt reconciliation preflight now integrated into HIVE production PR95, but does not perform provider retry or independently verified unattended Neon CAS. Real failure quarantine and Owner-signed isolated replacement remain the only live fault evidence; unknown outcomes still DENY automatic dispatch."
+      "blocker": "Isolated Neon automatic event-trigger CAS now tested: verified historic receipt completes one test claim; forged and duplicate rejected, uncertain original remains quarantined, 0 dispatches. Integration with actual production existing S1 receipt intake and cryptographic independent trust/Owner gate NOT deployed or certified."
     },
     {
       "gate": "S9.6",
-      "blocker": "Full S9.6 EXIT still DENY until project-owned functional autonomous operations AND unattended safe recovery are independently executed and certified. Successful source + Cloudflare release is not proof of these."
+      "blocker": "Independent live scoped CI 43918260192 PASS; final global S9 exit requires authenticated Family per-project write/branch disposition and independently verified live automatic S1 recovery. Full exit DENY."
     },
     {
       "gate": "S10",
@@ -140,9 +140,11 @@
     "audits/queen-s9-6-postproduction-unified-proof-20261113.json",
     "audits/queen-s9-4-six-owner-signed-project-docs-prs-verified-20261114.json",
     "audits/queen-s9-v6-source-merge-and-durable-build-owner-handoff-20261114.json",
-    "audits/queen-s9-4-5-live-durable-prod-owner-proof-20261116.json"
+    "audits/queen-s9-4-5-live-durable-prod-owner-proof-20261116.json",
+    "audits/queen-s9-5-isolated-event-driven-cas-proof-20261116.json",
+    "audits/queen-s9-20261116-current-evidence-and-next-owner-scope.json"
   ],
-  "user_action_required": "No further step is required for PR95 HIVE production or durable Cloudflare build. Owner OIDC grant #43904759752 was CONSUMED; do not rerun. To certify full S9, separate per-project write/functional acceptance Owner-authenticated missions and safe live unattended receipt recovery contracts are required; Family Cloud branch reconciliation is independently necessary. Four DENY projects remain outside HIVE project mutations.",
+  "user_action_required": "Perform new Owner GitHub OIDC on https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-one-test-owner-attestation.yml with branch main, default SHAs unchanged and approve_s9_4_family_one_test_patch=true. Scope only one test-file Family Cloud DRAFT PR; no merge/release. S9.5 future production integration requires a separately scoped source-locked owner release. Prior OIDC grants are consumed.",
   "new_source_candidates": [
     {
       "stage": "S9.5",
@@ -170,31 +172,46 @@
     }
   ],
   "s9_4_project_functional_domain_ci": {
-    "run_id": 43608148194,
-    "immutable_source_verified": true,
+    "run_id": 43914184651,
     "passed": [
       "project-giovanni",
       "hive-field",
       "giochem",
       "pfarma-cloud",
+      "family-cloud",
       "gio-os"
     ],
-    "failed": [
-      "family-cloud"
-    ],
-    "family_failure": "tests/persistence-recovery.test.mjs expects legacy backup.html link to persistence-recovery.html, removed by canonical durable account-scoped product surface",
-    "family_preview_patch_ci_run_id": 43608462526,
-    "family_preview_patch_result": "SUCCESS_ON_DISPOSABLE_CHECKOUT_ONLY_NO_PROJECT_SOURCE_WRITE",
-    "family_preview_patch_artifact_id": 14118572873,
-    "family_authoritative_ref": "agent/bootstrap-family-cloud",
-    "family_authoritative_sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
-    "family_main_sha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
-    "family_ref_comparison": {
-      "status": "diverged",
-      "ahead_by": 1769,
-      "behind_by": 19,
-      "merge_base": "298dbcc78282d28a2da08f8a30eb031afa5357f2"
+    "selected_project_tests_passed": 6,
+    "family_test_corrected_only_in_disposable_ci_checkout": true,
+    "family_source_branch": "agent/bootstrap-family-cloud",
+    "family_branch_sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
+    "family_default_main_sha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
+    "family_main_vs_authoritative_divergence": {
+      "source_ahead": 1769,
+      "source_behind": 19
     },
-    "warning": "Do not auto-merge/rebase Family Cloud branches or modify product tests without separate branch reconciliation and Owner-authorized project mission."
+    "family_one_test_owner_gate_preflight_ci": 43917186701,
+    "family_one_test_owner_oidc_workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-one-test-owner-attestation.yml",
+    "family_owner_not_yet_signed": true,
+    "no_project_mutations_from_tests": true
+  },
+  "s9_5_event_driven_reconciliation_isolated": {
+    "status": "ISOLATED_NEON_EVENT_TRIGGERED_CAS_PASS_NOT_PRODUCTION_E2E",
+    "project": "proud-night-33193396",
+    "database": "queen_s9_preview",
+    "sql_schema": "queen_s95_receipt_test",
+    "test_claim_id": "46ae410e-a27b-4511-bc83-f846d203e126",
+    "automatically_applied_once": true,
+    "duplicate_denied": true,
+    "forged_receipt_denied": true,
+    "new_provider_dispatches": 0,
+    "production_writes": 0,
+    "original_uncertain_execution": "QUARANTINED",
+    "audit": "audits/queen-s9-5-isolated-event-driven-cas-proof-20261116.json"
+  },
+  "s9_6_new_final_boundary_ci": {
+    "run_id": 43918260192,
+    "status": "PASS_SCOPED_ONLY",
+    "global_exit_certified": false
   }
 }
