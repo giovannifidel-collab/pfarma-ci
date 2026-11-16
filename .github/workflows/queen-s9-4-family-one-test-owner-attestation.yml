@@ -1,0 +1,137 @@
+name: Queen S9.4 Family One-Test Patch Owner Attestation (no merge)
+on:
+  workflow_dispatch:
+    inputs:
+      hive_source_sha:
+        type: string
+        description: "Exact certified private HIVE main SHA"
+        required: true
+        default: "6d20e61a023748bff36175f1f643c9f5781b3b9f"
+      family_authoritative_branch_sha:
+        type: string
+        description: "Exact Family authoritative agent/bootstrap-family-cloud SHA"
+        required: true
+        default: "17b242eca13d7c73607e0bc52c64146750020cb7"
+      family_default_main_sha:
+        type: string
+        description: "Family Cloud divergent main SHA (NO merge)"
+        required: true
+        default: "b4e796f0202fd1e6ae89029674d69210e9bbbc8d"
+      approve_s9_4_family_one_test_patch:
+        type: boolean
+        description: "Approve exactly ONE draft test-only Family PR; NO merge, deploy or branch reconciliation"
+        required: true
+        default: false
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: queen-s9-4-family-one-test-owner-oidc
+  cancel-in-progress: false
+jobs:
+  owner-attests-family-branch-only:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_SOURCE_SHA: ${{ inputs.hive_source_sha }}
+      FAMILY_BASE_SHA: ${{ inputs.family_authoritative_branch_sha }}
+      FAMILY_MAIN_SHA: ${{ inputs.family_default_main_sha }}
+      OWNER_APPROVE: ${{ inputs.approve_s9_4_family_one_test_patch }}
+    steps:
+      - name: Require actual Owner manual signature, exact SHA, and six-project independent test
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$OWNER_APPROVE" = true
+          test -n "$GH_TOKEN"
+          test "$HIVE_SOURCE_SHA" = 6d20e61a023748bff36175f1f643c9f5781b3b9f
+          test "$FAMILY_BASE_SHA" = 17b242eca13d7c73607e0bc52c64146750020cb7
+          test "$FAMILY_MAIN_SHA" = b4e796f0202fd1e6ae89029674d69210e9bbbc8d
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_SOURCE_SHA"
+          test "$(gh api repos/giovannifidel-collab/family-cloud/branches/agent/bootstrap-family-cloud --jq .commit.sha)" = "$FAMILY_BASE_SHA"
+          test "$(gh api repos/giovannifidel-collab/family-cloud/branches/main --jq .commit.sha)" = "$FAMILY_MAIN_SHA"
+          pointer="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$pointer" = "$HIVE_SOURCE_SHA"
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43914184651 \
+            | jq -e '.conclusion=="success" and .status=="completed" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43608462526 \
+            | jq -e '.conclusion=="success" and .status=="completed" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/family-cloud/pulls/873 \
+            | jq -e --arg sha "$FAMILY_BASE_SHA" '.state=="open" and .draft==true and .merged==false and .base.sha==$sha' >/dev/null
+          echo S9_4_FAMILY_OIDC_SOURCE_AND_CANONICAL_TEST=PASS
+      - name: Verify GitHub signed identity cryptographically and emit single path scope (no writes)
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import {webcrypto,createHash,randomUUID} from 'node:crypto';
+          const e=process.env;
+          const fail=s=>{throw Error(s)};
+          const audit={owner:'giovannifidel-collab',repo:'giovannifidel-collab/family-cloud',
+           ref:'agent/bootstrap-family-cloud',familySha:'17b242eca13d7c73607e0bc52c64146750020cb7',
+           mainSha:'b4e796f0202fd1e6ae89029674d69210e9bbbc8d',
+           hiveSha:'6d20e61a023748bff36175f1f643c9f5781b3b9f'};
+          const audience='hive-queen-s9-4-family-exact-test-only-v1';
+          const url=e.ACTIONS_ID_TOKEN_REQUEST_URL+(e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(audience);
+          if(!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)fail('OIDC_NO_TOKEN');
+          const response=await fetch(url,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!response.ok)fail('OIDC_NOT_ISSUED');
+          const {value:jwt}=await response.json();
+          if(typeof jwt!=='string'||jwt.length<300||jwt.length>12000)fail('OIDC_MALFORMED');
+          const bits=jwt.split('.');
+          if(bits.length!==3)fail('OIDC_PARTS');
+          function b64(t){if(!/^[A-Za-z0-9_-]+$/.test(t))fail('OIDC_ENCODING');return Buffer.from(t.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-t.length%4)%4),'base64')}
+          const head=JSON.parse(b64(bits[0]).toString()),claims=JSON.parse(b64(bits[1]).toString());
+          if(head.alg!=='RS256'||!head.kid||head.jku||head.jwk||head.x5u||head.crit)fail('OIDC_HEADER');
+          const expected={
+          iss:'https://token.actions.githubusercontent.com',aud:audience,
+          repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+          repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+          environment:'pfarma-ci-trusted',
+          workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-s9-4-family-one-test-owner-attestation.yml@refs/heads/main',
+          ref:'refs/heads/main',event_name:'workflow_dispatch',runner_environment:'github-hosted'};
+          for(const [key,value] of Object.entries(expected))if(String(claims[key])!==value)fail('OIDC_CLAIM_'+key);
+          if(claims.sha!==e.GITHUB_SHA||Number(claims.run_id)!==Number(e.GITHUB_RUN_ID)||Number(claims.run_attempt)!==1)fail('OIDC_RUN_PROVENANCE');
+          const now=Date.now();
+          if(!Number.isSafeInteger(claims.iat)||!Number.isSafeInteger(claims.nbf)||!Number.isSafeInteger(claims.exp)||claims.exp-claims.iat>900||claims.exp*1000<now||claims.iat*1000>now+30000||now-claims.iat*1000>300000||claims.nbf*1000>now+30000)fail('OIDC_EXPIRY');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)fail('OIDC_JWKS_UNAVAILABLE');
+          const keys=(await jwks.json()).keys;
+          if(!Array.isArray(keys)||keys.length>32)fail('OIDC_JWKS_SHAPE');
+          const jwk=keys.find(x=>x.kid===head.kid&&x.kty==='RSA'&&x.use==='sig'&&(!x.alg||x.alg==='RS256'));
+          if(!jwk)fail('OIDC_KEY_ABSENT');
+          const key=await webcrypto.subtle.importKey('jwk',{kty:'RSA',n:jwk.n,e:jwk.e,ext:true},{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
+          if(!await webcrypto.subtle.verify('RSASSA-PKCS1-v1_5',key,b64(bits[2]),Buffer.from(bits[0]+'.'+bits[1])))fail('OIDC_SIGNATURE');
+          if(e.HIVE_SOURCE_SHA!==audit.hiveSha||e.FAMILY_BASE_SHA!==audit.familySha||e.FAMILY_MAIN_SHA!==audit.mainSha||e.OWNER_APPROVE!=='true')fail('PROJECT_SCOPE');
+          const receipt={schema:'queen.s9.4.owner.family-single-test-patch-oidc.v1',
+           owner:audit.owner,scope:'S9.4_FAMILY_SINGLE_TEST_FILE_DRAFT_ONLY',
+           mission_id:randomUUID(),hive_source_sha:audit.hiveSha,
+           project_id:'family-cloud',repository:audit.repo,
+           source_ref:audit.ref,source_sha:audit.familySha,
+           alternate_main_sha:audit.mainSha,
+           source_branch_divergence_acknowledged:true,
+           allowed_paths:['tests/persistence-recovery.test.mjs'],
+           acceptance_criteria:[
+           'One existing obsolete test updated to validate canonical account-scoped backup page',
+           'Both existing canonical Family Cloud regression tests PASS on exact source',
+           'Draft PR only, no project main merge or branch reconciliation',
+           'No changes to application code, accounts, documents, storage or deployment'
+           ],
+           max_draft_prs:1,production_writes:false,project_data_writes:false,
+           source_test_file_change_only:true,auto_merge:false,auto_deploy:false,
+           provider_dispatches:0,paid_fallback:false,school_training_eligible:false,
+           owner_oidc_verified:true,owner_ci_run_id:Number(e.GITHUB_RUN_ID),
+           issued_at:new Date(now).toISOString(),expires_at:new Date(now+15*60*1000).toISOString(),
+           status:'OWNER_IDENTITY_ATTESTED_NO_PRIVILEGE_ISSUED'
+          };
+          const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S9_4_FAMILY_OWNER_OIDC_SIGNATURE=PASS');
+          console.log('S9_4_FAMILY_OWNER_SCOPED_RECEIPT='+JSON.stringify({...receipt,evidence_sha256:digest}));
+          console.log('S9_4_FAMILY_OTHER_PROJECT_WRITES=0');
+          JS
