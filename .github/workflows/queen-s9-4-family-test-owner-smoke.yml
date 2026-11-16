@@ -1,0 +1,33 @@
+name: Queen S9.4 Family Owner Signed Test-Only Attestation Smoke (READ ONLY)
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-4-family-test-owner-smoke.yml]
+permissions: {contents: read}
+jobs:
+  source-locked-family-preflight:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Verify exact Family, current HIVE SHA, independent CI and syntax of Owner OIDC workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 6d20e61a023748bff36175f1f643c9f5781b3b9f
+          test "$(gh api repos/giovannifidel-collab/family-cloud/branches/agent/bootstrap-family-cloud --jq .commit.sha)" = 17b242eca13d7c73607e0bc52c64146750020cb7
+          test "$(gh api repos/giovannifidel-collab/family-cloud/branches/main --jq .commit.sha)" = b4e796f0202fd1e6ae89029674d69210e9bbbc8d
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43914184651 | jq -e '.conclusion=="success" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/43608462526 | jq -e '.conclusion=="success" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s9-4-family-one-test-owner-attestation.yml --jq .content | tr -d '\n' | base64 -d > "$RUNNER_TEMP/s94-family-owner.yml"
+          ruby -r yaml -e 'YAML.parse_file(ARGV[0]); puts "S9_4_FAMILY_OWNER_WORKFLOW_YAML=PASS"' "$RUNNER_TEMP/s94-family-owner.yml"
+          grep -q 'approve_s9_4_family_one_test_patch' "$RUNNER_TEMP/s94-family-owner.yml"
+          grep -q 'queen.s9.4.owner.family-single-test-patch-oidc.v1' "$RUNNER_TEMP/s94-family-owner.yml"
+          grep -q 'OIDC_SIGNATURE' "$RUNNER_TEMP/s94-family-owner.yml"
+          grep -q 'tests/persistence-recovery.test.mjs' "$RUNNER_TEMP/s94-family-owner.yml"
+          echo S9_4_FAMILY_OWNER_GATE_SCOPE_AND_SOURCE=PASS
+          echo S9_4_FAMILY_TEST_ONLY_OWNER_OIDC_NOT_YET_ISSUED=TRUE
+          echo S9_4_FAMILY_NO_REPOSITORY_MUTATION_BY_THIS_CI=PASS
