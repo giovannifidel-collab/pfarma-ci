@@ -1,6 +1,6 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v9",
-  "as_of_date": "2026-11-16T17:26:00Z",
+  "schema": "queen.s9.resume-checkpoint.v10",
+  "as_of_date": "2026-11-16T17:29:00Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
     "main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
@@ -144,7 +144,7 @@
     "audits/queen-s9-5-isolated-event-driven-cas-proof-20261116.json",
     "audits/queen-s9-20261116-current-evidence-and-next-owner-scope.json"
   ],
-  "user_action_required": "Perform new Owner GitHub OIDC on https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-one-test-owner-attestation.yml with branch main, default SHAs unchanged and approve_s9_4_family_one_test_patch=true. Scope only one test-file Family Cloud DRAFT PR; no merge/release. S9.5 future production integration requires a separately scoped source-locked owner release. Prior OIDC grants are consumed.",
+  "user_action_required": "GitHub Owner: run https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-one-test-owner-attestation.yml on main, keep the 3 exact SHAs and branch disposition 'keep_agent_bootstrap_branch_no_main_merge', check approve_s9_4_family_one_test_patch, click Run workflow. This signs only one Family test-file DRAFT PR, no merge/deploy. Separately S9.5 production integration/verified live E2E requires a future exact source candidate and Owner-signed release; no reused authorizations.",
   "new_source_candidates": [
     {
       "stage": "S9.5",
@@ -190,10 +190,12 @@
       "source_ahead": 1769,
       "source_behind": 19
     },
-    "family_one_test_owner_gate_preflight_ci": 43917186701,
+    "family_one_test_owner_gate_preflight_ci": 43918891028,
     "family_one_test_owner_oidc_workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-one-test-owner-attestation.yml",
     "family_owner_not_yet_signed": true,
-    "no_project_mutations_from_tests": true
+    "no_project_mutations_from_tests": true,
+    "family_branch_disposition": "keep_agent_bootstrap_branch_no_main_merge",
+    "family_branch_disposition_requires_owner_choice": true
   },
   "s9_5_event_driven_reconciliation_isolated": {
     "status": "ISOLATED_NEON_EVENT_TRIGGERED_CAS_PASS_NOT_PRODUCTION_E2E",
