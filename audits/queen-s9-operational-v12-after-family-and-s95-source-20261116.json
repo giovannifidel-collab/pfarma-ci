@@ -1,0 +1,76 @@
+{
+  "schema": "queen.s9.operational-handoff.v12",
+  "checked_at_utc": "2026-11-16T21:49:48.452Z",
+  "source_authority": {
+    "hive_repo": "giovannifidel-collab/hive-alveare",
+    "hive_main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+    "relay_pointer": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+    "existing_s1_loop_untouched": true
+  },
+  "family": {
+    "correction_pr": 874,
+    "head_sha": "a0620f465576b29381f5f6c3d076ab1f7c786cea",
+    "target_branch": "agent/bootstrap-family-cloud",
+    "target_base_sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
+    "default_main_sha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
+    "current_state": "DRAFT_UNMERGED",
+    "test_only_change": true,
+    "independent_ci": 43919820626,
+    "prior_owner_oidc": 43919266993,
+    "prior_owner_scope": "DRAFT_ONLY_CONSUMED_NOT_MERGE_AUTHORITY",
+    "fresh_owner_merge_signer": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-pr874-merge-owner-attestation.yml",
+    "signer_scope": "ONE_MANUAL_TEST_ONLY_PR874_MERGE_TO_AGENT_BOOTSTRAP_BRANCH",
+    "signer_ready_independent_smoke_ci": 43963430195,
+    "signer_state": "READY_FOR_NEW_MANUAL_OWNER_SIGNATURE",
+    "no_default_main_merge": true,
+    "no_product_release": true
+  },
+  "s95": {
+    "current_prod": "S9.5 original pure preflight in HIVE main, no real trusted S1 production CAS",
+    "isolated_event_driven_neon_test": "PASS historic verified receipt triggered exactly one CAS; forged and duplicate rejected; no provider redispatch",
+    "source_candidate_pr": 96,
+    "source_candidate_sha": "062bac5d4898e3e33e23efede02336d7028b8c0e",
+    "source_ci": 43963022017,
+    "source_ci_result": "SUCCESS",
+    "implementation": "ops/queen/s9/s9-s1-verified-result-ingress.mjs",
+    "source_only_result": "PASS safety and 7 negative/positive tests with injected trust adapters, no S1 loop reconstructed",
+    "production_runtime_wired": false,
+    "production_neon_cas_wired": false,
+    "production_live_failover_certified": false,
+    "exact_next_steps": [
+      "Complete trusted Github and Neon evidence adapters in existing S1 ingress, with cryptographically authenticated Owner mission and signed provider run proof",
+      "Implement atomic source-locked Neon receipt finalization authorized for existing mission only",
+      "Approve one exact HIVE+relay S1 integration and audited production release with fresh authenticated Owner OIDC",
+      "Verify independent real live receipt and replay denial, quarantine unknown outcomes, no School learning"
+    ]
+  },
+  "s96": {
+    "independent_latest_ci": 43963827087,
+    "conclusion": "success",
+    "outcome": "BOUNDARY_GUARDS_PASS_GLOBAL_EXIT_DENY",
+    "earlier_post_family_live_ci": 43920560977,
+    "no_prod_change_this_turn": true,
+    "full_S9_certified": false
+  },
+  "forbidden": {
+    "no_new_S1": true,
+    "no_new_S2": true,
+    "no_unapproved_merge": true,
+    "no_product_deploy": true,
+    "no_unattended_uncertain_provider_retry": true,
+    "no_School_training": true,
+    "no_paid_fallback": true,
+    "four_DENY_project_repos_unchanged": true,
+    "no_reuse_of_consumed_owner_signatures": true
+  },
+  "owner_next_action": {
+    "workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-pr874-merge-owner-attestation.yml",
+    "branch": "main",
+    "source_sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
+    "exact_head": "a0620f465576b29381f5f6c3d076ab1f7c786cea",
+    "choice": "merge_pr874_into_agent_bootstrap_only_leave_main_unchanged",
+    "checkbox": "approve_family_pr874_merge_to_authoritative_branch",
+    "purpose": "Permit one separately verified manual merge of only Family test file into authoritative agent/bootstrap, not main",
+    "no_other_approval_implied": true
+  }
+}
