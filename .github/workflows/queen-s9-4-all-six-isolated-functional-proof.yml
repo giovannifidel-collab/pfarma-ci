@@ -77,11 +77,11 @@ jobs:
               lines[a[0]:a[1]+1]=[
                 '// Archived legacy recovery does not belong on canonical backup surface.',
                 'assert.match(backupPage, /Backup locale legacy ritirato/);',
-                'assert.ok(backupPage.includes(\\'href="/"\\'));',
+                'assert.ok(backupPage.includes(\'href="/"\'));',
                 'assert.match(backupPage, /libreria durable account-scoped/);',
-                'assert.ok(!backupPage.includes(\\'href="/persistence-recovery.html"\\'));'
+                'assert.ok(!backupPage.includes(\'href="/persistence-recovery.html"\'));'
               ]
-              p.write_text('\\n'.join(lines)+'\\n')
+              p.write_text('\n'.join(lines)+'\n')
               PY
               test "$(git diff --name-only)" = "tests/persistence-recovery.test.mjs"
               node --test tests/canonical-product-surface.test.mjs tests/persistence-recovery.test.mjs
