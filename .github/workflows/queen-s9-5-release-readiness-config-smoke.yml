@@ -55,8 +55,16 @@ jobs:
           gh api repos/giovannifidel-collab/hive-alveare/branches/main | jq -e '.commit.sha=="6d20e61a023748bff36175f1f643c9f5781b3b9f"' >/dev/null
           gh api repos/giovannifidel-collab/hive-alveare/pulls/96 | jq -e '.state=="open" and .draft==true and .head.sha=="843e2a0dd9abff8a86c426c2d8ba9090c948e80c"' >/dev/null
           gh api repos/giovannifidel-collab/pfarma-ci/pulls/1295 | jq -e '.state=="open" and .draft==true and .head.sha=="4d7d515e121537c9d9838f21ccfd72d5f0206493"' >/dev/null
-          test -n "$HIVE_RUNTIME_TOKEN_EXISTS_IN_RELAY"
-          test -n "$HIVE_BASE_EXISTS_IN_RELAY"
+          if test -n "$HIVE_RUNTIME_TOKEN_EXISTS_IN_RELAY"; then
+            echo S9_5_RELAY_RUNTIME_BEARER_CONFIGURED=true
+          else
+            echo S9_5_RELAY_RUNTIME_BEARER_CONFIGURED=false
+          fi
+          if test -n "$HIVE_BASE_EXISTS_IN_RELAY"; then
+            echo S9_5_RELAY_HIVE_BASE_URL_CONFIGURED=true
+          else
+            echo S9_5_RELAY_HIVE_BASE_URL_CONFIGURED=false
+          fi
           echo S9_5_RELAY_GH_TOKEN_AND_SOURCE_CANDIDATES=PASS
           echo S9_5_PRODUCTION_MUTATIONS=0
           echo S9_5_S9_GLOBAL_EXIT_NOT_YET_CERTIFIED=TRUE
