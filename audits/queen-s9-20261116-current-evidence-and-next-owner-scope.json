@@ -1,0 +1,92 @@
+{
+  "schema": "queen.s9.20261116.truthful-pre-exit.v1",
+  "checked_at": "2026-11-16T17:26:00Z",
+  "authority": {
+    "repo": "giovannifidel-collab/hive-alveare",
+    "branch": "main",
+    "exact_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
+    "relay_repo": "giovannifidel-collab/pfarma-ci",
+    "relay_pointer_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f"
+  },
+  "certified": {
+    "s91": "PASS live readonly S2-S1",
+    "s92": "PASS durable Cloudflare production Git-connected PR #95",
+    "s93": "PASS single exact Owner-signed HIVE continuation",
+    "s94": "PASS selected exact source tests on six independently observed project repos (CI 43914184651), plus prior six source-locked docs-only draft PRs",
+    "s95": "PASS new event-trigger automatic CAS against existing verified historical provider receipt in isolated Neon test schema; forged receipt and replay rejected",
+    "s96": "PASS independent live scope guard CI 43918260192, global EXIT not certified"
+  },
+  "s94": {
+    "functional_ci_run_id": 43914184651,
+    "tested_count": 6,
+    "family_test_fix": "Applied only to disposable CI checkout; no Family source repository mutation",
+    "family_repo": "giovannifidel-collab/family-cloud",
+    "family_source_ref": "agent/bootstrap-family-cloud",
+    "family_exact_source_sha": "17b242eca13d7c73607e0bc52c64146750020cb7",
+    "family_main_sha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
+    "family_main_vs_authoritative_branch_divergence": {
+      "ahead_of_main": 1769,
+      "behind_main": 19
+    },
+    "family_owner_gate_preflight_ci": 43917186701,
+    "family_owner_signature_available": false,
+    "family_owner_gate_workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-one-test-owner-attestation.yml",
+    "proposed_mutation": "One draft PR, only tests/persistence-recovery.test.mjs, on source-locked agent/bootstrap-family-cloud, never main, no branch reconciliation",
+    "prior_six_one_doc_draft_prs_unmerged": true,
+    "real_product_autonomy_certified": false,
+    "four_denied_projects_no_new_mutations": true
+  },
+  "s95": {
+    "initial_actual_fault_ci": 43383707152,
+    "historical_independently_verified_recovery_ci": 43388823023,
+    "isolated_project": "proud-night-33193396",
+    "isolated_branch": "br-odd-dream-bflat60i",
+    "database": "queen_s9_preview",
+    "schema": "queen_s95_receipt_test",
+    "trigger": "on_receipt_ready",
+    "scenario": "Existing independently verified Owner-approved historical receipt is inserted into isolated Neon; trigger finalizes one test claim automatically via DB-side exact CAS",
+    "valid_test_mission_id": "46ae410e-a27b-4511-bc83-f846d203e126",
+    "valid_trigger_complete": true,
+    "applied_count": 1,
+    "incoming_receipts_accepted": 1,
+    "invalid_test_mission_id": "bd36d7bc-684d-4e1e-afec-4b21678a7431",
+    "invalid_receipt_rejected": true,
+    "invalid_test_mission_remains_inflight": true,
+    "duplicate_receipt_rejected": true,
+    "original_ambiguous_operation_remains_quarantined": true,
+    "original_ambiguous_operation_retries": 0,
+    "new_provider_dispatches": 0,
+    "prod_db_changes": false,
+    "s1_event_loop_unmodified": true,
+    "production_unattended_recovery_certified": false,
+    "detail": "audits/queen-s9-5-isolated-event-driven-cas-proof-20261116.json"
+  },
+  "s96": {
+    "independent_latest_ci": 43918260192,
+    "status": "SCOPED_EVIDENCE_COHERENCE_PASS",
+    "global_autonomy_certified": false
+  },
+  "gate_requirements": [
+    "Owner-authenticated branch-specific Family one-test PR grant; project code/production merge still separate",
+    "Family Cloud branch authority reconciliation after explicit Owner decision, not silent merge of divergent branch",
+    "S9.5 signed, source-locked production integration of trusted receipt verifier plus Neon CAS into EXISTING S1 Event Loop, with live failure/replay proof",
+    "S9.6 final independent E2E of actually authorized productive behaviors"
+  ],
+  "prohibited": [
+    "No reuse of expired or consumed OIDC receipts",
+    "No automatic replay of uncertain provider",
+    "No automatic merge/deploy or cross-project mutation",
+    "No School training or paid fallback",
+    "No inferred authority for four DENY repos",
+    "No new S1/S2 parallel architectures"
+  ],
+  "owner_user_action": {
+    "workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-one-test-owner-attestation.yml",
+    "branch": "main",
+    "checkbox": "approve_s9_4_family_one_test_patch",
+    "defaults_preserve": true,
+    "permission": "one test-only Family branch draft PR, no deployment or branch merge"
+  },
+  "next_source_project_action": "After fresh Owner OIDC receipt, verify signature/run/expiry, register single SHA-locked mission in trusted Neon, create one test-only draft PR on Family source branch, independently verify change and stop before merge/deploy.",
+  "full_s9_certified": false
+}
