@@ -1,6 +1,6 @@
 {
-  "schema": "queen.s9.resume-checkpoint.v12",
-  "as_of_date": "2026-11-16T21:49:48.452Z",
+  "schema": "queen.s9.resume-checkpoint.v13",
+  "as_of_date": "2026-11-16T22:03:25.146Z",
   "source_authority": {
     "private_repository": "giovannifidel-collab/hive-alveare",
     "main_sha": "6d20e61a023748bff36175f1f643c9f5781b3b9f",
@@ -105,16 +105,16 @@
   "pending": [
     {
       "gate": "S9.4",
-      "blocker": "Family test-only PR874 OIDC draft proof PASS and independent live acceptance PASS. Separate exact Owner merge attestation workflow prepared, smoke CI #43963430195 PASS; not yet signed. Merge may target only agent/bootstrap-family-cloud, not divergent default main; no general project code mutation permission.",
+      "blocker": "Family PR874 one test-only correction integrated solely into authoritative agent/bootstrap-family-cloud, Owner OIDC CI #43965496615 and independent tests #43966019715 PASS, Neon event #1268. Default main remains divergent and unchanged. This does not grant automated code-writing/product deployment authority across six repos; four DENY unaffected.",
       "next_required_scope": "Each product must have an exact path-limited project execution + functional acceptance mission, a fresh Owner-authenticated CI signature and distinct merge/deploy gate. Four DENY repositories require their own separate owner grant. Do not silently broaden this consumed six-docs authorization."
     },
     {
       "gate": "S9.5",
-      "blocker": "New source-only existing-S1 receipt subtype guard draft PR96 CI #43963022017 PASS with replay/School suppression tests; production trusted GitHub+Neon verification adapters, atomic CAS and S1 runtime integration NOT YET WIRED or deployed; original isolated test cannot certify this."
+      "blocker": "S9.5 source draft PR96 tests PASS, but real S1 relay workflow pins legacy private source SHA 73778e4d040e6ae361401003441f6a9be2c793f5, unlike HIVE authoritative main 6d20e61a023748bff36175f1f643c9f5781b3b9f. Existing verifier-result routes to School; must intercept S9.5 subtype before router. Independently trusted GitHub/provider evidence and production Neon atomic CAS not yet wired; isolated Neon event trigger cannot certify live failure recovery."
     },
     {
       "gate": "S9.6",
-      "blocker": "Fresh independent bounded source/Owner/live default-deny CI #43963827087 PASS; global S9 full autonomy NOT CERTIFIED pending actual authorized Family merge and real trusted S1 recovery E2E."
+      "blocker": "Independent HIVE production and Family PR874 postmerge CI PASS. Full global S9 exit remains denied pending S9.5 live integrated no-redispatch recovery and independently proven authorized recurring cross-project work."
     },
     {
       "gate": "S10",
@@ -144,9 +144,10 @@
     "audits/queen-s9-5-isolated-event-driven-cas-proof-20261116.json",
     "audits/queen-s9-20261116-current-evidence-and-next-owner-scope.json",
     "audits/queen-s9-4-family-owner-pr874-live-independent-20261116.json",
-    "audits/queen-s9-operational-v12-after-family-and-s95-source-20261116.json"
+    "audits/queen-s9-operational-v12-after-family-and-s95-source-20261116.json",
+    "audits/queen-s9-4-family-pr874-owner-manual-merge-certified-20261116.json"
   ],
-  "user_action_required": "Fresh Owner-authenticated manual workflow on GitHub for Family PR874 exact one-merge authorization: https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-pr874-merge-owner-attestation.yml ; main; all SHA defaults unchanged; branch disposition merge_pr874_into_agent_bootstrap_only_leave_main_unchanged; check approve_family_pr874_merge_to_authoritative_branch. Separate future Owner signature for S9.5 HIVE/S1 production integration only after source candidate includes trusted GitHub/Neon adapters and atomic production CAS. Previous Owner attestation consumed; do not reuse.",
+  "user_action_required": "NONE for Family PR874 merge: signed Owner run #43965496615 consumed. Next S9.5 engineering: prepare actual trusted receipt verifier, production Neon CAS and S1 relay source pin+ingress hook on exact candidate. Require fresh Owner OIDC for the specific release after CI/read-only preflight and rollback. Do not reuse old Owner signatures, rebuild S1/S2, auto-retry unknown provider outcomes or promote School training.",
   "new_source_candidates": [
     {
       "stage": "S9.5",
@@ -237,14 +238,25 @@
     "default_main_sha": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d"
   },
   "family_pr874_manual_merge_owner_signer": {
-    "status": "READY_UNTRIGGERED",
+    "status": "SIGNED_ONE_MANUAL_MERGE_INDEPENDENTLY_VERIFIED_CONSUMED",
     "workflow": "https://github.com/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s9-4-family-pr874-merge-owner-attestation.yml",
-    "independent_preflight_ci": 43963430195,
+    "owner_ci_run_id": 43965496615,
+    "owner_mission_id": "cd7f1493-542b-4715-918b-f853f2d43048",
+    "owner_receipt_sha256": "545d917893c07580d12754d443d1cc75c5b3151d842bd7d9aeaec11ceaaba67e",
     "family_pr": 874,
-    "exact_head_sha": "a0620f465576b29381f5f6c3d076ab1f7c786cea",
-    "merge_target": "agent/bootstrap-family-cloud",
-    "default_main_merging_allowed": false,
-    "fresh_owner_signature_received": false
+    "head_sha": "a0620f465576b29381f5f6c3d076ab1f7c786cea",
+    "target_ref": "agent/bootstrap-family-cloud",
+    "target_merged_sha": "f9edfc48dc48f76264d8c587aed765d950b18d81",
+    "default_main_sha_unchanged": "b4e796f0202fd1e6ae89029674d69210e9bbbc8d",
+    "changed_files": [
+      "tests/persistence-recovery.test.mjs"
+    ],
+    "independent_postmerge_ci_run_id": 43966019715,
+    "native_family_release_gate_ci_run_id": 43965872580,
+    "neon_event_id": 1268,
+    "owner_grant_consumed": true,
+    "production_deploy_authorized": false,
+    "no_generalized_project_execution_authority": true
   },
   "s9_5_existing_s1_source_candidate": {
     "pr": 96,
