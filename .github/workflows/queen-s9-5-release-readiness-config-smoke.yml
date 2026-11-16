@@ -1,0 +1,62 @@
+name: Queen S9.5 Cloudflare & Relay Credential Names Read-Only Preflight
+on:
+  push:
+    branches: [audit/s9-access-policy-owner-token-20261111]
+    paths: [.github/workflows/queen-s9-5-release-readiness-config-smoke.yml]
+permissions: {contents: read}
+jobs:
+  configuration-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: pfarma-ci-trusted
+    env:
+      CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      HIVE_RUNTIME_TOKEN_EXISTS_IN_RELAY: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      HIVE_BASE_EXISTS_IN_RELAY: ${{ secrets.HIVE_BASE_URL }}
+    steps:
+      - name: Check read-only Cloudflare production secret NAMES and existing release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_TOKEN"
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error
+          base='https://api.cloudflare.com/client/v4'
+          def get(route):
+              req=urllib.request.Request(base+route,headers={'Authorization':'Bearer '+os.environ['CLOUDFLARE_TOKEN']})
+              try:
+                  with urllib.request.urlopen(req,timeout=23) as resp:return json.load(resp)
+              except urllib.error.HTTPError as exc: raise RuntimeError('CF_API_'+str(exc.code))
+          accounts=get('/accounts?per_page=50')
+          assert accounts.get('success')
+          found=[]
+          for item in accounts.get('result',[]):
+              id=item.get('id','')
+              try: obj=get('/accounts/'+id+'/pages/projects/hive-alveare')
+              except Exception: continue
+              if obj.get('success') and obj.get('result',{}).get('name')=='hive-alveare':
+                  found.append(obj['result'])
+          assert len(found)==1,'ONE_EXACT_CLOUDFLARE_PROJECT_REQUIRED'
+          p=found[0]
+          cfg=(p.get('deployment_configs') or {}).get('production') or {}
+          keys=(cfg.get('env_vars') or {}).keys()
+          source=(p.get('source') or {}).get('config') or {}
+          assert source.get('repo_name')=='hive-alveare' and source.get('production_branch')=='main'
+          for name in ['HIVE_DATA_API_URL','HIVE_RUNTIME_BEARER_TOKEN']:
+              print('S9_5_CLOUDFLARE_PRODUCTION_'+name+'_PRESENT='+str(name in keys).lower())
+          print('S9_5_CLOUDFLARE_GIT_CONNECTED_SOURCE_VALID=PASS')
+          print('S9_5_CLOUDFLARE_PRODUCTION_SECRET_VALUES=NEVER_LOGGED')
+          PY
+      - name: Read relay workflow dependency list, not secret values
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/hive-alveare/branches/main | jq -e '.commit.sha=="6d20e61a023748bff36175f1f643c9f5781b3b9f"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/96 | jq -e '.state=="open" and .draft==true and .head.sha=="843e2a0dd9abff8a86c426c2d8ba9090c948e80c"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1295 | jq -e '.state=="open" and .draft==true and .head.sha=="4d7d515e121537c9d9838f21ccfd72d5f0206493"' >/dev/null
+          test -n "$HIVE_RUNTIME_TOKEN_EXISTS_IN_RELAY"
+          test -n "$HIVE_BASE_EXISTS_IN_RELAY"
+          echo S9_5_RELAY_GH_TOKEN_AND_SOURCE_CANDIDATES=PASS
+          echo S9_5_PRODUCTION_MUTATIONS=0
+          echo S9_5_S9_GLOBAL_EXIT_NOT_YET_CERTIFIED=TRUE
