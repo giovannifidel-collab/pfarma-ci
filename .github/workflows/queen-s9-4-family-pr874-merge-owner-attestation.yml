@@ -1,5 +1,8 @@
-name: Queen S9.4 Family PR874 Exact Test-Only Merge Owner Attestation (no deploy)
+name: S9.4 Family PR874 - Owner merge approval
 on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/queen-s9-4-family-pr874-merge-owner-attestation.yml]
   workflow_dispatch:
     inputs:
       hive_source_sha:
@@ -42,6 +45,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   owner-attests-family-branch-only:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 5
