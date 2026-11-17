@@ -37,6 +37,17 @@ jobs:
           test "$SHA" = "6d20e61a023748bff36175f1f643c9f5781b3b9f"
           echo "S95_READONLY_SOURCE_POINTER=PASS"
           echo "S95_READONLY_NO_WRITES=TRUE"
+      - name: Verify trusted token can access GitHub environment public key (GET ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          if gh api repos/giovannifidel-collab/pfarma-ci/environments/pfarma-ci-trusted/secrets/public-key --jq '.key_id' > /dev/null 2>&1; then
+            echo 'S95_GITHUB_ENV_SECRET_KEY_READ=PASS'
+          else
+            echo 'S95_GITHUB_ENV_SECRET_KEY_READ=DENY'
+          fi
+          echo 'S95_GITHUB_SECRET_MUTATIONS=FALSE'
       - name: Existing Cloudflare Pages API and protected Access readback (GET ONLY)
         shell: bash
         run: |
