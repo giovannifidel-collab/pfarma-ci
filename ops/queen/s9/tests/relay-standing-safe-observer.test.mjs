@@ -82,6 +82,7 @@ test('live signed scope is verified before world observation; no dispatch or raw
  assert.equal(r.decision,'STANDING_WORLD_OBSERVED_READ_ONLY');
  assert.match(r.world_digest,/^[a-f0-9]{64}$/);
  assert.equal(r.grant_id,grant.grant_id);
+ assert.equal(r.mission_id,mission);
  for(const field of ['can_dispatch','can_retry','can_write','can_train_school','paid_fallback'])
   assert.equal(r[field],false);
  assert.equal(JSON.stringify(r).includes('snapshot'),false);
