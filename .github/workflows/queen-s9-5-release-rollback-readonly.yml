@@ -1,0 +1,56 @@
+name: Queen S9.5 independent production rollback availability read-only
+on:
+  push:
+    branches: [audit/s9-5-cloudflare-api-readonly-20261117]
+    paths: [.github/workflows/queen-s9-5-release-rollback-readonly.yml]
+permissions: {contents: read}
+jobs:
+  exact-production-rollback-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: pfarma-ci-trusted
+    env:
+      CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Verify actual old successful deployment still available for rollback (GET only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,re,base64,subprocess
+          cf=os.getenv('CF_PRIMARY') or os.getenv('CF_SECONDARY')
+          assert cf and os.getenv('GH_TOKEN') and os.getenv('CF_ACCESS_CLIENT_ID') and os.getenv('CF_ACCESS_CLIENT_SECRET')
+          assert os.environ['GITHUB_ACTOR']=='giovannifidel-collab'
+          def get(url,token):
+              req=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
+          api='https://api.cloudflare.com/client/v4'
+          ac=get(api+'/accounts?per_page=50',cf);assert ac.get('success')
+          matches=[]
+          for a in ac.get('result') or []:
+              id=a.get('id')
+              if not re.fullmatch('[a-f0-9]{32}',str(id)):continue
+              try:
+                  p=get(api+'/accounts/'+id+'/pages/projects/hive-alveare',cf)
+                  if p.get('success') and p['result'].get('name')=='hive-alveare':matches.append((id,p['result']))
+              except urllib.error.HTTPError:pass
+          assert len(matches)==1,'S95_CF_PROJECT_NOT_UNIQUE'
+          account,p=matches[0]
+          dep=p['canonical_deployment']
+          current=(dep.get('deployment_trigger') or {}).get('metadata',{}).get('commit_hash')
+          assert current=='493d83892f7a2e37ec297b9309b47a4c83ba2e6b','S95_LIVE_RELEASE_SHA_DRIFT'
+          assert (dep.get('latest_stage') or {}).get('status')=='success','S95_LIVE_RELEASE_NOT_SUCCESS'
+          rollback=get(api+'/accounts/'+account+'/pages/projects/hive-alveare/deployments/9b59bf3f-50f1-4810-ad63-fe913a822015',cf)
+          assert rollback.get('success'),'S95_OLD_ROLLBACK_DEPLOYMENT_GET_DENIED'
+          d=rollback['result']
+          assert (d.get('latest_stage') or {}).get('status')=='success','S95_ROLLBACK_DEPLOYMENT_NOT_SUCCESS'
+          assert (d.get('deployment_trigger') or {}).get('metadata',{}).get('commit_hash')=='6d20e61a023748bff36175f1f643c9f5781b3b9f','S95_ROLLBACK_SHA_DRIFT'
+          print('S95_CURRENT_PRODUCTION_DEPLOYMENT=SUCCESS')
+          print('S95_PREVIOUS_DEPLOYMENT_ROLLBACK_ARTIFACT=SUCCESS_AVAILABLE')
+          print('S95_ROLLBACK_CURRENT_BASELINE_NOT_MODIFIED=TRUE')
+          print('S95_NO_PROVIDER_NO_SCHOOL_NO_PROJECT_CHANGE=TRUE')
+          PY
