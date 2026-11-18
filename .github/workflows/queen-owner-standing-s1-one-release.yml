@@ -1,0 +1,273 @@
+name: Queen Owner Exact S1 Standing Read-only Release and One Proof (NO EXTRA PROVIDER)
+on:
+  push:
+    branches: [audit/queen-standing-s1-owner-release-20261118]
+    paths: [.github/workflows/queen-owner-standing-s1-one-release.yml]
+  workflow_dispatch:
+    inputs:
+      approve_exact_pr1299_one_s1_release_and_one_safe_world_observation:
+        type: boolean
+        required: true
+        default: false
+        description: "One exact PR1299 merge + one existing S1 read-only HIVE world observation ($0; no provider, School, product writes, or other project)"
+permissions: {contents: write, actions: read, id-token: write}
+concurrency:
+  group: queen-owner-exact-s1-standing-pr1299-once
+  cancel-in-progress: false
+jobs:
+  prove-sign-and-one-release:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      DISPATCH_TOKEN: ${{ github.token }}
+      OWNER_APPROVE: ${{ inputs.approve_exact_pr1299_one_s1_release_and_one_safe_world_observation }}
+      EXPECTED_PR_HEAD: 023464fb6b45b20b9509c2ad6f505667a60e84a6
+      EXPECTED_PRE_RELEASE_S1_BLOB: 451ade47087bc1e979d8170b927427e92d88c5a1
+      EXPECTED_POST_RELEASE_S1_BLOB: a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+      EXPECTED_HIVE_MAIN: 29bb723e9dba1654ea782d97c3f6517dd20ea6dc
+      POLICY_BLOB: 90f4fb35b8610f7738c79af0019cf1cb2582f746
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+    steps:
+      - name: Exact candidate source and independent CI preflight without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test -n "$GH_TOKEN"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+            test "$GITHUB_REF" = refs/heads/main
+            test "$OWNER_APPROVE" = true
+          else
+            test "$GITHUB_EVENT_NAME" = push
+            test "$GITHUB_REF" = refs/heads/audit/queen-standing-s1-owner-release-20261118
+          fi
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$EXPECTED_HIVE_MAIN"
+          PTR="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$PTR" = "$EXPECTED_HIVE_MAIN"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$EXPECTED_PRE_RELEASE_S1_BLOB"
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1299 |
+            jq -e --arg head "$EXPECTED_PR_HEAD" '.state=="open" and .draft==false and .merged==false and .head.sha==$head and .base.ref=="main"' >/dev/null
+          gh api 'repos/giovannifidel-collab/pfarma-ci/pulls/1299/files?per_page=50' |
+            jq -e 'length==4 and all(.[].filename;
+              .==".github/workflows/queen-s1-event-ingress.yml" or
+              .==".github/workflows/queen-s9-standing-consumer-source-ci.yml" or
+              .=="ops/queen/s9/relay-standing-safe-observer.mjs" or
+              .=="ops/queen/s9/tests/relay-standing-safe-observer.test.mjs")' >/dev/null
+          test "$(gh api 'repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml?ref=audit/queen-standing-single-s1-consumer-20261118' --jq .sha)" = "$EXPECTED_POST_RELEASE_S1_BLOB"
+          for CI in 44311594654 44311600654; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$CI" |
+              jq -e --arg sha "$EXPECTED_PR_HEAD" '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .head_sha==$sha' >/dev/null
+          done
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/ops/queen/s9/OWNER_STANDING_DELEGATION_PROPOSAL.v1.json --jq .sha)" = "$POLICY_BLOB"
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44301260541 |
+            jq -e '.conclusion=="success" and .run_attempt==1' >/dev/null
+          echo 'S1_STANDING_EXACT_SOURCE_OWNER_SCOPE_AND_TWO_CI=PASS'
+          echo 'S1_STANDING_NO_MUTATION_BEFORE_OIDC=TRUE'
+      - name: On source-only push validate embedded signer JavaScript syntax
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api 'repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-owner-standing-s1-one-release.yml?ref=audit/queen-standing-s1-owner-release-20261118' --jq .content | tr -d '\n' | base64 -d > /tmp/s1-standing-owner.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('/tmp/s1-standing-owner.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          a=s.index(marker)+len(marker)
+          b=s.index("\n          JS",a)
+          code="\n".join(x[10:] if x.startswith("          ") else x for x in s[a:b].splitlines())
+          Path('/tmp/s1-standing-owner-signer.mjs').write_text(code+"\n")
+          PY
+          node --check /tmp/s1-standing-owner-signer.mjs
+          echo 'S1_STANDING_OWNER_SIGNER_RSA_JS_SYNTAX=PASS'
+      - name: Independently verify GitHub Owner OIDC RS256 and exact one-source release receipt
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash,randomUUID} from 'node:crypto';
+          import {appendFileSync} from 'node:fs';
+          const e=process.env;
+          const deny=s=>{throw Error('S1_STANDING_OIDC_DENY_'+s)};
+          const audience='hive-queen-standing-l0-exact-s1-pr1299-release-v1';
+          if(e.OWNER_APPROVE!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)deny('NO_MANUAL_APPROVAL_OR_TOKEN');
+          const url=e.ACTIONS_ID_TOKEN_REQUEST_URL+
+            (e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+
+            'audience='+encodeURIComponent(audience);
+          const resp=await fetch(url,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!resp.ok)deny('ISSUER_UNAVAILABLE');
+          const jwt=(await resp.json()).value,parts=jwt?.split('.')||[];
+          if(parts.length!==3)deny('JWT_PARTS');
+          const decode=v=>Buffer.from(v.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-v.length%4)%4),'base64');
+          const header=JSON.parse(decode(parts[0]).toString());
+          const claim=JSON.parse(decode(parts[1]).toString());
+          if(header.alg!=='RS256'||!header.kid||header.jwk||header.jku||header.x5u||header.crit)deny('UNTRUSTED_JWT_HEADER');
+          const expected={
+            iss:'https://token.actions.githubusercontent.com',aud:audience,
+            repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+            repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+            event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',
+            workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-standing-s1-one-release.yml@refs/heads/main',
+            ref:'refs/heads/main',runner_environment:'github-hosted'
+          };
+          for(const [k,v] of Object.entries(expected))if(String(claim[k])!==v)deny('CLAIM_'+k);
+          const now=Date.now();
+          if(claim.sha!==e.GITHUB_SHA||Number(claim.run_id)!==Number(e.GITHUB_RUN_ID)||
+             Number(claim.run_attempt)!==1||!Number.isSafeInteger(claim.exp)||
+             !Number.isSafeInteger(claim.iat)||claim.exp<=claim.iat||
+             claim.exp-claim.iat>900||claim.exp*1000<now||
+             claim.iat*1000>now+30000||now-claim.iat*1000>300000)deny('EXPIRY_OR_RUN');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)deny('JWKS');
+          const keys=(await jwks.json()).keys||[];
+          const key=keys.find(k=>k.kid===header.kid&&k.kty==='RSA'&&k.use==='sig'&&(!k.alg||k.alg==='RS256'));
+          if(!key||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key,format:'jwk'}),decode(parts[2])))deny('INVALID_SIGNATURE');
+          if(e.EXPECTED_PR_HEAD!=='023464fb6b45b20b9509c2ad6f505667a60e84a6'||
+             e.EXPECTED_HIVE_MAIN!=='29bb723e9dba1654ea782d97c3f6517dd20ea6dc'||
+             e.POLICY_BLOB!=='90f4fb35b8610f7738c79af0019cf1cb2582f746')deny('SOURCE_MISMATCH');
+          const receipt={
+            schema:'queen.s9.standing.s1.one-exact-source-release-owner-oidc.v1',
+            mission_id:randomUUID(),owner:'giovannifidel-collab',
+            owner_run_id:Number(e.GITHUB_RUN_ID),
+            relay_candidate_pr:1299,relay_candidate_head:e.EXPECTED_PR_HEAD,
+            hive_main_sha:e.EXPECTED_HIVE_MAIN,policy_blob_sha:e.POLICY_BLOB,
+            exact_action:'world.observe',project:'hive',level:0,
+            source_merges_max:1,existing_s1_readonly_actions_max:1,
+            new_event_loops:0,product_writes:false,school_training:false,
+            model_provider_dispatches:0,paid_fallback:false,additional_cost_usd:0,
+            no_cloudflare_deploy:true,no_neon_migration:true,no_credential_mutation:true,
+            issued_at:new Date(now).toISOString(),expires_at:new Date(now+15*60*1000).toISOString()
+          };
+          const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          appendFileSync(e.GITHUB_ENV,'S1_OWNER_SIGNED_APPROVAL=TRUE\n');
+          appendFileSync(e.GITHUB_ENV,'S1_OWNER_EXPIRES_UNIX='+String(Math.floor(now/1000)+900)+'\n');
+          console.log('S1_STANDING_OWNER_OIDC_RS256_EXACT_PR1299=PASS');
+          console.log('S1_STANDING_OWNER_SIGNED_RECEIPT='+JSON.stringify({...receipt,evidence_sha256:digest}));
+          console.log('S1_STANDING_SIGNER_NO_WRITES=TRUE');
+          JS
+      - name: Release exactly one approved PR1299 source merge (no HIVE or Cloudflare source edits)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S1_OWNER_SIGNED_APPROVAL" = TRUE
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(date -u +%s)" -lt "$S1_OWNER_EXPIRES_UNIX"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$EXPECTED_HIVE_MAIN"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$EXPECTED_PRE_RELEASE_S1_BLOB"
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1299 |
+            jq -e --arg h "$EXPECTED_PR_HEAD" '.state=="open" and .merged==false and .draft==false and .head.sha==$h' > /dev/null
+          result="$(gh api --method PUT repos/giovannifidel-collab/pfarma-ci/pulls/1299/merge \
+            -f sha="$EXPECTED_PR_HEAD" -f merge_method=merge \
+            -f commit_title="release(s1): owner-signed standing HIVE safe World observation in existing loop" \
+            -f commit_message="Exact OIDC from this manual Owner run; one PR1299 source release, no additional provider, School, cloudflare deployment or project writes.")"
+          echo "$result" | jq -e '.merged==true and (.sha|type=="string")' >/dev/null
+          sha="$(echo "$result" | jq -r '.sha')"
+          echo "S1_RELEASE_SHA=$sha" >> "$GITHUB_ENV"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$EXPECTED_POST_RELEASE_S1_BLOB"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$EXPECTED_HIVE_MAIN"
+          echo 'S1_STANDING_EXACT_ONE_SIGNED_PR1299_MERGE=PASS'
+      - name: Check live signed standing grant from protected Cloudflare BEFORE original safe event
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S1_OWNER_SIGNED_APPROVAL" = TRUE
+          test "$(date -u +%s)" -lt "$S1_OWNER_EXPIRES_UNIX"
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET" && test -n "$HIVE_RUNTIME_BEARER_TOKEN"
+          CODE="$(curl -sS --max-time 22 -o "$RUNNER_TEMP/standing-owner-gate" -w '%{http_code}' \
+            -X POST 'https://hive-alveare.pages.dev/api/queen-standing-scope' \
+            -H "Cf-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "Cf-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN" -H 'Content-Type: application/json' \
+            --data-binary '{"policy_blob_sha":"90f4fb35b8610f7738c79af0019cf1cb2582f746","project_id":"hive","level":0,"action":"world.observe"}')"
+          test "$CODE" = 200
+          jq -e '.decision=="ALLOW_STANDING_HIVE_CERTIFIED_SAFE" and .allowed==true and
+             .can_write_project==false and .can_deploy==false and .can_pay==false and
+             .can_auto_merge==false and .can_train_school==false' "$RUNNER_TEMP/standing-owner-gate" >/dev/null
+          echo 'S1_STANDING_ACTIVE_OWNER_GRANT_PRE_DISPATCH=PASS'
+      - name: Send ONE pre-authorized pure read-only World observation into existing S1
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S1_OWNER_SIGNED_APPROVAL" = TRUE
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(date -u +%s)" -lt "$S1_OWNER_EXPIRES_UNIX"
+          test -n "$DISPATCH_TOKEN"
+          MISSION="$(python3 -c 'import uuid;print(uuid.uuid4())')"
+          echo "S1_OBSERVATION_MISSION_ID=$MISSION" >> "$GITHUB_ENV"
+          echo "S1_DISPATCH_START_UTC=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+          PAYLOAD="$(jq -nc --arg mission "$MISSION" --arg sha "$EXPECTED_HIVE_MAIN" --arg policy "$POLICY_BLOB" '{
+            event_type:"queen-cycle",
+            client_payload:{
+              schema:"hive.event.v1",correlation_id:$mission,hop:0,max_hops:8,
+              data:{
+                kind:"queen.s9.standing.safe_observation.v1",
+                mission_id:$mission,source_sha:$sha,policy_blob_sha:$policy,
+                project_id:"hive",level:0,action:"world.observe",
+                paid_fallback:false,project_writes:false,
+                auto_merge:false,auto_deploy:false,can_train_school:false,
+                no_new_provider_dispatch:true
+              }
+            }
+          }')"
+          # One POST only. In uncertain delivery outcome DO NOT retry.
+          STATUS="$(curl -sS --max-time 25 -o "$RUNNER_TEMP/s1-safe-observation-dispatch" -w '%{http_code}' \
+             -X POST 'https://api.github.com/repos/giovannifidel-collab/pfarma-ci/dispatches' \
+             -H "Authorization: Bearer $DISPATCH_TOKEN" \
+             -H 'Accept: application/vnd.github+json' -H 'Content-Type: application/json' \
+             --data-binary "$PAYLOAD")"
+          if [ "$STATUS" != 204 ]; then
+            echo "S1_STANDING_UNCERTAIN_DISPATCH_HTTP=$STATUS"
+            echo 'S1_STANDING_DO_NOT_REPLAY_OR_RETRY=TRUE'
+            exit 38
+          fi
+          echo "S1_STANDING_ONE_EVENT_DISPATCH_HTTP=204"
+          echo "S1_STANDING_ONE_MISSION=$MISSION"
+          echo 'S1_STANDING_NO_REDISPATCH_BY_SIGNER=TRUE'
+      - name: Independently verify exact completed S1 observation mission with no provider dispatch
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S1_OWNER_SIGNED_APPROVAL" = TRUE
+          test -n "$S1_OBSERVATION_MISSION_ID"
+          found=''
+          for n in $(seq 1 35); do
+            runs="$(gh api 'repos/giovannifidel-collab/pfarma-ci/actions/workflows/queen-s1-event-ingress.yml/runs?event=repository_dispatch&per_page=40')"
+            candidates="$(echo "$runs" | jq -r --arg sha "$S1_RELEASE_SHA" --arg since "$S1_DISPATCH_START_UTC" '.workflow_runs[] |
+                select(.head_sha==$sha and .created_at >= $since and .status=="completed") | .id')"
+            count=0
+            for id in $candidates; do
+              LOG="$(gh run view "$id" --repo giovannifidel-collab/pfarma-ci --log 2>/dev/null || true)"
+              if grep -Fq "STANDING_MISSION_ID=$S1_OBSERVATION_MISSION_ID" <<< "$LOG"; then
+                count=$((count+1))
+                if grep -Fq 'STANDING_CANONICAL_S1_DECISION=STANDING_WORLD_OBSERVED_READ_ONLY' <<< "$LOG" &&
+                   grep -Fq 'STANDING_NO_DURABLE_ACTION_NO_NEXT_DISPATCH_NO_SCHOOL=TRUE' <<< "$LOG" &&
+                   grep -Fq 'STANDING_CANONICAL_WORLD_SHA256=' <<< "$LOG" &&
+                   gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$id" |
+                     jq -e '.conclusion=="success" and .run_attempt==1 and .event=="repository_dispatch"' >/dev/null; then
+                  found="$id"
+                else
+                  echo 'S1_STANDING_MISSION_MATCHED_BUT_NOT_SUCCESSFUL_NO_RETRY'; exit 41
+                fi
+              fi
+            done
+            if [ "$count" -gt 1 ]; then echo 'S1_STANDING_DUPLICATE_MISSION_RUN_DENY'; exit 42; fi
+            if [ "$count" -eq 1 ] && [ -n "$found" ]; then
+              echo "S1_STANDING_ORIGINAL_CANONICAL_S1_RUN_ID=$found"
+              echo 'S1_STANDING_LIVE_READ_ONLY_OWNER_GRANT_E2E=PASS'
+              echo 'S1_STANDING_NO_PROVIDER_NO_SCHOOL_NO_NEW_EVENT_LOOP=TRUE'
+              exit 0
+            fi
+            sleep 7
+          done
+          echo 'S1_STANDING_OUTCOME_UNKNOWN_NO_REDISPATCH'
+          exit 43
