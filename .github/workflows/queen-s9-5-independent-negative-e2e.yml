@@ -26,7 +26,7 @@ jobs:
           PTR="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
           test "$HIVE" = "$PTR"
           test -n "$HIVE_RUNTIME_BEARER_TOKEN"
-          gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .content | tr -d '\n' | base64 -d | grep -q 'S9.5 pre-router receipt-only'
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .content | tr -d '\n' | base64 -d | grep 'S9.5 pre-router receipt-only' >/dev/null
           echo 'S95_CANONICAL_SINGLE_S1_INTEGRATED=PASS'
       - name: Protected Pages negative and replay E2E; all calls no provider and no School
         shell: bash
