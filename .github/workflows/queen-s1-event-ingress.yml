@@ -147,8 +147,24 @@ jobs:
           # For S9.5 receipts, the script outputs handled=true only after
           # exact verified CAS or already-completed observe-only. Any error
           # fails the job BEFORE canonical verification -> School routing.
-      - name: Route through exact private canonical event router
+      - name: S9 standing signed Owner HIVE-only safe observation before canonical router
         if: steps.s95.outputs.handled != 'true'
+        id: standing
+        shell: bash
+        env:
+          HIVE_EVENT_JSON: ${{ steps.event.outputs.json }}
+          HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+          HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          # An exact signed HIVE standing L0 event is handled here.
+          # Other events retain their existing canonical S1 path.
+          # A missing/revoked grant fails BEFORE routing or any durable action.
+          node ops/queen/s9/relay-standing-safe-observer.mjs
+      - name: Route through exact private canonical event router
+        if: steps.s95.outputs.handled != 'true' && steps.standing.outputs.handled != 'true'
         id: route
         shell: bash
         env:
@@ -165,7 +181,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Enforce router-only boundary
-        if: steps.s95.outputs.handled != 'true'
+        if: steps.s95.outputs.handled != 'true' && steps.standing.outputs.handled != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -183,7 +199,7 @@ jobs:
           ROUTE: ${{ steps.route.outputs.json }}
 
       - name: Execute durable action only after repository_dispatch
-        if: github.event_name == 'repository_dispatch' && steps.s95.outputs.handled != 'true'
+        if: github.event_name == 'repository_dispatch' && steps.s95.outputs.handled != 'true' && steps.standing.outputs.handled != 'true'
         id: durable
         shell: bash
         env:
@@ -235,7 +251,7 @@ jobs:
           echo "complete=true" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch next event only after completed action
-        if: github.event_name == 'repository_dispatch' && steps.s95.outputs.handled != 'true' && steps.durable.outputs.complete == 'true'
+        if: github.event_name == 'repository_dispatch' && steps.s95.outputs.handled != 'true' && steps.standing.outputs.handled != 'true' && steps.durable.outputs.complete == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
