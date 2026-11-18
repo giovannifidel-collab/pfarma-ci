@@ -1,0 +1,115 @@
+name: Queen S9 Standing HIVE L0-2 exact active private Neon Cloudflare E2E (GET/read-only)
+on:
+  push:
+    branches: [audit/s9-standing-owner-signer-20261118]
+    paths: [.github/workflows/queen-s9-standing-live-access-grant-e2e-once.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s9-standing-live-access-grant-e2e-20261118
+  cancel-in-progress: false
+jobs:
+  independent-prod-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+    steps:
+      - name: Owner signed CI source + Cloudflare real production exact deploy and protected grant allow/deny
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,base64,re,subprocess,time
+          assert os.environ['GITHUB_ACTOR']=='giovannifidel-collab' and os.environ['GITHUB_RUN_ATTEMPT']=='1','STANDING_PROOF_IDENTITY_DENY'
+          gh=os.environ.get('GH_TOKEN');cf=os.environ.get('CF_PRIMARY') or os.environ.get('CF_SECONDARY')
+          assert gh and cf and os.environ.get('CF_ACCESS_CLIENT_ID') and os.environ.get('CF_ACCESS_CLIENT_SECRET') and os.environ.get('HIVE_RUNTIME_BEARER_TOKEN'),'STANDING_PROOF_CREDS_MISSING'
+          source='29bb723e9dba1654ea782d97c3f6517dd20ea6dc'
+          policy='90f4fb35b8610f7738c79af0019cf1cb2582f746'
+          def github(path):
+              req=urllib.request.Request('https://api.github.com/repos/giovannifidel-collab/'+path,headers={'Authorization':'Bearer '+gh,'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=22) as r:return json.load(r)
+          assert github('hive-alveare/branches/main')['commit']['sha']==source,'STANDING_HIVE_SOURCE_DRIFT'
+          ptr=github('pfarma-ci/contents/hive-source-ref.txt')
+          assert base64.b64decode(ptr['content']).decode().strip()==source,'STANDING_RELAY_POINTER_DRIFT'
+          att=github('pfarma-ci/actions/runs/44300225140')
+          assert att['conclusion']=='success' and att['event']=='workflow_dispatch' and att['run_attempt']==1 and att['actor']['login']=='giovannifidel-collab','STANDING_UNVERIFIED_OWNER'
+          def cfapi(path):
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,headers={'Authorization':'Bearer '+cf,'Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
+          accounts=cfapi('/accounts?per_page=50')
+          assert accounts.get('success'),'STANDING_CF_AUTH_DENY'
+          matches=[]
+          for a in accounts.get('result') or []:
+              aid=str(a.get('id') or '')
+              if not re.fullmatch('[a-f0-9]{32}',aid):continue
+              try:
+                  p=cfapi('/accounts/'+aid+'/pages/projects/hive-alveare')
+                  if p.get('success') and (p.get('result') or {}).get('name')=='hive-alveare':matches.append((aid,p['result']))
+              except urllib.error.HTTPError:pass
+          assert len(matches)==1,'STANDING_CF_HIVE_PROJECT_NOT_UNIQUE'
+          account,project=matches[0]
+          src=project.get('source') or {};cfg=src.get('config') or {}
+          assert src.get('type')=='github' and cfg.get('repo_name')=='hive-alveare' and cfg.get('production_branch')=='main','STANDING_CF_PROJECT_SOURCE_DRIFT'
+          deployment=project.get('canonical_deployment') or {}
+          # Pages is Git-connected; source push may still be building. Only accept exact SHA and success.
+          if (deployment.get('deployment_trigger') or {}).get('metadata',{}).get('commit_hash')!=source or (deployment.get('latest_stage') or {}).get('status')!='success':
+              for _ in range(36):
+                  time.sleep(5)
+                  project=cfapi('/accounts/'+account+'/pages/projects/hive-alveare')['result']
+                  deployment=project.get('canonical_deployment') or {}
+                  if (deployment.get('deployment_trigger') or {}).get('metadata',{}).get('commit_hash')==source and (deployment.get('latest_stage') or {}).get('status')=='success':break
+          assert (deployment.get('deployment_trigger') or {}).get('metadata',{}).get('commit_hash')==source and (deployment.get('latest_stage') or {}).get('status')=='success','STANDING_CF_EXACT_RELEASE_NOT_DEPLOYED'
+          env=project.get('deployment_configs') or {}
+          prod=(env.get('production') or {}).get('env_vars') or {}
+          preview=(env.get('preview') or {}).get('env_vars') or {}
+          assert 'HIVE_DATA_API_URL' in prod and 'HIVE_DATA_API_URL' not in preview,'STANDING_PROD_DB_ISOLATION'
+          assert prod.get('HIVE_RUNTIME_BEARER_TOKEN',{}).get('type')=='secret_text' and 'HIVE_RUNTIME_BEARER_TOKEN' not in preview,'STANDING_SECRET_ISOLATION'
+          old=cfapi('/accounts/'+account+'/pages/projects/hive-alveare/deployments/9b59bf3f-50f1-4810-ad63-fe913a822015')
+          assert old.get('success') and (old['result'].get('latest_stage') or {}).get('status')=='success','STANDING_NO_VALID_PREVIOUS_ROLLBACK'
+          print('STANDING_EXACT_HIVE_AND_CLOUDFLARE_RELEASE=PASS')
+          print('STANDING_OLD_SUCCESSFUL_ROLLBACK_AVAILABLE=PASS')
+          access=['-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+                  '-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET']]
+          def call(method,path,body=None,bearer=True):
+              args=['curl','-sS','--max-time','22','-X',method,*access,
+                '-H','Accept: application/json','-H','Content-Type: application/json']
+              if bearer:args+=['-H','Authorization: Bearer '+os.environ['HIVE_RUNTIME_BEARER_TOKEN']]
+              if body is not None:args+=['--data-binary',json.dumps(body)]
+              args+=['-w','\n%{http_code}','https://hive-alveare.pages.dev'+path]
+              r=subprocess.run(args,capture_output=True,text=True,timeout=27)
+              assert r.returncode==0,'STANDING_PROTECTED_NETWORK_UNAVAILABLE'
+              raw,status=r.stdout.rsplit('\n',1)
+              try:data=json.loads(raw)
+              except:data={}
+              return status,data
+          code,health=call('GET','/api/runtime-health')
+          assert code=='200','STANDING_PROD_HEALTH_UNAVAILABLE_'+code
+          path='/api/queen-standing-scope'
+          code,v=call('GET',path)
+          assert code=='405' and v.get('decision')=='METHOD_DENY','STANDING_ENDPOINT_NOT_READY_'+code+':'+str(v.get('decision'))
+          code,v=call('POST',path,{'policy_blob_sha':policy,'project_id':'hive','level':0,'action':'world.observe'},False)
+          assert code=='403' and v.get('decision')=='TRUSTED_RELAY_REQUIRED','STANDING_MISSING_RELAY_BEARER_NOT_DENIED'
+          for level,action in [(0,'world.observe'),(1,'goal.evaluate'),(1,'strategy.analyze'),(1,'verification.read'),(2,'hive.safe-ci-selftest')]:
+              code,v=call('POST',path,{'policy_blob_sha':policy,'project_id':'hive','level':level,'action':action})
+              assert code=='200' and v.get('allowed') is True and v.get('decision')=='ALLOW_STANDING_HIVE_CERTIFIED_SAFE','STANDING_L'+str(level)+'_GRANT_FAIL_'+code+':'+str(v.get('decision'))
+              assert all(v.get(x) is False for x in ('can_write_project','can_deploy','can_pay','can_auto_merge','can_train_school')),'STANDING_ESCALATING_RESPONSE'
+          print('STANDING_PRODUCTION_HIVE_L0_L1_L2_SIGNED_PRIVATE_GRANT=PASS')
+          for body,expected in [
+           ({'policy_blob_sha':policy,'project_id':'pfarma-cloud','level':1,'action':'goal.evaluate'},400),
+           ({'policy_blob_sha':policy,'project_id':'hive','level':3,'action':'hive.safe-ci-selftest'},400),
+           ({'policy_blob_sha':policy,'project_id':'hive','level':2,'action':'secret.rotate'},400),
+           ({'policy_blob_sha':'b'*40,'project_id':'hive','level':1,'action':'goal.evaluate'},403),
+           ({'policy_blob_sha':policy,'project_id':'hive','level':0,'action':'hive.safe-ci-selftest'},400),
+           ({'policy_blob_sha':policy,'project_id':'hive','level':2,'action':'hive.safe-ci-selftest','auto_merge':True},400)
+          ]:
+              code,v=call('POST',path,body)
+              assert code==str(expected) and v.get('allowed') is False,'STANDING_FORBIDDEN_ACTION_ACCEPTED_'+str(expected)+':'+code+':'+str(v.get('decision'))
+          print('STANDING_PROTECTED_NEGATIVE_PROJECT_LEVEL_POLICY_SECRET_AND_MERGE=PASS')
+          print('STANDING_PROD_NO_MUTATIONS_NO_PROVIDER_NO_SCHOOL_NO_PAID_FALLBACK=TRUE')
+          PY
