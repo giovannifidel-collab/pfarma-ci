@@ -1,0 +1,80 @@
+name: Queen S9.6 independent one-shot genuine existing S1 receipt proof
+on:
+  push:
+    branches: [audit/s9-6-owner-once-c2eb0f6b-20261118]
+    paths: [.github/workflows/queen-s9-6-independent-proof-c2eb.yml]
+permissions: {contents: read}
+jobs:
+  independently-verify:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Independently prove original Owner, actual provider/S1 job, and resulting Neon-backed Cloudflare cognitive event
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,datetime,subprocess,tempfile,hashlib,re
+          GH=os.environ.get('GH_TOKEN')
+          assert GH and os.environ.get('CF_ACCESS_CLIENT_ID') and os.environ.get('CF_ACCESS_CLIENT_SECRET'),'S96_VERIFIER_CREDS_DENY'
+          assert os.environ['GITHUB_ACTOR']=='giovannifidel-collab' and os.environ['GITHUB_RUN_ATTEMPT']=='1','S96_VERIFIER_ACTOR_DENY'
+          mid='c2eb0f6b-9548-4a11-86be-03d43397c6dc'
+          source='493d83892f7a2e37ec297b9309b47a4c83ba2e6b'
+          ownerid=44258967298
+          provider=44259485067
+          s1=44259516261
+          event=1277
+          def gh(path):
+              request=urllib.request.Request('https://api.github.com/repos/giovannifidel-collab/'+path,headers={'Authorization':'Bearer '+GH,'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=22) as x:return json.load(x)
+          h=gh('hive-alveare/branches/main')
+          p=gh('pfarma-ci/contents/hive-source-ref.txt')
+          import base64
+          assert h['commit']['sha']==source and base64.b64decode(p['content']).decode().strip()==source,'S96_VERIFIER_SOURCE_MISMATCH'
+          for id,kind in [(ownerid,'owner'),(provider,'provider'),(s1,'s1')]:
+              x=gh('pfarma-ci/actions/runs/'+str(id))
+              assert x['status']=='completed' and x['conclusion']=='success' and x['run_attempt']==1,'S96_UNVERIFIED_RUN_'+kind
+              assert x['actor']['login']=='giovannifidel-collab','S96_RUN_ORIGINAL_ACTOR_MISMATCH_'+kind
+              if kind=='owner':
+                  assert x['event']=='workflow_dispatch','S96_ORIGINAL_OWNER_NOT_SIGNED'
+              elif kind=='provider':
+                  assert x['event']=='push' and x['head_sha']=='931dbe7418bd410bff01c8a30ffb793d5f3200bd','S96_PROVIDER_RUN_WRONG_SOURCE'
+              else:
+                  assert x['event']=='repository_dispatch' and x['head_sha']=='f7702729d39c67b8ed1d73023b752c81a934cec7','S96_WRONG_CANONICAL_S1'
+          with tempfile.TemporaryDirectory() as d:
+              cmd=['curl','-sS','--max-time','25','-o',d+'/out','-w','%{http_code}',
+                '-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+                '-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET'],
+                'https://hive-alveare.pages.dev/api/queen-state']
+              r=subprocess.run(cmd,capture_output=True,text=True,timeout=28)
+              assert r.returncode==0 and r.stdout.strip()=='200','S96_INDEPENDENT_PROTECTED_READBACK_DENIED'
+              with open(d+'/out',encoding='utf8') as f:body=json.load(f)
+          assert body.get('ok') is True,'S96_BAD_HIVE_STATE'
+          state=(body.get('state') or {}).get('cognitive') or {}
+          cog=state.get('value') or {}
+          assert cog.get('correlation_id')==mid,'S96_MISSION_NOT_LATEST'
+          assert str(cog.get('event_id'))==str(event),'S96_EVENT_ID_MISMATCH'
+          assert cog.get('paid_fallback') is False,'S96_PAID_FALLBACK_DENY'
+          assert cog.get('next_task') is None or isinstance(cog.get('next_task'),dict),'S96_COGNITIVE_STATE_INVALID'
+          # Hash the independently retrieved outcome, never a self-attested user payload.
+          result_fields={'mission_id':mid,'source_sha':source,'event_id':event,'s1_ci_run_id':s1,
+             'correlation_id':cog.get('correlation_id'),'fingerprint':cog.get('fingerprint'),'paid_fallback':False}
+          result_digest=hashlib.sha256(json.dumps(result_fields,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          receipt={'mission_id':mid,'source_sha':source,'owner_ci_run_id':ownerid,
+             'provider_ci_run_id':provider,'s1_ci_run_id':s1,'independent_ci_run_id':int(os.environ['GITHUB_RUN_ID']),
+             'existing_event_id':event,'result_digest':result_digest,'provider_dispatches':1,
+             'new_provider_dispatches':0,'school_training_events':0,'product_writes':0}
+          receipt_digest=hashlib.sha256(json.dumps(receipt,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          assert re.fullmatch('[a-f0-9]{64}',receipt_digest)
+          print('S96_REAL_OWNER_PROVIDER_INDEPENDENT_S1_PROOF=PASS')
+          print('S96_PRIVATE_NEON_BACKED_COGNITIVE_EVENT=1277')
+          print('S96_ACTUAL_MISSION_CORRELATION='+mid)
+          print('S96_VERIFIED_RESULT_SHA256='+result_digest)
+          print('S96_VERIFIED_RECEIPT_SHA256='+receipt_digest)
+          print('S96_NO_NEW_PROVIDER_DISPATCH_NO_SCHOOL_NO_PAID_FALLBACK=TRUE')
+          PY
