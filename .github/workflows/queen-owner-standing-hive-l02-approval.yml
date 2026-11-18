@@ -1,0 +1,185 @@
+name: Queen Owner Standing HIVE L0-L2 Exact Signed Approval (NO AUTOMATIC RELEASE)
+on:
+  push:
+    branches: [audit/s9-standing-owner-signer-20261118]
+    paths: [.github/workflows/queen-owner-standing-hive-l02-approval.yml]
+  workflow_dispatch:
+    inputs:
+      approve_standing_hive_l0_l2_and_one_scoped_pr98_release:
+        type: boolean
+        required: true
+        default: false
+        description: "Authorize ONE source merge/release of HIVE PR98; then 365d revocable HIVE-only safe L0-L2; $0, no project writes, no automatic deploy, no secrets"
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: queen-owner-standing-l02-exact-pr98-oidc
+  cancel-in-progress: false
+jobs:
+  authenticate-exact-standing-owner:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      OWNER_APPROVE: ${{ inputs.approve_standing_hive_l0_l2_and_one_scoped_pr98_release }}
+      HIVE_MAIN: 493d83892f7a2e37ec297b9309b47a4c83ba2e6b
+      HIVE_HEAD: b87cb1fabaae61358270ed06c1304f5c79b64a13
+      POLICY_BLOB: 90f4fb35b8610f7738c79af0019cf1cb2582f746
+      MIGRATION_BLOB: 776f5999752535057ee1eb6abb7f764f5f249594
+    steps:
+      - name: Independent exact HIVE scope, unchanged constitution, project gate and CI preflight (NO MUTATION)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+            test "$GITHUB_REF" = refs/heads/main
+            test "$OWNER_APPROVE" = true
+          else
+            test "$GITHUB_EVENT_NAME" = push
+            test "$GITHUB_REF" = refs/heads/audit/s9-standing-owner-signer-20261118
+          fi
+          CURRENT="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          test "$CURRENT" = "$HIVE_MAIN"
+          POINTER="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$POINTER" = "$HIVE_MAIN"
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/98 |
+            jq -e --arg head "$HIVE_HEAD" --arg base "$HIVE_MAIN" '.state=="open" and .draft==true and .merged==false and .head.sha==$head and .base.sha==$base' >/dev/null
+          PREF="governance/queen-standing-owner-delegation-proposal-20261118"
+          test "$(gh api "repos/giovannifidel-collab/hive-alveare/contents/ops/queen/s9/OWNER_STANDING_DELEGATION_PROPOSAL.v1.json?ref=$PREF" --jq .sha)" = "$POLICY_BLOB"
+          test "$(gh api "repos/giovannifidel-collab/hive-alveare/contents/security/QUEEN_S9_STANDING_OWNER_DELEGATION.v1.sql?ref=$PREF" --jq .sha)" = "$MIGRATION_BLOB"
+          gh api "repos/giovannifidel-collab/hive-alveare/contents/ops/queen/s9/OWNER_STANDING_DELEGATION_PROPOSAL.v1.json?ref=$PREF" --jq .content |
+            tr -d '\n' | base64 -d | jq -e '
+              .status=="OWNER_REVIEW_REQUIRED_INACTIVE_NO_RUNTIME_GRANT" and
+              .activation_contract.is_active==false and
+              .constitutional_authority_root=="owner" and
+              (.proposed_standing_levels|length)==6 and
+              .proposed_standing_levels[2].level==2 and
+              .proposed_standing_levels[3].approval=="PROJECT_OWNER_SIGNED_SCOPE_REQUIRED" and
+              .proposed_standing_levels[4].approval=="FRESH_OWNER_OIDC_RELEASE_GRANT_REQUIRED" and
+              .proposed_standing_levels[5].approval=="OWNER_RETAINED" and
+              (.project_grant_compatibility.mission_scoped_only|length)==6 and
+              (.project_grant_compatibility.deny_without_separate_authenticated_owner_grant|length)==4 and
+              .standing_scope_limits.model_paid_fallback==false and
+              .standing_scope_limits.unrestricted_admin_permission==false' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/98/files?per_page=30 |
+            jq -e 'length==5 and all(.[].filename;
+              .=="ops/queen/s9/OWNER_STANDING_DELEGATION_PROPOSAL.v1.json" or
+              .=="ops/queen/s9/tests/owner-standing-delegation-proposal.test.mjs" or
+              .=="ops/queen/s9/tests/standing-owner-cloudflare-neon-gate.test.mjs" or
+              .=="security/QUEEN_S9_STANDING_OWNER_DELEGATION.v1.sql" or
+              .=="cloudflare/functions/api/queen-standing-scope.js")' >/dev/null
+          for CI in 44269578707 44269578783 44269578940 44269578799; do
+            gh api "repos/giovannifidel-collab/hive-alveare/actions/runs/$CI" |
+              jq -e --arg sha "$HIVE_HEAD" '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .head_sha==$sha' >/dev/null
+          done
+          echo 'S9_STANDING_EXACT_PR98_AND_INACTIVE_POLICY_SOURCE=PASS'
+          echo 'S9_STANDING_FOUR_INDEPENDENT_SOURCE_CI=PASS'
+          echo 'S9_STANDING_NO_NEON_GRANT_OR_PROD_WRITE_BY_PREFLIGHT=TRUE'
+      - name: Validate embedded Owner OIDC signer JS syntax without issuing a token
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          gh api "repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-owner-standing-hive-l02-approval.yml?ref=audit/s9-standing-owner-signer-20261118" --jq .content | tr -d '\n' | base64 -d > /tmp/standing-signing-workflow.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('/tmp/standing-signing-workflow.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          a=src.index(marker)+len(marker)
+          b=src.index("\n          JS",a)
+          code="\n".join(line[10:] if line.startswith("          ") else line for line in src[a:b].splitlines())
+          Path('/tmp/standing-signature.mjs').write_text(code+"\n")
+          PY
+          node --check /tmp/standing-signature.mjs
+          echo 'S9_STANDING_OWNER_OIDC_SIGNER_JS_SYNTAX=PASS'
+      - name: Verify signed Owner GitHub OIDC and record one scoped release plus 365d revocable standing mandate
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createHash,createPublicKey,verify,randomUUID} from 'node:crypto';
+          const e=process.env, deny=s=>{throw Error('S9_STANDING_DENIED_'+s)};
+          const audience='hive-queen-standing-owner-l02-exact-pr98-v1';
+          if(!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)deny('NO_OIDC');
+          const u=e.ACTIONS_ID_TOKEN_REQUEST_URL+
+            (e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+
+            'audience='+encodeURIComponent(audience);
+          const r=await fetch(u,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!r.ok)deny('OIDC_HTTP');
+          const jwt=(await r.json()).value;
+          const parts=jwt?.split('.')||[];
+          if(parts.length!==3)deny('OIDC_PARTS');
+          const dec=x=>Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+
+             '='.repeat((4-x.length%4)%4),'base64');
+          const header=JSON.parse(dec(parts[0]).toString('utf8'));
+          const c=JSON.parse(dec(parts[1]).toString('utf8'));
+          if(header.alg!=='RS256'||!header.kid||header.jwk||header.jku||header.x5u||header.crit)
+            deny('OIDC_UNSAFE_HEADER');
+          const expected={
+            iss:'https://token.actions.githubusercontent.com',aud:audience,
+            repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+            repository_owner_id:'305755860',actor:'giovannifidel-collab',
+            actor_id:'305755860',environment:'pfarma-ci-trusted',
+            event_name:'workflow_dispatch',
+            workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-standing-hive-l02-approval.yml@refs/heads/main',
+            ref:'refs/heads/main',runner_environment:'github-hosted'
+          };
+          for(const [k,v] of Object.entries(expected))if(String(c[k])!==v)deny('OIDC_CLAIM_'+k);
+          const now=Date.now();
+          if(c.sha!==e.GITHUB_SHA||Number(c.run_id)!==Number(e.GITHUB_RUN_ID)||
+              Number(c.run_attempt)!==1||!Number.isSafeInteger(c.iat)||
+              !Number.isSafeInteger(c.exp)||!Number.isSafeInteger(c.nbf)||
+              c.exp<=c.iat||c.exp-c.iat>900||c.exp*1000<now||
+              c.iat*1000>now+30000||now-c.iat*1000>300000||c.nbf*1000>now+30000)
+            deny('OIDC_TIME_RUN');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)deny('JWKS_HTTP');
+          const keys=(await jwks.json()).keys||[];
+          const jwk=keys.find(k=>k.kid===header.kid&&k.kty==='RSA'&&k.use==='sig'&&(!k.alg||k.alg==='RS256'));
+          if(!jwk||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),
+                createPublicKey({key:jwk,format:'jwk'}),dec(parts[2])))
+            deny('RSA_SIGNATURE');
+          if(e.OWNER_APPROVE!=='true'||
+            e.HIVE_MAIN!=='493d83892f7a2e37ec297b9309b47a4c83ba2e6b'||
+            e.HIVE_HEAD!=='b87cb1fabaae61358270ed06c1304f5c79b64a13'||
+            e.POLICY_BLOB!=='90f4fb35b8610f7738c79af0019cf1cb2582f746'||
+            e.MIGRATION_BLOB!=='776f5999752535057ee1eb6abb7f764f5f249594')
+            deny('EXACT_POLICY_SCOPE_DRIFT');
+          const receipt={
+            schema:'queen.owner-standing-hive-l02.release-and-lease-oidc.v1',
+            grant_id:randomUUID(),owner:'giovannifidel-collab',
+            owner_ci_run_id:Number(e.GITHUB_RUN_ID),owner_ci_run_attempt:1,
+            source_main_sha:e.HIVE_MAIN,candidate_source_head_sha:e.HIVE_HEAD,
+            policy_path:'ops/queen/s9/OWNER_STANDING_DELEGATION_PROPOSAL.v1.json',
+            policy_blob_sha:e.POLICY_BLOB,
+            migration_blob_sha:e.MIGRATION_BLOB,
+            approved_source_merges_max:1,approved_cloudflare_production_releases_max:1,
+            approved_neon_migrations_max:1,approved_standing_grants_max:1,
+            standing_scope:'HIVE_ONLY_STANDING_AUTONOMY_LEVELS_0_1_2',
+            project_allowlist:['hive'],standing_max_authority_level:2,
+            max_additional_cost_usd:0,paid_fallback:false,product_writes:false,
+            project_writes:false,auto_merge:false,auto_deploy:false,
+            secret_access:false,school_training:false,
+            one_shot_provider_dispatches_in_this_release:0,
+            owner_revoke_anytime:true,source_policy_immutability_required:true,
+            owner_oidc_signature_verified:true,
+            issued_at:new Date(now).toISOString(),
+            release_lease_expires_at:new Date(now+15*60*1000).toISOString(),
+            standing_grant_expires_at:new Date(now+365*24*60*60*1000).toISOString(),
+            state:'AUTHENTICATED_RELEASE_AND_STANDING_GRANT_INTENT_NO_MUTATIONS'
+          };
+          const hash=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S9_STANDING_OWNER_OIDC_RSA_SIGNATURE_AND_EXACT_POLICY=PASS');
+          console.log('S9_STANDING_OWNER_SIGNED_RECEIPT='+JSON.stringify({...receipt,evidence_sha256:hash}));
+          console.log('S9_STANDING_OWNER_SIGNER_NEON_WRITES=0');
+          console.log('S9_STANDING_OWNER_SIGNER_PRODUCTION_RELEASES=0');
+          console.log('S9_STANDING_OWNER_SIGNER_PROJECT_WRITES=0');
+          JS
