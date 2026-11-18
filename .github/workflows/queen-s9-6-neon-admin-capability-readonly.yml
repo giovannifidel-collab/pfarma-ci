@@ -1,0 +1,38 @@
+name: Queen S9.6 trusted Neon privileged-bridge capability preflight read-only
+on:
+  push:
+    branches: [audit/s9-5-cloudflare-api-readonly-20261117]
+    paths: [.github/workflows/queen-s9-6-neon-admin-capability-readonly.yml]
+permissions: {contents: read}
+jobs:
+  read-secret-names-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - name: Check whether existing trusted Actions environment has database owner connection material (names only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          python3 - <<'PY'
+          import os,json,urllib.request
+          token=os.environ['GH_TOKEN']
+          names=set()
+          for path in ('environments/pfarma-ci-trusted/secrets','actions/secrets'):
+            req=urllib.request.Request('https://api.github.com/repos/giovannifidel-collab/pfarma-ci/'+path,headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'})
+            try:
+              with urllib.request.urlopen(req,timeout=20) as r:
+                d=json.load(r)
+                names.update(x.get('name') for x in d.get('secrets',[]) if isinstance(x,dict))
+            except Exception:
+              print('S96_SECRET_NAME_LIST_READ_DENIED_FOR_'+path.split('/')[0]+'=TRUE')
+          whitelist=['NEON_DATABASE_URL','NEON_API_KEY','NEON_CONNECTION_STRING','DATABASE_URL','POSTGRES_URL','POSTGRESQL_URL','HIVE_DATABASE_URL','HIVE_NEON_DATABASE_URL','NEON_PG_URL','PG_CONNECTION_STRING','HIVE_DATA_API_TOKEN','HIVE_DATA_API_URL']
+          print('S96_KNOWN_DATABASE_OWNER_CONNECTION_SECRET_PRESENT='+str(bool(names.intersection(whitelist))).lower())
+          print('S96_NEON_API_ADMIN_TOKEN_PRESENT='+str('NEON_API_KEY' in names).lower())
+          print('S96_NEON_POSTGRES_DSN_PRESENT='+str(bool(names.intersection(['NEON_DATABASE_URL','NEON_CONNECTION_STRING','DATABASE_URL','POSTGRES_URL','POSTGRESQL_URL','HIVE_DATABASE_URL','HIVE_NEON_DATABASE_URL','NEON_PG_URL','PG_CONNECTION_STRING']))).lower())
+          print('S96_SECRET_VALUES_READ=FALSE')
+          print('S96_NEON_DATABASE_MUTATIONS=ZERO')
+          PY
