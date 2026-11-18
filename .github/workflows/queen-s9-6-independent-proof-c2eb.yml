@@ -39,7 +39,12 @@ jobs:
           for id,kind in [(ownerid,'owner'),(provider,'provider'),(s1,'s1')]:
               x=gh('pfarma-ci/actions/runs/'+str(id))
               assert x['status']=='completed' and x['conclusion']=='success' and x['run_attempt']==1,'S96_UNVERIFIED_RUN_'+kind
-              assert x['actor']['login']=='giovannifidel-collab','S96_RUN_ORIGINAL_ACTOR_MISMATCH_'+kind
+              if kind=='s1':
+                  # Canonical repository_dispatch is triggered with GITHUB_TOKEN,
+                  # hence the *expected* automated actor is github-actions[bot].
+                  assert x['actor']['login']=='github-actions[bot]','S96_CANONICAL_S1_BOT_ACTOR_DENY'
+              else:
+                  assert x['actor']['login']=='giovannifidel-collab','S96_RUN_ORIGINAL_ACTOR_MISMATCH_'+kind
               if kind=='owner':
                   assert x['event']=='workflow_dispatch','S96_ORIGINAL_OWNER_NOT_SIGNED'
               elif kind=='provider':
