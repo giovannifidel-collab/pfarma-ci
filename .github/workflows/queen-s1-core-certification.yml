@@ -9,6 +9,7 @@ on:
       - convergence/queen-s1-single-ingress-v1
       - convergence/queen-s1-final-pin-v1
       - convergence/queen-s1-world-retry-v1
+      - audit/s9-6-s1-dynamic-source-cert-20261118
     paths:
       - .github/workflows/queen-s1-core-certification.yml
       - .github/workflows/queen-s1-event-ingress.yml
@@ -107,7 +108,22 @@ jobs:
           INGRESS='.github/workflows/queen-s1-event-ingress.yml'
           WORLD='.github/workflows/hive-world-sync.yml'
 
-          grep -Fq "PRIVATE_REF: $PRIVATE_REF" "$INGRESS"
+          # Historical S1 Core remains pinned to PRIVATE_REF in this certification.
+          # The CURRENT canonical ingress was migrated to a strict dynamic
+          # hive-source-ref.txt === private HIVE main gate; certify either shape,
+          # without reverting to the stale SHA or introducing a second S1.
+          if grep -Fq "PRIVATE_REF: $PRIVATE_REF" "$INGRESS"; then
+            echo 'S1_HISTORICAL_INGRESS_PRIVATE_PIN=PASS'
+          else
+            grep -Fq "PRIVATE_REF: '' # resolved from exact relay HIVE source pointer" "$INGRESS"
+            grep -Fq 'MAIN="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"' "$INGRESS"
+            grep -Fq 'test "$SOURCE" = "$MAIN"' "$INGRESS"
+            grep -Fq 'echo "PRIVATE_REF=$SOURCE" >> "$GITHUB_ENV"' "$INGRESS"
+            SOURCE="$(sed -n '1p' hive-source-ref.txt)"
+            MAIN="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+            [[ "$SOURCE" =~ ^[0-9a-f]{40}$ ]] && test "$SOURCE" = "$MAIN"
+            echo 'S1_CANONICAL_DYNAMIC_SOURCE_POINTER=PASS'
+          fi
           grep -Fq 'repository_dispatch:' "$INGRESS"
           grep -Fq 'world-state-changed' "$INGRESS"
           grep -Fq 'steps.durable.outputs.complete' "$INGRESS"
