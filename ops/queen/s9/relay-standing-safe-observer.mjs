@@ -73,7 +73,7 @@ export async function processStandingSafeObservation({
  })).digest('hex');
  return Object.freeze({
    handled:true,decision:'STANDING_WORLD_OBSERVED_READ_ONLY',
-   world_digest:digest,grant_id:grant.grant_id,
+   mission_id:event.correlation_id,world_digest:digest,grant_id:grant.grant_id,
    can_dispatch:false,can_retry:false,can_write:false,
    can_train_school:false,paid_fallback:false
  });
@@ -130,6 +130,7 @@ if(import.meta.url==='file://'+process.argv[1]){
    console.log('STANDING_CANONICAL_S1_DECISION='+r.decision);
    if(r.decision==='STANDING_WORLD_OBSERVED_READ_ONLY'){
      console.log('STANDING_CANONICAL_WORLD_SHA256='+r.world_digest);
+     console.log('STANDING_MISSION_ID='+r.mission_id);
      console.log('STANDING_ACTIVE_GRANT_ID='+r.grant_id);
      console.log('STANDING_NO_DURABLE_ACTION_NO_NEXT_DISPATCH_NO_SCHOOL=TRUE');
    }
