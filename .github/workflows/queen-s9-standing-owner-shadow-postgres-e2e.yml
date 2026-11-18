@@ -1,0 +1,88 @@
+name: Queen S9 Standing Grant Local Postgres Shadow E2E (ZERO PROD)
+on:
+  push:
+    branches: [audit/s9-standing-owner-signer-20261118]
+    paths: [.github/workflows/queen-s9-standing-owner-shadow-postgres-e2e.yml]
+permissions: {contents: read}
+jobs:
+  local-postgres-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: pfarma-ci-trusted
+    steps:
+      - name: Checkout exact private proposed HIVE SQL (source only)
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: c598260b06faff48b39c331796036e8bc9836d3c
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: queen-proposal
+      - name: Start disposable isolated Postgres (NO NEON or Cloudflare access)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name queen-s9-standing-local --env POSTGRES_PASSWORD=local-only-test postgres:16 > /dev/null
+          trap 'docker rm -f queen-s9-standing-local >/dev/null 2>&1 || true' EXIT
+          ready=false
+          for i in $(seq 1 45); do
+            if docker exec queen-s9-standing-local pg_isready -U postgres -d postgres > /dev/null 2>&1; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          docker exec queen-s9-standing-local psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE ROLE authenticated NOLOGIN' > /dev/null
+          docker exec -i queen-s9-standing-local psql -U postgres -v ON_ERROR_STOP=1 -q < queen-proposal/security/QUEEN_S9_STANDING_OWNER_DELEGATION.v1.sql
+          echo S9_STANDING_PRIVATE_SCHEMA_MIGRATION_LOCAL_POSTGRES=PASS
+          docker exec -i queen-s9-standing-local psql -U postgres -v ON_ERROR_STOP=1 -q <<'SQL'
+          DO $proof$
+          DECLARE
+            d jsonb;
+            sha constant text := '90f4fb35b8610f7738c79af0019cf1cb2582f746';
+          BEGIN
+            IF has_schema_privilege('authenticated','queen_standing_secure','USAGE') THEN RAISE EXCEPTION 'SCHEMA_EXPOSURE'; END IF;
+            IF has_table_privilege('authenticated','queen_standing_secure.owner_grants','INSERT') THEN RAISE EXCEPTION 'GRANT_WRITABLE'; END IF;
+            IF has_table_privilege('authenticated','queen_standing_secure.owner_grants','SELECT') THEN RAISE EXCEPTION 'GRANT_READABLE'; END IF;
+            IF NOT has_function_privilege('authenticated','public.hive_queen_s9_standing_delegation_check(text,text,integer,text)','EXECUTE') THEN RAISE EXCEPTION 'RPC_NOT_CALLABLE'; END IF;
+            d:=public.hive_queen_s9_standing_delegation_check(sha,'hive',0,'world.observe');
+            IF d->>'decision'<>'DENY_NO_ACTIVE_SIGNED_GRANT' THEN RAISE EXCEPTION 'UNSIGNED_GRANT_ACCEPTED'; END IF;
+            INSERT INTO queen_standing_secure.owner_grants
+              (grant_id,policy_blob_sha,owner_ci,owner_receipt_sha256,owner_oidc_verified,
+               exact_scope,max_authority_level,issued_at,expires_at)
+            VALUES
+              ('b7f0e17a-19a5-4c66-8410-dd82b64de9a0',sha,12345,repeat('a',64),true,
+               'HIVE_ONLY_STANDING_AUTONOMY_LEVELS_0_1_2',2,clock_timestamp(),clock_timestamp()+interval '365 days');
+            d:=public.hive_queen_s9_standing_delegation_check(sha,'hive',0,'world.observe');
+            IF d->>'decision'<>'ALLOW_STANDING_HIVE_CERTIFIED_SAFE' OR d->>'allowed'<>'true' THEN RAISE EXCEPTION 'L0_NOT_ALLOWED'; END IF;
+            d:=public.hive_queen_s9_standing_delegation_check(sha,'hive',1,'goal.evaluate');
+            IF d->>'allowed'<>'true' THEN RAISE EXCEPTION 'L1_NOT_ALLOWED'; END IF;
+            d:=public.hive_queen_s9_standing_delegation_check(sha,'hive',2,'hive.safe-ci-selftest');
+            IF d->>'allowed'<>'true' THEN RAISE EXCEPTION 'L2_NOT_ALLOWED'; END IF;
+            d:=public.hive_queen_s9_standing_delegation_check(sha,'hive',0,'hive.safe-ci-selftest');
+            IF d->>'allowed'<>'false' THEN RAISE EXCEPTION 'LEVEL_CONFUSION'; END IF;
+            d:=public.hive_queen_s9_standing_delegation_check(sha,'hive',3,'hive.safe-ci-selftest');
+            IF d->>'allowed'<>'false' THEN RAISE EXCEPTION 'LEVEL_ESCALATION'; END IF;
+            d:=public.hive_queen_s9_standing_delegation_check(sha,'pfarma-cloud',1,'goal.evaluate');
+            IF d->>'allowed'<>'false' THEN RAISE EXCEPTION 'CROSS_PROJECT_ESCALATION'; END IF;
+            d:=public.hive_queen_s9_standing_delegation_check(repeat('b',40),'hive',1,'goal.evaluate');
+            IF d->>'allowed'<>'false' THEN RAISE EXCEPTION 'POLICY_SWAP'; END IF;
+            INSERT INTO queen_standing_secure.owner_grants
+              (grant_id,policy_blob_sha,owner_ci,owner_receipt_sha256,owner_oidc_verified,
+               exact_scope,max_authority_level,issued_at,expires_at)
+            VALUES
+              ('b7f0e17a-19a5-4c66-8410-dd82b64de9a1',sha,54321,repeat('b',64),true,
+               'HIVE_ONLY_STANDING_AUTONOMY_LEVELS_0_1_2',2,clock_timestamp(),clock_timestamp()+interval '365 days')
+            ON CONFLICT DO NOTHING;
+            IF (SELECT count(*) FROM queen_standing_secure.owner_grants WHERE policy_blob_sha=sha)<>1 THEN
+              RAISE EXCEPTION 'DUPLICATE_STANDING_GRANT';
+            END IF;
+            UPDATE queen_standing_secure.owner_grants
+            SET status='REVOKED',revoked_at=clock_timestamp()
+            WHERE policy_blob_sha=sha;
+            d:=public.hive_queen_s9_standing_delegation_check(sha,'hive',0,'world.observe');
+            IF d->>'allowed'<>'false' THEN RAISE EXCEPTION 'REVOCATION_NOT_IMMEDIATE'; END IF;
+            RAISE NOTICE 'S9_STANDING_LOCAL_GRANT_ALLOW_LEVELS_0_1_2=PASS';
+            RAISE NOTICE 'S9_STANDING_LOCAL_UNIQUE_GRANT_DENY_ESCALATION=PASS';
+            RAISE NOTICE 'S9_STANDING_LOCAL_IMMEDIATE_REVOKE=PASS';
+          END $proof$;
+          SQL
+          echo S9_STANDING_NO_NEON_NO_CLOUDFLARE_NO_PRODUCTION_WRITE=TRUE
