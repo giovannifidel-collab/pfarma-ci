@@ -1,0 +1,111 @@
+name: Queen S9.6 independent bounded production acceptance - READ ONLY
+on:
+  push:
+    branches: [audit/s9-6-owner-once-c2eb0f6b-20261118]
+    paths: [.github/workflows/queen-s9-6-independent-closeout-c2eb.yml]
+permissions: {contents: read}
+concurrency:
+  group: queen-s96-bounded-independent-closeout
+  cancel-in-progress: false
+jobs:
+  prove-closeout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Independently verify signed one-shot original mission and two terminal S1 receipt deliveries via GitHub
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,base64
+          token=os.environ.get('GH_TOKEN')
+          assert token and os.environ.get('CF_ACCESS_CLIENT_ID') and os.environ.get('CF_ACCESS_CLIENT_SECRET'),'S96_MISSING_PROOF_CREDENTIALS'
+          def gh(path):
+              req=urllib.request.Request('https://api.github.com/repos/giovannifidel-collab/'+path,headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
+          sha='493d83892f7a2e37ec297b9309b47a4c83ba2e6b'
+          assert gh('hive-alveare/branches/main')['commit']['sha']==sha,'S96_HIVE_MAIN_DRIFT'
+          p=gh('pfarma-ci/contents/hive-source-ref.txt')
+          assert base64.b64decode(p['content']).decode().strip()==sha,'S96_RELAY_SOURCE_DRIFT'
+          runids={
+            'owner':44258967298,
+            'original_one_shot':44259485067,
+            'original_canonical_s1':44259516261,
+            'independent_receipt_ci':44259848686,
+            'first_receipt_delivery':44260091910,
+            'positive_cas_s1':44260113060,
+            'identical_replay_delivery':44260258527,
+            'terminal_replay_s1':44260282951,
+            'canonical_s1_core_ci':44258185128,
+          }
+          for purpose,run_id in runids.items():
+              run=gh('pfarma-ci/actions/runs/'+str(run_id))
+              assert run.get('status')=='completed' and run.get('conclusion')=='success' and run.get('run_attempt')==1, 'S96_UNVERIFIED_'+purpose
+              assert run.get('actor',{}).get('login')==('github-actions[bot]' if purpose in ('original_canonical_s1','positive_cas_s1','terminal_replay_s1') else 'giovannifidel-collab'), 'S96_ACTOR_DENIED_'+purpose
+              if purpose=='owner':assert run['event']=='workflow_dispatch','S96_OWNER_WRONG_EVENT'
+              if purpose in ('original_canonical_s1','positive_cas_s1','terminal_replay_s1'):
+                  assert run['event']=='repository_dispatch', 'S96_S1_NOT_REPOSITORY_DISPATCH'
+          print('S96_ORIGINAL_OWNER_AND_ALL_PROVIDER_INDEPENDENT_CANONICAL_S1_RUNS=PASS')
+          print('S96_EXACT_HIVE_SOURCE_AND_RELAY_POINTER=PASS')
+          print('S96_POSITIVE_AND_TERMINAL_DUPLICATE_CI=PASS')
+          PY
+      - name: Independently GET exact Cloudflare production source identity, protected health and old rollback deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,subprocess,re
+          token=os.getenv('CF_PRIMARY') or os.getenv('CF_SECONDARY')
+          assert token,'S96_CF_API_SECRET_MISSING'
+          api='https://api.cloudflare.com/client/v4'
+          def get(path):
+              req=urllib.request.Request(api+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=24) as r:return json.load(r)
+          accounts=get('/accounts?per_page=50')
+          assert accounts.get('success') is True
+          matched=[]
+          for account in accounts.get('result') or []:
+              aid=str(account.get('id') or '')
+              if not re.fullmatch('[a-f0-9]{32}',aid):continue
+              try:
+                  response=get('/accounts/'+aid+'/pages/projects/hive-alveare')
+                  if response.get('success') and (response.get('result') or {}).get('name')=='hive-alveare':
+                      matched.append((aid,response['result']))
+              except urllib.error.HTTPError: pass
+          assert len(matched)==1,'S96_CF_HIVE_PROJECT_NOT_UNIQUE'
+          aid,p=matched[0]
+          src=p.get('source') or {};cfg=src.get('config') or {}
+          assert src.get('type')=='github' and cfg.get('repo_name')=='hive-alveare' and cfg.get('production_branch')=='main','S96_CF_WRONG_SOURCE'
+          dep=p.get('canonical_deployment') or {}
+          assert (dep.get('latest_stage') or {}).get('status')=='success','S96_CF_RELEASE_UNHEALTHY'
+          assert (dep.get('deployment_trigger') or {}).get('metadata',{}).get('commit_hash')=='493d83892f7a2e37ec297b9309b47a4c83ba2e6b','S96_WRONG_CF_SOURCE_SHA'
+          env=p.get('deployment_configs') or {}
+          production=(env.get('production') or {}).get('env_vars') or {}
+          preview=(env.get('preview') or {}).get('env_vars') or {}
+          assert 'HIVE_DATA_API_URL' in production and 'HIVE_DATA_API_URL' not in preview
+          assert production.get('HIVE_RUNTIME_BEARER_TOKEN',{}).get('type')=='secret_text'
+          assert 'HIVE_RUNTIME_BEARER_TOKEN' not in preview
+          rollback=get('/accounts/'+aid+'/pages/projects/hive-alveare/deployments/9b59bf3f-50f1-4810-ad63-fe913a822015')
+          assert rollback.get('success') is True
+          old=rollback['result']
+          assert (old.get('latest_stage') or {}).get('status')=='success'
+          assert (old.get('deployment_trigger') or {}).get('metadata',{}).get('commit_hash')=='6d20e61a023748bff36175f1f643c9f5781b3b9f'
+          args=['curl','-sS','--max-time','24','-o','/dev/null','-w','%{http_code}',
+                '-H','Cf-Access-Client-Id: '+os.environ['CF_ACCESS_CLIENT_ID'],
+                '-H','Cf-Access-Client-Secret: '+os.environ['CF_ACCESS_CLIENT_SECRET'],
+                'https://hive-alveare.pages.dev/api/runtime-health']
+          c=subprocess.run(args,capture_output=True,text=True,timeout=27)
+          assert c.returncode==0 and c.stdout.strip()=='200','S96_PROTECTED_HEALTH_NOT_OK'
+          print('S96_EXACT_PROTECTED_CLOUDFLARE_PRODUCTION_POSTFLIGHT=PASS')
+          print('S96_PREVIOUS_PRODUCTION_ROLLBACK_AVAILABLE=PASS')
+          print('S96_ISOLATED_PREVIEW_PRODUCTION_SECRET_DENY=PASS')
+          print('S96_SOURCE_READ_ONLY_ACCEPTANCE_NO_MUTATION=TRUE')
+          print('S96_UNRESTRICTED_GLOBAL_AUTONOMY_CERTIFIED=FALSE')
+          PY
