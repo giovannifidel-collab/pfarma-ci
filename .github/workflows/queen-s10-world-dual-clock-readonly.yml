@@ -1,0 +1,84 @@
+name: Queen S10 Independent Live World Source-versus-Neon Clocks - Read-only
+on:
+  push:
+    branches: [audit/s10-world-dual-clock-readonly-20261119]
+    paths: [.github/workflows/queen-s10-world-dual-clock-readonly.yml]
+permissions: {contents: read}
+jobs:
+  compare-source-and-durable-world:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+    steps:
+      - name: Verify exact authoritative HIVE and live protected read-only access
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET" && test -n "$HIVE_RUNTIME_BEARER_TOKEN"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 29bb723e9dba1654ea782d97c3f6517dd20ea6dc
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content |
+            tr -d '\n' | base64 -d | tr -d '\n' | grep -Fxq 29bb723e9dba1654ea782d97c3f6517dd20ea6dc
+          echo S10_WORLD_DIAGNOSTIC_SOURCE_EXACT=PASS
+      - name: Compare current relay World with protected Cloudflare World and Neon-backed Queen state - GET only
+        shell: bash
+        run: |
+          set -euo pipefail
+          for route in world-state queen-state; do
+            status="$(curl -sS --max-time 25 -o "$RUNNER_TEMP/$route.json" -w '%{http_code}' \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN" \
+              "https://hive-alveare.pages.dev/api/$route")"
+            test "$status" = "200" || { echo "S10_WORLD_HTTP=$status"; exit 23; }
+          done
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content |
+            tr -d '\n' | base64 -d > "$RUNNER_TEMP/world-source.json"
+          python3 - <<'PY'
+          import os,json,datetime
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          source=json.loads((root/'world-source.json').read_text())
+          live=json.loads((root/'world-state.json').read_text())
+          queen=json.loads((root/'queen-state.json').read_text())
+          assert live.get('ok') is True and queen.get('ok') is True, 'S10_UNTRUSTED_ENDPOINT'
+          assert source.get('state_fingerprint') and isinstance(source.get('projects'),dict), 'S10_UNTRUSTED_GITHUB_WORLD'
+          assert isinstance(live.get('data'),dict) and isinstance(queen.get('state'),dict), 'S10_MISSING_STATE'
+          now=datetime.datetime.now(datetime.timezone.utc)
+          def age(ts):
+            if not ts:return None
+            d=datetime.datetime.fromisoformat(str(ts).replace('Z','+00:00'))
+            return round((now-d).total_seconds())
+          source_age=age(source.get('generated_at'))
+          relay_age=age(live['data'].get('relay_generated_at'))
+          generated_age=age(live['data'].get('generated_at'))
+          state=queen['state']
+          wm=state.get('world') or {}
+          ca=state.get('cognitive') or {}
+          sa=state.get('school') or {}
+          ma=state.get('memory') or {}
+          wm_age=age(wm.get('updated_at'))
+          wm_source_age=age((wm.get('value') or {}).get('source_generated_at'))
+          assert source_age is not None and relay_age is not None, 'S10_NO_TRUE_RELAY_TIMESTAMP'
+          assert abs(source_age-relay_age)<=20, 'S10_CLOUDFLARE_RELAY_MISMATCH'
+          print('S10_WORLD_GITHUB_SOURCE_AGE_SECONDS='+str(source_age))
+          print('S10_WORLD_CLOUDFLARE_RELAY_AGE_SECONDS='+str(relay_age))
+          print('S10_WORLD_API_REGENERATED_RESPONSE_AGE_SECONDS='+str(generated_age))
+          print('S10_WORLD_NEON_META_AGE_SECONDS='+str(wm_age))
+          print('S10_WORLD_NEON_META_ORIGINAL_SOURCE_AGE_SECONDS='+str(wm_source_age))
+          print('S10_COGNITIVE_NEON_META_AGE_SECONDS='+str(age(ca.get('updated_at'))))
+          print('S10_SCHOOL_NEON_META_AGE_SECONDS='+str(age(sa.get('updated_at'))))
+          print('S10_MEMORY_NEON_META_AGE_SECONDS='+str(age(ma.get('updated_at'))))
+          print('S10_WORLD_EXISTING_GOAL_MAX_AGE_SECONDS=1800')
+          print('S10_RELAY_FRESH_BY_GOAL='+str(source_age<=1800).lower())
+          print('S10_FRESH_API_TIMESTAMP_CANNOT_ATTEST_STALE_RELAY='+str(generated_age is not None and source_age>generated_age+100).lower())
+          print('S10_NEON_WORLD_META_STALER_THAN_RELAY='+str(wm_age is not None and wm_age>source_age+1800).lower())
+          print('S10_PROTECTED_REAL_WORLD_DUAL_CLOCK_READ_ONLY=PASS')
+          print('S10_ZERO_PROVIDER_ZERO_NEON_WRITES_NO_SCHOOL=TRUE')
+          PY
