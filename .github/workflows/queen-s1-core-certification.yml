@@ -119,7 +119,7 @@ jobs:
             grep -Fq 'MAIN="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"' "$INGRESS"
             grep -Fq 'test "$SOURCE" = "$MAIN"' "$INGRESS"
             grep -Fq 'echo "PRIVATE_REF=$SOURCE" >> "$GITHUB_ENV"' "$INGRESS"
-            SOURCE="$(tr -d '\\n' < hive-source-ref.txt)"
+            SOURCE="$(sed -n '1p' hive-source-ref.txt)"
             MAIN="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
             [[ "$SOURCE" =~ ^[0-9a-f]{40}$ ]] && test "$SOURCE" = "$MAIN"
             echo 'S1_CANONICAL_DYNAMIC_SOURCE_POINTER=PASS'
