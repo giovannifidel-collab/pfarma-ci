@@ -81,6 +81,24 @@ jobs:
           echo 'S9_STANDING_EXACT_PR98_AND_INACTIVE_POLICY_SOURCE=PASS'
           echo 'S9_STANDING_FOUR_INDEPENDENT_SOURCE_CI=PASS'
           echo 'S9_STANDING_NO_NEON_GRANT_OR_PROD_WRITE_BY_PREFLIGHT=TRUE'
+      - name: Validate embedded Owner OIDC signer JS syntax without issuing a token
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          gh api "repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-owner-standing-hive-l02-approval.yml?ref=audit/s9-standing-owner-signer-20261118" --jq .content | tr -d '\n' | base64 -d > /tmp/standing-signing-workflow.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('/tmp/standing-signing-workflow.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          a=src.index(marker)+len(marker)
+          b=src.index("\n          JS",a)
+          code="\n".join(line[10:] if line.startswith("          ") else line for line in src[a:b].splitlines())
+          Path('/tmp/standing-signature.mjs').write_text(code+"\n")
+          PY
+          node --check /tmp/standing-signature.mjs
+          echo 'S9_STANDING_OWNER_OIDC_SIGNER_JS_SYNTAX=PASS'
       - name: Verify signed Owner GitHub OIDC and record one scoped release plus 365d revocable standing mandate
         if: github.event_name == 'workflow_dispatch'
         shell: bash
