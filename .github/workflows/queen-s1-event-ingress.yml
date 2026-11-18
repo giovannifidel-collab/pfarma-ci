@@ -39,7 +39,7 @@ jobs:
     environment: pfarma-ci-trusted
     env:
       PRIVATE_REPO: giovannifidel-collab/hive-alveare
-      PRIVATE_REF: 73778e4d040e6ae361401003441f6a9be2c793f5
+      PRIVATE_REF: '' # resolved from exact relay HIVE source pointer, independently compared to private main
       DISPATCH_ACTION: ${{ github.event.action }}
       CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
       MANUAL_EVENT_JSON: ${{ inputs.event_json }}
@@ -49,6 +49,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify canonical exact HIVE main source SHA from relay pointer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          SOURCE="$(tr -d '\n' < hive-source-ref.txt)"
+          [[ "$SOURCE" =~ ^[0-9a-f]{40}$ ]] || { echo S1_SOURCE_POINTER_INVALID; exit 60; }
+          MAIN="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          test "$SOURCE" = "$MAIN" || { echo S1_SOURCE_POINTER_DRIFT_DENY; exit 61; }
+          echo "PRIVATE_REF=$SOURCE" >> "$GITHUB_ENV"
+          echo "S1_EXACT_SOURCE_AUTHORITY=$SOURCE"
       - name: Checkout exact private Queen Core
         uses: actions/checkout@v4
         with:
@@ -118,7 +131,24 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: S9.5 pre-router receipt-only GitHub and private Neon CAS gate
+        id: s95
+        shell: bash
+        env:
+          HIVE_EVENT_JSON: ${{ steps.event.outputs.json }}
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+          HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          node ops/queen/s9/relay-verified-receipt-bridge.mjs
+          # For S9.5 receipts, the script outputs handled=true only after
+          # exact verified CAS or already-completed observe-only. Any error
+          # fails the job BEFORE canonical verification -> School routing.
       - name: Route through exact private canonical event router
+        if: steps.s95.outputs.handled != 'true'
         id: route
         shell: bash
         env:
@@ -135,6 +165,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Enforce router-only boundary
+        if: steps.s95.outputs.handled != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -152,7 +183,7 @@ jobs:
           ROUTE: ${{ steps.route.outputs.json }}
 
       - name: Execute durable action only after repository_dispatch
-        if: github.event_name == 'repository_dispatch'
+        if: github.event_name == 'repository_dispatch' && steps.s95.outputs.handled != 'true'
         id: durable
         shell: bash
         env:
@@ -204,7 +235,7 @@ jobs:
           echo "complete=true" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch next event only after completed action
-        if: github.event_name == 'repository_dispatch' && steps.durable.outputs.complete == 'true'
+        if: github.event_name == 'repository_dispatch' && steps.s95.outputs.handled != 'true' && steps.durable.outputs.complete == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

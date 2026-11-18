@@ -1,0 +1,39 @@
+name: S9.5 Existing S1 Trusted Receipt Bridge Candidate CI (NO DISPATCH OR DEPLOY)
+on:
+  push:
+    branches: [convergence/s9-5-s1-trusted-receipt-bridge-20261116]
+    paths: [ops/queen/s9/**, .github/workflows/queen-s1-event-ingress.yml, .github/workflows/queen-s9-5-bridge-source-ci.yml]
+  pull_request:
+    branches: [main]
+    paths: [ops/queen/s9/**, .github/workflows/queen-s1-event-ingress.yml, .github/workflows/queen-s9-5-bridge-source-ci.yml]
+permissions: {contents: read}
+jobs:
+  one-s1-no-unverified-receipt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Parse real S1 workflow and assert safety boundaries are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -ryaml -e 'YAML.parse_file(ARGV[0]);puts "S95_RELAY_S1_WORKFLOW_SYNTAX=PASS"' .github/workflows/queen-s1-event-ingress.yml
+          grep -q 'S1_SOURCE_POINTER_DRIFT_DENY' .github/workflows/queen-s1-event-ingress.yml
+          grep -q "S9.5 pre-router receipt-only" .github/workflows/queen-s1-event-ingress.yml
+          grep -q "steps.s95.outputs.handled != 'true'" .github/workflows/queen-s1-event-ingress.yml
+          test "$(grep -c 'name: Route through exact private canonical event router' .github/workflows/queen-s1-event-ingress.yml)" = 1
+          test "$(grep -c '^      - name: Dispatch next event only after completed action' .github/workflows/queen-s1-event-ingress.yml)" = 1
+          ! grep -q 'PRIVATE_REF: 73778e4d040e6ae361401003441f6a9be2c793f5' .github/workflows/queen-s1-event-ingress.yml
+          echo S95_EXISTING_SINGLE_S1_INTEGRATION=PASS
+      - name: Adversarial S9.5 trust, one-shot no-dispatch and ordinary S1 passthrough
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check ops/queen/s9/relay-verified-receipt-bridge.mjs
+          node --test ops/queen/s9/relay-verified-receipt-bridge.test.mjs
+          echo S9_5_SIGNED_OWNER_PROVIDER_INDEPENDENT_RUN_READBACK_TESTS=PASS
+          echo S9_5_NO_SCHOOL_ON_RECONCILIATION=PASS
+          echo S9_5_NO_NEW_PROVIDER_DISPATCH=PASS
+          echo S9_5_PRODUCTION_SOURCE_NOT_YET_RELEASED=TRUE
