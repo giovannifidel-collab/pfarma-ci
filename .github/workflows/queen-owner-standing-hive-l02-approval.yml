@@ -1,7 +1,7 @@
 name: Queen Owner Standing HIVE L0-L2 Exact Signed Approval (NO AUTOMATIC RELEASE)
 on:
   push:
-    branches: [audit/s9-standing-owner-signer-20261118]
+    branches: [audit/s9-standing-owner-signer-final-20261118]
     paths: [.github/workflows/queen-owner-standing-hive-l02-approval.yml]
   workflow_dispatch:
     inputs:
@@ -25,9 +25,9 @@ jobs:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       OWNER_APPROVE: ${{ inputs.approve_standing_hive_l0_l2_and_one_scoped_pr98_release }}
       HIVE_MAIN: 493d83892f7a2e37ec297b9309b47a4c83ba2e6b
-      HIVE_HEAD: b87cb1fabaae61358270ed06c1304f5c79b64a13
+      HIVE_HEAD: c598260b06faff48b39c331796036e8bc9836d3c
       POLICY_BLOB: 90f4fb35b8610f7738c79af0019cf1cb2582f746
-      MIGRATION_BLOB: 776f5999752535057ee1eb6abb7f764f5f249594
+      MIGRATION_BLOB: 3edc430de8c06c3114ce6de7c08c374178611552
     steps:
       - name: Independent exact HIVE scope, unchanged constitution, project gate and CI preflight (NO MUTATION)
         shell: bash
@@ -42,7 +42,7 @@ jobs:
             test "$OWNER_APPROVE" = true
           else
             test "$GITHUB_EVENT_NAME" = push
-            test "$GITHUB_REF" = refs/heads/audit/s9-standing-owner-signer-20261118
+            test "$GITHUB_REF" = refs/heads/audit/s9-standing-owner-signer-final-20261118
           fi
           CURRENT="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
           test "$CURRENT" = "$HIVE_MAIN"
@@ -74,11 +74,14 @@ jobs:
               .=="ops/queen/s9/tests/standing-owner-cloudflare-neon-gate.test.mjs" or
               .=="security/QUEEN_S9_STANDING_OWNER_DELEGATION.v1.sql" or
               .=="cloudflare/functions/api/queen-standing-scope.js")' >/dev/null
-          for CI in 44269578707 44269578783 44269578940 44269578799; do
+          for CI in 44270585156 44270585299 44270585119 44270585246; do
             gh api "repos/giovannifidel-collab/hive-alveare/actions/runs/$CI" |
               jq -e --arg sha "$HIVE_HEAD" '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .head_sha==$sha' >/dev/null
           done
           echo 'S9_STANDING_EXACT_PR98_AND_INACTIVE_POLICY_SOURCE=PASS'
+          gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/44270741305" |
+            jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+          echo 'S9_STANDING_LOCAL_POSTGRES_REVOCATION_AND_SCOPE_E2E=PASS'
           echo 'S9_STANDING_FOUR_INDEPENDENT_SOURCE_CI=PASS'
           echo 'S9_STANDING_NO_NEON_GRANT_OR_PROD_WRITE_BY_PREFLIGHT=TRUE'
       - name: Validate embedded Owner OIDC signer JS syntax without issuing a token
@@ -87,7 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$GH_TOKEN"
-          gh api "repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-owner-standing-hive-l02-approval.yml?ref=audit/s9-standing-owner-signer-20261118" --jq .content | tr -d '\n' | base64 -d > /tmp/standing-signing-workflow.yml
+          gh api "repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-owner-standing-hive-l02-approval.yml?ref=audit/s9-standing-owner-signer-final-20261118" --jq .content | tr -d '\n' | base64 -d > /tmp/standing-signing-workflow.yml
           python3 - <<'PY'
           from pathlib import Path
           src=Path('/tmp/standing-signing-workflow.yml').read_text()
@@ -149,9 +152,9 @@ jobs:
             deny('RSA_SIGNATURE');
           if(e.OWNER_APPROVE!=='true'||
             e.HIVE_MAIN!=='493d83892f7a2e37ec297b9309b47a4c83ba2e6b'||
-            e.HIVE_HEAD!=='b87cb1fabaae61358270ed06c1304f5c79b64a13'||
+            e.HIVE_HEAD!=='c598260b06faff48b39c331796036e8bc9836d3c'||
             e.POLICY_BLOB!=='90f4fb35b8610f7738c79af0019cf1cb2582f746'||
-            e.MIGRATION_BLOB!=='776f5999752535057ee1eb6abb7f764f5f249594')
+            e.MIGRATION_BLOB!=='3edc430de8c06c3114ce6de7c08c374178611552')
             deny('EXACT_POLICY_SCOPE_DRIFT');
           const receipt={
             schema:'queen.owner-standing-hive-l02.release-and-lease-oidc.v1',
