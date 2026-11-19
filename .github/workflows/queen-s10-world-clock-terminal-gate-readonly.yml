@@ -1,0 +1,90 @@
+name: Queen S10 Actual Minute Clock Postflight (READ ONLY)
+on:
+  push:
+    branches: [audit/s10-world-clock-terminal-gate-readonly-20261119]
+    paths: [.github/workflows/queen-s10-world-clock-terminal-gate-readonly.yml]
+permissions: {contents: read, actions: read}
+jobs:
+  verify-live-clock-and-world:
+    if: "${{ startsWith(github.event.head_commit.message, 'audit(s10): live-minute-clock-proof ') }}"
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Read only original GitHub source lock and real Worker schedule
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" && test -n "$CF_PRIMARY$CF_FALLBACK"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 88000e9ff70ffc044f424d469645573e01738a8b
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = 88000e9ff70ffc044f424d469645573e01738a8b
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .content | tr -d '\n' | base64 -d > "$RUNNER_TEMP/original-world.yml"
+          ! grep -Eq '^  schedule:' "$RUNNER_TEMP/original-world.yml"
+          grep -Fq 'clock_minute:' "$RUNNER_TEMP/original-world.yml"
+          python3 - <<'PY'
+          import os,json,urllib.request
+          token=os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK')
+          def get(path):
+            req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,headers={'Authorization':'Bearer '+token})
+            with urllib.request.urlopen(req,timeout=25) as response:result=json.load(response)
+            assert result.get('success') is True,'S10_CLOUDFLARE_READ_DENIED'
+            return result.get('result')
+          accounts=get('/accounts?per_page=50')
+          assert len(accounts)==1
+          value=get('/accounts/'+accounts[0]['id']+'/workers/scripts/hive-queen-world-clock/schedules')
+          if isinstance(value,dict):value=value.get('schedules')
+          assert isinstance(value,list) and [x.get('cron') for x in value]==['* * * * *'],'S10_CLOCK_NOT_RUNNING'
+          print('S10_SINGLE_CLOUDFLARE_MINUTE_CRON_ACTIVE=PASS')
+          PY
+      - name: Independent two original successful World jobs with verified clock minute
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api 'repos/giovannifidel-collab/pfarma-ci/actions/workflows/hive-world-sync.yml/runs?event=workflow_dispatch&branch=main&per_page=45' > "$RUNNER_TEMP/runs.json"
+          python3 - <<'PY'
+          import json,os,datetime,subprocess
+          runs=json.load(open(os.environ['RUNNER_TEMP']+'/runs.json')).get('workflow_runs') or []
+          good=[]
+          for run in runs:
+            if run.get('conclusion')!='success' or run.get('run_attempt')!=1:continue
+            result=subprocess.run(['gh','run','view',str(run['id']),'--repo','giovannifidel-collab/pfarma-ci','--log'],capture_output=True,text=True,timeout=25)
+            if result.returncode:continue
+            if 'S10_CLOUDFLARE_CLOCK_TICK_METADATA_VALIDATED=PASS' in result.stdout:
+              good.append((datetime.datetime.fromisoformat(run['created_at'].replace('Z','+00:00')),run['id']))
+          good.sort()
+          print('S10_VERIFIED_CLOCK_ORIGIN_WORLD_RUNS='+str(len(good)))
+          assert any((b[0]-a[0]).total_seconds()>=480 for a,b in zip(good,good[1:])),'S10_NEED_TWO_DISTINCT_WORLD_CLOCK_RUNS'
+          print('S10_TWO_REAL_CLOCK_TRIGGERED_WORLD_JOBS=PASS')
+          PY
+      - name: Check true fresh World source, Cloudflare protected endpoint and independent response clock
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\n' | base64 -d > "$RUNNER_TEMP/world.json"
+          curl --fail-with-body --silent --show-error --max-time 25 \
+            -H "Cf-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "Cf-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN" \
+            https://hive-alveare.pages.dev/api/world-state > "$RUNNER_TEMP/api.json"
+          python3 - <<'PY'
+          import os,json,datetime
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])
+          w=json.loads((root/'world.json').read_text())
+          a=json.loads((root/'api.json').read_text())
+          assert a.get('ok') is True and isinstance(a.get('data'),dict)
+          assert w.get('policy')=='authoritative-source-first' and len(w.get('state_fingerprint') or '')==64
+          assert a['data'].get('generated_at')==w.get('generated_at')==a['data'].get('relay_generated_at')
+          age=(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(w['generated_at'].replace('Z','+00:00'))).total_seconds()
+          print('S10_TRUE_WORLD_SOURCE_AGE_SECONDS='+str(round(age)))
+          assert 0<=age<=1800,'S10_WORLD_SOURCE_FRESHNESS_GOAL_FAILED'
+          print('S10_WORLD_G3_TWO_CYCLES_TRUE_FRESHNESS_PROTECTED_E2E=PASS')
+          print('S10_TERMINAL_OWNER_RATIFICATION_NOT_AUTOMATIC=TRUE')
+          PY
