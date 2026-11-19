@@ -119,3 +119,32 @@ jobs:
           print('S10_ACCESS_SERVICE_PAIR_PARTIAL_DENY='+str(a!=b).lower())
           print('S10_NO_SECRET_VALUES_EXPOSED=TRUE')
           PY
+
+      - name: Verify existing Pages Access path and binding names - read only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error
+          cf=os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK')
+          aid=os.environ.get('CF_ACCESS_CLIENT_ID') or ''
+          ase=os.environ.get('CF_ACCESS_CLIENT_SECRET') or ''
+          rq=urllib.request.Request('https://api.cloudflare.com/client/v4/accounts?per_page=50',headers={'Authorization':'Bearer '+cf})
+          with urllib.request.urlopen(rq,timeout=22) as r: data=json.load(r)
+          assert data.get('success') and len(data.get('result') or [])==1
+          acc=data['result'][0]['id']
+          rq=urllib.request.Request('https://api.cloudflare.com/client/v4/accounts/'+acc+'/pages/projects/hive-alveare',headers={'Authorization':'Bearer '+cf})
+          with urllib.request.urlopen(rq,timeout=22) as r: data=json.load(r)
+          assert data.get('success')
+          env=((data.get('result') or {}).get('deployment_configs') or {}).get('production',{}).get('env_vars') or {}
+          print('S10_PAGES_AUTH_RELATED_BINDING_NAMES='+','.join(sorted(k for k in env if ('ACCESS' in k or 'DISPATCH' in k or 'WORLD' in k))))
+          url='https://hive-alveare.pages.dev/api/world-state'
+          for mode,headers in [('without_access',{'accept':'application/json'}),('service_access',{'accept':'application/json','CF-Access-Client-Id':aid,'CF-Access-Client-Secret':ase})]:
+            req=urllib.request.Request(url,headers=headers,method='GET')
+            try:
+              with urllib.request.urlopen(req,timeout=20) as r: code=r.status
+            except urllib.error.HTTPError as e: code=e.code
+            except urllib.error.URLError: code=0
+            print('S10_PAGES_WORLD_STATE_HTTP_'+mode.upper()+'='+str(code))
+          print('S10_NO_PAGES_MUTATION_NO_SECRET_VALUES_EXPOSED=TRUE')
+          PY
