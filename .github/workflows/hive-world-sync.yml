@@ -1,16 +1,19 @@
 name: HIVE Queen Global World Sync
 
 on:
-  schedule:
-    # Same existing 15-minute World observation schedule, offset from the busy UTC hour boundary.
-    # GitHub scheduled workflows are best-effort; stale source continues fail-closed.
-    - cron: '7,22,37,52 * * * *'
+  # S10 Owner-signed cutover: the ONLY periodic clock is a minute Cloudflare
+  # Worker. This is STILL the one original GitHub World observer/writer.
+  # No second scheduler on this workflow; manual dispatch remains possible.
   workflow_dispatch:
     inputs:
       retry_hop:
         description: 'Bounded self-retry hop after optimistic-concurrency conflict'
         required: false
         default: '0'
+        type: string
+      clock_minute:
+        description: 'Timestamp (minute UTC) from replacement Cloudflare S10 clock; metadata only, not World freshness'
+        required: false
         type: string
   push:
     branches: [main]
@@ -33,6 +36,24 @@ jobs:
     env:
       GIOCHEM_ACCESS_TOKEN: ${{ secrets.GIOCHEM_ACCESS_TOKEN || secrets.PFARMA_GIOCHEM_ACCESS_TOKEN }}
     steps:
+      - name: Validate external tick provenance metadata, never use it as World generated_at
+        if: inputs.clock_minute != ''
+        shell: bash
+        env:
+          TICK: ${{ inputs.clock_minute }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          python3 - <<'PY'
+          import os,re,datetime
+          t=os.environ['TICK']
+          assert re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:00Z',t),'S10_CLOCK_TICK_FORMAT_DENY'
+          stamped=datetime.datetime.fromisoformat(t.replace('Z','+00:00'))
+          diff=(datetime.datetime.now(datetime.timezone.utc)-stamped).total_seconds()
+          assert 0<=diff<=360,'S10_CLOCK_TICK_OUTSIDE_ALLOWED_WINDOW_DENY'
+          print('S10_CLOUDFLARE_CLOCK_TICK_METADATA_VALIDATED=PASS')
+          PY
       - name: Check out public HIVE relay
         uses: actions/checkout@v4
         with:
