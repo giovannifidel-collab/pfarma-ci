@@ -4,6 +4,10 @@ on:
   # S10 Owner-signed cutover: the ONLY periodic clock is a minute Cloudflare
   # Worker. This is STILL the one original GitHub World observer/writer.
   # No second scheduler on this workflow; manual dispatch remains possible.
+  # Existing Pages Access-only broker sends a bounded repository_dispatch;
+  # no direct GitHub credential is copied into the Cloudflare Cron Worker.
+  repository_dispatch:
+    types: [hive_world_clock_tick]
   workflow_dispatch:
     inputs:
       retry_hop:
@@ -37,13 +41,13 @@ jobs:
       GIOCHEM_ACCESS_TOKEN: ${{ secrets.GIOCHEM_ACCESS_TOKEN || secrets.PFARMA_GIOCHEM_ACCESS_TOKEN }}
     steps:
       - name: Validate external tick provenance metadata, never use it as World generated_at
-        if: inputs.clock_minute != ''
+        if: github.event_name == 'repository_dispatch' || inputs.clock_minute != ''
         shell: bash
         env:
-          TICK: ${{ inputs.clock_minute }}
+          TICK: ${{ github.event.client_payload.clock_minute || inputs.clock_minute }}
         run: |
           set -euo pipefail
-          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          case "$GITHUB_EVENT_NAME" in workflow_dispatch) ;; repository_dispatch) test "$(jq -r .action "$GITHUB_EVENT_PATH")" = hive_world_clock_tick ;; *) exit 38 ;; esac
           test "$GITHUB_ACTOR" = giovannifidel-collab
           python3 - <<'PY'
           import os,re,datetime
