@@ -1,0 +1,283 @@
+name: Queen Owner S10 One Minute World Clock Exact OIDC Cutover (ONE APPROVAL)
+on:
+  push:
+    branches: [audit/owner-s10-cloudflare-world-clock-one-release-20261119]
+    paths: [.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml]
+  workflow_dispatch:
+    inputs:
+      approve_exact_pr1307_one_clock_release_and_token_transfer:
+        type: boolean
+        required: true
+        default: false
+        description: "Owner signs exact PR1307, dedicated fine-grained GH clock token encrypted transfer to CF, disabled stage, original GitHub cron OFF, one CF minute clock ON and rollback if failure; no second S1 or paid fallback"
+permissions: {contents: write, actions: read, id-token: write}
+concurrency:
+  group: queen-s10-owner-clock-exact-pr1307-single-cutover
+  cancel-in-progress: false
+jobs:
+  authorize-stage-merge-cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      GH_WORLD_CLOCK_TOKEN: ${{ secrets.S10_WORLD_CLOCK_GH_TOKEN }}
+      CF_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_TOKEN_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      OWNER_APPROVE: ${{ inputs.approve_exact_pr1307_one_clock_release_and_token_transfer }}
+      EXPECTED_PR1307_HEAD: 1b1efa300bd0ee83ce2356c829088128fe9bf274
+      EXPECTED_HIVE_SHA: 88000e9ff70ffc044f424d469645573e01738a8b
+      EXPECTED_WORLD_OLD_BLOB: 398b478cebcdd979953aa8a014ef13fbf205c65b
+      EXPECTED_WORLD_NEW_BLOB: 9112665f299c5f2e19ecd9cca1f1bfbf269a2167
+      EXPECTED_WORKER_BLOB: f7247e0403ece58c73accc252ccca5afdef27c36
+      EXPECTED_CANONICAL_S1_BLOB: a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+      WORKER_NAME: hive-queen-world-clock
+    steps:
+      - name: Checkout signer only - source approval is not production execution
+        uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Preflight unchanged main source, exact Owner candidate and independent source-only CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test -n "$GH_TOKEN"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+            test "$GITHUB_REF" = refs/heads/main
+            test "$OWNER_APPROVE" = true
+          else
+            test "$GITHUB_EVENT_NAME" = push
+            test "$GITHUB_REF" = refs/heads/audit/owner-s10-cloudflare-world-clock-one-release-20261119
+          fi
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$EXPECTED_HIVE_SHA"
+          PTR="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$PTR" = "$EXPECTED_HIVE_SHA"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$EXPECTED_WORLD_OLD_BLOB"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$EXPECTED_CANONICAL_S1_BLOB"
+          test "$(gh api 'repos/giovannifidel-collab/pfarma-ci/contents/ops/queen/s10/world-clock/worker.mjs?ref=fix/s10-cloudflare-world-clock-cutover-20261119' --jq .sha)" = "$EXPECTED_WORKER_BLOB"
+          test "$(gh api 'repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml?ref=fix/s10-cloudflare-world-clock-cutover-20261119' --jq .sha)" = "$EXPECTED_WORLD_NEW_BLOB"
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1307 |
+             jq -e --arg head "$EXPECTED_PR1307_HEAD" '.state=="open" and .merged==false and .draft==false and .head.sha==$head and .base.ref=="main"' >/dev/null
+          gh api 'repos/giovannifidel-collab/pfarma-ci/pulls/1307/files?per_page=50' |
+             jq -e 'length==10 and all(.[].filename;
+                .==".github/workflows/hive-world-sync.yml" or
+                .==".github/workflows/queen-s10-world-clock-source-ci.yml" or
+                .==".github/workflows/queen-s10-world-heartbeat-source-ci.yml" or
+                .==".github/workflows/queen-s10-s1-heartbeat-source-ci.yml" or
+                .=="ops/queen/s10/tests/world-observation-publication.test.mjs" or
+                .=="ops/queen/s10/world-clock/worker.mjs" or
+                .=="ops/queen/s10/world-clock/wrangler.jsonc" or
+                .=="ops/queen/s10/world-clock/wrangler.disabled.jsonc" or
+                .=="ops/queen/s10/world-clock/tests/worker.test.mjs" or
+                .=="ops/queen/s10/world-clock/README.md")' >/dev/null
+          for run in 44619898417 44620080422 44620079509; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$run" |
+              jq -e --arg h "$EXPECTED_PR1307_HEAD" '.conclusion=="success" and .run_attempt==1 and .head_sha==$h' >/dev/null
+          done
+          echo 'S10_OWNER_CLOUD_CLOCK_EXACT_SHA_TEN_FILES_SOURCE_CI=PASS'
+          echo 'S10_OWNER_NO_MUTATION_PRE_OIDC=TRUE'
+      - name: On source-only push validate complete embedded Owner signer JS syntax
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml').read_text()
+          a=s.index("          node --input-type=module <<'JS'\n")+len("          node --input-type=module <<'JS'\n")
+          b=s.index("\n          JS",a)
+          body='\n'.join(x[10:] if x.startswith('          ') else x for x in s[a:b].splitlines())
+          Path('/tmp/s10-clock-owner-oidc.mjs').write_text(body+'\n')
+          PY
+          node --check /tmp/s10-clock-owner-oidc.mjs
+          echo 'S10_OWNER_CLOUD_CLOCK_SIGNER_JAVASCRIPT_SYNTAX=PASS'
+      - name: Verify real Owner GitHub OIDC RS256 signature, issue one 15m immutable release authorization
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash} from 'node:crypto';
+          import {appendFileSync} from 'node:fs';
+          const e=process.env;
+          const deny=x=>{throw Error('S10_OWNER_CLOCK_CUTOVER_DENIED_'+x)};
+          const aud='hive-queen-s10-single-cloudflare-world-clock-pr1307-v1';
+          if(e.OWNER_APPROVE!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)deny('NO_OWNER_SIGNED_INPUT');
+          const url=e.ACTIONS_ID_TOKEN_REQUEST_URL+
+            (e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(aud);
+          const response=await fetch(url,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!response.ok)deny('NO_ISSUER_TOKEN');
+          const jwt=(await response.json()).value,parts=jwt?.split('.')||[];
+          if(parts.length!==3)deny('JWT_PARTS');
+          const decode=x=>Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-x.length%4)%4),'base64');
+          const head=JSON.parse(decode(parts[0]).toString()),c=JSON.parse(decode(parts[1]).toString());
+          if(head.alg!=='RS256'||!head.kid||head.jwk||head.jku||head.x5u||head.crit)deny('BAD_JWT_HEADER');
+          const claim={
+            iss:'https://token.actions.githubusercontent.com',aud,
+            repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+            repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+            event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',
+            ref:'refs/heads/main',runner_environment:'github-hosted',
+            workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml@refs/heads/main'
+          };
+          for(const [k,v] of Object.entries(claim))if(String(c[k])!==v)deny('BAD_CLAIM_'+k);
+          const now=Date.now();
+          if(c.sha!==e.GITHUB_SHA||Number(c.run_id)!==Number(e.GITHUB_RUN_ID)||
+             Number(c.run_attempt)!==1||!Number.isSafeInteger(c.exp)||!Number.isSafeInteger(c.iat)||
+             c.exp<=c.iat||c.exp-c.iat>900||c.exp*1000<=now||
+             c.iat*1000>now+30000||now-c.iat*1000>300000)deny('JWT_STALE_OR_OTHER_RUN');
+          const keys=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!keys.ok)deny('JWKS_UNAVAILABLE');
+          const key=(await keys.json()).keys?.find(k=>k.kid===head.kid&&k.kty==='RSA'&&k.use==='sig'&&(!k.alg||k.alg==='RS256'));
+          if(!key||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key,format:'jwk'}),decode(parts[2])))deny('BAD_SIGNATURE');
+          if(e.EXPECTED_PR1307_HEAD!=='1b1efa300bd0ee83ce2356c829088128fe9bf274'||
+             e.EXPECTED_HIVE_SHA!=='88000e9ff70ffc044f424d469645573e01738a8b')deny('EXACT_RELEASE_SHA');
+          const receipt={
+            schema:'queen.s10.owner-one-cloudflare-clock-cutover.v1',
+            github_owner:'giovannifidel-collab',owner_oidc_run:Number(e.GITHUB_RUN_ID),
+            relay_pr:1307,relay_head:e.EXPECTED_PR1307_HEAD,hive_sha:e.EXPECTED_HIVE_SHA,
+            worker:'hive-queen-world-clock',cloudflare_cron:'* * * * *',
+            git_old_schedule_disabled:true,max_relay_merges:1,
+            allowed_worker_staging_deploy:1,allowed_worker_active_deploy:1,
+            upload_encrypted_new_fine_grained_world_clock_token:true,
+            rollback_to_disabled_worker_and_original_github_schedule_on_failure:true,
+            no_second_queen_s1_s2:true,school_training:false,project_writes:false,
+            model_provider_calls:false,paid_fallback:false,additional_cost_usd:0,
+            scope:'single World observation clock only, existing GitHub World Sync only',
+            issued_at:new Date(now).toISOString(),expires_at:new Date(now+900000).toISOString()
+          };
+          const sha=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          appendFileSync(e.GITHUB_ENV,'S10_CLOCK_OWNER_SIGNED=TRUE\n');
+          appendFileSync(e.GITHUB_ENV,'S10_CLOCK_OWNER_EXPIRES='+String(Math.floor(now/1000)+900)+'\n');
+          console.log('S10_CLOCK_OWNER_EXACT_RELEASE_OIDC_RS256=PASS');
+          console.log('S10_CLOCK_OWNER_ONE_RELEASE_RECEIPT='+JSON.stringify({...receipt,receipt_sha256:sha}));
+          console.log('S10_CLOCK_OWNER_SIGNER_NO_MUTATIONS=TRUE');
+          JS
+      - name: Verify dedicated GitHub token and one allowed Cloudflare account without mutation
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE
+          test "$(date -u +%s)" -lt "$S10_CLOCK_OWNER_EXPIRES"
+          test -n "$GH_WORLD_CLOCK_TOKEN" || { echo S10_CLOCK_REQUIRED_FINE_GRAINED_TOKEN_ABSENT; exit 40; }
+          test "${#GH_WORLD_CLOCK_TOKEN}" -ge 16
+          export CLOUDFLARE_API_TOKEN="${CF_TOKEN_PRIMARY:-$CF_TOKEN_FALLBACK}"
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo S10_CLOCK_CLOUDFLARE_TOKEN_MISSING; exit 41; }
+          status="$(curl -sS --max-time 22 -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_WORLD_CLOCK_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            https://api.github.com/repos/giovannifidel-collab/pfarma-ci/actions/workflows/hive-world-sync.yml)"
+          test "$status" = 200 || { echo "S10_CLOCK_GITHUB_TOKEN_SCOPE_READ_HTTP=$status"; exit 42; }
+          response="$(curl -sS --max-time 22 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            https://api.cloudflare.com/client/v4/accounts?per_page=50)"
+          account="$(jq -re '.success==true and (.result|length)==1 | if . then input else empty end' <<< '{}' 2>/dev/null || true)"
+          account="$(jq -r 'if .success and (.result|length)==1 then .result[0].id else empty end' <<< "$response")"
+          [[ "$account" =~ ^[a-f0-9]{32}$ ]] || { echo S10_CLOCK_CF_ACCOUNT_AMBIGUOUS_DENY; exit 43; }
+          echo "CLOUDFLARE_ACCOUNT_ID=$account" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN" >> "$GITHUB_ENV"
+          # Do not print worker token, account credential, or secret bytes.
+          echo 'S10_CLOCK_FINE_GRAINED_GITHUB_READ_AND_CLOUDFLARE_ACCOUNT=PASS'
+      - name: Checkout exact unmerged signed World clock source and run no-secret tests
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch -q origin refs/heads/fix/s10-cloudflare-world-clock-cutover-20261119
+          git checkout --detach "$EXPECTED_PR1307_HEAD"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PR1307_HEAD"
+          node --test ops/queen/s10/world-clock/tests/worker.test.mjs
+          node --test ops/queen/s10/tests/world-observation-publication.test.mjs
+          echo 'S10_CLOCK_EXACT_CANDIDATE_SOURCE_IN_RELEASE_RUN=PASS'
+      - name: Stage one disabled Clock Worker with no Cron Trigger
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE
+          test "$(date -u +%s)" -lt "$S10_CLOCK_OWNER_EXPIRES"
+          npx --yes wrangler@4.139.0 deploy --config ops/queen/s10/world-clock/wrangler.disabled.jsonc
+          echo 'S10_CLOCK_WORKER_STAGED_WITH_CRON_DISABLED=PASS'
+          echo 'S10_CLOCK_WORKER_STAGED=TRUE' >> "$GITHUB_ENV"
+      - name: Upload ONE encrypted dedicated GitHub World token to disabled Cloudflare Worker
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE
+          test "$S10_CLOCK_WORKER_STAGED" = TRUE
+          test "$(date -u +%s)" -lt "$S10_CLOCK_OWNER_EXPIRES"
+          printf '%s' "$GH_WORLD_CLOCK_TOKEN" |
+            npx --yes wrangler@4.139.0 secret put GH_WORLD_DISPATCH_TOKEN \
+              --name "$WORKER_NAME" --config ops/queen/s10/world-clock/wrangler.disabled.jsonc >/dev/null
+          echo 'S10_CLOCK_ENCRYPTED_DEDICATED_TOKEN_INSTALLED_NO_LOG=PASS'
+      - name: Merge exactly the Owner-signed original World source cutover once
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE
+          test "$S10_CLOCK_WORKER_STAGED" = TRUE
+          test "$(date -u +%s)" -lt "$S10_CLOCK_OWNER_EXPIRES"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$EXPECTED_WORLD_OLD_BLOB"
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1307 |
+            jq -e --arg h "$EXPECTED_PR1307_HEAD" '.state=="open" and .merged==false and .head.sha==$h' >/dev/null
+          result="$(gh api --method PUT repos/giovannifidel-collab/pfarma-ci/pulls/1307/merge \
+            -f sha="$EXPECTED_PR1307_HEAD" -f merge_method=merge \
+            -f commit_title='release(s10): Owner-OIDC signed single Cloudflare World clock cutover' \
+            -f commit_message='Exactly PR1307, original GH cron off, minute Cloudflare clock only; no new S1, School, model or paid fallback. Single signed release and rollback.')"
+          echo "$result" | jq -e '.merged==true' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$EXPECTED_WORLD_NEW_BLOB"
+          echo 'S10_CLOCK_PR1307_EXACT_ONE_MERGE=PASS'
+          echo 'S10_CLOCK_MERGED=TRUE' >> "$GITHUB_ENV"
+      - name: Activate one Cloudflare Cron source only after GitHub schedule is disabled
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE
+          test "$S10_CLOCK_MERGED" = TRUE
+          test "$(date -u +%s)" -lt "$S10_CLOCK_OWNER_EXPIRES"
+          npx --yes wrangler@4.139.0 deploy --config ops/queen/s10/world-clock/wrangler.jsonc
+          echo 'S10_CLOCK_ONE_CLOUDFLARE_CRON_ACTIVATED=PASS'
+      - name: Confirm sole CF minute Cron, original GitHub World schedule absent, S1 immutable
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE
+          sched="$(curl -sS --max-time 22 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME/schedules")"
+          echo "$sched" | jq -e '.success==true and ((.result.schedules // .result)|length)==1 and
+            ((.result.schedules // .result)[0].cron=="* * * * *")' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$EXPECTED_WORLD_NEW_BLOB"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$EXPECTED_CANONICAL_S1_BLOB"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$EXPECTED_HIVE_SHA"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = "$EXPECTED_HIVE_SHA"
+          echo 'S10_CLOCK_EXACTLY_ONE_EXTERNAL_CRON_ORIGINAL_S1_UNCHANGED=PASS'
+          echo 'S10_CLOCK_SCHEDULE_CONFIGURATION_ONLY_NOT_TERMINAL_LIVENESS=TRUE'
+      - name: Attempt fail-safe rollback only for one signed partial cutover
+        if: ${{ failure() && github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          set +e
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE || exit 0
+          if [ "$S10_CLOCK_WORKER_STAGED" = TRUE ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            npx --yes wrangler@4.139.0 deploy --config ops/queen/s10/world-clock/wrangler.disabled.jsonc >/dev/null 2>&1
+            echo 'S10_CLOCK_FAILURE_ROLLBACK_DISABLED_CLOUDFLARE=ATTEMPTED'
+          fi
+          if [ "$S10_CLOCK_MERGED" = TRUE ]; then
+            current="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)"
+            if [ "$current" = "$EXPECTED_WORLD_NEW_BLOB" ]; then
+              original="$(gh api 'repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml?ref=eaaf702e3548e12c5ec34c48fabb5d94264be5d3' --jq .content | tr -d '\n')"
+              gh api --method PUT repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml \
+                -f message='rollback(s10): restore original GitHub World cron after failed Owner clock cutover' \
+                -f content="$original" -f sha="$current" >/dev/null
+              echo 'S10_CLOCK_FAILURE_ROLLBACK_ORIGINAL_GITHUB_CRON=ATTEMPTED'
+            else
+              echo 'S10_CLOCK_FAILURE_ROLLBACK_SOURCE_DRIFT_FAIL_CLOSED'
+            fi
+          fi
+          echo 'S10_CLOCK_FAILED_RELEASE_REQUIRES_OWNER_AUDIT_NO_TERMINAL_PASS'
