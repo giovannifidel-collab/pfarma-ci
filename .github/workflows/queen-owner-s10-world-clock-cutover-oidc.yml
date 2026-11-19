@@ -17,7 +17,7 @@ concurrency:
 jobs:
   authorize-stage-merge-cutover:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 45
     environment: pfarma-ci-trusted
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
@@ -25,10 +25,10 @@ jobs:
       CF_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CF_TOKEN_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
       OWNER_APPROVE: ${{ inputs.approve_exact_pr1307_one_clock_release_and_token_transfer }}
-      EXPECTED_PR1307_HEAD: 1b1efa300bd0ee83ce2356c829088128fe9bf274
+      EXPECTED_PR1307_HEAD: 1a0882f95779009fc353129976098a46d6019078
       EXPECTED_HIVE_SHA: 88000e9ff70ffc044f424d469645573e01738a8b
       EXPECTED_WORLD_OLD_BLOB: 398b478cebcdd979953aa8a014ef13fbf205c65b
-      EXPECTED_WORLD_NEW_BLOB: 9112665f299c5f2e19ecd9cca1f1bfbf269a2167
+      EXPECTED_WORLD_NEW_BLOB: d7e27e93548a6f32a6393f5150d7aaedba675fa7
       EXPECTED_WORKER_BLOB: f7247e0403ece58c73accc252ccca5afdef27c36
       EXPECTED_CANONICAL_S1_BLOB: a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
       WORKER_NAME: hive-queen-world-clock
@@ -72,7 +72,7 @@ jobs:
                 .=="ops/queen/s10/world-clock/wrangler.disabled.jsonc" or
                 .=="ops/queen/s10/world-clock/tests/worker.test.mjs" or
                 .=="ops/queen/s10/world-clock/README.md")' >/dev/null
-          for run in 44619898417 44620080422 44620079509; do
+          for run in 44621590856 44621597258 44621597340; do
             gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$run" |
               jq -e --arg h "$EXPECTED_PR1307_HEAD" '.conclusion=="success" and .run_attempt==1 and .head_sha==$h' >/dev/null
           done
@@ -132,7 +132,7 @@ jobs:
           if(!keys.ok)deny('JWKS_UNAVAILABLE');
           const key=(await keys.json()).keys?.find(k=>k.kid===head.kid&&k.kty==='RSA'&&k.use==='sig'&&(!k.alg||k.alg==='RS256'));
           if(!key||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key,format:'jwk'}),decode(parts[2])))deny('BAD_SIGNATURE');
-          if(e.EXPECTED_PR1307_HEAD!=='1b1efa300bd0ee83ce2356c829088128fe9bf274'||
+          if(e.EXPECTED_PR1307_HEAD!=='1a0882f95779009fc353129976098a46d6019078'||
              e.EXPECTED_HIVE_SHA!=='88000e9ff70ffc044f424d469645573e01738a8b')deny('EXACT_RELEASE_SHA');
           const receipt={
             schema:'queen.s10.owner-one-cloudflare-clock-cutover.v1',
@@ -173,7 +173,6 @@ jobs:
           test "$status" = 200 || { echo "S10_CLOCK_GITHUB_TOKEN_SCOPE_READ_HTTP=$status"; exit 42; }
           response="$(curl -sS --max-time 22 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             https://api.cloudflare.com/client/v4/accounts?per_page=50)"
-          account="$(jq -re '.success==true and (.result|length)==1 | if . then input else empty end' <<< '{}' 2>/dev/null || true)"
           account="$(jq -r 'if .success and (.result|length)==1 then .result[0].id else empty end' <<< "$response")"
           [[ "$account" =~ ^[a-f0-9]{32}$ ]] || { echo S10_CLOCK_CF_ACCOUNT_AMBIGUOUS_DENY; exit 43; }
           echo "CLOUDFLARE_ACCOUNT_ID=$account" >> "$GITHUB_ENV"
@@ -242,6 +241,7 @@ jobs:
           test "$(date -u +%s)" -lt "$S10_CLOCK_OWNER_EXPIRES"
           npx --yes wrangler@4.139.0 deploy --config ops/queen/s10/world-clock/wrangler.jsonc
           echo 'S10_CLOCK_ONE_CLOUDFLARE_CRON_ACTIVATED=PASS'
+          echo "S10_CLOUDFLARE_ACTIVATED_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
       - name: Confirm sole CF minute Cron, original GitHub World schedule absent, S1 immutable
         if: github.event_name == 'workflow_dispatch'
         shell: bash
@@ -258,6 +258,104 @@ jobs:
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = "$EXPECTED_HIVE_SHA"
           echo 'S10_CLOCK_EXACTLY_ONE_EXTERNAL_CRON_ORIGINAL_S1_UNCHANGED=PASS'
           echo 'S10_CLOCK_SCHEDULE_CONFIGURATION_ONLY_NOT_TERMINAL_LIVENESS=TRUE'
+      - name: Independently verify TWO real Cloudflare-clock-triggered original World runs and live fresh source
+        if: github.event_name == 'workflow_dispatch'
+        timeout-minutes: 27
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE
+          test -n "$S10_CLOUDFLARE_ACTIVATED_AT"
+          echo S10_G3_REPEATED_MINUTE_CLOCK_E2E_CHECK_STARTED
+          for attempt in $(seq 1 44); do
+            data="$(gh api 'repos/giovannifidel-collab/pfarma-ci/actions/workflows/hive-world-sync.yml/runs?event=workflow_dispatch&per_page=60')"
+            mapfile -t candidates < <(jq -r --arg after "$S10_CLOUDFLARE_ACTIVATED_AT" '
+              .workflow_runs[] |
+              select(.created_at >= $after and .status=="completed" and .conclusion=="success" and .run_attempt==1) |
+              [.id,.created_at]|@tsv' <<< "$data")
+            verified_times=()
+            for row in "${candidates[@]}"; do
+              id="${row%%
+        if: ${{ failure() && github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          set +e
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE || exit 0
+          if [ "$S10_CLOCK_WORKER_STAGED" = TRUE ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            npx --yes wrangler@4.139.0 deploy --config ops/queen/s10/world-clock/wrangler.disabled.jsonc >/dev/null 2>&1
+            echo 'S10_CLOCK_FAILURE_ROLLBACK_DISABLED_CLOUDFLARE=ATTEMPTED'
+          fi
+          if [ "$S10_CLOCK_MERGED" = TRUE ]; then
+            current="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)"
+            if [ "$current" = "$EXPECTED_WORLD_NEW_BLOB" ]; then
+              original="$(gh api 'repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml?ref=eaaf702e3548e12c5ec34c48fabb5d94264be5d3' --jq .content | tr -d '\n')"
+              gh api --method PUT repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml \
+                -f message='rollback(s10): restore original GitHub World cron after failed Owner clock cutover' \
+                -f content="$original" -f sha="$current" >/dev/null
+              echo 'S10_CLOCK_FAILURE_ROLLBACK_ORIGINAL_GITHUB_CRON=ATTEMPTED'
+            else
+              echo 'S10_CLOCK_FAILURE_ROLLBACK_SOURCE_DRIFT_FAIL_CLOSED'
+            fi
+          fi
+          echo 'S10_CLOCK_FAILED_RELEASE_REQUIRES_OWNER_AUDIT_NO_TERMINAL_PASS'\t'*}"
+              created="${row#*
+        if: ${{ failure() && github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          set +e
+          test "$S10_CLOCK_OWNER_SIGNED" = TRUE || exit 0
+          if [ "$S10_CLOCK_WORKER_STAGED" = TRUE ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            npx --yes wrangler@4.139.0 deploy --config ops/queen/s10/world-clock/wrangler.disabled.jsonc >/dev/null 2>&1
+            echo 'S10_CLOCK_FAILURE_ROLLBACK_DISABLED_CLOUDFLARE=ATTEMPTED'
+          fi
+          if [ "$S10_CLOCK_MERGED" = TRUE ]; then
+            current="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)"
+            if [ "$current" = "$EXPECTED_WORLD_NEW_BLOB" ]; then
+              original="$(gh api 'repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml?ref=eaaf702e3548e12c5ec34c48fabb5d94264be5d3' --jq .content | tr -d '\n')"
+              gh api --method PUT repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml \
+                -f message='rollback(s10): restore original GitHub World cron after failed Owner clock cutover' \
+                -f content="$original" -f sha="$current" >/dev/null
+              echo 'S10_CLOCK_FAILURE_ROLLBACK_ORIGINAL_GITHUB_CRON=ATTEMPTED'
+            else
+              echo 'S10_CLOCK_FAILURE_ROLLBACK_SOURCE_DRIFT_FAIL_CLOSED'
+            fi
+          fi
+          echo 'S10_CLOCK_FAILED_RELEASE_REQUIRES_OWNER_AUDIT_NO_TERMINAL_PASS'\t'}"
+              logs="$(gh run view "$id" --repo giovannifidel-collab/pfarma-ci --log 2>/dev/null || true)"
+              if grep -Fq 'S10_CLOUDFLARE_CLOCK_TICK_METADATA_VALIDATED=PASS' <<< "$logs" &&
+                 (grep -Fq 'WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE' <<< "$logs" ||
+                  grep -Fq 'WORLD_SEMANTIC_CHANGE=true' <<< "$logs" ||
+                  grep -Fq 'WORLD_OBSERVATION_ALREADY_CURRENT=SKIP_NO_S1_WAKE' <<< "$logs"); then
+                verified_times+=("$created")
+              fi
+            done
+            if [ "${#verified_times[@]}" -ge 2 ]; then
+              a="$(date -u -d "${verified_times[0]}" +%s)"
+              b="$(date -u -d "${verified_times[1]}" +%s)"
+              span="$((a>b?a-b:b-a))"
+              if [ "$span" -ge 480 ]; then
+                source="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\n' | base64 -d)"
+                GENERATED_AT="$(jq -r '.generated_at // empty' <<< "$source")"
+                export GENERATED_AT
+                python3 - <<'PY'
+          import os,datetime
+          ts=os.environ['GENERATED_AT']
+          seen=datetime.datetime.fromisoformat(ts.replace('Z','+00:00'))
+          age=(datetime.datetime.now(datetime.timezone.utc)-seen).total_seconds()
+          if not 0<=age<=1800:raise SystemExit('S10_TRUE_WORLD_SOURCE_OVER_1800_SECONDS')
+          print('S10_WORLD_TRUE_SOURCE_AGE_SECONDS='+str(round(age)))
+          PY
+                echo 'S10_G3_TWO_INDEPENDENT_CLOCK_MINUTE_WORLD_OBSERVATIONS=PASS'
+                echo 'S10_G3_WORLD_FRESHNESS_AT_READONLY_POSTFLIGHT=PASS'
+                echo 'S10_G3_CLOCK_POSTFLIGHT_NEVER_TRAINED_SCHOOL_OR_DISPATCHED_S1_DIRECTLY=TRUE'
+                exit 0
+              fi
+            fi
+            echo "S10_G3_WAITING_FOR_TWO_REAL_WORLD_RUNS poll=$attempt"
+            sleep 35
+          done
+          echo 'S10_G3_NO_TWO_CONFIRMED_REAL_CLOCK_WORLD_RUNS_FAIL_CLOSED'
+          exit 47
       - name: Attempt fail-safe rollback only for one signed partial cutover
         if: ${{ failure() && github.event_name == 'workflow_dispatch' }}
         shell: bash
