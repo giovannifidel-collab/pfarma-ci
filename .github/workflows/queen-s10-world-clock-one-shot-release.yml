@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   cutover-after-exact-owner-oidc:
-    if: startsWith(github.event.head_commit.message, 'release(s10): owner-approved-world-clock ')
+    if: "${{ startsWith(github.event.head_commit.message, 'release(s10): owner-approved-world-clock ') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 14
     environment: pfarma-ci-trusted
