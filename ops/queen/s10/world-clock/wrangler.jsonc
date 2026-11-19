@@ -1,0 +1,11 @@
+{
+  // S10 replaces the unreliable GitHub Actions schedule, NOT Queen S1.
+  // One small Free-plan Worker checks each minute, dispatches only when due.
+  "name": "hive-queen-world-clock",
+  "main": "./worker.mjs",
+  "compatibility_date": "2026-11-19",
+  "workers_dev": false,
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": { "CLOCK_ENABLED": "true" },
+  "observability": { "enabled": true }
+}
