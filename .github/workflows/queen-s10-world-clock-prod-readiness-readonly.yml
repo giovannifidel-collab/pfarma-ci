@@ -185,3 +185,32 @@ jobs:
             print('S10_ACCESS_APP_READ_STATE='+str(apps.get('err') if isinstance(apps,dict) else 'not_available'))
           print('S10_ACCESS_AND_PAGES_DOMAIN_METADATA_ONLY=PASS')
           PY
+
+      - name: Verify Cloudflare Pages with descriptive User-Agent and existing Service Access - GET only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,urllib.request,urllib.error
+          target='https://hive-alveare.pages.dev/api/world-state'
+          ua='HIVE-S10-World-Clock-Audit/1.0'
+          for name,h in [('anonymous',{}),('service',{'CF-Access-Client-Id':os.environ.get('CF_ACCESS_CLIENT_ID',''),'CF-Access-Client-Secret':os.environ.get('CF_ACCESS_CLIENT_SECRET','')})]:
+            req=urllib.request.Request(target,headers={**h,'User-Agent':ua,'Accept':'application/json','Cache-Control':'no-cache'})
+            try:
+              with urllib.request.urlopen(req,timeout=22) as res:
+                code=res.status
+                typ=res.headers.get('content-type','')
+                sample=res.read(80)
+            except urllib.error.HTTPError as e:
+              code=e.code
+              typ=e.headers.get('content-type','')
+              sample=e.read(80)
+            except urllib.error.URLError:
+              code=0
+              typ=''
+              sample=b''
+            print('S10_PAGES_DESCRIPTIVE_UA_'+name.upper()+'_STATUS='+str(code))
+            print('S10_PAGES_DESCRIPTIVE_UA_'+name.upper()+'_CTYPE_JSON='+str('json' in typ).lower())
+            print('S10_PAGES_DESCRIPTIVE_UA_'+name.upper()+'_CF1010='+str(b'1010' in sample).lower())
+          print('S10_CLOUDFLARE_ACCESS_TEST_READONLY=PASS')
+          PY
