@@ -11,13 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1a0882f95779009fc353129976098a46d6019078
+          ref: 6670ef862ef971785222a7a55b9834ca78c24f0e
           persist-credentials: false
       - name: Ensure original S1 code untouched and expected Worker exact candidate
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 1a0882f95779009fc353129976098a46d6019078
+          test "$(git rev-parse HEAD)" = 6670ef862ef971785222a7a55b9834ca78c24f0e
           test -f ops/queen/s10/world-clock/worker.mjs
           test -f ops/queen/s10/world-clock/wrangler.jsonc
           test -f ops/queen/s10/world-clock/wrangler.disabled.jsonc
