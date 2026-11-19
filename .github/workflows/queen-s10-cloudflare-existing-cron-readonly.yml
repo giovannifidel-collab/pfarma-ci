@@ -51,13 +51,14 @@ jobs:
               if not re.search(r"hive|queen|world|school|pfarma",name,re.I):continue
               matched+=1
               sched=api("/accounts/"+account_id+"/workers/scripts/"+name+"/schedules")
-              if isinstance(sched,list):
-                cron=[str(x.get("cron")) for x in sched if x.get("cron")]
+              candidate=sched.get("schedules") if isinstance(sched,dict) and isinstance(sched.get("schedules"),list) else sched
+              if isinstance(candidate,list):
+                cron=[str(x.get("cron")) for x in candidate if isinstance(x,dict) and x.get("cron")]
                 print("S10_EXISTING_MATCHED_CLOUDFLARE_WORKER="+name+" CRON="+json.dumps(cron))
               elif isinstance(sched,dict) and sched.get("_read_error_code"):
                 print("S10_EXISTING_MATCHED_CLOUDFLARE_WORKER="+name+" SCHEDULES_READ_HTTP="+str(sched["_read_error_code"]))
               else:
-                print("S10_EXISTING_MATCHED_CLOUDFLARE_WORKER="+name+" SCHEDULES_NOT_VERIFIED")
+                print("S10_EXISTING_MATCHED_CLOUDFLARE_WORKER="+name+" SCHEDULES_NOT_VERIFIED TYPE="+type(sched).__name__+" KEYS="+json.dumps(sorted(sched.keys()) if isinstance(sched,dict) else []))
           print("S10_CF_READABLE_WORKER_ACCOUNTS="+str(readable))
           print("S10_CF_MATCHED_WORKERS="+str(matched))
           print("S10_EXISTING_WORKER_CRON_READ_ONLY_NO_DEPLOY_NO_WRITE=PASS")
