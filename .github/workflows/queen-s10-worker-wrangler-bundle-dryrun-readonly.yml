@@ -11,13 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1b1efa300bd0ee83ce2356c829088128fe9bf274
+          ref: 1a0882f95779009fc353129976098a46d6019078
           persist-credentials: false
       - name: Ensure original S1 code untouched and expected Worker exact candidate
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 1b1efa300bd0ee83ce2356c829088128fe9bf274
+          test "$(git rev-parse HEAD)" = 1a0882f95779009fc353129976098a46d6019078
           test -f ops/queen/s10/world-clock/worker.mjs
           test -f ops/queen/s10/world-clock/wrangler.jsonc
           test -f ops/queen/s10/world-clock/wrangler.disabled.jsonc
@@ -28,11 +28,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/s10-wrangler-disabled /tmp/s10-wrangler-active
-          npx --yes wrangler@4 deploy --dry-run \
+          npx --yes wrangler@4.139.0 deploy --dry-run \
             --config ops/queen/s10/world-clock/wrangler.disabled.jsonc \
             --outdir /tmp/s10-wrangler-disabled > /tmp/s10-disabled.log 2>&1 ||
             { tail -n 50 /tmp/s10-disabled.log; exit 41; }
-          npx --yes wrangler@4 deploy --dry-run \
+          npx --yes wrangler@4.139.0 deploy --dry-run \
             --config ops/queen/s10/world-clock/wrangler.jsonc \
             --outdir /tmp/s10-wrangler-active > /tmp/s10-active.log 2>&1 ||
             { tail -n 50 /tmp/s10-active.log; exit 42; }
