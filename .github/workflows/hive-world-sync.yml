@@ -51,7 +51,9 @@ jobs:
           assert re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:00Z',t),'S10_CLOCK_TICK_FORMAT_DENY'
           stamped=datetime.datetime.fromisoformat(t.replace('Z','+00:00'))
           diff=(datetime.datetime.now(datetime.timezone.utc)-stamped).total_seconds()
-          assert 0<=diff<=360,'S10_CLOCK_TICK_OUTSIDE_ALLOWED_WINDOW_DENY'
+          # GitHub may queue an authenticated workflow after the CF tick.
+          # Tick age is provenance metadata only, never World freshness.
+          assert 0<=diff<=1800,'S10_CLOCK_TICK_OUTSIDE_ALLOWED_WINDOW_DENY'
           print('S10_CLOUDFLARE_CLOCK_TICK_METADATA_VALIDATED=PASS')
           PY
       - name: Check out public HIVE relay
