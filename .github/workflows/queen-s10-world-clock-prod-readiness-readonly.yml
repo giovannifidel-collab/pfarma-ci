@@ -148,3 +148,40 @@ jobs:
             print('S10_PAGES_WORLD_STATE_HTTP_'+mode.upper()+'='+str(code))
           print('S10_NO_PAGES_MUTATION_NO_SECRET_VALUES_EXPOSED=TRUE')
           PY
+
+      - name: Inspect existing Cloudflare Pages domains and Access applications - read only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error
+          token=os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK')
+          root='https://api.cloudflare.com/client/v4'
+          def read(path):
+            req=urllib.request.Request(root+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+            try:
+              with urllib.request.urlopen(req,timeout=22) as r: j=json.load(r)
+              return j.get('result') if j.get('success') else {'err':'api_rejected'}
+            except urllib.error.HTTPError as e: return {'err': 'http_'+str(e.code)}
+            except urllib.error.URLError: return {'err':'network'}
+          accounts=read('/accounts?per_page=50')
+          assert isinstance(accounts,list) and len(accounts)==1
+          account=accounts[0]['id']
+          page=read('/accounts/'+account+'/pages/projects/hive-alveare')
+          if isinstance(page,dict):
+            print('S10_HIVE_PAGES_SUBDOMAIN='+str(page.get('subdomain') or 'unavailable'))
+            print('S10_HIVE_PAGES_CUSTOM_DOMAINS='+','.join(page.get('domains') or []))
+            print('S10_HIVE_PAGES_CANONICAL_DEPLOYMENT='+str((page.get('canonical_deployment') or {}).get('url') or 'unavailable'))
+          apps=read('/accounts/'+account+'/access/apps?per_page=100')
+          if isinstance(apps,list):
+            for a in apps:
+              if not isinstance(a,dict):continue
+              domain=str(a.get('domain') or '')
+              if 'hive' in domain or 'pages.dev' in domain:
+                print('S10_EXISTING_ACCESS_APPLICATION_DOMAIN='+domain)
+                print('S10_EXISTING_ACCESS_APPLICATION_TYPE='+str(a.get('type') or 'unknown'))
+                print('S10_EXISTING_ACCESS_APPLICATION_AUD_PRESENT='+str(bool(a.get('aud'))).lower())
+          else:
+            print('S10_ACCESS_APP_READ_STATE='+str(apps.get('err') if isinstance(apps,dict) else 'not_available'))
+          print('S10_ACCESS_AND_PAGES_DOMAIN_METADATA_ONLY=PASS')
+          PY
