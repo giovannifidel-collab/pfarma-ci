@@ -63,7 +63,7 @@ test('stale replay, forged future stamp, missing timestamp and invalid fingerpri
 test('original existing World workflow has only semantic S1 wake and no extra scheduler',()=>{
  const w=readFileSync('.github/workflows/hive-world-sync.yml','utf8');
  assert.equal((w.match(/name: HIVE Queen Global World Sync/g)||[]).length,1);
- assert.equal((w.match(/cron: '\*\/15 \* \* \* \*'/g)||[]).length,1);
+ assert.equal((w.match(/cron: '7,22,37,52 \* \* \* \*'/g)||[]).length,1);
  assert.equal((w.match(/event_type:"world-state-changed"/g)||[]).length,1);
  assert.ok(w.includes("if: steps.publish.outputs.changed == 'true'"));
  assert.ok(w.includes('node ops/queen/s10/world-observation-publication.mjs'));

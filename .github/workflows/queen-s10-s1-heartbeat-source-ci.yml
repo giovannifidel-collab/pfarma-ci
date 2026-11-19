@@ -1,0 +1,50 @@
+name: Queen S10 S1 Heartbeat Compatibility Source CI (NO RELEASE)
+on:
+  push:
+    branches: [fix/s10-s1-core-heartbeat-ci-invariant-20261119]
+    paths:
+      - .github/workflows/queen-s1-core-certification.yml
+      - .github/workflows/queen-s10-s1-heartbeat-source-ci.yml
+permissions: {contents: read}
+jobs:
+  certify-no-duplicate-s1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Exact five-file bounded source-only compatibility and cron diff, unchanged S1
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse --verify origin/main >/dev/null
+          mapfile -t changed < <(git diff --name-only origin/main...HEAD)
+          test "${#changed[@]}" = 5
+          for path in "${changed[@]}"; do
+            case "$path" in
+              .github/workflows/queen-s1-core-certification.yml|.github/workflows/queen-s10-s1-heartbeat-source-ci.yml|.github/workflows/hive-world-sync.yml|ops/queen/s10/tests/world-observation-publication.test.mjs|.github/workflows/queen-s10-world-heartbeat-source-ci.yml) ;;
+              *) echo "S1_UNAUTHORIZED_DIFF=$path"; exit 30 ;;
+            esac
+          done
+          test "$(grep -c '^  repository_dispatch:' .github/workflows/queen-s1-event-ingress.yml)" = 1
+          if grep -q 'repository_dispatch:' .github/workflows/hive-queen-event-ingress.yml; then exit 31; fi
+          echo 'S10_S1_SINGLE_EVENT_LOOP_UNCHANGED=PASS'
+      - name: Validate authentic observation semantic no-wake and unchanged retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE='.github/workflows/hive-world-sync.yml'
+          CORE='.github/workflows/queen-s1-core-certification.yml'
+          grep -Fq 'WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE' "$SOURCE"
+          grep -Fq 'echo "changed=false" >> "$GITHUB_OUTPUT"' "$SOURCE"
+          grep -Fq "if: steps.publish.outputs.changed == 'true' && github.ref == 'refs/heads/main'" "$SOURCE"
+          grep -Fq 'WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE' "$CORE"
+          grep -Fq 'WORLD_SEMANTIC_CHANGE=false' "$CORE"
+          grep -Fq 'HOP >= 3' "$SOURCE"
+          grep -Fq 'WORLD_SYNC_RETRY_DISPATCHED' "$SOURCE"
+          grep -Fq "cron: '7,22,37,52 * * * *'" "$SOURCE"
+          test "$(grep -c '^  schedule:' "$SOURCE")" = 1
+          node --test ops/queen/s10/tests/world-observation-publication.test.mjs
+          echo 'S10_S1_HEARTBEAT_NO_WAKE_INVARIANT=PASS'
+          echo 'S10_S1_BOUNDED_RETRIES_ORIGINAL_SCHEDULE_OFFPEAK=PASS'
+          echo 'S10_S1_NO_RUNTIME_OR_PRODUCTION_WRITE=TRUE'

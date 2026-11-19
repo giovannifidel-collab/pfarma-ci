@@ -134,7 +134,18 @@ jobs:
           fi
 
           grep -Fq 'state_fingerprint' "$WORLD"
-          grep -Fq 'WORLD_SEMANTIC_CHANGE=false' "$WORLD"
+          # Both the original semantic-only World Sync and the newer authentic
+          # observation heartbeat preserve the same invariant: unchanged World
+          # semantics MUST NOT create a new S1 wake/dispatch.
+          if grep -Fq 'WORLD_SEMANTIC_CHANGE=false' "$WORLD"; then
+            echo 'S1_WORLD_LEGACY_UNCHANGED_NO_WAKE=PASS'
+          else
+            grep -Fq 'WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE' "$WORLD"
+            grep -Fq 'if [ "$DECISION" = "HEARTBEAT" ]; then' "$WORLD"
+            grep -Fq 'echo "changed=false" >> "$GITHUB_OUTPUT"' "$WORLD"
+            grep -Fq "if: steps.publish.outputs.changed == 'true' && github.ref == 'refs/heads/main'" "$WORLD"
+            echo 'S1_WORLD_AUTHENTIC_HEARTBEAT_UNCHANGED_NO_WAKE=PASS'
+          fi
           grep -Fq "github.ref == 'refs/heads/main'" "$WORLD"
           grep -Fq 'world-state-changed' "$WORLD"
           grep -Fq 'steps.publish.outputs.changed' "$WORLD"
