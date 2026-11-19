@@ -14,6 +14,8 @@ jobs:
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+      CLOUDFLARE_PRIMARY_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_FALLBACK_TOKEN: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
     steps:
       - name: Verify exact authoritative HIVE and live protected read-only access
         shell: bash
@@ -22,10 +24,44 @@ jobs:
           test "$GITHUB_ACTOR" = giovannifidel-collab
           test "$GITHUB_RUN_ATTEMPT" = 1
           test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET" && test -n "$HIVE_RUNTIME_BEARER_TOKEN"
-          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 29bb723e9dba1654ea782d97c3f6517dd20ea6dc
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 1ab0e0c4fc08d1abead1517b64492e217819bdb3
           gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content |
-            tr -d '\n' | base64 -d | tr -d '\n' | grep -Fxq 29bb723e9dba1654ea782d97c3f6517dd20ea6dc
+            tr -d '\n' | base64 -d | tr -d '\n' | grep -Fxq 1ab0e0c4fc08d1abead1517b64492e217819bdb3
           echo S10_WORLD_DIAGNOSTIC_SOURCE_EXACT=PASS
+      - name: Independently verify Git-connected Pages exact HIVE main deployment and rollback - read only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,re
+          token=os.environ.get('CLOUDFLARE_PRIMARY_TOKEN') or os.environ.get('CLOUDFLARE_FALLBACK_TOKEN')
+          assert token,'S10_CLOUDFLARE_METADATA_TOKEN_MISSING'
+          def cf(path):
+            req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                 headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+            with urllib.request.urlopen(req,timeout=25) as r:return json.load(r)
+          accounts=cf('/accounts?per_page=50')
+          assert accounts.get('success'),'S10_CF_ACCOUNT_READ_DENIED'
+          matches=[]
+          for a in accounts.get('result') or []:
+            aid=str(a.get('id') or '')
+            if not re.fullmatch('[a-f0-9]{32}',aid):continue
+            try:
+              obj=cf('/accounts/'+aid+'/pages/projects/hive-alveare')
+              if obj.get('success') and (obj.get('result') or {}).get('name')=='hive-alveare':
+                matches.append(obj['result'])
+            except urllib.error.HTTPError:pass
+          assert len(matches)==1,'S10_CF_HIVE_PROJECT_NOT_UNIQUE'
+          proj=matches[0]; src=proj.get('source') or {}; cfg=src.get('config') or {}
+          assert src.get('type')=='github' and cfg.get('repo_name')=='hive-alveare' and cfg.get('production_branch')=='main','S10_CF_SOURCE_DRIFT'
+          dep=proj.get('canonical_deployment') or {}
+          deployed=(dep.get('deployment_trigger') or {}).get('metadata') or {}
+          print('S10_CLOUDFLARE_CURRENT_DEPLOYMENT_SHA='+str(deployed.get('commit_hash')))
+          print('S10_CLOUDFLARE_DEPLOYMENT_STATUS='+str((dep.get('latest_stage') or {}).get('status')))
+          assert deployed.get('commit_hash')=='1ab0e0c4fc08d1abead1517b64492e217819bdb3' and (dep.get('latest_stage') or {}).get('status')=='success','S10_CF_NEW_HIVE_SOURCE_NOT_READY'
+          print('S10_CLOUDFLARE_EXACT_NEW_HIVE_SOURCE_RELEASE=PASS')
+          print('S10_CLOUDFLARE_GIT_CONNECTED_NO_CONFIG_WRITE=TRUE')
+          PY
       - name: Read original existing World workflow schedule health and last runs
         shell: bash
         run: |
@@ -97,6 +133,13 @@ jobs:
           wm_source_age=age((wm.get('value') or {}).get('source_generated_at'))
           assert source_age is not None and relay_age is not None, 'S10_NO_TRUE_RELAY_TIMESTAMP'
           assert abs(source_age-relay_age)<=20, 'S10_CLOUDFLARE_RELAY_MISMATCH'
+          # On the newly merged HIVE API, generated_at is the original source,
+          # whereas response_generated_at is the current HTTP response clock.
+          assert live['data'].get('generated_at')==live['data'].get('relay_generated_at'), 'S10_CLOUDFLARE_OLD_WORLD_API_STILL_ACTIVE'
+          resp_age=age(live['data'].get('response_generated_at'))
+          assert resp_age is not None and 0<=resp_age<=90, 'S10_CLOUDFLARE_RESPONSE_CLOCK_MISSING_OR_OLD'
+          print('S10_WORLD_SOURCE_AND_RESPONSE_CLOCKS_SEPARATED=PASS')
+          print('S10_WORLD_CLOUDFLARE_SOURCE_EQUALS_RELAY=PASS')
           print('S10_WORLD_GITHUB_SOURCE_AGE_SECONDS='+str(source_age))
           print('S10_WORLD_CLOUDFLARE_RELAY_AGE_SECONDS='+str(relay_age))
           print('S10_WORLD_API_REGENERATED_RESPONSE_AGE_SECONDS='+str(generated_age))
