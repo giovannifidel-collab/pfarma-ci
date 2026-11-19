@@ -1,0 +1,152 @@
+name: S10 EXACT Owner Release — One Clock Cutover, Staged Disabled and Reversible
+on:
+  push:
+    branches: [release/s10-world-clock-owner-one-shot-20261119]
+    paths: [.github/workflows/queen-s10-world-clock-one-shot-release.yml]
+permissions: {contents: read, actions: read}
+concurrency:
+  group: queen-s10-one-clock-one-shot-cutover
+  cancel-in-progress: false
+jobs:
+  cutover-after-exact-owner-oidc:
+    if: startsWith(github.event.head_commit.message, 'release(s10): owner-approved-world-clock ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      DEDICATED_TOKEN: ${{ secrets.S10_WORLD_CLOCK_GH_TOKEN }}
+      OWNER_RUN_ID: "0"
+      CANDIDATE_SHA: 1b1efa300bd0ee83ce2356c829088128fe9bf274
+      HIVE_MAIN: 88000e9ff70ffc044f424d469645573e01738a8b
+    steps:
+      - name: Verify fresh EXACT signed Owner OIDC receipt before any production action
+        id: owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/release/s10-world-clock-owner-one-shot-20261119
+          test "$OWNER_RUN_ID" != 0
+          test -n "$GH_TOKEN" && test -n "$DEDICATED_TOKEN" && test -n "$CF_PRIMARY$CF_FALLBACK"
+          test "\${#DEDICATED_TOKEN}" -ge 16
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_MAIN"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = "$HIVE_MAIN"
+          gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$OWNER_RUN_ID" |
+            jq -e '.conclusion=="success" and .status=="completed" and .event=="workflow_dispatch" and
+              .run_attempt==1 and .actor.login=="giovannifidel-collab" and
+              .path==".github/workflows/queen-owner-s10-world-clock-one-cutover-oidc.yml"' >/dev/null
+          gh run view "$OWNER_RUN_ID" --repo giovannifidel-collab/pfarma-ci --log > "$RUNNER_TEMP/s10-owner-exact.log"
+          node --input-type=module <<'JS'
+          import {readFileSync,appendFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const raw=readFileSync(process.env.RUNNER_TEMP+'/s10-owner-exact.log','utf8');
+          const line=raw.split('\n').find(x=>/Z S10_OWNER_PR1307_WORLD_CLOCK_SIGNED_RECEIPT=\{/.test(x));
+          if(!line)throw Error('NO_AUTHENTIC_SIGNED_RECEIPT');
+          const receipt=JSON.parse(line.slice(line.indexOf('S10_OWNER_PR1307_WORLD_CLOCK_SIGNED_RECEIPT=')+'S10_OWNER_PR1307_WORLD_CLOCK_SIGNED_RECEIPT='.length));
+          const digest=receipt.receipt_sha256;
+          delete receipt.receipt_sha256;
+          const expected=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          if(digest!==expected||receipt.schema!=='queen.owner.s10.world-clock.one-release-oidc.v1'||
+            receipt.oidc_run!==Number(process.env.OWNER_RUN_ID)||receipt.pr!==1307||
+            receipt.pr_head!==process.env.CANDIDATE_SHA||
+            receipt.hive_sha!==process.env.HIVE_MAIN||
+            receipt.scope!=='HIVE_SINGLE_WORLD_TIME_SOURCE_ONLY'||
+            receipt.allow_merge_exact_candidate_once!==true||
+            receipt.allow_stage_disabled_worker!==true||
+            receipt.allow_activate_one_worker_after_old_GitHub_schedule_removed!==true||
+            receipt.no_neon_writes!==true||receipt.no_school_training!==true||
+            receipt.no_paid_fallback!==true||
+            !receipt.expires_at||Date.parse(receipt.expires_at)-Date.now()<120000)
+            throw Error('SIGNED_RELEASE_SCOPE_OR_LEASE_DENIED');
+          appendFileSync(process.env.GITHUB_ENV,'S10_EXACT_OWNER_LEASE_EXPIRES='+receipt.expires_at+'\n');
+          console.log('S10_ONE_SHOT_SIGNED_OWNER_RECEIPT_EXACT_SCOPE=PASS');
+          JS
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1307 |
+            jq -e --arg sha "$CANDIDATE_SHA" '.state=="open" and .head.sha==$sha and .merged==false and .base.ref=="main"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44620080422 |
+            jq -e --arg sha "$CANDIDATE_SHA" '.conclusion=="success" and .head_sha==$sha' >/dev/null
+          echo S10_EXACT_PR1307_NOT_MERGED_AND_TESTED=PASS
+      - uses: actions/checkout@v4
+        with:
+          ref: 1b1efa300bd0ee83ce2356c829088128fe9bf274
+          persist-credentials: false
+          path: release-source
+      - name: Set one verified Cloudflare account (no secrets in logs)
+        shell: bash
+        run: |
+          set -euo pipefail
+          CF_TOKEN="$CF_PRIMARY"
+          if [ -z "$CF_TOKEN" ]; then CF_TOKEN="$CF_FALLBACK"; fi
+          echo "::add-mask::$CF_TOKEN"
+          echo "CLOUDFLARE_API_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import json,urllib.request,os,re
+          req=urllib.request.Request('https://api.cloudflare.com/client/v4/accounts?per_page=50',
+            headers={'Authorization':'Bearer '+(os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK'))})
+          with urllib.request.urlopen(req,timeout=22) as r:data=json.load(r)
+          accounts=data.get('result',[])
+          if not data.get('success') or len(accounts)!=1 or not re.fullmatch('[a-f0-9]{32}',str(accounts[0].get('id'))):
+            raise SystemExit('S10_CLOUDFLARE_ACCOUNT_SOURCE_NOT_UNIQUE_DENY')
+          with open(os.environ['GITHUB_ENV'],'a') as f:f.write('CLOUDFLARE_ACCOUNT_ID='+accounts[0]['id']+'\n')
+          print('S10_CLOUDFLARE_SINGLE_ACCOUNT_IDENTIFIED=PASS')
+          PY
+      - name: Deploy Worker in DISABLED state only, secret encrypted, no scheduled invocation
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(date -u +%s)" -lt "$(date -d "$S10_EXACT_OWNER_LEASE_EXPIRES" +%s)"
+          npx --yes wrangler@4 deploy --config release-source/ops/queen/s10/world-clock/wrangler.disabled.jsonc
+          printf '%s' "$DEDICATED_TOKEN" |
+            npx --yes wrangler@4 secret put GH_WORLD_DISPATCH_TOKEN \
+              --config release-source/ops/queen/s10/world-clock/wrangler.disabled.jsonc
+          echo "staged=true" >> "$GITHUB_OUTPUT"
+          echo 'S10_SAFE_WORKER_STAGED_DISABLED_AND_DEDICATED_SECRET_ENCRYPTED=PASS'
+      - name: Merge only the EXACT signed PR1307, removing original GitHub World cron
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(date -u +%s)" -lt "$(date -d "$S10_EXACT_OWNER_LEASE_EXPIRES" +%s)"
+          gh api -X PUT repos/giovannifidel-collab/pfarma-ci/pulls/1307/merge \
+            -f sha="$CANDIDATE_SHA" -f merge_method=merge \
+            -f commit_title="release(s10): Owner OIDC one Cloudflare minute World clock replacing GitHub schedule" |
+              jq -e '.merged==true' >/dev/null
+          current="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .content | tr -d '\n' | base64 -d)"
+          if printf '%s\n' "$current" | grep -Eq '^  schedule:'; then exit 51; fi
+          if ! printf '%s\n' "$current" | grep -Fq 'clock_minute:'; then exit 52; fi
+          echo 'S10_ORIGINAL_GITHUB_WORLD_CRON_REMOVED_NO_SECOND_SCHEDULER=PASS'
+      - name: Activate EXACT one Cloudflare Worker cron now that GitHub cron is absent
+        id: activate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(date -u +%s)" -lt "$(date -d "$S10_EXACT_OWNER_LEASE_EXPIRES" +%s)"
+          npx --yes wrangler@4 deploy --config release-source/ops/queen/s10/world-clock/wrangler.jsonc
+          python3 - <<'PY'
+          import os,urllib.request,json
+          base='https://api.cloudflare.com/client/v4'
+          path='/accounts/'+os.environ['CLOUDFLARE_ACCOUNT_ID']+'/workers/scripts/hive-queen-world-clock/schedules'
+          token=os.environ['CLOUDFLARE_API_TOKEN']
+          req=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+token})
+          with urllib.request.urlopen(req,timeout=22) as r:data=json.load(r)
+          sched=data.get('result')
+          if isinstance(sched,dict):sched=sched.get('schedules')
+          crons=[x.get('cron') for x in sched or []] if isinstance(sched,list) else []
+          if crons!=['* * * * *']:raise SystemExit('S10_SINGLE_CLOUDFLARE_CRON_NOT_INSTALLED_DENY')
+          print('S10_EXACT_SINGLE_CLOUDFLARE_MINUTE_CRON_CONFIG=PASS')
+          PY
+          echo 'S10_NO_AUTOMATIC_TERMINAL_CLAIM=TRUE'
+      - name: If any authorized post-stage action failed, deactivate clock to fail closed
+        if: failure() && steps.stage.outputs.staged == 'true'
+        shell: bash
+        continue-on-error: true
+        run: |
+          set +e
+          npx --yes wrangler@4 deploy --config release-source/ops/queen/s10/world-clock/wrangler.disabled.jsonc
+          echo 'S10_FAILURE_WORKER_DISABLED_FAIL_CLOSED=TRUE'
+          echo 'S10_TERMINAL_CANNOT_BE_CERTIFIED=TRUE'
