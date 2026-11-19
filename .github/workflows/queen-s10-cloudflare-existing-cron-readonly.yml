@@ -1,0 +1,64 @@
+name: Queen S10 Existing Cloudflare Cron Infrastructure Read-only Discovery
+on:
+  push:
+    branches: [audit/s10-existing-cron-infrastructure-readonly-20261119]
+    paths: [.github/workflows/queen-s10-cloudflare-existing-cron-readonly.yml]
+permissions: {contents: read}
+jobs:
+  existing-cloudflare-trigger-inventory:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Examine known HIVE/Queen Cloudflare Workers cron without mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,re,json,urllib.request,urllib.error
+          token=os.environ.get("CF_PRIMARY") or os.environ.get("CF_FALLBACK")
+          assert token,"S10_NO_EXISTING_CLOUDFLARE_READ_CREDENTIAL"
+          def api(path):
+            req=urllib.request.Request("https://api.cloudflare.com/client/v4"+path,headers={
+              "Authorization":"Bearer "+token,"Accept":"application/json"
+            },method="GET")
+            try:
+              with urllib.request.urlopen(req,timeout=22) as response:
+                j=json.load(response)
+              if j.get('success') is False:raise RuntimeError("Cloudflare API returned success=false")
+              return j.get('result')
+            except urllib.error.HTTPError as e:
+              return {"_read_error_code":e.code}
+          accounts=api("/accounts?per_page=50")
+          assert isinstance(accounts,list),"S10_ACCOUNT_INVENTORY_UNAVAILABLE"
+          print("S10_CLOUDFLARE_ACCOUNTS_ACCESSIBLE="+str(len(accounts)))
+          matched=0;readable=0
+          for a in accounts:
+            account_id=str(a.get("id",""))
+            if not re.fullmatch(r"[a-f0-9]{32}",account_id):continue
+            scripts=api("/accounts/"+account_id+"/workers/scripts?per_page=100")
+            if isinstance(scripts,dict) and scripts.get("_read_error_code"):
+              print("S10_CF_EXISTING_WORKERS_INVENTORY_HTTP="+str(scripts["_read_error_code"]))
+              continue
+            if not isinstance(scripts,list):continue
+            readable+=1
+            for script in scripts:
+              name=str(script.get("id") or script.get("script") or "")
+              if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}",name):continue
+              if not re.search(r"hive|queen|world|school|pfarma",name,re.I):continue
+              matched+=1
+              sched=api("/accounts/"+account_id+"/workers/scripts/"+name+"/schedules")
+              if isinstance(sched,list):
+                cron=[str(x.get("cron")) for x in sched if x.get("cron")]
+                print("S10_EXISTING_MATCHED_CLOUDFLARE_WORKER="+name+" CRON="+json.dumps(cron))
+              elif isinstance(sched,dict) and sched.get("_read_error_code"):
+                print("S10_EXISTING_MATCHED_CLOUDFLARE_WORKER="+name+" SCHEDULES_READ_HTTP="+str(sched["_read_error_code"]))
+              else:
+                print("S10_EXISTING_MATCHED_CLOUDFLARE_WORKER="+name+" SCHEDULES_NOT_VERIFIED")
+          print("S10_CF_READABLE_WORKER_ACCOUNTS="+str(readable))
+          print("S10_CF_MATCHED_WORKERS="+str(matched))
+          print("S10_EXISTING_WORKER_CRON_READ_ONLY_NO_DEPLOY_NO_WRITE=PASS")
+          PY
