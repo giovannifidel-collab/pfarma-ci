@@ -1,0 +1,61 @@
+name: Queen S10 Minute World Clock Account Token Availability Audit (READ ONLY)
+on:
+  push:
+    branches: [audit/s10-clock-required-secrets-readonly-20261119]
+    paths: [.github/workflows/queen-s10-clock-capability-preflight-readonly.yml]
+permissions: {contents: read}
+jobs:
+  least-privilege-clock-readiness:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      WORLD_CLOCK_TOKEN: ${{ secrets.S10_WORLD_CLOCK_GH_TOKEN }}
+    steps:
+      - name: Inspect presence and read access without exposing any credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,re
+          tok=os.environ.get('WORLD_CLOCK_TOKEN') or ''
+          if len(tok)<16:
+            print('S10_DEDICATED_GITHUB_WORLD_CLOCK_TOKEN=ABSENT')
+          else:
+            def gh(path):
+              req=urllib.request.Request('https://api.github.com'+path,headers={
+                'Authorization':'Bearer '+tok,'Accept':'application/vnd.github+json',
+                'User-Agent':'HIVE-World-Clock-Readiness'})
+              try:
+                with urllib.request.urlopen(req,timeout=15) as r:return r.status
+              except urllib.error.HTTPError as e:return e.code
+            status=gh('/repos/giovannifidel-collab/pfarma-ci/actions/workflows/hive-world-sync.yml')
+            print('S10_DEDICATED_CLOCK_TOKEN_WORLD_WORKFLOW_READ_HTTP='+str(status))
+            print('S10_DEDICATED_CLOCK_TOKEN_READINESS='+('PASS' if status==200 else 'DENY'))
+          cf=os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK')
+          if not cf:
+            print('S10_CLOUDFLARE_WORKER_DEPLOY_TOKEN=ABSENT')
+          else:
+            req=urllib.request.Request('https://api.cloudflare.com/client/v4/accounts?per_page=50',headers={
+              'Authorization':'Bearer '+cf,'Accept':'application/json'
+            })
+            try:
+              with urllib.request.urlopen(req,timeout=20) as r:j=json.load(r)
+              accounts=j.get('result') or []
+              print('S10_CF_ACCOUNT_READ='+('PASS' if j.get('success') and len(accounts)==1 else 'REVIEW'))
+              if j.get('success') and len(accounts)==1:
+                aid=accounts[0].get('id') or ''
+                if re.fullmatch('[0-9a-f]{32}',aid):
+                  req2=urllib.request.Request('https://api.cloudflare.com/client/v4/accounts/'+aid+'/workers/scripts?per_page=100',headers={
+                    'Authorization':'Bearer '+cf,'Accept':'application/json'})
+                  with urllib.request.urlopen(req2,timeout=20) as r2:j2=json.load(r2)
+                  scripts=j2.get('result') or []
+                  ids=[s.get('id') or s.get('script') for s in scripts]
+                  print('S10_CF_WORKERS_READ='+('PASS' if j2.get('success') else 'DENY'))
+                  print('S10_CLOCK_WORKER_NAME_COLLISION='+str('hive-queen-world-clock' in ids).lower())
+            except (urllib.error.HTTPError,TimeoutError,ValueError) as e:
+              print('S10_CF_WORKERS_READ=UNVERIFIED')
+          print('S10_CLOCK_READINESS_AUDIT_NO_CHANGES=PASS')
+          PY
