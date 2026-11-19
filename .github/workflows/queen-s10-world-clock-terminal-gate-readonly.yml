@@ -5,6 +5,22 @@ on:
     paths: [.github/workflows/queen-s10-world-clock-terminal-gate-readonly.yml]
 permissions: {contents: read, actions: read}
 jobs:
+  validate-unarmed-postflight-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Validate YAML and two-cycle proof assertions without runtime secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=.github/workflows/queen-s10-world-clock-terminal-gate-readonly.yml
+          npx --yes prettier@3 --parser yaml "$file" >/dev/null
+          grep -Fq 'S10_NEED_TWO_DISTINCT_WORLD_CLOCK_RUNS' "$file"
+          grep -Fq 'S10_WORLD_SOURCE_FRESHNESS_GOAL_FAILED' "$file"
+          grep -Fq 'S10_TERMINAL_OWNER_RATIFICATION_NOT_AUTOMATIC=TRUE' "$file"
+          echo S10_TERMINAL_G3_PROOF_TEMPLATE_SOURCE_SAFE=PASS
   verify-live-clock-and-world:
     if: "${{ startsWith(github.event.head_commit.message, 'audit(s10): live-minute-clock-proof ') }}"
     runs-on: ubuntu-latest
