@@ -1,0 +1,61 @@
+name: Queen S10 Standing Safe S1 Canonical SHA Read-only Source Regression (NO DEPLOY)
+on:
+  push:
+    branches: [fix/s10-standing-safe-trusted-source-ref-20261119]
+    paths:
+      - ops/queen/s9/relay-standing-safe-observer.mjs
+      - ops/queen/s9/tests/relay-standing-safe-observer.test.mjs
+      - .github/workflows/queen-s10-standing-s1-canonical-sha-source-ci.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - ops/queen/s9/relay-standing-safe-observer.mjs
+      - ops/queen/s9/tests/relay-standing-safe-observer.test.mjs
+      - .github/workflows/queen-s10-standing-s1-canonical-sha-source-ci.yml
+permissions: {contents: read}
+jobs:
+  verify-immutable-s1-source-binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Require exactly 3 owned source-only paths and existing single S1
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse --verify origin/main >/dev/null
+          git diff --name-only origin/main...HEAD > /tmp/s10-diff-paths
+          test "$(wc -l </tmp/s10-diff-paths)" -eq 3
+          while IFS= read -r p; do
+            case "$p" in
+              ops/queen/s9/relay-standing-safe-observer.mjs|ops/queen/s9/tests/relay-standing-safe-observer.test.mjs|.github/workflows/queen-s10-standing-s1-canonical-sha-source-ci.yml) ;;
+              *) echo "S10_UNAUTHORIZED_S1_SOURCE=$p"; exit 40 ;;
+            esac
+          done </tmp/s10-diff-paths
+          test "$(grep -c '^  repository_dispatch:' .github/workflows/queen-s1-event-ingress.yml)" = 1
+          if grep -Fq 'repository_dispatch:' .github/workflows/hive-queen-event-ingress.yml; then exit 41; fi
+          echo 'S10_STANDING_ONLY_ONE_CANONICAL_S1_AND_THREE_PATHS=PASS'
+      - name: Verify canonical HIVE main equals signed pointer and exact unchanged original S1 workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          actual="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          test "$actual" = 88000e9ff70ffc044f424d469645573e01738a8b
+          ptr="$(tr -d '\r\n' < hive-source-ref.txt)"
+          test "$ptr" = "$actual"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+          echo 'S10_STANDING_SOURCE_MAIN_POINTER_AND_ORIGINAL_S1=PASS'
+      - name: Run safe read-only S1 source-aware security regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check ops/queen/s9/relay-standing-safe-observer.mjs
+          node --check ops/queen/s9/tests/relay-standing-safe-observer.test.mjs
+          node --test ops/queen/s9/tests/relay-standing-safe-observer.test.mjs
+          echo 'S10_STANDING_OLD_NEW_SHA_TRUSTED_POINTER_FAIL_CLOSED=PASS'
+          echo 'S10_NO_DISPATCH_NO_SCHOOL_NO_NEON_WRITE_NO_PROVIDER=TRUE'
