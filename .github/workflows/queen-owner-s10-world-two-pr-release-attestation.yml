@@ -1,0 +1,180 @@
+name: Queen Owner S10 Exact Two World Source Releases OIDC (NO AUTO MERGE)
+on:
+  push:
+    branches: [audit/owner-s10-world-two-source-release-20261119]
+    paths: [.github/workflows/queen-owner-s10-world-two-pr-release-attestation.yml]
+  workflow_dispatch:
+    inputs:
+      approve_exact_s10_world_pr104_pr1301_and_source_pointer:
+        type: boolean
+        required: true
+        default: false
+        description: "Authorize ONLY HIVE PR104, relay PR1301, exact source pointer sync and Cloudflare connected deploy; no Neon write, provider, School or paid use"
+permissions: {contents: read, actions: read, id-token: write}
+concurrency:
+  group: owner-s10-exact-pr104-pr1301-one-release
+  cancel-in-progress: false
+jobs:
+  immutable-owner-attestation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      OWNER_APPROVE: ${{ inputs.approve_exact_s10_world_pr104_pr1301_and_source_pointer }}
+      HIVE_MAIN_BEFORE: 29bb723e9dba1654ea782d97c3f6517dd20ea6dc
+      HIVE_PR104_HEAD: ea17e398c1bbfb0c7fb6ecd9a6df52326d4f83c6
+      RELAY_PR1301_HEAD: 2ca4dd75d829af788a83118eae0fbfac0b87ec48
+      HIVE_OLD_WORLD_API_BLOB: b419eed031f961f88c3046403a0bf8344d042011
+      HIVE_NEW_WORLD_API_BLOB: 51d9d0aa9787042034bae20cb2f43b599fcc031a
+      RELAY_OLD_WORLD_SYNC_BLOB: 1a566f42203b0ffc8e27532f53852edf87b743b1
+      RELAY_NEW_WORLD_SYNC_BLOB: 60cd249b7658a6720b4dc2a7a351380c5b552bd3
+      RELAY_S1_CANONICAL_BLOB: a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+      STANDING_POLICY_BLOB: 90f4fb35b8610f7738c79af0019cf1cb2582f746
+    steps:
+      - name: Read-only source checkout, no persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Strict original Owner and exact PRs preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test -n "$GH_TOKEN"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+            test "$GITHUB_REF" = refs/heads/main
+            test "$OWNER_APPROVE" = true
+          else
+            test "$GITHUB_EVENT_NAME" = push
+            test "$GITHUB_REF" = refs/heads/audit/owner-s10-world-two-source-release-20261119
+          fi
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_MAIN_BEFORE"
+          PTR="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')"
+          test "$PTR" = "$HIVE_MAIN_BEFORE"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/cloudflare/functions/api/world-state.js --jq .sha)" = "$HIVE_OLD_WORLD_API_BLOB"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$RELAY_OLD_WORLD_SYNC_BLOB"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$RELAY_S1_CANONICAL_BLOB"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/cloudflare/functions/api/world-state.js?ref=fix/s10-world-authoritative-generated-at-20261119 --jq .sha)" = "$HIVE_NEW_WORLD_API_BLOB"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml?ref=fix/s10-world-sync-heartbeat-no-extra-loop-20261119 --jq .sha)" = "$RELAY_NEW_WORLD_SYNC_BLOB"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/ops/queen/s9/OWNER_STANDING_DELEGATION_PROPOSAL.v1.json --jq .sha)" = "$STANDING_POLICY_BLOB"
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/104 |
+            jq -e --arg head "$HIVE_PR104_HEAD" '.state=="open" and .merged==false and .head.sha==$head and .base.ref=="main"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1301 |
+            jq -e --arg head "$RELAY_PR1301_HEAD" '.state=="open" and .merged==false and .head.sha==$head and .base.ref=="main"' >/dev/null
+          gh api 'repos/giovannifidel-collab/hive-alveare/pulls/104/files?per_page=40' |
+            jq -e 'length==3 and all(.[].filename;
+              .=="cloudflare/functions/api/world-state.js" or
+              .=="ops/queen/s10/tests/world-source-clock.test.mjs" or
+              .==".github/workflows/queen-s10-world-source-clock-ci.yml")' >/dev/null
+          gh api 'repos/giovannifidel-collab/pfarma-ci/pulls/1301/files?per_page=40' |
+            jq -e 'length==4 and all(.[].filename;
+              .==".github/workflows/hive-world-sync.yml" or
+              .==".github/workflows/queen-s10-world-heartbeat-source-ci.yml" or
+              .=="ops/queen/s10/world-observation-publication.mjs" or
+              .=="ops/queen/s10/tests/world-observation-publication.test.mjs")' >/dev/null
+          for run in 44420675359 44420497404; do
+            gh api "repos/giovannifidel-collab/hive-alveare/actions/runs/$run" |
+              jq -e --arg sha "$HIVE_PR104_HEAD" '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .head_sha==$sha' >/dev/null
+          done
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44493657329 |
+            jq -e --arg sha "$RELAY_PR1301_HEAD" '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .head_sha==$sha' >/dev/null
+          echo 'S10_OWNER_TWO_EXACT_SOURCE_PR_HEAD_AND_CI=PASS'
+          echo 'S10_OWNER_PRE_OIDC_ZERO_MUTATION=TRUE'
+      - name: Validate stored signer JavaScript syntax on source-only push
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          text=Path('.github/workflows/queen-owner-s10-world-two-pr-release-attestation.yml').read_text()
+          start="          node --input-type=module <<'JS'\n"
+          a=text.index(start)+len(start)
+          b=text.index("\n          JS",a)
+          js="\n".join(x[10:] if x.startswith("          ") else x for x in text[a:b].splitlines())
+          Path('/tmp/s10-owner-world-attestation.mjs').write_text(js+'\n')
+          PY
+          node --check /tmp/s10-owner-world-attestation.mjs
+          echo 'S10_OWNER_TWO_SOURCE_RS256_SIGNER_SYNTAX=PASS'
+      - name: Verify real Owner OIDC signature and record one exact 15-min release approval only
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash} from 'node:crypto';
+          const e=process.env;
+          const deny=s=>{throw Error('S10_OWNER_WORLD_OIDC_DENIED_'+s)};
+          const audience='queen-owner-s10-exact-world-pr104-pr1301-one-release-v1';
+          if(e.OWNER_APPROVE!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)deny('NOT_MANUAL_OWNER_SIGNED');
+          const issuer=e.ACTIONS_ID_TOKEN_REQUEST_URL;
+          const url=issuer+(issuer.includes('?')?'&':'?')+'audience='+encodeURIComponent(audience);
+          const response=await fetch(url,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!response.ok)deny('GITHUB_OIDC_ISSUER_UNAVAILABLE');
+          const parts=(await response.json())?.value?.split('.')||[];
+          if(parts.length!==3)deny('NOT_JWT');
+          const decode=v=>Buffer.from(v.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-v.length%4)%4),'base64');
+          const header=JSON.parse(decode(parts[0]).toString());
+          const claim=JSON.parse(decode(parts[1]).toString());
+          if(header.alg!=='RS256'||!header.kid||header.jwk||header.jku||header.x5u||header.crit)deny('UNTRUSTED_HEADER');
+          const expected={
+            iss:'https://token.actions.githubusercontent.com',aud:audience,
+            repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+            repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+            event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',
+            workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-s10-world-two-pr-release-attestation.yml@refs/heads/main',
+            ref:'refs/heads/main',runner_environment:'github-hosted'
+          };
+          for(const [key,value] of Object.entries(expected))if(String(claim[key])!==value)deny('INVALID_'+key);
+          const now=Date.now();
+          if(claim.sha!==e.GITHUB_SHA||Number(claim.run_id)!==Number(e.GITHUB_RUN_ID)||
+             Number(claim.run_attempt)!==1||!Number.isSafeInteger(claim.exp)||
+             !Number.isSafeInteger(claim.iat)||claim.exp<=claim.iat||
+             claim.exp-claim.iat>900||claim.exp*1000<now||
+             claim.iat*1000>now+30000||now-claim.iat*1000>300000)deny('EXPIRED_OR_WRONG_RUN');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)deny('JWKS_UNAVAILABLE');
+          const keys=(await jwks.json()).keys||[];
+          const key=keys.find(k=>k.kid===header.kid&&k.kty==='RSA'&&k.use==='sig'&&(!k.alg||k.alg==='RS256'));
+          if(!key||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key,format:'jwk'}),decode(parts[2])))deny('SIGNATURE');
+          const lock={
+            hive_source_before:e.HIVE_MAIN_BEFORE,
+            hive_pr:104,hive_head:e.HIVE_PR104_HEAD,
+            relay_pr:1301,relay_head:e.RELAY_PR1301_HEAD,
+            hive_world_api_blob_before:e.HIVE_OLD_WORLD_API_BLOB,
+            hive_world_api_blob_after:e.HIVE_NEW_WORLD_API_BLOB,
+            relay_world_sync_blob_before:e.RELAY_OLD_WORLD_SYNC_BLOB,
+            relay_world_sync_blob_after:e.RELAY_NEW_WORLD_SYNC_BLOB,
+            relay_canonical_s1_blob_unchanged:e.RELAY_S1_CANONICAL_BLOB,
+            policy_blob:e.STANDING_POLICY_BLOB
+          };
+          if(lock.hive_source_before!=='29bb723e9dba1654ea782d97c3f6517dd20ea6dc'||
+             lock.hive_head!=='ea17e398c1bbfb0c7fb6ecd9a6df52326d4f83c6'||
+             lock.relay_head!=='2ca4dd75d829af788a83118eae0fbfac0b87ec48')
+            deny('UNEXPECTED_RELEASE_SCOPE');
+          const receipt={
+            schema:'queen.s10.owner-two-source-world-correction-one-release.v1',
+            owner:'giovannifidel-collab',
+            oidc_ci_run_id:Number(e.GITHUB_RUN_ID),
+            authenticated_github_oidc_rs256:true,
+            scope:lock,
+            max_hive_source_pr_merges:1,max_relay_source_pr_merges:1,
+            relay_pointer_update_exact_new_hive_merge_sha:true,
+            cloudflare_git_connected_exact_hive_release:true,
+            cloudflare_rollback_required:true,
+            no_neon_write:true,no_model_calls:true,no_paid_fallback:true,
+            no_school_training:true,no_project_writes:true,
+            no_new_scheduler:true,no_new_s1_or_s2:true,
+            owner_only_authority_escalation:false,additional_cost_usd:0,
+            issued_at:new Date(now).toISOString(),
+            expires_at:new Date(now+15*60*1000).toISOString()
+          };
+          const receiptHash=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S10_OWNER_EXACT_PR104_PR1301_RS256_SIGNED=PASS');
+          console.log('S10_OWNER_EXACT_WORLD_RELEASE_RECEIPT='+JSON.stringify({...receipt,sha256:receiptHash}));
+          console.log('S10_OWNER_NO_MERGE_NO_DEPLOY_NO_NEON_WRITE_IN_SIGNER=TRUE');
+          JS
