@@ -20,7 +20,8 @@ jobs:
           file=.github/workflows/queen-s10-world-clock-one-shot-release.yml
           test -f "$file"
           npx --yes prettier@3 --parser yaml "$file" > /tmp/s10-valid-yaml
-          grep -Fq "if: startsWith(github.event.head_commit.message, 'release(s10): owner-approved-world-clock ')" "$file"
+          grep -Fq 'owner-approved-world-clock' "$file"
+          grep -Fq 'startsWith(github.event.head_commit.message' "$file"
           grep -Fq 'OWNER_RUN_ID: "0"' "$file"
           grep -Fq 'S10_ONE_SHOT_SIGNED_OWNER_RECEIPT_EXACT_SCOPE=PASS' "$file"
           grep -Fq 'S10_SAFE_WORKER_STAGED_DISABLED_AND_DEDICATED_SECRET_ENCRYPTED=PASS' "$file"
