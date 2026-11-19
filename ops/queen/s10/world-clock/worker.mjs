@@ -3,9 +3,9 @@
 // Cron runs every minute, but only asks for a real observation when due.
 // No user HTTP endpoints, private project access, School, model or Neon writes.
 const REPO='giovannifidel-collab/pfarma-ci';
-const WORLD_URL='https://api.github.com/repos/'+REPO+'/contents/hive-world-state.json';
+const WORLD_URL='https://raw.githubusercontent.com/'+REPO+'/main/hive-world-state.json';
 const RUNS_URL='https://api.github.com/repos/'+REPO+'/actions/workflows/hive-world-sync.yml/runs?per_page=12';
-const DISPATCH_URL='https://api.github.com/repos/'+REPO+'/actions/workflows/hive-world-sync.yml/dispatches';
+const DISPATCH_URL='https://hive-alveare.pages.dev/api/s10-world-clock-dispatch';
 export const CLOCK_POLICY=Object.freeze({
  cron:'* * * * *',
  dueAfterMs:10*60*1000,
@@ -17,7 +17,7 @@ export const CLOCK_POLICY=Object.freeze({
 });
 const sha64=/^[a-f0-9]{64}$/;
 const noCache=Object.freeze({'Cache-Control':'no-cache','Accept':'application/vnd.github+json',
- 'X-GitHub-Api-Version':'2022-11-28','User-Agent':'HIVE-S10-World-Clock'});
+ 'X-GitHub-Api-Version':'2022-11-28','User-Agent':'HIVE-S10-World-Clock/1.0'});
 const isoMinute=ms=>new Date(Math.floor(ms/60000)*60000).toISOString().replace('.000Z','Z');
 const ms=s=>typeof s==='string'?Date.parse(s):NaN;
 export function decideWorldClock(world,runs,nowMs){
@@ -40,19 +40,17 @@ export function decideWorldClock(world,runs,nowMs){
  return 'DUE_AUTHENTIC_WORLD_OBSERVATION';
 }
 export async function performClockTick({env,scheduledTime,fetchImpl=fetch,nowMs=Date.now()}){
- const token=env?.GH_WORLD_DISPATCH_TOKEN;
- if(typeof token!=='string'||token.length<16)return 'DENY_CLOCK_SECRET_NOT_CONFIGURED';
+ const clientId=env?.CF_ACCESS_CLIENT_ID,clientSecret=env?.CF_ACCESS_CLIENT_SECRET;
+ if(typeof clientId!=='string'||clientId.length<16||typeof clientSecret!=='string'||clientSecret.length<20)return 'DENY_EXISTING_ACCESS_SERVICE_SECRET_NOT_CONFIGURED';
  if(env?.CLOCK_ENABLED!=='true')return 'SKIP_CLOCK_NOT_ACTIVATED';
  if(!Number.isSafeInteger(scheduledTime)||Math.abs(nowMs-scheduledTime)>CLOCK_POLICY.maxScheduledLagMs)
    return 'DENY_DELAYED_OR_INVALID_CRON_TICK';
- const headers={...noCache,Authorization:'Bearer '+token};
+ const headers={...noCache};
  let world;
  try{
    const response=await fetchImpl(WORLD_URL,{headers,redirect:'error'});
    if(!response.ok)return 'DENY_GITHUB_WORLD_SOURCE_HTTP';
-   const v=await response.json();
-   if(typeof v?.content!=='string'||v.encoding!=='base64')return 'DENY_WORLD_BLOB_FORMAT';
-   world=JSON.parse(atob(v.content.replace(/\s/g,'')));
+   world=await response.json();
  }catch{return 'DENY_WORLD_READ_OR_PARSE_ERROR';}
  const sourceMs=ms(world.generated_at);
  if(!Number.isFinite(sourceMs)||sourceMs>nowMs+CLOCK_POLICY.maxFutureSourceMs)
@@ -66,19 +64,18 @@ export async function performClockTick({env,scheduledTime,fetchImpl=fetch,nowMs=
  }catch{return 'DENY_WORKFLOW_RUNS_READ_ERROR';}
  const decision=decideWorldClock(world,runs,nowMs);
  if(decision!=='DUE_AUTHENTIC_WORLD_OBSERVATION')return decision;
- const payload={
-   ref:'main',
-   inputs:{retry_hop:'0',clock_minute:isoMinute(scheduledTime)}
- };
+ const payload={clock_minute:isoMinute(scheduledTime)};
  try{
    const response=await fetchImpl(DISPATCH_URL,{
      method:'POST',
-     headers:{...headers,'Content-Type':'application/json'},
+     headers:{...headers,'Content-Type':'application/json','CF-Access-Client-Id':clientId,'CF-Access-Client-Secret':clientSecret},
      redirect:'error',
      body:JSON.stringify(payload)
    });
-   if(response.status!==204)return 'DENY_DISPATCH_RESPONSE_UNCERTAIN_NO_RETRY';
-   return 'DISPATCHED_EXISTING_WORLD_SYNC_ONCE';
+   if(response.status!==202)return 'DENY_PAGES_BROKER_DISPATCH_RESPONSE_NO_RETRY';
+   const proof=await response.json();
+   if(proof?.ok!==true||proof?.decision!=='DISPATCHED_ORIGINAL_WORLD_SYNC')return 'DENY_PAGES_BROKER_RESPONSE_UNVERIFIED';
+   return 'DISPATCHED_EXISTING_WORLD_SYNC_ONCE_VIA_PAGES';
  }catch{
    // Delivery might have occurred; NEVER blindly retry within this invocation.
    return 'DENY_DISPATCH_OUTCOME_UNKNOWN_NO_RETRY';
