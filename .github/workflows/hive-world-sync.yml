@@ -277,7 +277,7 @@ jobs:
         shell: bash
         run: rm -rf _sources
 
-      - name: Publish world snapshot only when semantic state changed
+      - name: Publish an authentic World observation; wake S1 only on semantic change
         id: publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -292,26 +292,47 @@ jobs:
           NEW_FINGERPRINT="$(jq -r '.state_fingerprint // empty' hive-world-state.json)"
           test -n "$NEW_FINGERPRINT" || { echo 'WORLD_FINGERPRINT_MISSING'; exit 30; }
 
-          if [ -n "$OLD_FINGERPRINT" ] && [ "$OLD_FINGERPRINT" = "$NEW_FINGERPRINT" ]; then
-            git checkout -- hive-world-state.json
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "WORLD_SEMANTIC_CHANGE=false"
-            exit 0
+          # The fingerprint is the wakeup clock; generated_at is the observation
+          # clock. A genuine refreshed observation can be published WITHOUT waking
+          # S1 when the semantic state did not change.
+          if ! git show HEAD:hive-world-state.json > "$RUNNER_TEMP/world-previous.json" 2>/dev/null; then
+            printf '{}\n' > "$RUNNER_TEMP/world-previous.json"
           fi
+          DECISION="$(node ops/queen/s10/world-observation-publication.mjs "$RUNNER_TEMP/world-previous.json" hive-world-state.json)"
+          case "$DECISION" in
+            SKIP)
+              git checkout -- hive-world-state.json
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "observed=false" >> "$GITHUB_OUTPUT"
+              echo "WORLD_OBSERVATION_ALREADY_CURRENT=SKIP_NO_S1_WAKE"
+              exit 0
+              ;;
+            SEMANTIC|HEARTBEAT) ;;
+            *) echo "WORLD_OBSERVATION_NOT_TRUSTED_DENY"; exit 35 ;;
+          esac
 
           git add hive-world-state.json
           if git diff --cached --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "WORLD_SEMANTIC_CHANGE=false"
-            exit 0
+            echo "WORLD_OBSERVATION_MISSING_EXPECTED_DIFF_DENY"; exit 37
           fi
 
-          git commit -m 'state(hive): synchronize global world model'
+          if [ "$DECISION" = "HEARTBEAT" ]; then
+            git commit -m 'state(hive): record verified unchanged World observation'
+          else
+            git commit -m 'state(hive): synchronize changed global World model'
+          fi
           if git push; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "fingerprint=$NEW_FINGERPRINT" >> "$GITHUB_OUTPUT"
+            if [ "$DECISION" = "HEARTBEAT" ]; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "observed=true" >> "$GITHUB_OUTPUT"
+              echo "WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE"
+            else
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              echo "observed=true" >> "$GITHUB_OUTPUT"
+              echo "fingerprint=$NEW_FINGERPRINT" >> "$GITHUB_OUTPUT"
+              echo "WORLD_SEMANTIC_CHANGE=true"
+            fi
             echo "retry_dispatched=false" >> "$GITHUB_OUTPUT"
-            echo "WORLD_SEMANTIC_CHANGE=true"
             exit 0
           fi
 
