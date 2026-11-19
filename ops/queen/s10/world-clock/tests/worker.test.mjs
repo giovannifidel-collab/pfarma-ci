@@ -49,7 +49,7 @@ test('due observation starts precisely original GitHub World Sync',async()=>{
  const f=mock();
  assert.equal(await performClockTick({env:ENV,scheduledTime:NOW,nowMs:NOW,fetchImpl:f.fetchImpl}),'DISPATCHED_EXISTING_WORLD_SYNC_ONCE_VIA_PAGES');
  const posts=f.calls.filter(x=>x.method==='POST');assert.equal(posts.length,1);
- assert.match(posts[0].url,/hive-world-sync\.yml\/dispatches$/);
+ assert.equal(posts[0].url,'https://hive-alveare.pages.dev/api/s10-world-clock-dispatch');
  assert.deepEqual(JSON.parse(posts[0].body),{clock_minute:'2026-11-19T21:20:00Z'});
  assert.equal(posts[0].headers['CF-Access-Client-Id'],ENV.CF_ACCESS_CLIENT_ID);
  assert.equal(posts[0].headers['CF-Access-Client-Secret'],ENV.CF_ACCESS_CLIENT_SECRET);
