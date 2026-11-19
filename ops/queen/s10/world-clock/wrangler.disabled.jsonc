@@ -1,0 +1,10 @@
+{
+  // Owner-signed, no-clock staging and rollback state: no cron, no egress.
+  "name": "hive-queen-world-clock",
+  "main": "./worker.mjs",
+  "compatibility_date": "2026-11-19",
+  "workers_dev": false,
+  "triggers": { "crons": [] },
+  "vars": { "CLOCK_ENABLED": "false" },
+  "observability": { "enabled": true }
+}
