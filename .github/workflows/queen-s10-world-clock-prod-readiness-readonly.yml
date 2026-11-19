@@ -14,6 +14,8 @@ jobs:
       CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CF_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
       S10_GH_CLOCK_PAT: ${{ secrets.S10_WORLD_CLOCK_GH_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
       - name: Inspect Cloudflare Worker availability and exact dedicated GitHub credential presence - GET ONLY
         shell: bash
@@ -103,4 +105,17 @@ jobs:
                 available=any(x.get('name')=='HIVE_GITHUB_DISPATCH_TOKEN' for x in secrets if isinstance(x,dict))
                 print('S10_EXISTING_'+wid.replace('-','_').upper()+'_DISPATCH_SECRET_PRESENT='+str(available).lower())
           print('S10_DISPATCH_CREDENTIAL_METADATA_READ_ONLY_NO_VALUES_EXPOSED=PASS')
+          PY
+
+      - name: Reuse existing Cloudflare Access service pair presence only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          a=bool(os.environ.get('CF_ACCESS_CLIENT_ID'))
+          b=bool(os.environ.get('CF_ACCESS_CLIENT_SECRET'))
+          print('S10_EXISTING_ACCESS_SERVICE_PAIR_PRESENT='+str(a and b).lower())
+          print('S10_ACCESS_SERVICE_PAIR_PARTIAL_DENY='+str(a!=b).lower())
+          print('S10_NO_SECRET_VALUES_EXPOSED=TRUE')
           PY
