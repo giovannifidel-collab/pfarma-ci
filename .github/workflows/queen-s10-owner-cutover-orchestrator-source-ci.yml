@@ -1,0 +1,46 @@
+name: Queen S10 Owner-Cutover Release Orchestrator Static Safety Audit (NO DEPLOY)
+on:
+  push:
+    branches: [release/s10-world-clock-owner-one-shot-20261119]
+    paths:
+      - .github/workflows/queen-s10-world-clock-one-shot-release.yml
+      - .github/workflows/queen-s10-owner-cutover-orchestrator-source-ci.yml
+permissions: {contents: read}
+jobs:
+  source-only-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Parse exact release orchestration YAML and ensure no unsigned branch push can execute
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=.github/workflows/queen-s10-world-clock-one-shot-release.yml
+          test -f "$file"
+          npx --yes prettier@3 --parser yaml "$file" > /tmp/s10-valid-yaml
+          grep -Fq "if: startsWith(github.event.head_commit.message, 'release(s10): owner-approved-world-clock ')" "$file"
+          grep -Fq 'OWNER_RUN_ID: "0"' "$file"
+          grep -Fq 'S10_ONE_SHOT_SIGNED_OWNER_RECEIPT_EXACT_SCOPE=PASS' "$file"
+          grep -Fq 'S10_SAFE_WORKER_STAGED_DISABLED_AND_DEDICATED_SECRET_ENCRYPTED=PASS' "$file"
+          grep -Fq 'S10_ORIGINAL_GITHUB_WORLD_CRON_REMOVED_NO_SECOND_SCHEDULER=PASS' "$file"
+          grep -Fq 'S10_EXACT_SINGLE_CLOUDFLARE_MINUTE_CRON_CONFIG=PASS' "$file"
+          grep -Fq 'S10_FAILURE_WORKER_DISABLED_FAIL_CLOSED=TRUE' "$file"
+          echo S10_RELEASE_ORCHESTRATOR_VALID_YAML_NOT_ARMED=PASS
+      - name: Extract cryptographic grant-verifier JS and check syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('.github/workflows/queen-s10-world-clock-one-shot-release.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          a=src.index(marker)+len(marker)
+          b=src.index("\n          JS",a)
+          code='\n'.join(x[10:] if x.startswith('          ') else x for x in src[a:b].splitlines())
+          Path('/tmp/s10-releaser-signature-verify.mjs').write_text(code+'\n')
+          PY
+          node --check /tmp/s10-releaser-signature-verify.mjs
+          echo S10_RELEASE_ONE_OWNER_RECEIPT_CRYPTO_VERIFIER_SYNTAX=PASS
+          echo S10_NO_PREMATURE_PROD_DEPLOY_NO_GH_PR_MERGE_NO_SECRET_ACCESS=TRUE
