@@ -1,0 +1,42 @@
+name: Queen S10 Cloudflare Worker Wrangler Bundle Validation Source-only (NO DEPLOY)
+on:
+  push:
+    branches: [audit/s10-wrangler-bundle-build-readonly-20261119]
+    paths: [.github/workflows/queen-s10-worker-wrangler-bundle-dryrun-readonly.yml]
+permissions: {contents: read}
+jobs:
+  validate-exact-pin-offline-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1b1efa300bd0ee83ce2356c829088128fe9bf274
+          persist-credentials: false
+      - name: Ensure original S1 code untouched and expected Worker exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 1b1efa300bd0ee83ce2356c829088128fe9bf274
+          test -f ops/queen/s10/world-clock/worker.mjs
+          test -f ops/queen/s10/world-clock/wrangler.jsonc
+          test -f ops/queen/s10/world-clock/wrangler.disabled.jsonc
+          node --test ops/queen/s10/world-clock/tests/worker.test.mjs
+          echo S10_WRANGLER_EXACT_PR1307_SOURCE_UNIT_TESTS=PASS
+      - name: Bundle disabled and active Wrangler definitions without credentials or deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/s10-wrangler-disabled /tmp/s10-wrangler-active
+          npx --yes wrangler@4 deploy --dry-run \
+            --config ops/queen/s10/world-clock/wrangler.disabled.jsonc \
+            --outdir /tmp/s10-wrangler-disabled > /tmp/s10-disabled.log 2>&1 ||
+            { tail -n 50 /tmp/s10-disabled.log; exit 41; }
+          npx --yes wrangler@4 deploy --dry-run \
+            --config ops/queen/s10/world-clock/wrangler.jsonc \
+            --outdir /tmp/s10-wrangler-active > /tmp/s10-active.log 2>&1 ||
+            { tail -n 50 /tmp/s10-active.log; exit 42; }
+          test "$(find /tmp/s10-wrangler-disabled -type f | wc -l)" -gt 0
+          test "$(find /tmp/s10-wrangler-active -type f | wc -l)" -gt 0
+          echo S10_CLOUDFLARE_BOTH_ACTIVE_AND_ROLLBACK_WORKER_BUNDLE=PASS
+          echo S10_CLOUDFLARE_NO_NETWORK_DEPLOY_NO_SECRET_NO_CRON_MUTATION=TRUE
