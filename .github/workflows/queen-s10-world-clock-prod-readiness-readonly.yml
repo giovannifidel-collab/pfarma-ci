@@ -1,0 +1,64 @@
+name: Queen S10 World Clock Cloudflare Account and Dedicated Token Read-only Preflight
+on:
+  push:
+    branches: [audit/s10-world-clock-account-credential-preflight-20261119]
+    paths: [.github/workflows/queen-s10-world-clock-prod-readiness-readonly.yml]
+permissions: {contents: read}
+jobs:
+  inventory-safe-no-action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: pfarma-ci-trusted
+    env:
+      CF_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      S10_GH_CLOCK_PAT: ${{ secrets.S10_WORLD_CLOCK_GH_TOKEN }}
+    steps:
+      - name: Inspect Cloudflare Worker availability and exact dedicated GitHub credential presence - GET ONLY
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,re,urllib.request,urllib.error
+          token=os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK')
+          print('S10_DEDICATED_GITHUB_WORLD_DISPATCH_TOKEN_PRESENT='+str(len(os.environ.get('S10_GH_CLOCK_PAT') or '')>=16).lower())
+          if not token:
+            print('S10_CLOUDFLARE_WORKER_API_TOKEN_PRESENT=false')
+            raise SystemExit(3)
+          print('S10_CLOUDFLARE_WORKER_API_TOKEN_PRESENT=true')
+          root='https://api.cloudflare.com/client/v4'
+          def read(path):
+            req=urllib.request.Request(root+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'},method='GET')
+            try:
+              with urllib.request.urlopen(req,timeout=20) as resp:result=json.load(resp)
+              if not result.get('success'):return {'_error':'api_failed'}
+              return result.get('result')
+            except urllib.error.HTTPError as e:return {'_error':'http_'+str(e.code)}
+          accounts=read('/accounts?per_page=50')
+          assert isinstance(accounts,list),'S10_CLOUDFLARE_ACCOUNT_INVENTORY_READ_DENIED'
+          print('S10_CLOUDFLARE_ACCOUNT_COUNT='+str(len(accounts)))
+          for account in accounts:
+            aid=str(account.get('id') or '')
+            if not re.fullmatch('[a-f0-9]{32}',aid):continue
+            workers=read('/accounts/'+aid+'/workers/scripts?per_page=100')
+            if isinstance(workers,list):
+              hits=[str(x.get('id') or x.get('script')) for x in workers if re.search('hive|queen|world',str(x.get('id') or x.get('script') or ''),re.I)]
+              print('S10_CF_HIVE_RELATED_WORKERS_COUNT='+str(len(hits)))
+              print('S10_CF_REPLACEMENT_WORLD_CLOCK_ALREADY_EXISTS='+str('hive-queen-world-clock' in hits).lower())
+              if 'hive-queen-world-clock' in hits:
+                schedules=read('/accounts/'+aid+'/workers/scripts/hive-queen-world-clock/schedules')
+                s=schedules.get('schedules') if isinstance(schedules,dict) else schedules
+                if isinstance(s,list):
+                  print('S10_EXISTING_WORLD_CLOCK_SCHEDULES='+json.dumps([x.get('cron') for x in s if isinstance(x,dict)]))
+                else:print('S10_EXISTING_WORLD_CLOCK_SCHEDULES_NOT_VERIFIED')
+            elif isinstance(workers,dict):
+              print('S10_CF_WORKER_SCRIPT_READ_STATUS='+str(workers.get('_error')))
+            subscriptions=read('/accounts/'+aid+'/subscriptions')
+            if isinstance(subscriptions,list):
+              plans=[str((x.get('rate_plan') or {}).get('id') or (x.get('rate_plan') or {}).get('public_name') or 'unknown') for x in subscriptions if isinstance(x,dict)]
+              print('S10_CF_SUBSCRIPTIONS_REPORTED='+json.dumps(plans))
+            else:
+              print('S10_CF_ACCOUNT_PLAN_NOT_CERTIFIED_BY_AVAILABLE_API=TRUE')
+          print('S10_CLOUDFLARE_AND_TOKEN_PREFLIGHT_READ_ONLY=PASS')
+          print('S10_NO_DEPLOY_NO_CREDENTIAL_EXPOSURE_NO_PRODUCT_MUTATION=TRUE')
+          PY
