@@ -13,16 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0, persist-credentials: false}
-      - name: Strict exactly two-file diff and unchanged S1
+      - name: Exact five-file bounded source-only compatibility and cron diff, unchanged S1
         shell: bash
         run: |
           set -euo pipefail
           git rev-parse --verify origin/main >/dev/null
           mapfile -t changed < <(git diff --name-only origin/main...HEAD)
-          test "${#changed[@]}" = 2
+          test "${#changed[@]}" = 5
           for path in "${changed[@]}"; do
             case "$path" in
-              .github/workflows/queen-s1-core-certification.yml|.github/workflows/queen-s10-s1-heartbeat-source-ci.yml) ;;
+              .github/workflows/queen-s1-core-certification.yml|.github/workflows/queen-s10-s1-heartbeat-source-ci.yml|.github/workflows/hive-world-sync.yml|ops/queen/s10/tests/world-observation-publication.test.mjs|.github/workflows/queen-s10-world-heartbeat-source-ci.yml) ;;
               *) echo "S1_UNAUTHORIZED_DIFF=$path"; exit 30 ;;
             esac
           done
@@ -42,7 +42,8 @@ jobs:
           grep -Fq 'WORLD_SEMANTIC_CHANGE=false' "$CORE"
           grep -Fq 'HOP >= 3' "$SOURCE"
           grep -Fq 'WORLD_SYNC_RETRY_DISPATCHED' "$SOURCE"
-          grep -Fq "cron: '*/15 * * * *'" "$SOURCE"
+          grep -Fq "cron: '7,22,37,52 * * * *'" "$SOURCE"
+          node --test ops/queen/s10/tests/world-observation-publication.test.mjs
           echo 'S10_S1_HEARTBEAT_NO_WAKE_INVARIANT=PASS'
-          echo 'S10_S1_BOUNDED_RETRIES_AND_ORIGINAL_CRON=PASS'
+          echo 'S10_S1_BOUNDED_RETRIES_ORIGINAL_SCHEDULE_OFFPEAK=PASS'
           echo 'S10_S1_NO_RUNTIME_OR_PRODUCTION_WRITE=TRUE'
