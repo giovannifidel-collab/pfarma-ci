@@ -43,6 +43,7 @@ jobs:
           grep -Fq 'HOP >= 3' "$SOURCE"
           grep -Fq 'WORLD_SYNC_RETRY_DISPATCHED' "$SOURCE"
           grep -Fq "cron: '7,22,37,52 * * * *'" "$SOURCE"
+          test "$(grep -c '^  schedule:' "$SOURCE")" = 1
           node --test ops/queen/s10/tests/world-observation-publication.test.mjs
           echo 'S10_S1_HEARTBEAT_NO_WAKE_INVARIANT=PASS'
           echo 'S10_S1_BOUNDED_RETRIES_ORIGINAL_SCHEDULE_OFFPEAK=PASS'
