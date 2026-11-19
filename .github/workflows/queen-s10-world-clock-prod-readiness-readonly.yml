@@ -63,3 +63,44 @@ jobs:
           print('S10_CLOUDFLARE_AND_TOKEN_PREFLIGHT_READ_ONLY=PASS')
           print('S10_NO_DEPLOY_NO_CREDENTIAL_EXPOSURE_NO_PRODUCT_MUTATION=TRUE')
           PY
+
+      - name: Inspect existing Cloudflare Pages dispatch credential metadata - names only, read only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error
+          token=os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK')
+          root='https://api.cloudflare.com/client/v4'
+          def read(path):
+            req=urllib.request.Request(root+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'},method='GET')
+            try:
+              with urllib.request.urlopen(req,timeout=22) as response:
+                data=json.load(response)
+              return data.get('result') if data.get('success') else None
+            except (urllib.error.HTTPError,urllib.error.URLError,ValueError):
+              return None
+          accounts=read('/accounts?per_page=50')
+          assert isinstance(accounts,list) and len(accounts)==1,'S10_CLOUDFLARE_ACCOUNT_AMBIGUOUS_DENY'
+          aid=accounts[0]['id']
+          project=read('/accounts/'+aid+'/pages/projects/hive-alveare')
+          print('S10_EXISTING_HIVE_PAGES_PROJECT_METADATA_READABLE='+str(isinstance(project,dict)).lower())
+          if isinstance(project,dict):
+            for name,block in [('production',(project.get('deployment_configs') or {}).get('production') or {}),('preview',(project.get('deployment_configs') or {}).get('preview') or {})]:
+              vars=block.get('env_vars') or {}
+              found=vars.get('HIVE_GITHUB_DISPATCH_TOKEN')
+              print('S10_EXISTING_HIVE_PAGES_'+name.upper()+'_DISPATCH_BINDING_PRESENT='+str(isinstance(found,dict)).lower())
+              if isinstance(found,dict):
+                print('S10_EXISTING_HIVE_PAGES_'+name.upper()+'_DISPATCH_BINDING_TYPE='+str(found.get('type','unknown')))
+          scripts=read('/accounts/'+aid+'/workers/scripts?per_page=100')
+          if isinstance(scripts,list):
+            for s in scripts:
+              wid=str(s.get('id') or s.get('script') or '')
+              if wid not in ('hive-kimi-relay','hive-queen-world-clock'):
+                continue
+              secrets=read('/accounts/'+aid+'/workers/scripts/'+wid+'/secrets')
+              if isinstance(secrets,list):
+                available=any(x.get('name')=='HIVE_GITHUB_DISPATCH_TOKEN' for x in secrets if isinstance(x,dict))
+                print('S10_EXISTING_'+wid.replace('-','_').upper()+'_DISPATCH_SECRET_PRESENT='+str(available).lower())
+          print('S10_DISPATCH_CREDENTIAL_METADATA_READ_ONLY_NO_VALUES_EXPOSED=PASS')
+          PY
