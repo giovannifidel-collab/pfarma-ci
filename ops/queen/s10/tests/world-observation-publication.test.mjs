@@ -71,7 +71,8 @@ test('original existing World workflow has only semantic S1 wake and no extra sc
  assert.ok(w.includes('node ops/queen/s10/world-observation-publication.mjs'));
  assert.ok(w.includes('WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE'));
  assert.ok(w.includes('WORLD_SEMANTIC_CHANGE=true'));
- assert.equal((w.match(/repository_dispatch:/g)||[]).length,0);
+ assert.equal((w.match(/^  repository_dispatch:/gm)||[]).length,1);
+ assert.ok(w.includes('types: [hive_world_clock_tick]'));
 });
 
 console.log('S10_WORLD_HEARTBEAT_PURE_DECISION_NEGATIVE_TESTS=PASS');
