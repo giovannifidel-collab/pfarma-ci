@@ -1,0 +1,155 @@
+name: Queen Owner S10 Contract + Original World Cron One Exact Source Release OIDC (NO AUTO MERGE)
+on:
+  push:
+    branches: [audit/owner-s10-contract-cron-one-release-20261119]
+    paths: [.github/workflows/queen-owner-s10-contract-cron-one-release-oidc.yml]
+  workflow_dispatch:
+    inputs:
+      approve_exact_s10_pr101_and_pr1303_source_only:
+        type: boolean
+        required: true
+        default: false
+        description: "Owner approves EXACT HIVE PR101 contract & relay PR1303 existing World cron+S1 static CI; no auto-merge, Neon writes, provider, School, new scheduler or extra cost"
+permissions: {contents: read, actions: read, id-token: write}
+concurrency:
+  group: queen-owner-s10-pr101-pr1303-one-source-release
+  cancel-in-progress: false
+jobs:
+  attest-no-auto-merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      OWNER_APPROVE: ${{ inputs.approve_exact_s10_pr101_and_pr1303_source_only }}
+      HIVE_MAIN: 1ab0e0c4fc08d1abead1517b64492e217819bdb3
+      HIVE_PR101_HEAD: f0d3353b5c0d7f161a0bbc7b812a205228983c44
+      RELAY_PR1303_HEAD: 767d3a7da3e9e66f0fe9dad67cc020ea4e8c406e
+      WORLD_WORKFLOW_ORIGINAL_BLOB: 60cd249b7658a6720b4dc2a7a351380c5b552bd3
+      WORLD_WORKFLOW_NEW_BLOB: 398b478cebcdd979953aa8a014ef13fbf205c65b
+      S1_CORE_ORIGINAL_BLOB: fd30c6d72945c2f4d6827bb22a72708adf59e5ae
+      S1_CORE_NEW_BLOB: 9581416662a832abd32008d2ed60e744baaeff48
+      S1_INGRESS_BLOB: a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 1, persist-credentials: false}
+      - name: Strict Owner source preflight - both exact unmerged review PRs, CI PASS and read-only bounds
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test -n "$GH_TOKEN"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+            test "$GITHUB_REF" = refs/heads/main
+            test "$OWNER_APPROVE" = true
+          else
+            test "$GITHUB_EVENT_NAME" = push
+            test "$GITHUB_REF" = refs/heads/audit/owner-s10-contract-cron-one-release-20261119
+          fi
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_MAIN"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\n')" = "$HIVE_MAIN"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$WORLD_WORKFLOW_ORIGINAL_BLOB"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-core-certification.yml --jq .sha)" = "$S1_CORE_ORIGINAL_BLOB"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$S1_INGRESS_BLOB"
+          test "$(gh api 'repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml?ref=fix/s10-s1-core-heartbeat-ci-invariant-20261119' --jq .sha)" = "$WORLD_WORKFLOW_NEW_BLOB"
+          test "$(gh api 'repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-core-certification.yml?ref=fix/s10-s1-core-heartbeat-ci-invariant-20261119' --jq .sha)" = "$S1_CORE_NEW_BLOB"
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/101 |
+            jq -e --arg h "$HIVE_PR101_HEAD" '.state=="open" and .merged==false and .head.sha==$h and .base.ref=="main"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1303 |
+            jq -e --arg h "$RELAY_PR1303_HEAD" '.state=="open" and .merged==false and .head.sha==$h and .base.ref=="main"' >/dev/null
+          gh api 'repos/giovannifidel-collab/hive-alveare/pulls/101/files?per_page=50' |
+            jq -e 'length==3 and all(.[].filename;
+            .=="ops/queen/s10/S10_CONSOLIDATION_ACCEPTANCE_PROPOSAL.v1.json" or
+            .=="ops/queen/s10/tests/s10-final-consolidation-candidate.test.mjs" or
+            .==".github/workflows/queen-s10-final-candidate-readonly-ci.yml")' >/dev/null
+          gh api 'repos/giovannifidel-collab/pfarma-ci/pulls/1303/files?per_page=50' |
+            jq -e 'length==5 and all(.[].filename;
+            .==".github/workflows/queen-s1-core-certification.yml" or
+            .==".github/workflows/queen-s10-s1-heartbeat-source-ci.yml" or
+            .==".github/workflows/hive-world-sync.yml" or
+            .=="ops/queen/s10/tests/world-observation-publication.test.mjs" or
+            .==".github/workflows/queen-s10-world-heartbeat-source-ci.yml")' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44560521576 |
+            jq -e --arg h "$HIVE_PR101_HEAD" '.conclusion=="success" and .head_sha==$h and .run_attempt==1' >/dev/null
+          for run in 44561126924 44561127768; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$run" |
+              jq -e --arg h "$RELAY_PR1303_HEAD" '.conclusion=="success" and .head_sha==$h and .run_attempt==1' >/dev/null
+          done
+          echo S10_OWNER_EXACT_PR101_PR1303_AND_SOURCE_CI=PASS
+          echo S10_OWNER_AUTHENTICATED_RELEASE_PRECHECK_READ_ONLY=TRUE
+      - name: Validate signer JS static syntax only on source branch push
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('.github/workflows/queen-owner-s10-contract-cron-one-release-oidc.yml').read_text()
+          anchor="          node --input-type=module <<'JS'\n"
+          i=s.index(anchor)+len(anchor)
+          j=s.index("\n          JS",i)
+          js='\n'.join(line[10:] if line.startswith('          ') else line for line in s[i:j].splitlines())
+          Path('/tmp/s10-signer.mjs').write_text(js+'\n')
+          PY
+          node --check /tmp/s10-signer.mjs
+          echo S10_OWNER_NEW_EXACT_SIGNER_SYNTAX=PASS
+      - name: Verify cryptographically signed RS256 Owner OIDC - one 15m source-only grant
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash} from 'node:crypto';
+          const e=process.env;
+          const deny=x=>{throw Error('S10_OWNER_EXACT_RELEASE_DENIED_'+x)};
+          const audience='queen-owner-s10-pr101-pr1303-one-source-release-v1';
+          if(e.OWNER_APPROVE!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)deny('NOT_MANUAL');
+          const req=e.ACTIONS_ID_TOKEN_REQUEST_URL+(e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(audience);
+          const resp=await fetch(req,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!resp.ok)deny('OIDC_ISSUE');
+          const parts=(await resp.json()).value?.split('.')||[];
+          if(parts.length!==3)deny('JWT');
+          const decode=v=>Buffer.from(v.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-v.length%4)%4),'base64');
+          const header=JSON.parse(decode(parts[0]).toString());
+          const c=JSON.parse(decode(parts[1]).toString());
+          if(header.alg!=='RS256'||!header.kid||header.jku||header.jwk||header.x5u||header.crit)deny('HEADER');
+          const expected={
+            iss:'https://token.actions.githubusercontent.com',aud:audience,
+            repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+            repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+            event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',
+            workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-s10-contract-cron-one-release-oidc.yml@refs/heads/main',
+            ref:'refs/heads/main',runner_environment:'github-hosted'
+          };
+          for(const [k,v] of Object.entries(expected))if(String(c[k])!==v)deny('CLAIM_'+k);
+          const now=Date.now();
+          if(c.sha!==e.GITHUB_SHA||Number(c.run_id)!==Number(e.GITHUB_RUN_ID)||Number(c.run_attempt)!==1||
+            !Number.isSafeInteger(c.exp)||!Number.isSafeInteger(c.iat)||c.exp-c.iat>900||
+            c.exp*1000<=now||c.iat*1000>now+30000||now-c.iat*1000>300000)deny('EXPIRY_RUN');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)deny('JWKS');
+          const key=(await jwks.json()).keys?.find(k=>k.kid===header.kid&&k.kty==='RSA'&&k.use==='sig'&&(!k.alg||k.alg==='RS256'));
+          if(!key||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key,format:'jwk'}),decode(parts[2])))deny('SIGNATURE');
+          const scope={
+            schema:'queen.s10.owner-pr101-pr1303-one-source-release.v1',
+            owner:'giovannifidel-collab',oidc_run:Number(e.GITHUB_RUN_ID),
+            hive_main_sha:e.HIVE_MAIN,hive_pr:101,hive_head:e.HIVE_PR101_HEAD,
+            relay_pr:1303,relay_head:e.RELAY_PR1303_HEAD,
+            source_file_count_hive:3,source_file_count_relay:5,
+            preserve_one_world_sync_15m:true,off_hour_cron:'7,22,37,52',
+            preserve_original_s1_ingress_blob:e.S1_INGRESS_BLOB,
+            no_new_s1_s2_school:true,no_neon_write:true,no_provider:true,
+            no_paid_fallback:true,no_project_write:true,additional_cost_usd:0,
+            max_one_hive_merge:true,max_one_relay_merge:true,
+            no_automatic_merge_or_deploy_in_signer:true,
+            s10_terminal_cannot_be_claimed_from_source_ci:true,
+            issued_at:new Date(now).toISOString(),
+            expires_at:new Date(now+15*60*1000).toISOString()
+          };
+          const digest=createHash('sha256').update(JSON.stringify(scope)).digest('hex');
+          console.log('S10_OWNER_EXACT_PR101_PR1303_RS256_SIGNED=PASS');
+          console.log('S10_OWNER_EXACT_ONE_SOURCE_RELEASE_RECEIPT='+JSON.stringify({...scope,sha256:digest}));
+          console.log('S10_OWNER_SIGNER_ZERO_MUTATIONS_NO_TERMINAL_CLAIM=TRUE');
+          JS
