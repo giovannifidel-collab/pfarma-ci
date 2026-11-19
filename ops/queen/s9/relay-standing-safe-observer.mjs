@@ -5,7 +5,10 @@ import {appendFileSync} from 'node:fs';
 
 export const STANDING_KIND='queen.s9.standing.safe_observation.v1';
 export const POLICY_SHA='90f4fb35b8610f7738c79af0019cf1cb2582f746';
-export const SOURCE_SHA='29bb723e9dba1654ea782d97c3f6517dd20ea6dc';
+// Source authority is resolved by the EXISTING canonical S1's exact
+// HIVE main SHA === relay source-pointer check. Do not freeze this at an old
+// release, or safe signed observations become incorrectly unusable after
+// every properly Owner-approved HIVE source merge.
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[0-9a-f]{12}$/i;
 const SRC=/^[a-f0-9]{40}$/;
 const deny=reason=>Object.freeze({handled:true,decision:'QUARANTINE_STANDING_SAFE_DENIED',reason,
@@ -23,8 +26,9 @@ export function inspectStandingSafeEvent(evt,sourceSha){
      !UUID.test(evt.correlation_id||'')||!UUID.test(p.mission_id||'')||
      evt.correlation_id!==p.mission_id||
      p.action!=='world.observe'||p.project_id!=='hive'||p.level!==0||
-     p.policy_blob_sha!==POLICY_SHA||p.source_sha!==SOURCE_SHA||
-     !SRC.test(sourceSha||'')||sourceSha!==SOURCE_SHA||
+     p.policy_blob_sha!==POLICY_SHA||
+     !SRC.test(p.source_sha||'')||!SRC.test(sourceSha||'')||
+     p.source_sha!==sourceSha||
      p.paid_fallback!==false||p.project_writes!==false||
      p.auto_merge!==false||p.auto_deploy!==false||
      p.can_train_school!==false||p.no_new_provider_dispatch!==true||

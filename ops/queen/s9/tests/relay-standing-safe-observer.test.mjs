@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
- STANDING_KIND,POLICY_SHA,SOURCE_SHA,
+ STANDING_KIND,POLICY_SHA,
  inspectStandingSafeEvent,processStandingSafeObservation,
  executeStandingSafeFromEnv
 } from '../relay-standing-safe-observer.mjs';
 
+// Sample canonical SHA after signed HIVE S10 release. The runtime never hardcodes it.
+const SOURCE_SHA='88000e9ff70ffc044f424d469645573e01738a8b';
+const OLD_SOURCE_SHA='29bb723e9dba1654ea782d97c3f6517dd20ea6dc';
 const mission='6d32fd0b-5859-477c-8c89-4fdb18f89c2a';
 const payload=()=>({
  kind:STANDING_KIND,
@@ -38,6 +41,29 @@ test('standing subtype uses EXACT existing canonical S1 event, other events are 
  assert.equal(inspectStandingSafeEvent(event({payload:{}}),SOURCE_SHA).handled,false);
  assert.equal(inspectStandingSafeEvent(event({payload:{kind:'queen.s9.5.verified_receipt_reconciliation'}}),SOURCE_SHA).handled,false);
  assert.equal(inspectStandingSafeEvent(event({type:'world.state.changed',payload:{kind:STANDING_KIND}}),SOURCE_SHA).handled,true);
+});
+
+test('S10 regression: safe observation accepts current Owner-released HIVE SHA verified by S1',()=>{
+  const current=event();
+  assert.equal(inspectStandingSafeEvent(current,SOURCE_SHA).decision,'NEEDS_PROTECTED_ACTIVE_OWNER_GRANT');
+  const oldEvent=event({payload:{...payload(),source_sha:OLD_SOURCE_SHA}});
+  assert.equal(inspectStandingSafeEvent(oldEvent,SOURCE_SHA).decision,'QUARANTINE_STANDING_SAFE_DENIED');
+  // A past release is only valid when canonical S1 itself has verified that exact ref.
+  assert.equal(inspectStandingSafeEvent(oldEvent,OLD_SOURCE_SHA).decision,'NEEDS_PROTECTED_ACTIVE_OWNER_GRANT');
+  assert.equal(inspectStandingSafeEvent(current,OLD_SOURCE_SHA).decision,'QUARANTINE_STANDING_SAFE_DENIED');
+  for(const invalid of ['',null,'not-a-sha','g'.repeat(40),'A'.repeat(40)]){
+    assert.equal(inspectStandingSafeEvent(current,invalid).decision,'QUARANTINE_STANDING_SAFE_DENIED');
+  }
+});
+
+test('S10 regression: original S1 independently checks relay pointer equals HIVE main before trusted PRIVATE_REF',()=>{
+ const s=readFileSync('.github/workflows/queen-s1-event-ingress.yml','utf8');
+ assert.ok(s.includes('SOURCE="$(tr -d'));
+ assert.ok(s.includes('test "$SOURCE" = "$MAIN" || { echo S1_SOURCE_POINTER_DRIFT_DENY; exit 61; }'));
+ assert.ok(s.includes('echo "PRIVATE_REF=$SOURCE" >> "$GITHUB_ENV"'));
+ const runtime=readFileSync('ops/queen/s9/relay-standing-safe-observer.mjs','utf8');
+ assert.ok(runtime.includes('p.source_sha!==sourceSha'));
+ assert.equal(runtime.includes("export const SOURCE_SHA="),false);
 });
 
 test('wrong scope, source, policy, malformed claim, forbidden operation quarantine BEFORE grant',()=>{
