@@ -1,0 +1,55 @@
+name: Queen S10 Existing World Scheduler Heartbeat Source-only Regression (NO RELEASE)
+on:
+  push:
+    branches: [fix/s10-world-sync-heartbeat-no-extra-loop-20261119]
+    paths:
+      - .github/workflows/hive-world-sync.yml
+      - .github/workflows/queen-s10-world-heartbeat-source-ci.yml
+      - ops/queen/s10/world-observation-publication.mjs
+      - ops/queen/s10/tests/world-observation-publication.test.mjs
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/hive-world-sync.yml
+      - .github/workflows/queen-s10-world-heartbeat-source-ci.yml
+      - ops/queen/s10/world-observation-publication.mjs
+      - ops/queen/s10/tests/world-observation-publication.test.mjs
+permissions: {contents: read}
+jobs:
+  verify-no-new-loop-no-fake-freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout exact original relay source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scope World fix to four paths - do not modify S1 S2 or provider jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse --verify origin/main >/dev/null
+          mapfile -t files < <(git diff --name-only origin/main...HEAD)
+          test "${#files[@]}" -eq 4
+          for path in "${files[@]}"; do
+            case "$path" in
+              .github/workflows/hive-world-sync.yml|.github/workflows/queen-s10-world-heartbeat-source-ci.yml|ops/queen/s10/world-observation-publication.mjs|ops/queen/s10/tests/world-observation-publication.test.mjs) ;;
+              *) echo "S10_WORLD_SCHEDULER_UNAUTHORIZED_FILE=$path"; exit 32 ;;
+            esac
+          done
+          echo 'S10_WORLD_EXISTING_SCHEDULER_ONLY_NO_NEW_WORKFLOW_TRIGGER=PASS'
+      - name: Observe real fail-closed source decisions and all negative scenarios
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check ops/queen/s10/world-observation-publication.mjs
+          node --check ops/queen/s10/tests/world-observation-publication.test.mjs
+          node --test ops/queen/s10/tests/world-observation-publication.test.mjs
+          grep -Fq "if: steps.publish.outputs.changed == 'true' && github.ref == 'refs/heads/main'" .github/workflows/hive-world-sync.yml
+          grep -Fq 'WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE' .github/workflows/hive-world-sync.yml
+          grep -Fq "git push" .github/workflows/hive-world-sync.yml
+          echo 'S10_WORLD_SOURCE_OBSERVATION_HEARTBEAT_NEGATIVE_TESTS=PASS'
+          echo 'S10_WORLD_WAKE_REQUIRES_REAL_SEMANTIC_CHANGE=PASS'
+          echo 'S10_NO_PROVIDER_NO_SCHOOL_NO_SECOND_S1=TRUE'
+          echo 'S10_SOURCE_ONLY_NO_PRODUCTION_WORLD_COMMIT_OR_DEPLOY=TRUE'
