@@ -246,3 +246,37 @@ jobs:
           print('S10_EXISTING_ACCESS_CLIENT_ID_SHA256='+hashlib.sha256(os.environ.get('CF_ACCESS_CLIENT_ID','').encode()).hexdigest())
           print('S10_ACCESS_IDENTITY_NO_SECRET_VALUES=PASS')
           PY
+
+      - name: Verify exact Owner World-only drift fix without approval or deploy
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          CANDIDATE: d890c48f9e1af8415f7be7e7df41fc702d1c64fd
+          KNOWN_BEFORE: 12de4490d78dbdd3c101efc6daef594f78e9d980
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          gh api "repos/giovannifidel-collab/pfarma-ci/compare/$KNOWN_BEFORE...main" |
+            jq -e '.status=="ahead" and
+              ((.files|map(.filename)|all(. == ".github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml" or . == "hive-world-state.json"))) and
+              ((.files|map(.filename)|index(".github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml")) != null)' >/dev/null
+          git fetch -q origin "$CANDIDATE"
+          git show "$CANDIDATE:.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml" > /tmp/s10-owner-world-fix.yml
+          npx --yes prettier@3 --parser yaml /tmp/s10-owner-world-fix.yml > /dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('/tmp/s10-owner-world-fix.yml').read_text()
+          start="          node --input-type=module <<'JS'"+chr(10)
+          a=s.index(start)+len(start)
+          b=s.index(chr(10)+"          JS",a)
+          js=chr(10).join(x[10:] if x.startswith('          ') else x for x in s[a:b].splitlines())
+          Path('/tmp/s10-owner-fix-signer.mjs').write_text(js+chr(10))
+          assert 'S10_WORLD_ONLY_BACKGROUND_MAIN_DRIFT_EXACT_SCOPE=PASS' in s
+          assert 'HIVE_PR105: 0e34b7965639b9a32c6abb90bb5b7b98317dabe7' in s
+          assert 'RELAY_PR1307: 6670ef862ef971785222a7a55b9834ca78c24f0e' in s
+          assert "tr -d '\\n' | base64 -d" in s
+          print('S10_OWNER_WORLD_RECONCILIATION_EXACT_SOURCE=PASS')
+          PY
+          node --check /tmp/s10-owner-fix-signer.mjs
+          echo S10_WORLD_ONLY_DRIFT_REAL_MAIN_PRECHECK=PASS
+          echo S10_NO_DEPLOY_NO_OWNER_APPROVAL_NO_NEW_SECRET=TRUE
