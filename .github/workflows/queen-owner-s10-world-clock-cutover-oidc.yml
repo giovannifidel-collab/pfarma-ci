@@ -1,7 +1,7 @@
 name: Queen Owner S10 ONE Existing Access+Pages World Clock OIDC Release
 on:
   push:
-    branches: [release/s10-oidc-existing-pages-token-20261119]
+    branches: [release/s10-oidc-existing-pages-token-20261119, fix/s10-owner-broker-live-one-clock-20261120]
     paths: [.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml]
   workflow_dispatch:
     inputs:
@@ -55,8 +55,10 @@ jobs:
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
       OWNER_APPROVAL: ${{ inputs.approve_exact_hive105_relay1307_existing_token_one_clock }}
-      HIVE_BEFORE: 88000e9ff70ffc044f424d469645573e01738a8b
-      RELAY_BEFORE: 12de4490d78dbdd3c101efc6daef594f78e9d980
+      HIVE_BEFORE: d5d237db904f810aacad90a3ff86dade3bed5969
+      HIVE_POINTER_BEFORE: 88000e9ff70ffc044f424d469645573e01738a8b
+      BROKER_BLOB: 0b4e30beac8c45d9b6de3c6e501be3b8f3a366f3
+      RELAY_BEFORE: 649d0ea84d1db855c82e58596bcc88a2c5bf1045
       HIVE_PR105: 0e34b7965639b9a32c6abb90bb5b7b98317dabe7
       RELAY_PR1307: 6670ef862ef971785222a7a55b9834ca78c24f0e
       OLD_WORLD_BLOB: 398b478cebcdd979953aa8a014ef13fbf205c65b
@@ -100,14 +102,16 @@ jobs:
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$OLD_WORLD_BLOB"
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$ORIGINAL_S1_BLOB"
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .sha)" = "$OLD_POINTER_BLOB"
-          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = "$HIVE_BEFORE"
-          gh api repos/giovannifidel-collab/hive-alveare/pulls/105 | jq -e --arg sha "$HIVE_PR105" '.state=="open" and .merged==false and .draft==false and .head.sha==$sha and .base.ref=="main"' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = "$HIVE_POINTER_BEFORE"
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/105 | jq -e --arg sha "$HIVE_PR105" '.state=="closed" and .merged==true and .head.sha==$sha and .base.ref=="main"' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/cloudflare/functions/api/s10-world-clock-dispatch.js --jq .sha)" = "$BROKER_BLOB"
           gh api repos/giovannifidel-collab/pfarma-ci/pulls/1307 | jq -e --arg sha "$RELAY_PR1307" '.state=="open" and .merged==false and .head.sha==$sha and .base.ref=="main"' >/dev/null
           for pair in "hive-alveare:44630161220:$HIVE_PR105" "pfarma-ci:44630733674:$RELAY_PR1307" "pfarma-ci:44630733694:$RELAY_PR1307"; do
             repo="${pair%%:*}"; tmp="${pair#*:}"; run="${tmp%%:*}"; sha="${tmp#*:}"
             gh api "repos/giovannifidel-collab/$repo/actions/runs/$run" | jq -e --arg h "$sha" '.conclusion=="success" and .run_attempt==1 and .head_sha==$h' >/dev/null
           done
-          echo S10_EXISTING_PAGES_TWO_EXACT_PR_AND_CI=PASS
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44758086104 | jq -e '.conclusion=="success" and .run_attempt==1 and .head_sha=="197c6f301f1916408bf67dd1b20ec45499bac4b5"' >/dev/null
+          echo S10_EXISTING_PAGES_HIVE_BROKER_LIVE_AND_RELAY_ONE_EXACT_PR_SOURCE_CI=PASS
       - name: Verify GitHub-issued Owner OIDC RS256, no previous signature or unsigned release
         shell: bash
         run: |
@@ -117,7 +121,7 @@ jobs:
           import {appendFileSync} from 'node:fs';
           const e=process.env;
           const reject=x=>{throw Error('S10_OWNER_OIDC_DENY_'+x)};
-          const aud='hive-queen-s10-existing-pages-one-clock-two-prs-v1';
+          const aud='hive-queen-s10-live-pages-broker-relay1307-v2';
           if(e.OWNER_APPROVAL!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)reject('NO_APPROVAL');
           const link=e.ACTIONS_ID_TOKEN_REQUEST_URL+(e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(aud);
           const response=await fetch(link,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
@@ -185,17 +189,16 @@ jobs:
           printf '%s' "$CF_ACCESS_CLIENT_ID" | npx --yes wrangler@4.139.0 secret put CF_ACCESS_CLIENT_ID --name "$WORKER_NAME" --config ops/queen/s10/world-clock/wrangler.disabled.jsonc >/dev/null
           printf '%s' "$CF_ACCESS_CLIENT_SECRET" | npx --yes wrangler@4.139.0 secret put CF_ACCESS_CLIENT_SECRET --name "$WORKER_NAME" --config ops/queen/s10/world-clock/wrangler.disabled.jsonc >/dev/null
           echo S10_EXISTING_ACCESS_TWO_WORKER_SECRETS_ENCRYPTED_NO_NEW_PAT=PASS
-      - name: Merge exact HIVE PR105 only, and verify original Pages broker authenticates
+      - name: Reverify HIVE broker already merged and live signed Access negative, zero writes
         shell: bash
         run: |
           set -euo pipefail
           test "$S10_OWNER_SIGNED" = TRUE
           test "$(date -u +%s)" -lt "$S10_OWNER_EXPIRES"
-          gh api -X PUT repos/giovannifidel-collab/hive-alveare/pulls/105/merge -f sha="$HIVE_PR105" -f merge_method=merge -f commit_title='release(s10): Owner OIDC existing Pages broker for one World clock' | jq -e '.merged==true' >/dev/null
-          h="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
-          [[ "$h" =~ ^[0-9a-f]{40}$ ]] || exit 51
-          echo "S10_NEW_HIVE_SHA=$h" >> "$GITHUB_ENV"
-          echo S10_HIVE_PAGES_BROKER_SOURCE_MERGED_EXACTLY_ONCE=PASS
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_BEFORE"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/cloudflare/functions/api/s10-world-clock-dispatch.js --jq .sha)" = "$BROKER_BLOB"
+          echo "S10_NEW_HIVE_SHA=$HIVE_BEFORE" >> "$GITHUB_ENV"
+          echo S10_EXISTING_PAGES_BROKER_SOURCE_ALREADY_MERGED_AND_EXACT=PASS
           python3 - <<'PY'
           import json,os,time,urllib.request,urllib.error
           url='https://hive-alveare.pages.dev/api/s10-world-clock-dispatch'
