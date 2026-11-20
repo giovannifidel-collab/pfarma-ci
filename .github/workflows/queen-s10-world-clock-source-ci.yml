@@ -1,7 +1,7 @@
 name: Queen S10 Minute World Clock Replacement Source Security CI (NO DEPLOY)
 on:
   push:
-    branches: [fix/s10-cloudflare-world-clock-cutover-20261119, fix/s10-world-clock-pages-single-arbiter-20261120, fix/s10-world-clock-transport-diagnostic-20261120]
+    branches: [fix/s10-cloudflare-world-clock-cutover-20261119, fix/s10-world-clock-pages-single-arbiter-20261120, fix/s10-world-clock-transport-diagnostic-20261120, fix/s10-worker-cloudflare-manual-redirect-20261120]
     paths:
       - .github/workflows/hive-world-sync.yml
       - .github/workflows/queen-s10-world-clock-source-ci.yml
@@ -34,7 +34,7 @@ jobs:
           git rev-parse --verify origin/main >/dev/null
           mapfile -t changed < <(git diff --name-only origin/main...HEAD)
           source_branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          if [ "$source_branch" = "fix/s10-world-clock-pages-single-arbiter-20261120" ] || [ "$source_branch" = "fix/s10-world-clock-transport-diagnostic-20261120" ]; then
+          if [ "$source_branch" = "fix/s10-world-clock-pages-single-arbiter-20261120" ] || [ "$source_branch" = "fix/s10-world-clock-transport-diagnostic-20261120" ] || [ "$source_branch" = "fix/s10-worker-cloudflare-manual-redirect-20261120" ]; then
             test "${#changed[@]}" -eq 3
             for file in "${changed[@]}"; do
               case "$file" in
@@ -69,7 +69,7 @@ jobs:
           # SOURCE-ONLY diagnostic PR runs against the already approved exact S10 World
           # repository_dispatch candidate IN THE EPHEMERAL CI CHECKOUT. Production
           # retains original GitHub World cron until a fresh Owner OIDC release.
-          if [ "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" = fix/s10-world-clock-transport-diagnostic-20261120 ]; then
+          if [ "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" = fix/s10-world-clock-transport-diagnostic-20261120 ] || [ "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" = fix/s10-worker-cloudflare-manual-redirect-20261120 ]; then
             git show 6670ef862ef971785222a7a55b9834ca78c24f0e:.github/workflows/hive-world-sync.yml > .github/workflows/hive-world-sync.yml
             test "$(git hash-object .github/workflows/hive-world-sync.yml)" = ece98197633f826b181a3c0ab73effcbf2608b4f
             echo S10_DIAGNOSTIC_CI_TESTS_EXACT_APPROVED_WORLD_SOURCE_NO_PROD_CHANGE=PASS
