@@ -17,6 +17,63 @@ jobs:
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
+      - name: S10 historical second-cutover Cloudflare logs and cron metrics READ ONLY
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,datetime,re,urllib.request,urllib.error
+          token=os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK') or ''
+          assert len(token)>15,'NO_EXISTING_CF_TOKEN'
+          api='https://api.cloudflare.com/client/v4'
+          def call(path,body=None):
+            headers={'Authorization':'Bearer '+token,'Accept':'application/json','User-Agent':'HIVE-S10-second-failure-readonly/1.0'}
+            if body is not None: headers['Content-Type']='application/json'
+            req=urllib.request.Request(api+path,headers=headers,data=(json.dumps(body).encode() if body is not None else None))
+            try:
+              with urllib.request.urlopen(req,timeout=25) as r:return json.load(r),r.status
+            except urllib.error.HTTPError as e:return {'errors':[{'code':e.code}]},e.code
+            except urllib.error.URLError:return {'errors':[{'code':'network'}]},0
+          a,code=call('/accounts?per_page=50')
+          ids=[v.get('id') for v in a.get('result',[]) if isinstance(v,dict)]
+          assert a.get('success') and len(ids)==1,'ACCOUNT_UNVERIFIED'
+          aid=ids[0]
+          s,sc=call('/accounts/'+aid+'/workers/scripts/hive-queen-world-clock/schedules')
+          obj=s.get('result') or {}
+          scs=obj.get('schedules',[]) if isinstance(obj,dict) else obj
+          print('S10_HISTORICAL_LIVE_ROLLBACK_SCHEDULES='+str([x.get('cron') for x in (scs if isinstance(scs,list) else [])]))
+          start='2026-11-20T15:48:57Z'
+          end='2026-11-20T16:14:56Z'
+          query='query($accountTag:string,$scriptName:string,$start:string,$end:string){viewer{accounts(filter:{accountTag:$accountTag}){workersInvocationsAdaptive(limit:150,filter:{scriptName:$scriptName,datetime_geq:$start,datetime_leq:$end}){sum{requests errors subrequests}dimensions{datetime status scriptName}}}}}'
+          g,gcode=call('/graphql',{'query':query,'variables':{'accountTag':aid,'scriptName':'hive-queen-world-clock','start':start,'end':end}})
+          try:
+            rows=g['data']['viewer']['accounts'][0]['workersInvocationsAdaptive']
+            print('S10_SECOND_CUTOVER_REAL_CRON_REQUESTS='+str(sum((x.get('sum') or {}).get('requests',0) for x in rows)))
+            print('S10_SECOND_CUTOVER_REAL_CRON_ERRORS='+str(sum((x.get('sum') or {}).get('errors',0) for x in rows)))
+            print('S10_SECOND_CUTOVER_REAL_CRON_ROWS='+str(len(rows)))
+          except (KeyError,IndexError,TypeError):
+            print('S10_SECOND_CUTOVER_GRAPHQL_HTTP='+str(gcode))
+          startms=int(datetime.datetime.fromisoformat(start.replace('Z','+00:00')).timestamp()*1000)
+          endms=int(datetime.datetime.fromisoformat(end.replace('Z','+00:00')).timestamp()*1000)
+          for label,params in [
+              ('service',{'datasets':['cloudflare-workers'],'filters':[{'key':'$metadata.service','operation':'eq','type':'string','value':'hive-queen-world-clock'}]}),
+              ('keyword',{'datasets':['cloudflare-workers'],'needle':{'value':'S10_WORLD_CLOCK_DECISION','isRegex':False,'matchCase':True}})]:
+            req={'queryId':'s10-second-cutover-readonly-'+label,'timeframe':{'from':startms,'to':endms},
+                 'dry':True,'view':'events','limit':100,'parameters':params}
+            q,qcode=call('/accounts/'+aid+'/workers/observability/telemetry/query',req)
+            d=q.get('result') or {}
+            events=d.get('events',[]) if isinstance(d,dict) else []
+            print('S10_SECOND_CUTOVER_LOG_QUERY_'+label.upper()+'_HTTP='+str(qcode))
+            print('S10_SECOND_CUTOVER_LOG_QUERY_'+label.upper()+'_EVENTS='+str(len(events)))
+            print('S10_SECOND_CUTOVER_LOG_QUERY_'+label.upper()+'_ERROR_CODES='+str([str(e.get('code',''))[:30] for e in q.get('errors',[]) if isinstance(e,dict)][:3]))
+            decisions=[]
+            for event in events:
+              line=json.dumps(event,default=str,separators=(',',':'))
+              decisions.extend(re.findall('S10_WORLD_CLOCK_DECISION=([A-Z0-9_]+)',line))
+            print('S10_SECOND_CUTOVER_LOG_QUERY_'+label.upper()+'_DECISIONS='+','.join(decisions[-30:]))
+          print('S10_SECOND_CUTOVER_READ_ONLY_NO_CLOCK_NO_MUTATION=TRUE')
+          PY
       - name: Inspect Cloudflare Worker availability and exact dedicated GitHub credential presence - GET ONLY
         shell: bash
         run: |
