@@ -43,6 +43,18 @@ jobs:
           Path('/tmp/s10-owner-existing-pages-oidc.mjs').write_text(js+'\n')
           PY
           node --check /tmp/s10-owner-existing-pages-oidc.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml').read_text()
+          start="          node --input-type=module <<'JS'\\n".replace('\\n','\n')
+          a=s.rindex(start)+len(start)
+          b=s.index("\\n          JS".replace('\\n','\n'),a)
+          js='\n'.join(x[10:] if x.startswith('          ') else x for x in s[a:b].splitlines())
+          Path('/tmp/s10-g0-ratification-rs256.mjs').write_text(js+'\n')
+          PY
+          node --check /tmp/s10-g0-ratification-rs256.mjs
+          grep -Fq 'S10_G0_OWNER_RATIFIED_EXACT_BOUNDED_SCOPE=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
+          grep -Fq 'S10_G8_NO_TERMINAL_CERTIFICATION_OR_NEON_WRITE=TRUE' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'S10_OWNER_OIDC_RS256_EXISTING_PAGES=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'S10_CLOCK_TWO_GENUINE_WORLD_OBSERVATIONS=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'CF_ACCESS_CLIENT_SECRET' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
