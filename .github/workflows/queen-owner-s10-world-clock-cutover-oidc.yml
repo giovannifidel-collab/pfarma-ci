@@ -79,10 +79,24 @@ jobs:
           test "$OWNER_APPROVAL" = true
           test -n "$GH_TOKEN"
           test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_BEFORE"
-          test "$(gh api repos/giovannifidel-collab/pfarma-ci/branches/main --jq .commit.sha)" = "$GITHUB_SHA"
-          # Only the exact Owner signer workflow may differ from the known relay main.
-          gh api "repos/giovannifidel-collab/pfarma-ci/compare/$RELAY_BEFORE...$GITHUB_SHA" |
-            jq -e '.status=="ahead" and (.files|length)==1 and .files[0].filename==".github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml"' >/dev/null
+          # World Sync legitimately updates only hive-world-state.json on main.
+          # Prevent a false signer failure while denying ALL other source drift.
+          current_main="$(gh api repos/giovannifidel-collab/pfarma-ci/branches/main --jq .commit.sha)"
+          [[ "$current_main" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/giovannifidel-collab/pfarma-ci/compare/$RELAY_BEFORE...$current_main" |
+            jq -e '.status=="ahead" and
+              ((.files|map(.filename)|all(. == ".github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml" or . == "hive-world-state.json"))) and
+              ((.files|map(.filename)|index(".github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml")) != null)' >/dev/null
+          # The currently installed Owner signer MUST be byte-identical to
+          # the GITHUB_SHA event checkout; World is not permitted to alter it.
+          signed_blob="$(git hash-object .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml)"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml --jq .sha)" = "$signed_blob"
+          # Check true World source envelope; NEVER modify or synthesize time.
+          world="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\\n' | base64 -d)"
+          jq -e '.schema_version==1 and .policy=="authoritative-source-first" and (.state_fingerprint|test("^[a-f0-9]{64}$")) and (.projects|type=="object") and (.generated_at|type=="string")' <<< "$world" >/dev/null
+          world_ts="$(jq -r .generated_at <<< "$world")"
+          test "$(date -u -d "$world_ts" +%s)" -le "$(($(date -u +%s)+90))"
+          echo S10_WORLD_ONLY_BACKGROUND_MAIN_DRIFT_EXACT_SCOPE=PASS
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$OLD_WORLD_BLOB"
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$ORIGINAL_S1_BLOB"
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .sha)" = "$OLD_POINTER_BLOB"
