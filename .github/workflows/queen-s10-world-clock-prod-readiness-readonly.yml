@@ -381,3 +381,46 @@ jobs:
             print('S10_CF_WORKER_METRICS_UNAVAILABLE='+str(g.get('http_error') or g.get('network_error') or 'query_rejected'))
           print('S10_CF_WORKER_INVOCATION_CHECK_NO_PRODUCTION_WRITES=TRUE')
           PY
+
+      - name: Workers Observability event logs read-only - S10 CLOCK DECISIONS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,datetime,urllib.request,urllib.error
+          token=os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK')
+          api='https://api.cloudflare.com/client/v4'
+          def call(url,body=None):
+            headers={'Authorization':'Bearer '+token,'Accept':'application/json','User-Agent':'HIVE-S10-Signed-Cron-Logs-Readonly/1.0'}
+            if body is not None:headers['Content-Type']='application/json'
+            request=urllib.request.Request(url,headers=headers,data=(json.dumps(body).encode() if body is not None else None))
+            try:
+              with urllib.request.urlopen(request,timeout=28) as resp:return json.load(resp)
+            except urllib.error.HTTPError as e:return {'http_error':e.code,'error_brief':e.read(500).decode(errors='replace')[:160]}
+            except urllib.error.URLError:return {'network_error':True}
+          a=call(api+'/accounts?per_page=50')
+          accounts=a.get('result',[])
+          assert a.get('success') and len(accounts)==1
+          acc=accounts[0]['id']
+          now=datetime.datetime.now(datetime.timezone.utc)
+          t1=int((now-datetime.timedelta(minutes=30)).timestamp()*1000)
+          t2=int(now.timestamp()*1000)
+          payload={'queryId':'s10-readonly-cron-decision-diagnostic','timeframe':{'from':t1,'to':t2},'dry':True,'view':'events','limit':100,
+             'parameters':{'datasets':['cloudflare-workers'],'needle':{'value':'S10_WORLD_CLOCK_DECISION','isRegex':False,'matchCase':True},
+               'filters':[{'key':'$metadata.service','operation':'eq','type':'string','value':'hive-queen-world-clock'}]}}
+          z=call(api+'/accounts/'+acc+'/workers/observability/telemetry/query',payload)
+          print('S10_CF_OBSERVABILITY_HTTP='+str(z.get('http_error','200_if_response_returned')))
+          if not z.get('success'):
+            print('S10_CF_OBSERVABILITY_QUERY_STATUS='+','.join((e.get('message','')[:90] for e in z.get('errors',[]) if isinstance(e,dict)))[:250])
+          result=z.get('result') or {}
+          events=result.get('events') or []
+          print('S10_CF_CRON_DECISION_LOG_ROWS='+str(len(events)))
+          for event in events[-60:]:
+            msg=json.dumps(event.get('message') or event.get('logs') or event.get('event') or event,separators=(',',':'))
+            for word in ['S10_WORLD_CLOCK_DECISION=']:
+              start=msg.find(word)
+              if start>=0:
+                decision=''.join(c for c in msg[start+len(word):start+len(word)+100] if c.isalnum() or c in '_-')
+                print('S10_CF_CRON_DECISION='+decision[:90])
+          print('S10_CF_OBSERVABILITY_DIAG_NO_SECRETS_AND_READ_ONLY=TRUE')
+          PY
