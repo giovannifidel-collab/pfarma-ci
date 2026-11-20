@@ -270,6 +270,31 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$S10_CLOUDFLARE_ACTIVATED_AT"
+          # Capture real Worker transport classifications during this ONE signed
+          # cutover; ephemeral runner files only, zero secret/body/JWT logging.
+          export CLOUDFLARE_API_TOKEN="${CF_PRIMARY:-$CF_FALLBACK}"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          logpath="$RUNNER_TEMP/s10-clock-decisions.jsonl"
+          errpath="$RUNNER_TEMP/s10-clock-tail-stderr.txt"
+          (timeout 1500s npx --yes wrangler@4.139.0 tail "$WORKER_NAME" --format json --search S10_WORLD_CLOCK_DECISION > "$logpath" 2> "$errpath") &
+          tail_pid=$!
+          s10_diag_exit() {
+            ret=$?
+            kill "$tail_pid" >/dev/null 2>&1 || true
+            python3 - "$logpath" "$errpath" <<'PY'
+          import pathlib,re,sys
+          raw=pathlib.Path(sys.argv[1]).read_text(errors='replace') if pathlib.Path(sys.argv[1]).exists() else ''
+          decisions=re.findall(r'S10_WORLD_CLOCK_DECISION=([A-Z0-9_]+)',raw)
+          print('S10_CF_EPHEMERAL_TAIL_DECISION_COUNT='+str(len(decisions)))
+          print('S10_CF_EPHEMERAL_TAIL_WORLD_DECISIONS='+','.join(decisions[-24:]))
+          if not decisions and pathlib.Path(sys.argv[2]).exists():
+              stderr=pathlib.Path(sys.argv[2]).read_text(errors='replace')
+              print('S10_CF_EPHEMERAL_TAIL_NO_DECISIONS_WITH_ERROR='+str(bool(re.search('Error|unauthorized|permission',stderr,re.I))))
+          print('S10_CF_TAIL_NO_SECRETS_NO_PERSISTENT_DEBUG_ENDPOINT=TRUE')
+          PY
+            return "$ret"
+          }
+          trap s10_diag_exit EXIT
           for poll in $(seq 1 44); do
             runs="$(gh api 'repos/giovannifidel-collab/pfarma-ci/actions/workflows/hive-world-sync.yml/runs?event=repository_dispatch&per_page=60')"
             mapfile -t ids < <(jq -r --arg after "$S10_CLOUDFLARE_ACTIVATED_AT" '.workflow_runs[] | select(.created_at >= $after and .status=="completed" and .conclusion=="success" and .run_attempt==1) | .id' <<< "$runs")
@@ -296,6 +321,13 @@ jobs:
                 echo S10_CLOCK_TWO_GENUINE_WORLD_OBSERVATIONS=PASS
                 echo S10_CLOCK_LIVE_SOURCE_FRESHNESS_GATE=PASS
                 exit 0
+              fi
+            fi
+            if [ "$poll" -ge 12 ] && [ -f "$logpath" ]; then
+              denies="$(grep -Eo 'S10_WORLD_CLOCK_DECISION=DENY_[A-Z0-9_]+' "$logpath" | wc -l || true)"
+              if [ "${denies:-0}" -ge 5 ]; then
+                echo "S10_CF_REPEATED_BROKER_DENIAL_FAIL_CLOSED_COUNT=$denies"
+                exit 48
               fi
             fi
             echo "S10_G3_WAITING_FOR_REAL_WORLD_OBSERVATIONS_POLL=$poll"
