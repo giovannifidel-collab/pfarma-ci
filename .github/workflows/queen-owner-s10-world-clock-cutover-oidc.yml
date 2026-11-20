@@ -5,11 +5,6 @@ on:
     paths: [.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml]
   workflow_dispatch:
     inputs:
-      approve_exact_hive112_relay1317_manual_redirect_recovery:
-        description: 'OWNER fresh approval: HIVE PR112 + relay PR1317 manual redirect repair, one World clock and rollback; no new PAT'
-        type: boolean
-        required: true
-        default: false
       approve_exact_s10_g0_contract_ratification:
         description: 'Owner RATIFIES existing S10 bounded scope G0 only; NO Neon terminal receipt, no billing claim, no release, no S7/S8 expansion'
         type: boolean
@@ -61,7 +56,7 @@ jobs:
           ! grep -Fq 'S10_WORLD_CLOCK_GH_TOKEN' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           echo S10_OWNER_SINGLE_RELEASE_SOURCE_ONLY_NO_AUTO_DEPLOY=PASS
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_hive112_relay1317_manual_redirect_recovery == true && inputs.approve_exact_s10_g0_contract_ratification != true
+    if: ${{ false }} # RETIRED: exact Owner production clock cutover already certified, no repeat release
     runs-on: ubuntu-latest
     timeout-minutes: 48
     environment: pfarma-ci-trusted
@@ -422,7 +417,7 @@ jobs:
           fi
           echo S10_RECOVERY_NO_TERMINAL_CLAIM_ON_FAILURE=TRUE
   s10-g0-ratification:
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s10_g0_contract_ratification == true && inputs.approve_exact_hive112_relay1317_manual_redirect_recovery != true
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     environment: pfarma-ci-trusted
@@ -441,7 +436,11 @@ jobs:
           test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
           test "$GITHUB_RUN_ATTEMPT" = 1
           test "$GITHUB_REF" = refs/heads/main
-          test "$OWNER_APPROVAL" = true
+          if [ "$OWNER_APPROVAL" != true ]; then
+            echo "::error title=S10 G0 non autorizzata::Spunta l'unica casella approve_exact_s10_g0_contract_ratification in Run workflow (branch main). Nessuna ratifica eseguita."
+            echo S10_G0_EXPLICIT_OWNER_APPROVAL_MISSING_FAIL_CLOSED=TRUE
+            exit 43
+          fi
           test -n "$GH_TOKEN"
           test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/ops/queen/s10/S10_CONSOLIDATION_ACCEPTANCE_PROPOSAL.v1.json --jq .sha)" = 27dc517f38afda00e12deff5bb85745e3a0e5a07
           gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44784297539 |
