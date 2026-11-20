@@ -92,7 +92,7 @@ jobs:
           signed_blob="$(git hash-object .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml)"
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml --jq .sha)" = "$signed_blob"
           # Check true World source envelope; NEVER modify or synthesize time.
-          world="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\\n' | base64 -d)"
+          world="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\n' | base64 -d)"
           jq -e '.schema_version==1 and .policy=="authoritative-source-first" and (.state_fingerprint|test("^[a-f0-9]{64}$")) and (.projects|type=="object") and (.generated_at|type=="string")' <<< "$world" >/dev/null
           world_ts="$(jq -r .generated_at <<< "$world")"
           test "$(date -u -d "$world_ts" +%s)" -le "$(($(date -u +%s)+90))"
