@@ -312,3 +312,27 @@ jobs:
           print('S10_EXISTING_PAGES_BROKER_NEGATIVE_AUTHENTICATED='+str(code==400 and error=='EXACT_CLOCK_PAYLOAD_DENY').lower())
           print('S10_EXISTING_PAGES_BROKER_NO_GITHUB_DISPATCH_NO_WORLD_CHANGE=TRUE')
           PY
+
+      - name: Rehearse exact newest S10 Owner OIDC preflight without release - GET ONLY
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = d5d237db904f810aacad90a3ff86dade3bed5969
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/cloudflare/functions/api/s10-world-clock-dispatch.js --jq .sha)" = 0b4e30beac8c45d9b6de3c6e501be3b8f3a366f3
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = 398b478cebcdd979953aa8a014ef13fbf205c65b
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .sha)" = d4a281a2c55f5d029e46c8d3b5298202fedbf912
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = 88000e9ff70ffc044f424d469645573e01738a8b
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/105 |
+            jq -e '.state=="closed" and .merged==true and .head.sha=="0e34b7965639b9a32c6abb90bb5b7b98317dabe7"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1307 |
+            jq -e '.state=="open" and .merged==false and .head.sha=="6670ef862ef971785222a7a55b9834ca78c24f0e"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/compare/649d0ea84d1db855c82e58596bcc88a2c5bf1045...main |
+            jq -e '.status=="ahead" and (.files|map(.filename)|all(.==".github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml" or .=="hive-world-state.json"))' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44758697114 |
+            jq -e '.conclusion=="success" and .head_sha=="2dfe09cc2251633866c6ca0601f006443f1e9c14"' >/dev/null
+          echo S10_OWNER_FINAL_HIVE_LIVE_BROKER_RELAY_SOURCE_AND_ONE_PATH_DRIFT_PREFLIGHT=PASS
+          echo S10_OWNER_FINAL_NO_NEW_TOKEN_NO_PRODUCTION_MUTATION=TRUE
