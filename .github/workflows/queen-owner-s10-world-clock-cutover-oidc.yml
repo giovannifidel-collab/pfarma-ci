@@ -1,12 +1,12 @@
-name: Queen Owner S10 ONE Pages Bounded Transport Diagnostic OIDC Recovery
+name: Queen Owner S10 ONE Existing Pages and Worker Manual Redirect Recovery OIDC
 on:
   push:
-    branches: [release/s10-oidc-existing-pages-token-20261119, fix/s10-owner-broker-live-one-clock-20261120, fix/s10-owner-single-pages-clock-recovery-20261120, fix/s10-owner-pr1315-broker-transport-diagnostic-oidc-20261120]
+    branches: [release/s10-oidc-existing-pages-token-20261119, fix/s10-owner-broker-live-one-clock-20261120, fix/s10-owner-single-pages-clock-recovery-20261120, fix/s10-owner-pr1315-broker-transport-diagnostic-oidc-20261120, fix/s10-owner-dual-cloudflare-manual-redirect-oidc-20261120]
     paths: [.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml]
   workflow_dispatch:
     inputs:
-      approve_exact_pr1315_broker_transport_diagnostic_recovery:
-        description: 'OWNER fresh exact approval: PR1315 safe Worker transport diagnosis, original single World clock, rollback, no new PAT'
+      approve_exact_hive112_relay1317_manual_redirect_recovery:
+        description: 'OWNER fresh approval: HIVE PR112 + relay PR1317 manual redirect repair, one World clock and rollback; no new PAT'
         type: boolean
         required: true
         default: false
@@ -54,13 +54,15 @@ jobs:
       CF_FALLBACK: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
       CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
       CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-      OWNER_APPROVAL: ${{ inputs.approve_exact_pr1315_broker_transport_diagnostic_recovery }}
+      OWNER_APPROVAL: ${{ inputs.approve_exact_hive112_relay1317_manual_redirect_recovery }}
       HIVE_BEFORE: d5d237db904f810aacad90a3ff86dade3bed5969
       HIVE_POINTER_BEFORE: 88000e9ff70ffc044f424d469645573e01738a8b
       BROKER_BLOB: 0b4e30beac8c45d9b6de3c6e501be3b8f3a366f3
-      RELAY_BEFORE: 0ed1489292ac2183cad41e3be02ac0d734e3ab9b
-      REPAIR_PR_SHA: 90be688c6c0be69f70a5be293c0a506267583d4c
-      NEW_WORKER_BLOB: 637ec2da491824ce695659223f2ac1ae15866b89
+      RELAY_BEFORE: 17484b93cf95266b874d2f8c9ce6667687c96e95
+      REPAIR_PR_SHA: 8aa63eef16d605e9273af22967102e9cc173cc2e
+      HIVE_REPAIR_PR_SHA: ba66f915fb40e7b3d3d5858e102a5b49663176d1
+      NEW_BROKER_BLOB: 35d152ecdbda1504d89cd5f61b14cf2680564553
+      NEW_WORKER_BLOB: 526e2a646f7625e541c3336c7c52af012618788d
       OLD_WORLD_BLOB: 398b478cebcdd979953aa8a014ef13fbf205c65b
       NEW_WORLD_BLOB: ece98197633f826b181a3c0ab73effcbf2608b4f
       OLD_POINTER_BLOB: b2ee2d50e3ef675efc704b9c19cbdbdf8de09a28
@@ -81,8 +83,8 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$OWNER_APPROVAL" = true
           test -n "$GH_TOKEN"
-          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44766921551 |
-            jq -e '.conclusion=="failure" and .status=="completed" and .run_attempt==1 and .head_sha=="3d7ad09e5de7f37753b962f9e381db9ee2d5d1fb"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44779423425 |
+            jq -e '.conclusion=="failure" and .status=="completed" and .run_attempt==1 and .head_sha=="c8093d9192f680fe74680ac48a18d54732e170ad"' >/dev/null
           test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_BEFORE"
           test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/cloudflare/functions/api/s10-world-clock-dispatch.js --jq .sha)" = "$BROKER_BLOB"
           # Only authentic World snapshot and previous rollback are allowed to drift on main.
@@ -99,10 +101,15 @@ jobs:
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$ORIGINAL_S1_BLOB"
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .sha)" = "$OLD_POINTER_BLOB"
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = "$HIVE_BEFORE"
-          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1315 |
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1317 |
             jq -e --arg h "$REPAIR_PR_SHA" '.state=="open" and .merged==false and .draft==false and .head.sha==$h and .base.ref=="main"' >/dev/null
-          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44777937729 |
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44783275382 |
             jq -e --arg h "$REPAIR_PR_SHA" '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .head_sha==$h' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/112 |
+            jq -e --arg h "$HIVE_REPAIR_PR_SHA" '.state=="open" and .merged==false and .draft==false and .head.sha==$h and .base.ref=="main"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44783141480 |
+            jq -e --arg h "$HIVE_REPAIR_PR_SHA" '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .head_sha==$h' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/ops/queen/s10/world-clock/worker.mjs --jq .sha)" = 637ec2da491824ce695659223f2ac1ae15866b89
           echo S10_EXACT_OWNER_HOTFIX_AND_PRIOR_ROLLBACK_GITHUB_SOURCE_PREFLIGHT=PASS
       - name: Verify GitHub-issued Owner OIDC RS256, no previous signature or unsigned release
         shell: bash
@@ -113,7 +120,7 @@ jobs:
           import {appendFileSync} from 'node:fs';
           const e=process.env;
           const reject=x=>{throw Error('S10_OWNER_OIDC_DENY_'+x)};
-          const aud='hive-queen-s10-diagnostic-pages-pr1315-one-world-v4';
+          const aud='hive-queen-s10-manual-redirect-pages112-worker1317-v5';
           if(e.OWNER_APPROVAL!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)reject('NO_APPROVAL');
           const link=e.ACTIONS_ID_TOKEN_REQUEST_URL+(e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(aud);
           const response=await fetch(link,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
@@ -140,7 +147,7 @@ jobs:
           if(!k||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key:k,format:'jwk'}),dec(parts[2])))reject('SIGNATURE');
           appendFileSync(e.GITHUB_ENV,'S10_OWNER_SIGNED=TRUE\nS10_OWNER_EXPIRES='+String(Math.floor(now/1000)+900)+'\n');
           console.log('S10_OWNER_OIDC_RS256_EXISTING_PAGES=PASS');
-          console.log('S10_OWNER_EXACT_PR1315_BROKER_DENIAL_DIAGNOSTIC_NO_NEW_PAT=AUTHORIZED');
+          console.log('S10_OWNER_EXACT_HIVE112_RELAY1317_MANUAL_REDIRECT_NO_NEW_PAT=AUTHORIZED');
           JS
       - name: Verify existing Access service secrets, Pages binding and unique Cloudflare account
         shell: bash
@@ -170,11 +177,11 @@ jobs:
           enc="$(curl -sS --fail --max-time 22 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME/secrets")"
           jq -e '.success==true and ([.result[].name]|index("CF_ACCESS_CLIENT_ID")!=null and index("CF_ACCESS_CLIENT_SECRET")!=null)' <<< "$enc" >/dev/null
           echo S10_PREVIOUS_CF_WORKER_ROLLBACK_NO_CRON_AND_REUSED_ENCRYPTED_ACCESS=PASS
-      - name: Checkout exactly approved Worker transport diagnostic PR1315 and rerun negative gates
+      - name: Checkout exactly approved Cloudflare Worker redirect PR1317 and rerun negative gates
         shell: bash
         run: |
           set -euo pipefail
-          git fetch -q origin refs/heads/fix/s10-world-clock-transport-diagnostic-20261120
+          git fetch -q origin refs/heads/fix/s10-worker-cloudflare-manual-redirect-20261120
           git checkout --detach "$REPAIR_PR_SHA"
           test "$(git rev-parse HEAD)" = "$REPAIR_PR_SHA"
           test "$(git hash-object ops/queen/s10/world-clock/worker.mjs)" = "$NEW_WORKER_BLOB"
@@ -185,7 +192,7 @@ jobs:
           node --test ops/queen/s10/tests/world-observation-publication.test.mjs
           ! grep -Fq 'raw.githubusercontent.com' ops/queen/s10/world-clock/worker.mjs
           ! grep -Fq 'api.github.com' ops/queen/s10/world-clock/worker.mjs
-          echo S10_PR1315_EXACT_BOUNDED_BROKER_HTTP_DENIAL_TESTS=PASS
+          echo S10_PR1317_EXACT_MANUAL_REDIRECT_NEGATIVE_TESTS=PASS
       - name: Stage disabled Worker, upload ONLY existing encrypted Access service credentials
         shell: bash
         run: |
@@ -197,37 +204,60 @@ jobs:
           printf '%s' "$CF_ACCESS_CLIENT_ID" | npx --yes wrangler@4.139.0 secret put CF_ACCESS_CLIENT_ID --name "$WORKER_NAME" --config ops/queen/s10/world-clock/wrangler.disabled.jsonc >/dev/null
           printf '%s' "$CF_ACCESS_CLIENT_SECRET" | npx --yes wrangler@4.139.0 secret put CF_ACCESS_CLIENT_SECRET --name "$WORKER_NAME" --config ops/queen/s10/world-clock/wrangler.disabled.jsonc >/dev/null
           echo S10_EXISTING_ACCESS_TWO_WORKER_SECRETS_ENCRYPTED_NO_NEW_PAT=PASS
-      - name: Reverify HIVE broker already merged and live signed Access negative, zero writes
+      - name: Owner-sign merge exact HIVE Pages PR112 and VERIFY deployed original signed broker
         shell: bash
         run: |
           set -euo pipefail
           test "$S10_OWNER_SIGNED" = TRUE
           test "$(date -u +%s)" -lt "$S10_OWNER_EXPIRES"
+          test "$S10_WORKER_STAGED_DISABLED" = TRUE
           test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_BEFORE"
           test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/cloudflare/functions/api/s10-world-clock-dispatch.js --jq .sha)" = "$BROKER_BLOB"
-          echo "S10_NEW_HIVE_SHA=$HIVE_BEFORE" >> "$GITHUB_ENV"
-          echo S10_EXISTING_PAGES_BROKER_SOURCE_ALREADY_MERGED_AND_EXACT=PASS
+          gh api -X PUT repos/giovannifidel-collab/hive-alveare/pulls/112/merge             -f sha="$HIVE_REPAIR_PR_SHA" -f merge_method=merge             -f commit_title='release(s10): Cloudflare-supported manual redirects in original signed Pages broker' |
+              jq -e '.merged==true' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/cloudflare/functions/api/s10-world-clock-dispatch.js --jq .sha)" = "$NEW_BROKER_BLOB"
+          hive_sha="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          [[ "$hive_sha" =~ ^[a-f0-9]{40}$ ]] || exit 51
+          echo "S10_NEW_HIVE_SHA=$hive_sha" >> "$GITHUB_ENV"
+          echo S10_OWNER_MERGED_EXACT_HIVE_PAGES_PR112=PASS
+          # Reject stale prior Pages deployments, even if their endpoint replies 400.
+          deployed=false
+          for i in $(seq 1 48); do
+            project="$(curl -sS --fail --max-time 22 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/hive-alveare")"
+            if jq -e --arg sha "$hive_sha" '.success==true and .result.canonical_deployment.deployment_trigger.metadata.commit_hash==$sha and .result.canonical_deployment.latest_stage.status=="success"' <<< "$project" >/dev/null; then
+              deployed=true; break
+            fi
+            sleep 10
+          done
+          test "$deployed" = true || { echo S10_NEW_PAGES_BROKER_PRODUCTION_DEPLOYMENT_UNVERIFIED=FAIL_CLOSED; exit 52; }
+          echo S10_NEW_PAGES_BROKER_EXACT_PRODUCTION_SHA=PASS
           python3 - <<'PY'
           import json,os,time,urllib.request,urllib.error
           url='https://hive-alveare.pages.dev/api/s10-world-clock-dispatch'
           h={'Content-Type':'application/json','User-Agent':'HIVE-S10-Owner-OIDC-Authenticated-Negative/1.0',
              'CF-Access-Client-Id':os.environ['CF_ACCESS_CLIENT_ID'],
              'CF-Access-Client-Secret':os.environ['CF_ACCESS_CLIENT_SECRET']}
-          for _ in range(36):
+          for _ in range(12):
             req=urllib.request.Request(url,data=b'{"clock_minute":"invalid"}',headers=h,method='POST')
             try:
-              with urllib.request.urlopen(req,timeout=18) as r:code,body=r.status,r.read(1000)
+              with urllib.request.urlopen(req,timeout=18) as res:code,body=res.status,res.read(1000)
             except urllib.error.HTTPError as e:code,body=e.code,e.read(1000)
             except urllib.error.URLError:code,body=0,b''
             try:valid=json.loads(body).get('error')=='EXACT_CLOCK_PAYLOAD_DENY'
             except (ValueError,AttributeError):valid=False
             if code==400 and valid:
-              print('S10_HIVE_PAGES_SIGNED_JWT_AUTHENTICATED_BROKER_NEGATIVE=PASS')
+              print('S10_NEW_PAGES_BROKER_ACCESS_AUTHENTICATED_NEGATIVE=PASS')
               break
             time.sleep(10)
-          else:raise SystemExit('S10_PAGES_DEPLOY_OR_ACCESS_BROKER_NOT_LIVE_DENY')
+          else:raise SystemExit('S10_NEW_PAGES_BROKER_AUTH_NEGATIVE_DENY')
           PY
-      - name: Merge only exact PR1315 and restore original World repo_dispatch without old GitHub Cron
+          # Update only existing authoritative HIVE source pointer, after exact deployment.
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .sha)" = "$OLD_POINTER_BLOB"
+          encoded="$(printf '%s\n' "$hive_sha" | base64 -w0)"
+          gh api -X PUT repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt             -f message='release(s10): track verified original HIVE Pages broker main SHA'             -f content="$encoded" -f sha="$OLD_POINTER_BLOB" >/dev/null
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = "$hive_sha"
+          echo S10_HIVE_SOURCE_POINTER_EXACT_NEW_BROKER=PASS
+      - name: Merge only exact PR1317 and restore original World repo_dispatch without old GitHub Cron
         shell: bash
         run: |
           set -euo pipefail
@@ -235,12 +265,12 @@ jobs:
           test "$(date -u +%s)" -lt "$S10_OWNER_EXPIRES"
           test "$S10_WORKER_STAGED_DISABLED" = TRUE
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$OLD_WORLD_BLOB"
-          gh api -X PUT repos/giovannifidel-collab/pfarma-ci/pulls/1315/merge \
+          gh api -X PUT repos/giovannifidel-collab/pfarma-ci/pulls/1317/merge \
             -f sha="$REPAIR_PR_SHA" -f merge_method=merge \
-            -f commit_title='release(s10): exact Owner OIDC safe broker HTTP diagnosis single World clock' |
+            -f commit_title='release(s10): exact Owner OIDC Cloudflare-supported manual redirect for one World clock' |
               jq -e '.merged==true' >/dev/null
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/ops/queen/s10/world-clock/worker.mjs --jq .sha)" = "$NEW_WORKER_BLOB"
-          echo S10_PR1315_MERGED=TRUE >> "$GITHUB_ENV"
+          echo S10_PR1317_MERGED=TRUE >> "$GITHUB_ENV"
           # Sole old GH cron removed only AFTER disabled Worker hotfix staged.
           good="$(gh api 'repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml?ref=6670ef862ef971785222a7a55b9834ca78c24f0e' --jq .content | tr -d '\n')"
           test "$(printf '%s' "$good" | base64 -d | git hash-object --stdin)" = "$NEW_WORLD_BLOB"
@@ -261,9 +291,10 @@ jobs:
           jq -e '.success==true and ((.result.schedules // .result)|length)==1 and ((.result.schedules // .result)[0].cron=="* * * * *")' <<< "$sched" >/dev/null
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .sha)" = "$NEW_WORLD_BLOB"
           test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = "$ORIGINAL_S1_BLOB"
-          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_BEFORE"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$S10_NEW_HIVE_SHA"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/cloudflare/functions/api/s10-world-clock-dispatch.js --jq .sha)" = "$NEW_BROKER_BLOB"
           echo "S10_CLOUDFLARE_ACTIVATED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
-          echo S10_PR1315_ONLY_ONE_CLOUDFLARE_CRON_ORIGINAL_S1_UNCHANGED=PASS
+          echo S10_PR1317_ONLY_ONE_CLOUDFLARE_CRON_ORIGINAL_S1_UNCHANGED=PASS
       - name: Certify TWO genuine separate scheduled clock -> Pages -> original World observations
         timeout-minutes: 27
         shell: bash
