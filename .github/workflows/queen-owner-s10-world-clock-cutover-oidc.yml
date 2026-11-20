@@ -1,12 +1,17 @@
 name: Queen Owner S10 ONE Existing Pages and Worker Manual Redirect Recovery OIDC
 on:
   push:
-    branches: [release/s10-oidc-existing-pages-token-20261119, fix/s10-owner-broker-live-one-clock-20261120, fix/s10-owner-single-pages-clock-recovery-20261120, fix/s10-owner-pr1315-broker-transport-diagnostic-oidc-20261120, fix/s10-owner-dual-cloudflare-manual-redirect-oidc-20261120]
+    branches: [release/s10-oidc-existing-pages-token-20261119, fix/s10-owner-broker-live-one-clock-20261120, fix/s10-owner-single-pages-clock-recovery-20261120, fix/s10-owner-pr1315-broker-transport-diagnostic-oidc-20261120, fix/s10-owner-dual-cloudflare-manual-redirect-oidc-20261120, fix/s10-owner-g0-scope-ratification-20261120]
     paths: [.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml]
   workflow_dispatch:
     inputs:
       approve_exact_hive112_relay1317_manual_redirect_recovery:
         description: 'OWNER fresh approval: HIVE PR112 + relay PR1317 manual redirect repair, one World clock and rollback; no new PAT'
+        type: boolean
+        required: true
+        default: false
+      approve_exact_s10_g0_contract_ratification:
+        description: 'Owner RATIFIES existing S10 bounded scope G0 only; NO Neon terminal receipt, no billing claim, no release, no S7/S8 expansion'
         type: boolean
         required: true
         default: false
@@ -38,13 +43,25 @@ jobs:
           Path('/tmp/s10-owner-existing-pages-oidc.mjs').write_text(js+'\n')
           PY
           node --check /tmp/s10-owner-existing-pages-oidc.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml').read_text()
+          start="          node --input-type=module <<'JS'\\n".replace('\\n','\n')
+          a=s.rindex(start)+len(start)
+          b=s.index("\\n          JS".replace('\\n','\n'),a)
+          js='\n'.join(x[10:] if x.startswith('          ') else x for x in s[a:b].splitlines())
+          Path('/tmp/s10-g0-ratification-rs256.mjs').write_text(js+'\n')
+          PY
+          node --check /tmp/s10-g0-ratification-rs256.mjs
+          grep -Fq 'S10_G0_OWNER_RATIFIED_EXACT_BOUNDED_SCOPE=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
+          grep -Fq 'S10_G8_NO_TERMINAL_CERTIFICATION_OR_NEON_WRITE=TRUE' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'S10_OWNER_OIDC_RS256_EXISTING_PAGES=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'S10_CLOCK_TWO_GENUINE_WORLD_OBSERVATIONS=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'CF_ACCESS_CLIENT_SECRET' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           ! grep -Fq 'S10_WORLD_CLOCK_GH_TOKEN' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           echo S10_OWNER_SINGLE_RELEASE_SOURCE_ONLY_NO_AUTO_DEPLOY=PASS
   release:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_hive112_relay1317_manual_redirect_recovery == true && inputs.approve_exact_s10_g0_contract_ratification != true
     runs-on: ubuntu-latest
     timeout-minutes: 48
     environment: pfarma-ci-trusted
@@ -404,3 +421,104 @@ jobs:
             fi
           fi
           echo S10_RECOVERY_NO_TERMINAL_CLAIM_ON_FAILURE=TRUE
+  s10-g0-ratification:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s10_g0_contract_ratification == true && inputs.approve_exact_hive112_relay1317_manual_redirect_recovery != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: pfarma-ci-trusted
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      OWNER_APPROVAL: ${{ inputs.approve_exact_s10_g0_contract_ratification }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Require exact Owner contract ratification request and independent immutable evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/main
+          test "$OWNER_APPROVAL" = true
+          test -n "$GH_TOKEN"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/contents/ops/queen/s10/S10_CONSOLIDATION_ACCEPTANCE_PROPOSAL.v1.json --jq .sha)" = 27dc517f38afda00e12deff5bb85745e3a0e5a07
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44784297539 |
+            jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .event=="workflow_dispatch"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44815419914 |
+            jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+          for run in 44786338677 44788052123; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$run" |
+              jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .event=="repository_dispatch"' >/dev/null
+          done
+          hive="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          pointer="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$hive" = "$pointer"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+          w="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .content | tr -d '\n' | base64 -d)"
+          grep -Fq 'repository_dispatch:' <<< "$w"
+          ! grep -Eq '^  schedule:' <<< "$w"
+          world="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\n' | base64 -d)"
+          gen="$(jq -r '.generated_at // empty' <<< "$world")"
+          age="$(($(date -u +%s)-$(date -u -d "$gen" +%s)))"
+          test "$age" -ge 0 && test "$age" -le 1800
+          graph="$(gh api repos/giovannifidel-collab/hive-alveare/contents/ops/queen/core/CAPABILITY_GRAPH.v1.json --jq .content | tr -d '\n' | base64 -d)"
+          jq -e '.policy.paid_fallback==false' <<< "$graph" >/dev/null
+          s7="$(gh api repos/giovannifidel-collab/hive-alveare/contents/ops/queen/compute/s7/S7_STATE.json --jq .content | tr -d '\n' | base64 -d)"
+          jq -e '.general_routing_enabled==false and .s7_fleet_schedulable_count==0' <<< "$s7" >/dev/null
+          s8="$(gh api repos/giovannifidel-collab/hive-alveare/contents/ops/queen/autopilot/s8/S8_STATE.json --jq .content | tr -d '\n' | base64 -d)"
+          jq -e '.general_autonomous_development_enabled==false' <<< "$s8" >/dev/null
+          echo S10_G0_LIVE_GITHUB_WORLD_S1_S7_S8_COST_SCOPE_GATE=PASS
+          echo S10_G0_HISTORICALLY_UNRATIFIED_PROPOSAL_ONLY=TRUE
+          echo S10_G8_INDEPENDENT_INVOICE_NEON_RECEIPT_STILL_REQUIRED=TRUE
+      - name: Authenticate fresh cryptographic GitHub Owner OIDC RS256 and sign bounded S10 G0 only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash} from 'node:crypto';
+          import {appendFileSync} from 'node:fs';
+          const e=process.env;
+          const reject=x=>{throw Error('S10_OWNER_OIDC_DENY_'+x)};
+          const aud='hive-queen-s10-g0-bounded-scope-ratification-v1';
+          if(e.OWNER_APPROVAL!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)reject('NO_APPROVAL');
+          const link=e.ACTIONS_ID_TOKEN_REQUEST_URL+(e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(aud);
+          const response=await fetch(link,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!response.ok)reject('ISSUER');
+          const parts=(await response.json()).value?.split('.')||[];
+          if(parts.length!==3)reject('PARTS');
+          const dec=x=>Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-x.length%4)%4),'base64');
+          const h=JSON.parse(dec(parts[0])),c=JSON.parse(dec(parts[1]));
+          if(h.alg!=='RS256'||!h.kid||h.jwk||h.jku||h.x5u||h.crit)reject('HEADER');
+          const claim={iss:'https://token.actions.githubusercontent.com',aud,
+           repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+           repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+           event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',ref:'refs/heads/main',
+           runner_environment:'github-hosted',
+           workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml@refs/heads/main'};
+          for(const [k,v] of Object.entries(claim))if(String(c[k])!==v)reject('CLAIM_'+k);
+          const now=Date.now();
+          if(c.sha!==e.GITHUB_SHA||Number(c.run_id)!==Number(e.GITHUB_RUN_ID)||Number(c.run_attempt)!==1||
+             !Number.isSafeInteger(c.exp)||!Number.isSafeInteger(c.iat)||c.exp<=c.iat||
+             c.exp-c.iat>900||c.exp*1000<=now||now-c.iat*1000>300000||c.iat*1000>now+30000)reject('TIME');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)reject('JWKS');
+          const k=(await jwks.json()).keys?.find(x=>x.kid===h.kid&&x.kty==='RSA'&&x.use==='sig'&&(!x.alg||x.alg==='RS256'));
+          if(!k||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key:k,format:'jwk'}),dec(parts[2])))reject('SIGNATURE');
+          appendFileSync(e.GITHUB_ENV,'S10_OWNER_SIGNED=TRUE\nS10_OWNER_EXPIRES='+String(Math.floor(now/1000)+900)+'\n');
+          console.log('S10_G0_OWNER_OIDC_RS256_SCOPE_RATIFICATION=PASS');
+          const receipt={schema:'queen.s10.owner-g0-scoped-contract-ratification.v1',
+            stage:'S10',owner:'giovannifidel-collab',run_id:Number(e.GITHUB_RUN_ID),
+            exact_contract_blob:'27dc517f38afda00e12deff5bb85745e3a0e5a07',
+            independent_runtime_ci_run:44815419914,world_owner_release_run:44784297539,
+            authority_ceiling:'HIVE_ONLY_L0_L1_L2',
+            no_new_s1_s2_school:true,never_auto_train:true,
+            s7_persistent_general_routing:false,s8_global_project_writes:false,
+            no_auto_paid_provider_fallback:true,actual_account_billing_independently_verified:false,
+            g8_terminal_neon_receipt_written:false,allow_unbounded_stage_completion_claim:false};
+            const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+            console.log('S10_G0_OWNER_RATIFIED_EXACT_BOUNDED_SCOPE=PASS');
+            console.log('S10_G0_OWNER_SIGNED_RECEIPT='+JSON.stringify({...receipt,sha256:digest}));
+            console.log('S10_G8_NO_TERMINAL_CERTIFICATION_OR_NEON_WRITE=TRUE');
+          JS
