@@ -45,42 +45,40 @@ export async function performClockTick({env,scheduledTime,fetchImpl=fetch,nowMs=
  if(env?.CLOCK_ENABLED!=='true')return 'SKIP_CLOCK_NOT_ACTIVATED';
  if(!Number.isSafeInteger(scheduledTime)||Math.abs(nowMs-scheduledTime)>CLOCK_POLICY.maxScheduledLagMs)
    return 'DENY_DELAYED_OR_INVALID_CRON_TICK';
- const headers={...noCache};
- let world;
- try{
-   const response=await fetchImpl(WORLD_URL,{headers,redirect:'error'});
-   if(!response.ok)return 'DENY_GITHUB_WORLD_SOURCE_HTTP';
-   world=await response.json();
- }catch{return 'DENY_WORLD_READ_OR_PARSE_ERROR';}
- const sourceMs=ms(world.generated_at);
- if(!Number.isFinite(sourceMs)||sourceMs>nowMs+CLOCK_POLICY.maxFutureSourceMs)
-   return 'DENY_WORLD_TIMESTAMP';
- if(nowMs-sourceMs<CLOCK_POLICY.dueAfterMs)return 'SKIP_WORLD_FRESH';
- let runs;
- try{
-   const response=await fetchImpl(RUNS_URL,{headers,redirect:'error'});
-   if(!response.ok)return 'DENY_GITHUB_WORKFLOW_RUNS_HTTP';
-   runs=await response.json();
- }catch{return 'DENY_WORKFLOW_RUNS_READ_ERROR';}
- const decision=decideWorldClock(world,runs,nowMs);
- if(decision!=='DUE_AUTHENTIC_WORLD_OBSERVATION')return decision;
+ // Cloudflare Worker cron only transports the bounded signed tick.
+ // The existing Pages broker ALONE verifies authoritative GitHub World JSON,
+ // original World queue/cooldown and dispatch using its existing Pages-bound token.
+ // Raw GitHub reads from this Worker failed in LIVE #44759568845:
+ // S10_WORLD_CLOCK_DECISION=DENY_WORLD_READ_OR_PARSE_ERROR.
+ // Zero direct Github subrequests here means no second independent arbiter and
+ // no unauthenticated shared Cloudflare-IP GitHub rate-limit/redirect dependency.
  const payload={clock_minute:isoMinute(scheduledTime)};
  try{
    const response=await fetchImpl(DISPATCH_URL,{
-     method:'POST',
-     headers:{...headers,'Content-Type':'application/json','CF-Access-Client-Id':clientId,'CF-Access-Client-Secret':clientSecret},
-     redirect:'error',
+     method:'POST',redirect:'error',
+     headers:{...noCache,'Content-Type':'application/json',
+       'CF-Access-Client-Id':clientId,'CF-Access-Client-Secret':clientSecret},
      body:JSON.stringify(payload)
    });
+   // ALL authoritative World and running-job decisions remain in Pages broker.
+   // No broker-denied clock ever dispatches, and no opaque response authorizes.
+   if(response.status===200){
+     const result=await response.json();
+     if(result?.ok===true&&['SKIP_FRESH','SKIP_ACTIVE','SKIP_COOLDOWN'].includes(result.decision))
+       return 'SKIP_AUTHENTIC_WORLD_'+result.decision+'_VIA_PAGES';
+     return 'DENY_PAGES_BROKER_UNVERIFIED_SKIP';
+   }
    if(response.status!==202)return 'DENY_PAGES_BROKER_DISPATCH_RESPONSE_NO_RETRY';
    const proof=await response.json();
-   if(proof?.ok!==true||proof?.decision!=='DISPATCHED_ORIGINAL_WORLD_SYNC')return 'DENY_PAGES_BROKER_RESPONSE_UNVERIFIED';
+   if(proof?.ok!==true||proof?.decision!=='DISPATCHED_ORIGINAL_WORLD_SYNC')
+     return 'DENY_PAGES_BROKER_RESPONSE_UNVERIFIED';
    return 'DISPATCHED_EXISTING_WORLD_SYNC_ONCE_VIA_PAGES';
  }catch{
-   // Delivery might have occurred; NEVER blindly retry within this invocation.
+   // Partial delivery is possible. NEVER blindly retry within one cron tick.
    return 'DENY_DISPATCH_OUTCOME_UNKNOWN_NO_RETRY';
  }
 }
+
 export default {
  async scheduled(controller,env,ctx){
    const execute=async()=>{
