@@ -282,3 +282,30 @@ jobs:
           node --check /tmp/s10-owner-fix-signer.mjs
           echo S10_WORLD_ONLY_DRIFT_REAL_MAIN_PRECHECK=PASS
           echo S10_NO_DEPLOY_NO_OWNER_APPROVAL_NO_NEW_SECRET=TRUE
+
+      - name: Probe Pages broker authenticated NEGATIVE ONLY after Owner PR merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error
+          url='https://hive-alveare.pages.dev/api/s10-world-clock-dispatch'
+          headers={
+            'User-Agent':'HIVE-S10-Authenticated-Negative-Audit/1.0',
+            'Accept':'application/json','Content-Type':'application/json',
+            'CF-Access-Client-Id':os.environ.get('CF_ACCESS_CLIENT_ID',''),
+            'CF-Access-Client-Secret':os.environ.get('CF_ACCESS_CLIENT_SECRET','')}
+          payload=b'{"clock_minute":"INVALID_ALWAYS_REJECTED"}'
+          req=urllib.request.Request(url,data=payload,headers=headers,method='POST')
+          try:
+            with urllib.request.urlopen(req,timeout=22) as res:code,raw=res.status,res.read(1000)
+          except urllib.error.HTTPError as e:code,raw=e.code,e.read(1000)
+          except urllib.error.URLError:code,raw=0,b''
+          try:res=json.loads(raw)
+          except (ValueError,UnicodeError):res={}
+          error=res.get('error') if isinstance(res,dict) else None
+          print('S10_EXISTING_PAGES_BROKER_NEGATIVE_HTTP='+str(code))
+          print('S10_EXISTING_PAGES_BROKER_NEGATIVE_ERROR='+str(error))
+          print('S10_EXISTING_PAGES_BROKER_NEGATIVE_AUTHENTICATED='+str(code==400 and error=='EXACT_CLOCK_PAYLOAD_DENY').lower())
+          print('S10_EXISTING_PAGES_BROKER_NO_GITHUB_DISPATCH_NO_WORLD_CHANGE=TRUE')
+          PY
