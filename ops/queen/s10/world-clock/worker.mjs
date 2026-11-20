@@ -13,6 +13,27 @@ export const CLOCK_POLICY=Object.freeze({
 const noCache=Object.freeze({'Cache-Control':'no-cache','Accept':'application/vnd.github+json',
  'X-GitHub-Api-Version':'2022-11-28','User-Agent':'HIVE-S10-World-Clock/1.0'});
 const isoMinute=ms=>new Date(Math.floor(ms/60000)*60000).toISOString().replace('.000Z','Z');
+// Explicit bounded error codes, safe for internal Cloudflare Cron logs. Never print credentials,
+// JWTs, response bodies, GitHub tokens or a general-purpose URL.
+const BROKER_FAILURE_CODES=new Set([
+ 'METHOD_DENY','TYPE_DENY','ACCESS_SERVICE_SIGNATURE_DENY','DISPATCH_TOKEN_NOT_PRESENT',
+ 'BODY_PARSE_DENY','EXACT_CLOCK_PAYLOAD_DENY','CLOCK_REPLAY_OR_FUTURE_DENY',
+ 'WORLD_SOURCE_DENY','WORLD_ENCODING_DENY','RUNS_READ_DENY','SOURCE_READ_DENY',
+ 'DENY_INVALID_WORLD','DENY_WORLD_TIME','DENY_RUNS_UNKNOWN',
+ 'GITHUB_DISPATCH_DENY','UNKNOWN_DISPATCH_OUTCOME_NO_RETRY'
+]);
+async function classifyBrokerFailure(response){
+ const status=Number.isInteger(response?.status)&&response.status>=100&&response.status<=599?response.status:0;
+ let error='OPAQUE';
+ try{
+  const type=response.headers?.get('content-type')||'';
+  if(type.toLowerCase().includes('application/json')){
+   const body=await response.json();
+   if(body&&typeof body.error==='string'&&BROKER_FAILURE_CODES.has(body.error))error=body.error;
+  }
+ }catch{}
+ return 'DENY_PAGES_BROKER_HTTP_'+status+'_'+error+'_NO_RETRY';
+}
 export async function performClockTick({env,scheduledTime,fetchImpl=fetch,nowMs=Date.now()}){
  const clientId=env?.CF_ACCESS_CLIENT_ID,clientSecret=env?.CF_ACCESS_CLIENT_SECRET;
  if(typeof clientId!=='string'||clientId.length<16||typeof clientSecret!=='string'||clientSecret.length<20)return 'DENY_EXISTING_ACCESS_SERVICE_SECRET_NOT_CONFIGURED';
@@ -42,7 +63,7 @@ export async function performClockTick({env,scheduledTime,fetchImpl=fetch,nowMs=
        return 'SKIP_AUTHENTIC_WORLD_'+result.decision+'_VIA_PAGES';
      return 'DENY_PAGES_BROKER_UNVERIFIED_SKIP';
    }
-   if(response.status!==202)return 'DENY_PAGES_BROKER_DISPATCH_RESPONSE_NO_RETRY';
+   if(response.status!==202)return classifyBrokerFailure(response);
    const proof=await response.json();
    if(proof?.ok!==true||proof?.decision!=='DISPATCHED_ORIGINAL_WORLD_SYNC')
      return 'DENY_PAGES_BROKER_RESPONSE_UNVERIFIED';
