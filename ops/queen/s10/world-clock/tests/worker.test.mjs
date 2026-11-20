@@ -4,13 +4,13 @@ import clock,{performClockTick,CLOCK_POLICY} from '../worker.mjs';
 const NOW=Date.parse('2026-11-20T15:16:37Z');
 const ENV={CLOCK_ENABLED:'true',CF_ACCESS_CLIENT_ID:'test-client-identifier.access',CF_ACCESS_CLIENT_SECRET:'test-secret-placeholder-value-123456'};
 const BROKER='https://hive-alveare.pages.dev/api/s10-world-clock-dispatch';
-function mock({status=202,ok=true,decision='DISPATCHED_ORIGINAL_WORLD_SYNC',failure=null}={}){
+function mock({status=202,ok=true,decision='DISPATCHED_ORIGINAL_WORLD_SYNC',error=null,mime='application/json',failure=null}={}){
  const calls=[];
  const fetchImpl=async(url,opts={})=>{
    calls.push({url:String(url),method:opts.method||'GET',body:opts.body,headers:opts.headers,redirect:opts.redirect});
    if(failure==='throw')throw Error('unknown delivery outcome');
    assert.equal(String(url),BROKER,'Worker must never contact GitHub directly');
-   return new Response(JSON.stringify({ok,decision}),{status:failure==='http403'?403:status});
+   return new Response(mime==='application/json'?JSON.stringify({ok,decision,error}):'<html>Access denied</html>',{status:failure==='http403'?403:status,headers:{'content-type':mime}});
  };
  return {calls,fetchImpl};
 }
@@ -67,6 +67,23 @@ test('broker 200 with unknown, forged, or failed status is denied, never retried
   assert.match(result,/^DENY_/);
   assert.equal(f.calls.length,1);
  }
+});
+test('broker HTTP status and allowlisted error code are auditable without exposing arbitrary bodies',async()=>{
+ for(const [status,error,expected] of [
+  [403,'ACCESS_SERVICE_SIGNATURE_DENY','DENY_PAGES_BROKER_HTTP_403_ACCESS_SERVICE_SIGNATURE_DENY_NO_RETRY'],
+  [503,'WORLD_SOURCE_DENY','DENY_PAGES_BROKER_HTTP_503_WORLD_SOURCE_DENY_NO_RETRY'],
+  [503,'RUNS_READ_DENY','DENY_PAGES_BROKER_HTTP_503_RUNS_READ_DENY_NO_RETRY'],
+  [502,'GITHUB_DISPATCH_DENY','DENY_PAGES_BROKER_HTTP_502_GITHUB_DISPATCH_DENY_NO_RETRY'],
+  [409,'CLOCK_REPLAY_OR_FUTURE_DENY','DENY_PAGES_BROKER_HTTP_409_CLOCK_REPLAY_OR_FUTURE_DENY_NO_RETRY'],
+  [403,'potential-secret-in-error','DENY_PAGES_BROKER_HTTP_403_OPAQUE_NO_RETRY']
+ ]){
+  const f=mock({status,ok:false,error});
+  assert.equal(await tick(f),expected);
+  assert.equal(f.calls.length,1);
+ }
+ const html=mock({status:403,mime:'text/html'});
+ assert.equal(await tick(html),'DENY_PAGES_BROKER_HTTP_403_OPAQUE_NO_RETRY');
+ assert.equal(html.calls.length,1);
 });
 test('unknown delivery/outage cannot trigger a second request on same tick',async()=>{
  const f=mock({failure:'throw'});
