@@ -1,7 +1,7 @@
 name: Queen S10 Minute World Clock Replacement Source Security CI (NO DEPLOY)
 on:
   push:
-    branches: [fix/s10-cloudflare-world-clock-cutover-20261119]
+    branches: [fix/s10-cloudflare-world-clock-cutover-20261119, fix/s10-world-clock-pages-single-arbiter-20261120]
     paths:
       - .github/workflows/hive-world-sync.yml
       - .github/workflows/queen-s10-world-clock-source-ci.yml
@@ -33,23 +33,35 @@ jobs:
           set -euo pipefail
           git rev-parse --verify origin/main >/dev/null
           mapfile -t changed < <(git diff --name-only origin/main...HEAD)
-          test "${#changed[@]}" -eq 10
-          for file in "${changed[@]}"; do
-            case "$file" in
-              .github/workflows/hive-world-sync.yml|\
-              .github/workflows/queen-s10-world-clock-source-ci.yml|\
-              .github/workflows/queen-s10-world-heartbeat-source-ci.yml|\
-              .github/workflows/queen-s10-s1-heartbeat-source-ci.yml|\
-              ops/queen/s10/tests/world-observation-publication.test.mjs|\
-              ops/queen/s10/world-clock/worker.mjs|\
-              ops/queen/s10/world-clock/wrangler.jsonc|\
-              ops/queen/s10/world-clock/wrangler.disabled.jsonc|\
-              ops/queen/s10/world-clock/tests/worker.test.mjs|\
-              ops/queen/s10/world-clock/README.md) ;;
-              *) echo "S10_CLOCK_UNAUTHORIZED_DIFF=$file"; exit 31 ;;
-            esac
-          done
-          echo S10_CLOCK_EXACT_TEN_SOURCE_ONLY_PATHS=PASS
+          source_branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          if [ "$source_branch" = "fix/s10-world-clock-pages-single-arbiter-20261120" ]; then
+            test "${#changed[@]}" -eq 3
+            for file in "${changed[@]}"; do
+              case "$file" in
+                .github/workflows/queen-s10-world-clock-source-ci.yml|ops/queen/s10/world-clock/worker.mjs|ops/queen/s10/world-clock/tests/worker.test.mjs) ;;
+                *) echo "S10_CLOCK_REPAIR_OUTSIDE_EXACT_THREE=$file"; exit 32 ;;
+              esac
+            done
+            echo S10_CLOCK_EXACT_THREE_SOURCE_ONLY_WORKER_BROKER_REPAIR=PASS
+          else
+            test "${#changed[@]}" -eq 10
+            for file in "${changed[@]}"; do
+              case "$file" in
+                .github/workflows/hive-world-sync.yml|\
+                .github/workflows/queen-s10-world-clock-source-ci.yml|\
+                .github/workflows/queen-s10-world-heartbeat-source-ci.yml|\
+                .github/workflows/queen-s10-s1-heartbeat-source-ci.yml|\
+                ops/queen/s10/tests/world-observation-publication.test.mjs|\
+                ops/queen/s10/world-clock/worker.mjs|\
+                ops/queen/s10/world-clock/wrangler.jsonc|\
+                ops/queen/s10/world-clock/wrangler.disabled.jsonc|\
+                ops/queen/s10/world-clock/tests/worker.test.mjs|\
+                ops/queen/s10/world-clock/README.md) ;;
+                *) echo "S10_CLOCK_UNAUTHORIZED_DIFF=$file"; exit 31 ;;
+              esac
+            done
+            echo S10_CLOCK_EXACT_TEN_SOURCE_ONLY_PATHS=PASS
+          fi
       - name: Worker and original World semantic clock negative tests
         shell: bash
         run: |
