@@ -497,16 +497,16 @@ jobs:
           appendFileSync(e.GITHUB_ENV,'S10_OWNER_SIGNED=TRUE\nS10_OWNER_EXPIRES='+String(Math.floor(now/1000)+900)+'\n');
           console.log('S10_G0_OWNER_OIDC_RS256_SCOPE_RATIFICATION=PASS');
           const receipt={schema:'queen.s10.owner-g0-scoped-contract-ratification.v1',
-  stage:'S10',owner:'giovannifidel-collab',run_id:Number(e.GITHUB_RUN_ID),
-  exact_contract_blob:'27dc517f38afda00e12deff5bb85745e3a0e5a07',
-  independent_runtime_ci_run:44815419914,world_owner_release_run:44784297539,
-  authority_ceiling:'HIVE_ONLY_L0_L1_L2',
-  no_new_s1_s2_school:true,never_auto_train:true,
-  s7_persistent_general_routing:false,s8_global_project_writes:false,
-  no_auto_paid_provider_fallback:true,actual_account_billing_independently_verified:false,
-  g8_terminal_neon_receipt_written:false,allow_unbounded_stage_completion_claim:false};
-  const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
-  console.log('S10_G0_OWNER_RATIFIED_EXACT_BOUNDED_SCOPE=PASS');
-  console.log('S10_G0_OWNER_SIGNED_RECEIPT='+JSON.stringify({...receipt,sha256:digest}));
-  console.log('S10_G8_NO_TERMINAL_CERTIFICATION_OR_NEON_WRITE=TRUE');
+            stage:'S10',owner:'giovannifidel-collab',run_id:Number(e.GITHUB_RUN_ID),
+            exact_contract_blob:'27dc517f38afda00e12deff5bb85745e3a0e5a07',
+            independent_runtime_ci_run:44815419914,world_owner_release_run:44784297539,
+            authority_ceiling:'HIVE_ONLY_L0_L1_L2',
+            no_new_s1_s2_school:true,never_auto_train:true,
+            s7_persistent_general_routing:false,s8_global_project_writes:false,
+            no_auto_paid_provider_fallback:true,actual_account_billing_independently_verified:false,
+            g8_terminal_neon_receipt_written:false,allow_unbounded_stage_completion_claim:false};
+            const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+            console.log('S10_G0_OWNER_RATIFIED_EXACT_BOUNDED_SCOPE=PASS');
+            console.log('S10_G0_OWNER_SIGNED_RECEIPT='+JSON.stringify({...receipt,sha256:digest}));
+            console.log('S10_G8_NO_TERMINAL_CERTIFICATION_OR_NEON_WRITE=TRUE');
           JS
