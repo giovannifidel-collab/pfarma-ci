@@ -425,7 +425,18 @@ jobs:
           print('S10_CF_OBSERVABILITY_DIAG_NO_SECRETS_AND_READ_ONLY=TRUE')
           PY
 
+
+      - name: Diagnose exact S10 hotfix Owner workflow syntax - source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch -q origin 3662f2996de1e1e982f886c93d9992176b88d603
+          git show 3662f2996de1e1e982f886c93d9992176b88d603:.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml > /tmp/s10-owner-hotfix.yml
+          echo S10_HOTFIX_OWNER_STATIC_FORMAT_CHECK_STARTED
+          npx --yes prettier@3 --parser yaml /tmp/s10-owner-hotfix.yml >/dev/null
+          echo S10_HOTFIX_OWNER_PRETTIER_YAML=PASS
       - name: Tail only one signed S10 Worker cron decision - ephemeral read only
+        if: false
         shell: bash
         timeout-minutes: 4
         run: |
