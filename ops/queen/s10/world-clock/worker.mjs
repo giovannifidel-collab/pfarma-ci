@@ -1,44 +1,18 @@
 // S10 World clock: the SINGLE replacement periodic trigger, NOT an S1 event loop.
 // The existing GitHub HIVE Queen Global World Sync remains the sole source writer.
-// Cron runs every minute, but only asks for a real observation when due.
+// Cron runs every minute; existing authenticated Pages broker dispatches only when World is due.
 // No user HTTP endpoints, private project access, School, model or Neon writes.
 const REPO='giovannifidel-collab/pfarma-ci';
-const WORLD_URL='https://raw.githubusercontent.com/'+REPO+'/main/hive-world-state.json';
-const RUNS_URL='https://api.github.com/repos/'+REPO+'/actions/workflows/hive-world-sync.yml/runs?per_page=12';
 const DISPATCH_URL='https://hive-alveare.pages.dev/api/s10-world-clock-dispatch';
 export const CLOCK_POLICY=Object.freeze({
  cron:'* * * * *',
- dueAfterMs:10*60*1000,
- minRecentRunMs:4*60*1000,
  maxScheduledLagMs:5*60*1000,
- maxFutureSourceMs:90*1000,
  repo:REPO,
  workflow:'hive-world-sync.yml'
 });
-const sha64=/^[a-f0-9]{64}$/;
 const noCache=Object.freeze({'Cache-Control':'no-cache','Accept':'application/vnd.github+json',
  'X-GitHub-Api-Version':'2022-11-28','User-Agent':'HIVE-S10-World-Clock/1.0'});
 const isoMinute=ms=>new Date(Math.floor(ms/60000)*60000).toISOString().replace('.000Z','Z');
-const ms=s=>typeof s==='string'?Date.parse(s):NaN;
-export function decideWorldClock(world,runs,nowMs){
- if(!world||world.schema_version!==1||world.policy!=='authoritative-source-first'||
-   !sha64.test(world.state_fingerprint||'')||typeof world.projects!=='object'||!world.projects||
-   Array.isArray(world.projects))return 'DENY_INVALID_WORLD';
- const published=ms(world.generated_at);
- if(!Number.isFinite(published)||published>nowMs+CLOCK_POLICY.maxFutureSourceMs)
-   return 'DENY_WORLD_TIMESTAMP';
- if(nowMs-published<CLOCK_POLICY.dueAfterMs)return 'SKIP_WORLD_FRESH';
- if(!Array.isArray(runs?.workflow_runs))return 'DENY_RUNS_MISSING';
- for(const run of runs.workflow_runs){
-   if(run?.name!=='HIVE Queen Global World Sync')continue;
-   const started=ms(run.created_at);
-   if(!Number.isFinite(started)||started>nowMs+CLOCK_POLICY.maxFutureSourceMs)continue;
-   const age=nowMs-started;
-   if(run.status!=='completed'&&age<60*60*1000)return 'SKIP_WORLD_JOB_ACTIVE';
-   if(age<CLOCK_POLICY.minRecentRunMs)return 'SKIP_WORLD_JOB_COOLDOWN';
- }
- return 'DUE_AUTHENTIC_WORLD_OBSERVATION';
-}
 export async function performClockTick({env,scheduledTime,fetchImpl=fetch,nowMs=Date.now()}){
  const clientId=env?.CF_ACCESS_CLIENT_ID,clientSecret=env?.CF_ACCESS_CLIENT_SECRET;
  if(typeof clientId!=='string'||clientId.length<16||typeof clientSecret!=='string'||clientSecret.length<20)return 'DENY_EXISTING_ACCESS_SERVICE_SECRET_NOT_CONFIGURED';
