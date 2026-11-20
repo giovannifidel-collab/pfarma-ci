@@ -336,3 +336,46 @@ jobs:
             jq -e '.conclusion=="success" and .head_sha=="2dfe09cc2251633866c6ca0601f006443f1e9c14"' >/dev/null
           echo S10_OWNER_FINAL_HIVE_LIVE_BROKER_RELAY_SOURCE_AND_ONE_PATH_DRIFT_PREFLIGHT=PASS
           echo S10_OWNER_FINAL_NO_NEW_TOKEN_NO_PRODUCTION_MUTATION=TRUE
+
+      - name: Cloudflare GraphQL - scheduled minute Worker real invocation metrics (READ ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,datetime,urllib.request,urllib.error
+          token=os.environ.get('CF_PRIMARY') or os.environ.get('CF_FALLBACK')
+          root='https://api.cloudflare.com/client/v4'
+          def req(url,body=None):
+            headers={'Authorization':'Bearer '+token,'Accept':'application/json','User-Agent':'HIVE-S10-Worker-Metrics-ReadOnly/1.0'}
+            if body is not None:headers['Content-Type']='application/json'
+            r=urllib.request.Request(url,headers=headers,data=json.dumps(body).encode() if body is not None else None)
+            try:
+              with urllib.request.urlopen(r,timeout=30) as x: return json.load(x)
+            except urllib.error.HTTPError as e:return {'http_error':e.code,'message':e.read(800).decode(errors='replace')}
+            except urllib.error.URLError:return {'network_error':True}
+          aa=req(root+'/accounts?per_page=50')
+          ids=[x['id'] for x in aa.get('result',[]) if isinstance(x,dict) and 'id' in x]
+          assert aa.get('success') and len(ids)==1,'S10_ACCOUNT_NOT_UNIQUE_DENY'
+          aid=ids[0]
+          s=req(root+'/accounts/'+aid+'/workers/scripts/hive-queen-world-clock/schedules')
+          obj=s.get('result') or {}
+          schedules=obj.get('schedules',[]) if isinstance(obj,dict) else obj
+          print('S10_CF_REAL_CLOCK_SCHEDULES='+json.dumps(schedules,separators=(',',':'))[:700])
+          start=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(minutes=50)).strftime('%Y-%m-%dT%H:%M:%SZ')
+          end=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+          query='query($accountTag:string,$scriptName:string,$start:string,$end:string){viewer{accounts(filter:{accountTag:$accountTag}){workersInvocationsAdaptive(limit:200,filter:{scriptName:$scriptName,datetime_geq:$start,datetime_leq:$end}){sum{requests errors subrequests}dimensions{datetime status scriptName}}}}}'
+          g=req(root+'/graphql',{'query':query,'variables':{'accountTag':aid,'scriptName':'hive-queen-world-clock','start':start,'end':end}})
+          if g.get('errors'):
+            print('S10_CF_GRAPHQL_ERRORS='+json.dumps([e.get('message','')[:160] for e in g.get('errors',[])])[:700])
+          try:
+            rows=g['data']['viewer']['accounts'][0]['workersInvocationsAdaptive']
+            print('S10_CF_WORKER_INVOCATION_ROWS='+str(len(rows)))
+            print('S10_CF_WORKER_INVOCATION_REQUEST_SUM='+str(sum((x.get('sum') or {}).get('requests',0) for x in rows)))
+            print('S10_CF_WORKER_INVOCATION_ERROR_SUM='+str(sum((x.get('sum') or {}).get('errors',0) for x in rows)))
+            for x in sorted(rows,key=lambda x:(x.get('dimensions') or {}).get('datetime',''))[-15:]:
+              d=x.get('dimensions') or {};v=x.get('sum') or {}
+              print('S10_CF_WORKER_INVOCATION='+str(d.get('datetime'))+';'+str(d.get('status'))+';requests='+str(v.get('requests'))+';errors='+str(v.get('errors')))
+          except (KeyError,TypeError,IndexError):
+            print('S10_CF_WORKER_METRICS_UNAVAILABLE='+str(g.get('http_error') or g.get('network_error') or 'query_rejected'))
+          print('S10_CF_WORKER_INVOCATION_CHECK_NO_PRODUCTION_WRITES=TRUE')
+          PY
