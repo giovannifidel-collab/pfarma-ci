@@ -247,6 +247,8 @@ jobs:
           print('S10_ACCESS_IDENTITY_NO_SECRET_VALUES=PASS')
           PY
 
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
       - name: Verify exact Owner World-only drift fix without approval or deploy
         shell: bash
         env:
