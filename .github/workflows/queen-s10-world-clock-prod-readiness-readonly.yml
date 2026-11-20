@@ -306,6 +306,7 @@ jobs:
           error=res.get('error') if isinstance(res,dict) else None
           reason=res.get('reason') if isinstance(res,dict) else None
           print('S10_EXISTING_PAGES_BROKER_NEGATIVE_REASON='+str(reason))
+          print('S10_EXISTING_PAGES_JWT_CLAIM_CLASSIFIER_PROBE=YES')
           print('S10_EXISTING_PAGES_BROKER_NEGATIVE_HTTP='+str(code))
           print('S10_EXISTING_PAGES_BROKER_NEGATIVE_ERROR='+str(error))
           print('S10_EXISTING_PAGES_BROKER_NEGATIVE_AUTHENTICATED='+str(code==400 and error=='EXACT_CLOCK_PAYLOAD_DENY').lower())
