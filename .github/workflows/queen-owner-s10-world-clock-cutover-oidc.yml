@@ -1,7 +1,7 @@
 name: Queen Owner S10 ONE Existing Pages and Worker Manual Redirect Recovery OIDC
 on:
   push:
-    branches: [release/s10-oidc-existing-pages-token-20261119, fix/s10-owner-broker-live-one-clock-20261120, fix/s10-owner-single-pages-clock-recovery-20261120, fix/s10-owner-pr1315-broker-transport-diagnostic-oidc-20261120, fix/s10-owner-dual-cloudflare-manual-redirect-oidc-20261120, fix/s10-owner-g0-scope-ratification-20261120]
+    branches: [release/s10-oidc-existing-pages-token-20261119, fix/s10-owner-broker-live-one-clock-20261120, fix/s10-owner-single-pages-clock-recovery-20261120, fix/s10-owner-pr1315-broker-transport-diagnostic-oidc-20261120, fix/s10-owner-dual-cloudflare-manual-redirect-oidc-20261120, fix/s10-owner-g0-scope-ratification-20261120, fix/s10-g0-no-silent-skip-manual-20261120]
     paths: [.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml]
   workflow_dispatch:
     inputs:
