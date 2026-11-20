@@ -79,7 +79,7 @@ test('scheduled hook records only the broker decision; fetch HTTP endpoint is no
  const oldFetch=globalThis.fetch;
  try{
    globalThis.fetch=f.fetchImpl;
-   await clock.scheduled({scheduledTime:NOW},ENV,{waitUntil:p=>{wait=p;}});
+   await clock.scheduled({scheduledTime:Date.now()},ENV,{waitUntil:p=>{wait=p;}});
    await wait;
  }finally{globalThis.fetch=oldFetch}
  assert.equal(f.calls.length,1);
