@@ -39,7 +39,7 @@ test('Worker sends exactly one bounded Access-authenticated POST; Pages alone au
  assert.equal(f.calls.length,1);
  assert.equal(f.calls[0].url,BROKER);
  assert.equal(f.calls[0].method,'POST');
- assert.equal(f.calls[0].redirect,'error');
+ assert.equal(f.calls[0].redirect,'manual');
  assert.deepEqual(JSON.parse(f.calls[0].body),{clock_minute:'2026-11-20T15:16:00Z'});
  assert.equal(f.calls[0].headers['CF-Access-Client-Id'],ENV.CF_ACCESS_CLIENT_ID);
  assert.equal(f.calls[0].headers['CF-Access-Client-Secret'],ENV.CF_ACCESS_CLIENT_SECRET);
@@ -84,6 +84,18 @@ test('broker HTTP status and allowlisted error code are auditable without exposi
  const html=mock({status:403,mime:'text/html'});
  assert.equal(await tick(html),'DENY_PAGES_BROKER_HTTP_403_OPAQUE_NO_RETRY');
  assert.equal(html.calls.length,1);
+});
+test('Cloudflare manual redirect forbids following Access headers to external domains',async()=>{
+ for(const status of [301,302,307,308]){
+  const f=mock({status,ok:false,mime:'text/html'});
+  assert.equal(await tick(f),'DENY_PAGES_BROKER_HTTP_'+status+'_OPAQUE_NO_RETRY');
+  assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].redirect,'manual');
+  assert.equal(f.calls[0].url,BROKER);
+ }
+ const f=mock();
+ assert.equal(await tick(f),'DISPATCHED_EXISTING_WORLD_SYNC_ONCE_VIA_PAGES');
+ assert.equal(f.calls[0].redirect,'manual');
 });
 test('unknown delivery/outage cannot trigger a second request on same tick',async()=>{
  const f=mock({failure:'throw'});

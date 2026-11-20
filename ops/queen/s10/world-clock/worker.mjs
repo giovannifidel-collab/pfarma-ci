@@ -47,10 +47,12 @@ export async function performClockTick({env,scheduledTime,fetchImpl=fetch,nowMs=
  // S10_WORLD_CLOCK_DECISION=DENY_WORLD_READ_OR_PARSE_ERROR.
  // Zero direct Github subrequests here means no second independent arbiter and
  // no unauthenticated shared Cloudflare-IP GitHub rate-limit/redirect dependency.
+ // Cloudflare Workers does not implement redirect:error (TypeError before I/O).
+ // Manual 3xx responses are NEVER followed; only authenticated 200 skip or 202 dispatch pass.
  const payload={clock_minute:isoMinute(scheduledTime)};
  try{
    const response=await fetchImpl(DISPATCH_URL,{
-     method:'POST',redirect:'error',
+     method:'POST',redirect:'manual',
      headers:{...noCache,'Content-Type':'application/json',
        'CF-Access-Client-Id':clientId,'CF-Access-Client-Secret':clientSecret},
      body:JSON.stringify(payload)
