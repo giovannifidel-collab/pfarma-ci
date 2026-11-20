@@ -424,3 +424,36 @@ jobs:
                 print('S10_CF_CRON_DECISION='+decision[:90])
           print('S10_CF_OBSERVABILITY_DIAG_NO_SECRETS_AND_READ_ONLY=TRUE')
           PY
+
+      - name: Tail only one signed S10 Worker cron decision - ephemeral read only
+        shell: bash
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          export CLOUDFLARE_API_TOKEN="${CF_PRIMARY:-$CF_FALLBACK}"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          account="$(curl -sS --fail --max-time 22 -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts?per_page=50)"
+          aid="$(jq -r 'if .success==true and (.result|length)==1 then .result[0].id else empty end' <<< "$account")"
+          [[ "$aid" =~ ^[0-9a-f]{32}$ ]] || exit 42
+          export CLOUDFLARE_ACCOUNT_ID="$aid"
+          set +e
+          timeout 78s npx --yes wrangler@4.139.0 tail hive-queen-world-clock --format json --search S10_WORLD_CLOCK_DECISION > /tmp/s10-world-clock-tail.jsonl 2>/tmp/s10-world-clock-tail-stderr
+          code=$?
+          set -e
+          echo "S10_CF_EPHEMERAL_TAIL_EXIT_CODE=$code"
+          python3 - <<'PY'
+          import json,re
+          lines=open('/tmp/s10-world-clock-tail.jsonl',encoding='utf8',errors='replace').read().splitlines()
+          print('S10_CF_TAIL_RECEIVED_LINES='+str(len(lines)))
+          decisions=[]
+          for l in lines:
+            for m in re.finditer('S10_WORLD_CLOCK_DECISION=([A-Z0-9_]+)',l):
+              decisions.append(m.group(1))
+          print('S10_CF_TAIL_WORLD_DECISIONS='+','.join(decisions[-20:]))
+          if not decisions:
+            logs=open('/tmp/s10-world-clock-tail-stderr',encoding='utf8',errors='replace').read().splitlines()
+            for l in logs:
+              if 'Error' in l or 'error' in l or 'permission' in l or 'unauthorized' in l:
+                print('S10_CF_TAIL_PUBLIC_ERROR_CATEGORY='+re.sub('[^A-Za-z0-9 _-]','',l)[:160])
+          print('S10_CF_TAIL_SECRET_VALUES_NOT_EMITTED=TRUE')
+          PY
