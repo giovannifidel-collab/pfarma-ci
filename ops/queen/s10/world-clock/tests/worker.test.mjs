@@ -1,75 +1,97 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import clock,{decideWorldClock,performClockTick} from '../worker.mjs';
-const NOW=Date.parse('2026-11-19T21:20:00Z');
+import clock,{performClockTick,CLOCK_POLICY} from '../worker.mjs';
+const NOW=Date.parse('2026-11-20T15:16:37Z');
 const ENV={CLOCK_ENABLED:'true',CF_ACCESS_CLIENT_ID:'test-client-identifier.access',CF_ACCESS_CLIENT_SECRET:'test-secret-placeholder-value-123456'};
-const world=(age=18*60000)=>({schema_version:1,policy:'authoritative-source-first',generated_at:new Date(NOW-age).toISOString(),state_fingerprint:'f'.repeat(64),projects:{hive:{source:{available:true}}}});
-const run=(age=15*60000,status='completed')=>({name:'HIVE Queen Global World Sync',status,created_at:new Date(NOW-age).toISOString()});
-function mock({snapshot=world(),runs={workflow_runs:[run()]},fail=null}={}){
+const BROKER='https://hive-alveare.pages.dev/api/s10-world-clock-dispatch';
+function mock({status=202,ok=true,decision='DISPATCHED_ORIGINAL_WORLD_SYNC',failure=null}={}){
  const calls=[];
- async function fetchImpl(url,opts={}){
-   calls.push({url:String(url),method:opts.method||'GET',body:opts.body,headers:opts.headers});
-   if(url.includes('raw.githubusercontent.com')&&url.endsWith('/hive-world-state.json'))return new Response(JSON.stringify(snapshot),{status:200});
-   if(url.includes('/runs?per_page='))return new Response(JSON.stringify(runs),{status:200});
-   if(url.includes('/api/s10-world-clock-dispatch')){
-     if(fail==='throw')throw Error('uncertain');
-     return new Response(JSON.stringify({ok:true,decision:'DISPATCHED_ORIGINAL_WORLD_SYNC'}),{status:fail==='deny'?403:202});
-   }
-   throw Error('unrecognized_test_request');
- }
+ const fetchImpl=async(url,opts={})=>{
+   calls.push({url:String(url),method:opts.method||'GET',body:opts.body,headers:opts.headers,redirect:opts.redirect});
+   if(failure==='throw')throw Error('unknown delivery outcome');
+   assert.equal(String(url),BROKER,'Worker must never contact GitHub directly');
+   return new Response(JSON.stringify({ok,decision}),{status:failure==='http403'?403:status});
+ };
  return {calls,fetchImpl};
 }
-test('original source age, not response clock, governs freshness',()=>{
- assert.equal(decideWorldClock(world(3*60000),{workflow_runs:[]},NOW),'SKIP_WORLD_FRESH');
- assert.equal(decideWorldClock(world(),{workflow_runs:[]},NOW),'DUE_AUTHENTIC_WORLD_OBSERVATION');
- assert.equal(decideWorldClock({...world(),state_fingerprint:'bad'},{workflow_runs:[]},NOW),'DENY_INVALID_WORLD');
+async function tick(f,env=ENV,scheduledTime=NOW){return performClockTick({env,scheduledTime,nowMs:NOW,fetchImpl:f.fetchImpl})}
+test('exact minute schedule and no implicit paid provider',()=>{
+ assert.equal(CLOCK_POLICY.cron,'* * * * *');
+ assert.equal(CLOCK_POLICY.workflow,'hive-world-sync.yml');
+ assert.equal(CLOCK_POLICY.repo,'giovannifidel-collab/pfarma-ci');
 });
-test('disabled clock and missing secret never attempt network access',async()=>{
- for(const env of [{...ENV,CLOCK_ENABLED:'false'},{CLOCK_ENABLED:'true'}]){
-  const f=mock();const d=await performClockTick({env,scheduledTime:NOW,nowMs:NOW,fetchImpl:f.fetchImpl});
-  assert.match(d,/^(DENY|SKIP)_/);assert.equal(f.calls.length,0);
+test('disabled Worker, absent or partial Access credentials, delayed/future cron are fail-closed with zero egress',async()=>{
+ for(const [env,time] of [
+  [{...ENV,CLOCK_ENABLED:'false'},NOW],
+  [{...ENV,CF_ACCESS_CLIENT_ID:''},NOW],
+  [{...ENV,CF_ACCESS_CLIENT_SECRET:''},NOW],
+  [ENV,NOW-360001],
+  [ENV,NOW+360001]
+ ]){
+  const f=mock();const result=await tick(f,env,time);
+  assert.match(result,/^(DENY|SKIP)_/);
+  assert.equal(f.calls.length,0);
  }
 });
-test('stale cron event and fresh source cannot dispatch',async()=>{
- const f=mock();assert.equal(await performClockTick({env:ENV,scheduledTime:NOW-6*60000,nowMs:NOW,fetchImpl:f.fetchImpl}),'DENY_DELAYED_OR_INVALID_CRON_TICK');
- assert.equal(f.calls.length,0);
- const g=mock({snapshot:world(2*60000)});
- assert.equal(await performClockTick({env:ENV,scheduledTime:NOW,nowMs:NOW,fetchImpl:g.fetchImpl}),'SKIP_WORLD_FRESH');
- assert.equal(g.calls.length,1);
-});
-test('active and recently completed runs suppress duplicate dispatch',async()=>{
- for(const x of [run(1*60000,'queued'),run(1*60000,'completed'),run(7*60000,'in_progress')]){
-  const f=mock({runs:{workflow_runs:[x]}});
-  const result=await performClockTick({env:ENV,scheduledTime:NOW,nowMs:NOW,fetchImpl:f.fetchImpl});
-  assert.match(result,/^SKIP_WORLD_JOB_/);
-  assert.equal(f.calls.filter(x=>x.method==='POST').length,0);
- }
-});
-test('due observation starts precisely original GitHub World Sync',async()=>{
+test('Worker sends exactly one bounded Access-authenticated POST; Pages alone authorizes World source and queue',async()=>{
  const f=mock();
- assert.equal(await performClockTick({env:ENV,scheduledTime:NOW,nowMs:NOW,fetchImpl:f.fetchImpl}),'DISPATCHED_EXISTING_WORLD_SYNC_ONCE_VIA_PAGES');
- const posts=f.calls.filter(x=>x.method==='POST');assert.equal(posts.length,1);
- assert.equal(posts[0].url,'https://hive-alveare.pages.dev/api/s10-world-clock-dispatch');
- assert.deepEqual(JSON.parse(posts[0].body),{clock_minute:'2026-11-19T21:20:00Z'});
- assert.equal(posts[0].headers['CF-Access-Client-Id'],ENV.CF_ACCESS_CLIENT_ID);
- assert.equal(posts[0].headers['CF-Access-Client-Secret'],ENV.CF_ACCESS_CLIENT_SECRET);
+ assert.equal(await tick(f),'DISPATCHED_EXISTING_WORLD_SYNC_ONCE_VIA_PAGES');
+ assert.equal(f.calls.length,1);
+ assert.equal(f.calls[0].url,BROKER);
+ assert.equal(f.calls[0].method,'POST');
+ assert.equal(f.calls[0].redirect,'error');
+ assert.deepEqual(JSON.parse(f.calls[0].body),{clock_minute:'2026-11-20T15:16:00Z'});
+ assert.equal(f.calls[0].headers['CF-Access-Client-Id'],ENV.CF_ACCESS_CLIENT_ID);
+ assert.equal(f.calls[0].headers['CF-Access-Client-Secret'],ENV.CF_ACCESS_CLIENT_SECRET);
+ assert.ok(!JSON.stringify(f.calls).includes('api.github.com'));
+ assert.ok(!JSON.stringify(f.calls).includes('raw.githubusercontent.com'));
 });
-test('unknown delivery or refusal never causes retry',async()=>{
- for(const fail of ['throw','deny']){
-  const f=mock({fail});const d=await performClockTick({env:ENV,scheduledTime:NOW,nowMs:NOW,fetchImpl:f.fetchImpl});
-  assert.match(d,/^DENY_/);assert.equal(f.calls.filter(x=>x.method==='POST').length,1);
+test('broker-authenticated real World freshness, active job and cooldown all remain skip, never treated as dispatch',async()=>{
+ for(const decision of ['SKIP_FRESH','SKIP_ACTIVE','SKIP_COOLDOWN']){
+   const f=mock({status:200,ok:true,decision});
+   assert.equal(await tick(f),'SKIP_AUTHENTIC_WORLD_'+decision+'_VIA_PAGES');
+   assert.equal(f.calls.length,1);
  }
 });
-test('clock has no callable public execution API',async()=>{
- const res=await clock.fetch();assert.equal(res.status,404);
+test('broker 200 with unknown, forged, or failed status is denied, never retried',async()=>{
+ for(const args of [
+ {status:200,ok:true,decision:'DUE_ORIGINAL_WORLD_SYNC'},
+ {status:200,ok:false,decision:'SKIP_FRESH'},
+ {status:200,ok:true,decision:'DISPATCHED_ORIGINAL_WORLD_SYNC'},
+ {status:403,ok:false,decision:'ACCESS_SERVICE_SIGNATURE_DENY'},
+ {status:503,ok:false,decision:'DENY_WORLD_TIME'},
+ {status:202,ok:false,decision:'DISPATCHED_ORIGINAL_WORLD_SYNC'},
+ {status:202,ok:true,decision:'OTHER_DISPATCH'}
+ ]){
+  const f=mock(args),result=await tick(f);
+  assert.match(result,/^DENY_/);
+  assert.equal(f.calls.length,1);
+ }
 });
-test('single original S1 semantic wake and sole external clock are retained',async()=>{
+test('unknown delivery/outage cannot trigger a second request on same tick',async()=>{
+ const f=mock({failure:'throw'});
+ assert.equal(await tick(f),'DENY_DISPATCH_OUTCOME_UNKNOWN_NO_RETRY');
+ assert.equal(f.calls.length,1);
+});
+test('scheduled hook records only the broker decision; fetch HTTP endpoint is not exposed',async()=>{
+ const f=mock({status:200,ok:true,decision:'SKIP_FRESH'});
+ let wait;
+ const oldFetch=globalThis.fetch;
+ try{
+   globalThis.fetch=f.fetchImpl;
+   await clock.scheduled({scheduledTime:NOW},ENV,{waitUntil:p=>{wait=p;}});
+   await wait;
+ }finally{globalThis.fetch=oldFetch}
+ assert.equal(f.calls.length,1);
+ const res=await clock.fetch();
+ assert.equal(res.status,404);
+});
+test('single original S1, semantic-only wake, sole Cloudflare minute trigger and bounded rollback',async()=>{
  const {readFileSync}=await import('node:fs');
  const wf=readFileSync('.github/workflows/hive-world-sync.yml','utf8');
  assert.equal((wf.match(/^  schedule:/gm)||[]).length,0);
- assert.ok(wf.includes('clock_minute:'));
- assert.ok(wf.includes('types: [hive_world_clock_tick]'));
  assert.equal((wf.match(/^  repository_dispatch:/gm)||[]).length,1);
+ assert.ok(wf.includes('types: [hive_world_clock_tick]'));
  assert.equal((wf.match(/event_type:"world-state-changed"/g)||[]).length,1);
  assert.ok(wf.includes("if: steps.publish.outputs.changed == 'true'"));
  assert.ok(wf.includes('WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE'));
@@ -77,5 +99,10 @@ test('single original S1 semantic wake and sole external clock are retained',asy
  const rollback=readFileSync('ops/queen/s10/world-clock/wrangler.disabled.jsonc','utf8');
  assert.match(active,/"crons": \["\* \* \* \* \*"\]/);
  assert.match(rollback,/"crons": \[\]/);
+ assert.match(rollback,/"CLOCK_ENABLED": "false"/);
+ const worker=readFileSync('ops/queen/s10/world-clock/worker.mjs','utf8');
+ assert.ok(!worker.includes('raw.githubusercontent.com'));
+ assert.ok(!worker.includes('api.github.com'));
+ assert.equal((worker.match(/method:'POST'/g)||[]).length,1);
 });
-console.log('S10_WORLD_CLOCK_MINUTE_SOURCE_NEGATIVE_TESTS=PASS');
+console.log('S10_WORLD_CLOCK_PAGES_SINGLE_ARBITER_NEGATIVE_TESTS=PASS');
