@@ -63,13 +63,16 @@ test('stale replay, forged future stamp, missing timestamp and invalid fingerpri
 test('original existing World workflow has only semantic S1 wake and no extra scheduler',()=>{
  const w=readFileSync('.github/workflows/hive-world-sync.yml','utf8');
  assert.equal((w.match(/name: HIVE Queen Global World Sync/g)||[]).length,1);
- assert.equal((w.match(/cron: '7,22,37,52 \* \* \* \*'/g)||[]).length,1);
+ assert.equal((w.match(/^  schedule:/gm)||[]).length,0);
+ assert.ok(w.includes('clock_minute:'));
+ assert.ok(w.includes('S10_CLOUDFLARE_CLOCK_TICK_METADATA_VALIDATED=PASS'));
  assert.equal((w.match(/event_type:"world-state-changed"/g)||[]).length,1);
  assert.ok(w.includes("if: steps.publish.outputs.changed == 'true'"));
  assert.ok(w.includes('node ops/queen/s10/world-observation-publication.mjs'));
  assert.ok(w.includes('WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE'));
  assert.ok(w.includes('WORLD_SEMANTIC_CHANGE=true'));
- assert.equal((w.match(/repository_dispatch:/g)||[]).length,0);
+ assert.equal((w.match(/^  repository_dispatch:/gm)||[]).length,1);
+ assert.ok(w.includes('types: [hive_world_clock_tick]'));
 });
 
 console.log('S10_WORLD_HEARTBEAT_PURE_DECISION_NEGATIVE_TESTS=PASS');

@@ -1,7 +1,7 @@
 name: Queen S10 Existing World Scheduler Heartbeat Source-only Regression (NO RELEASE)
 on:
   push:
-    branches: [fix/s10-world-sync-heartbeat-no-extra-loop-20261119]
+    branches: [fix/s10-world-sync-heartbeat-no-extra-loop-20261119, fix/s10-cloudflare-world-clock-cutover-20261119]
     paths:
       - .github/workflows/hive-world-sync.yml
       - .github/workflows/queen-s10-world-heartbeat-source-ci.yml
@@ -25,20 +25,20 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Scope S10 cron and historical S1 CI compatibility to exactly five non-runtime files
+      - name: Scope single replacement clock and original World source paths to exact ten non-S1 files
         shell: bash
         run: |
           set -euo pipefail
           git rev-parse --verify origin/main >/dev/null
           mapfile -t files < <(git diff --name-only origin/main...HEAD)
-          test "${#files[@]}" -eq 5
+          test "${#files[@]}" -eq 10
           for path in "${files[@]}"; do
             case "$path" in
-              .github/workflows/hive-world-sync.yml|.github/workflows/queen-s10-world-heartbeat-source-ci.yml|.github/workflows/queen-s1-core-certification.yml|.github/workflows/queen-s10-s1-heartbeat-source-ci.yml|ops/queen/s10/tests/world-observation-publication.test.mjs) ;;
+              .github/workflows/hive-world-sync.yml|.github/workflows/queen-s10-world-heartbeat-source-ci.yml|.github/workflows/queen-s10-s1-heartbeat-source-ci.yml|.github/workflows/queen-s10-world-clock-source-ci.yml|ops/queen/s10/tests/world-observation-publication.test.mjs|ops/queen/s10/world-clock/worker.mjs|ops/queen/s10/world-clock/wrangler.jsonc|ops/queen/s10/world-clock/wrangler.disabled.jsonc|ops/queen/s10/world-clock/tests/worker.test.mjs|ops/queen/s10/world-clock/README.md) ;;
               *) echo "S10_WORLD_SCHEDULER_UNAUTHORIZED_FILE=$path"; exit 32 ;;
             esac
           done
-          echo 'S10_WORLD_SINGLE_ORIGINAL_SCHEDULER_FIVE_ALLOWLISTED_FILES=PASS'
+          echo 'S10_WORLD_SINGLE_REPLACEMENT_TIME_SOURCE_TEN_ALLOWLISTED_FILES=PASS'
       - name: Observe real fail-closed source decisions and all negative scenarios
         shell: bash
         run: |
@@ -46,7 +46,10 @@ jobs:
           node --check ops/queen/s10/world-observation-publication.mjs
           node --check ops/queen/s10/tests/world-observation-publication.test.mjs
           node --test ops/queen/s10/tests/world-observation-publication.test.mjs
-          grep -Fq "cron: '7,22,37,52 * * * *'" .github/workflows/hive-world-sync.yml
+          ! grep -Eq '^  schedule:' .github/workflows/hive-world-sync.yml
+          grep -Fq 'clock_minute:' .github/workflows/hive-world-sync.yml
+          grep -Fq '"crons": ["* * * * *"]' ops/queen/s10/world-clock/wrangler.jsonc
+          node --test ops/queen/s10/world-clock/tests/worker.test.mjs
           grep -Fq "if: steps.publish.outputs.changed == 'true' && github.ref == 'refs/heads/main'" .github/workflows/hive-world-sync.yml
           grep -Fq 'WORLD_OBSERVATION_HEARTBEAT=RECORDED_NO_S1_WAKE' .github/workflows/hive-world-sync.yml
           grep -Fq "git push" .github/workflows/hive-world-sync.yml
