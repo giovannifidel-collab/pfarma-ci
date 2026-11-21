@@ -1,15 +1,20 @@
 name: Queen Owner S12 One Exact HIVE Source Release OIDC — NO Product Writes
 on:
   push:
-    branches: [s12/owner-exact-hive-source-release-oidc-20261121]
+    branches: [s12/owner-exact-hive-source-release-oidc-20261121, s12/owner-pr117-source-only-oidc-20261121]
     paths: ['.github/workflows/queen-owner-s12-exact-source-oidc.yml']
   workflow_dispatch:
     inputs:
       approve_exact_s12_hive_source_pr115_only:
         description: 'Authorize ONE exact HIVE PR115 source merge; S12 not certified, no project writes, model calls, releases, School training, new scheduler, or paid fallback'
-        required: true
+        required: false
+        type: boolean
+        default: false      approve_exact_s12_hive_model_bridge_pr117_only:
+        description: 'Owner authorizes exact HIVE PR117 source-only bounded Workers AI bridge; no model call, project writes, merge, deploy, S1, School or paid fallback'
+        required: false
         type: boolean
         default: false
+
 permissions:
   contents: read
   actions: read
@@ -43,6 +48,18 @@ jobs:
           grep -Fq 'S12_OWNER_OIDC_RS256_ONE_SOURCE_RELEASE=PASS' .github/workflows/queen-owner-s12-exact-source-oidc.yml
           grep -Fq 'S12_OWNER_SIGNER_NO_RELEASE_OR_NEON_WRITE=TRUE' .github/workflows/queen-owner-s12-exact-source-oidc.yml
           grep -Fq 'no_project_writes:true' .github/workflows/queen-owner-s12-exact-source-oidc.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('.github/workflows/queen-owner-s12-exact-source-oidc.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          a=s.rindex(marker)+len(marker)
+          b=s.index("\n          JS",a)
+          code="\n".join(x[10:] if x.startswith('          ') else x for x in s[a:b].splitlines())
+          Path('/tmp/s12-pr117-owner-signer.mjs').write_text(code+"\n")
+          PY
+          node --check /tmp/s12-pr117-owner-signer.mjs
+          grep -Fq 'S12_OWNER_OIDC_RS256_MODEL_BRIDGE_SOURCE=PASS' .github/workflows/queen-owner-s12-exact-source-oidc.yml
+          grep -Fq 'S12_OWNER_SIGNER_PR117_NO_MUTATIONS=TRUE' .github/workflows/queen-owner-s12-exact-source-oidc.yml
           echo S12_OWNER_SIGNER_ISOLATED_NO_PRIVILEGES_IN_CI=PASS
   one-source-owner-rs256:
     if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_source_pr115_only == true
@@ -144,4 +161,98 @@ jobs:
           const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
           console.log('S12_OWNER_SIGNED_EXACT_SOURCE_RELEASE='+JSON.stringify({...receipt,sha256:digest}));
           console.log('S12_OWNER_SIGNER_NO_RELEASE_OR_NEON_WRITE=TRUE');
+          JS
+  pr117-bounded-model-bridge-source-only-owner-rs256:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_model_bridge_pr117_only == true
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    permissions: {contents: read, actions: read, id-token: write}
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      OWNER_APPROVE: ${{ inputs.approve_exact_s12_hive_model_bridge_pr117_only }}
+    steps:
+      - name: Verify Owner exact source, canonical S1/S2 unchanged, 143 independent tests and PR117
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$OWNER_APPROVE" = true
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test -n "$GH_TOKEN"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 92f7ce0fa11a50400f57a7f10b7b536be8fae839
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$ptr" = 92f7ce0fa11a50400f57a7f10b7b536be8fae839
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/117 |
+            jq -e '.state=="open" and .draft==true and .base.sha=="92f7ce0fa11a50400f57a7f10b7b536be8fae839" and .head.sha=="075187318c0419fc2d66cd54a8cdb44635dc9498" and .changed_files==3' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44921948341 |
+            jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="075187318c0419fc2d66cd54a8cdb44635dc9498" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/issues/114 |
+            jq -e '.state=="closed" and .state_reason=="completed"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/issues/116 |
+            jq -e '.state=="open"' >/dev/null
+          echo S12_PR117_OWNER_SOURCE_GATES=PASS
+          echo S12_PR117_NO_MODEL_OR_PROJECT_EXECUTION=TRUE
+      - name: Verify GitHub Owner RS256 OIDC and sign exact expiring PR117 source-only grant
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash} from 'node:crypto';
+          const e=process.env;
+          const deny=x=>{throw Error('S12_OWNER_AUTH_DENY_'+x)};
+          const aud='hive-queen-s12-pr117-model-bridge-source-only-v1';
+          if(e.OWNER_APPROVE!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)deny('NO_OWNER');
+          const tokenUrl=e.ACTIONS_ID_TOKEN_REQUEST_URL+(e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(aud);
+          const response=await fetch(tokenUrl,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!response.ok)deny('TOKEN_ISSUER');
+          const parts=(await response.json()).value?.split('.')||[];
+          if(parts.length!==3)deny('JWT_PARTS');
+          const dec=x=>Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-x.length%4)%4),'base64');
+          const h=JSON.parse(dec(parts[0])),c=JSON.parse(dec(parts[1]));
+          if(h.alg!=='RS256'||!h.kid||h.jwk||h.jku||h.x5u||h.crit)deny('JWT_HEADER');
+          const claims={
+           iss:'https://token.actions.githubusercontent.com',aud,
+           repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+           repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+           event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',
+           ref:'refs/heads/main',runner_environment:'github-hosted',
+           workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-s12-exact-source-oidc.yml@refs/heads/main'
+          };
+          for(const [k,v] of Object.entries(claims))if(String(c[k])!==v)deny('CLAIM_'+k);
+          const now=Date.now();
+          if(c.sha!==e.GITHUB_SHA||Number(c.run_id)!==Number(e.GITHUB_RUN_ID)||Number(c.run_attempt)!==1||
+           !Number.isSafeInteger(c.exp)||!Number.isSafeInteger(c.iat)||c.exp<=c.iat||
+           c.exp-c.iat>900||c.exp*1000<=now||now-c.iat*1000>300000||c.iat*1000>now+30000)deny('TIME');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)deny('JWKS');
+          const key=(await jwks.json()).keys?.find(x=>x.kid===h.kid&&x.kty==='RSA'&&x.use==='sig'&&(!x.alg||x.alg==='RS256'));
+          if(!key||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key,format:'jwk'}),dec(parts[2])))deny('JWT_SIGNATURE');
+          console.log('S12_OWNER_OIDC_RS256_MODEL_BRIDGE_SOURCE=PASS');
+          const receipt={
+           schema:'queen.s12.exact-owner-model-bridge-source-release.v1',stage:'S12',
+           decision:'OWNER_AUTHORIZES_EXACT_HIVE_PR117_SOURCE_ONLY_NO_MODEL_OR_PRODUCT_RIGHTS',
+           run_id:Number(e.GITHUB_RUN_ID),run_attempt:1,relay_signer_main_sha:e.GITHUB_SHA,
+           hive_base_sha:'92f7ce0fa11a50400f57a7f10b7b536be8fae839',
+           hive_pr:117,hive_pr_head:'075187318c0419fc2d66cd54a8cdb44635dc9498',
+           source_ci:44921948341,test_count:143,
+           existing_s8_worker_untouched:true,s11_terminal_neon_event:1546,
+           s12_dual_project_owner_grant_event:1557,stage_tracker_issue:116,
+           existing_provider:'cloudflare-pages-workers-ai',
+           one_new_existing_pages_function:true,
+           no_neon_write_by_signer:true,no_project_writes:true,no_live_model_invocation_by_signer:true,
+           no_new_event_loop:true,no_new_scheduler:true,no_new_provider:true,
+           no_auto_merge:true,no_auto_deploy:true,no_school_training:true,no_paid_fallback:true,
+           requires_independent_per_project_neon_execution_cas:true,
+           requires_fresh_daily_free_neuron_quota:true,
+           requires_real_two_project_draft_pr_ci:true,
+           s12_terminal_certified:false,
+           issued_at:new Date(now).toISOString(),expires_at:new Date(now+45*60*1000).toISOString()
+          };
+          const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S12_OWNER_SIGNED_MODEL_BRIDGE_SOURCE_RELEASE='+JSON.stringify({...receipt,sha256:digest}));
+          console.log('S12_OWNER_SIGNER_PR117_NO_MUTATIONS=TRUE');
           JS
