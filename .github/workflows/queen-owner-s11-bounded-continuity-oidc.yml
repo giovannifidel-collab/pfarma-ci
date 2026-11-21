@@ -1,13 +1,13 @@
 name: Queen Owner S11 EXACT Bounded Continuity Source Release + One Terminal CAS (NO AUTOMATIC RELEASE)
 on:
   push:
-    branches: [s11/owner-bounded-continuity-exact-oidc-20261121, s11/terminal-after-live-owner-oidc-20261121]
+    branches: [s11/owner-bounded-continuity-exact-oidc-20261121, s11/terminal-after-live-owner-oidc-20261121, s11/terminal-only-checkbox-ux-20261121]
     paths: ['.github/workflows/queen-owner-s11-bounded-continuity-oidc.yml']
   workflow_dispatch:
     inputs:
       approve_exact_s11_bounded_source_release_and_one_terminal_neon_cas:
         description: 'Owner authorizes HIVE PR113 exact SHA and ONE S11 bounded terminal only after genuine mission E2E; HIVE L0-L2, $0, no new scheduler/provider, no cross-project write, no auto merge/deploy or School training'
-        required: true
+        required: false
         type: boolean
         default: false
       approve_exact_s11_terminal_after_independent_live_e2e:
