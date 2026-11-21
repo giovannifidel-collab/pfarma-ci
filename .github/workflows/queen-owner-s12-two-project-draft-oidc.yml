@@ -1,0 +1,175 @@
+name: Queen Owner S12 Two Exact Project Draft Missions (NO Automatic Project Writes)
+on:
+  push:
+    branches: [s12/owner-two-project-draft-mission-oidc-20261121]
+    paths: ['.github/workflows/queen-owner-s12-two-project-draft-oidc.yml']
+  workflow_dispatch:
+    inputs:
+      approve_s12_two_exact_private_draft_pr_missions:
+        description: 'Owner: two exact ONE-FILE private draft PR missions (Project Giovanni, HIVE Field); no merge, deploy, secrets, paid models or School training'
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: queen-owner-s12-two-exact-draft-missions
+  cancel-in-progress: false
+jobs:
+  isolated-source-ci:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0,persist-credentials: false}
+      - name: Only one new workflow, static JavaScript crypto and fail-closed project scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only origin/main...HEAD)" = .github/workflows/queen-owner-s12-two-project-draft-oidc.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('.github/workflows/queen-owner-s12-two-project-draft-oidc.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          i=s.index(marker)+len(marker)
+          j=s.index("\n          JS",i)
+          c="\n".join(x[10:] if x.startswith('          ') else x for x in s[i:j].splitlines())
+          Path('/tmp/s12-owner-draft-oidc.mjs').write_text(c+"\n")
+          PY
+          node --check /tmp/s12-owner-draft-oidc.mjs
+          grep -Fq 'S12_OWNER_OIDC_RS256_DUAL_PROJECT_DRAFT=PASS' .github/workflows/queen-owner-s12-two-project-draft-oidc.yml
+          grep -Fq 'S12_OWNER_GRANT_SIGNER_NO_PROJECT_OR_NEON_WRITE=TRUE' .github/workflows/queen-owner-s12-two-project-draft-oidc.yml
+          grep -Fq 'one_private_draft_pr_only:true' .github/workflows/queen-owner-s12-two-project-draft-oidc.yml
+          grep -Fq 'no_cross_project_bulk_write:true' .github/workflows/queen-owner-s12-two-project-draft-oidc.yml
+          echo S12_TWO_PROJECT_OWNER_SIGNER_SOURCE_CI=PASS
+  exact-project-owner-signer:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_s12_two_exact_private_draft_pr_missions == true
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    permissions: {contents: read, actions: read, id-token: write}
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      OWNER_APPROVE: ${{ inputs.approve_s12_two_exact_private_draft_pr_missions }}
+    steps:
+      - name: Verify Owner plus project SHA, source gate, S11 and new S12 tracker — read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$OWNER_APPROVE" = true
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test -n "$GH_TOKEN"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 92f7ce0fa11a50400f57a7f10b7b536be8fae839
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$ptr" = 92f7ce0fa11a50400f57a7f10b7b536be8fae839
+          test "$(gh api repos/giovannifidel-collab/project-giovanni/branches/main --jq .commit.sha)" = 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
+          test "$(gh api repos/giovannifidel-collab/hive-field/branches/main --jq .commit.sha)" = 2b51de88dec2e4e4ae01102fac2a3b95a9f0b5fd
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/115 |
+            jq -e '.state=="closed" and .merged==true and .merge_commit_sha=="92f7ce0fa11a50400f57a7f10b7b536be8fae839" and .changed_files==4' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/issues/116 |
+            jq -e '.state=="open"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/issues/114 |
+            jq -e '.state=="closed" and .state_reason=="completed"' >/dev/null
+          for run in 44917410374 44917513612; do
+            gh api "repos/giovannifidel-collab/$( [ "$run" = 44917410374 ] && echo hive-alveare || echo pfarma-ci )/actions/runs/$run" |
+              jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+          done
+          echo S12_OWNER_TWO_PROJECT_EXACT_BOUNDARIES=PASS
+          echo S12_NO_BRANCH_WRITE_BY_SIGNER=TRUE
+      - name: GitHub fresh RS256 Owner OIDC signs two exact time-bound source-locked draft missions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash} from 'node:crypto';
+          const e=process.env;
+          const deny=x=>{throw Error('S12_OWNER_AUTH_DENY_'+x)};
+          const aud='hive-queen-s12-two-exact-private-draft-missions-v1';
+          if(e.OWNER_APPROVE!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)deny('NO_OWNER');
+          const tokenUrl=e.ACTIONS_ID_TOKEN_REQUEST_URL+(e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(aud);
+          const response=await fetch(tokenUrl,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!response.ok)deny('TOKEN_ISSUER');
+          const parts=(await response.json()).value?.split('.')||[];
+          if(parts.length!==3)deny('JWT_PARTS');
+          const dec=x=>Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-x.length%4)%4),'base64');
+          const h=JSON.parse(dec(parts[0])),c=JSON.parse(dec(parts[1]));
+          if(h.alg!=='RS256'||!h.kid||h.jwk||h.jku||h.x5u||h.crit)deny('JWT_HEADER');
+          const claims={
+           iss:'https://token.actions.githubusercontent.com',aud,
+           repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+           repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+           event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',
+           ref:'refs/heads/main',runner_environment:'github-hosted',
+           workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-s12-two-project-draft-oidc.yml@refs/heads/main'
+          };
+          for(const [k,v] of Object.entries(claims))if(String(c[k])!==v)deny('CLAIM_'+k);
+          const now=Date.now();
+          if(c.sha!==e.GITHUB_SHA||Number(c.run_id)!==Number(e.GITHUB_RUN_ID)||Number(c.run_attempt)!==1||
+           !Number.isSafeInteger(c.exp)||!Number.isSafeInteger(c.iat)||c.exp<=c.iat||
+           c.exp-c.iat>900||c.exp*1000<=now||now-c.iat*1000>300000||c.iat*1000>now+30000)deny('TIME');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)deny('JWKS');
+          const key=(await jwks.json()).keys?.find(x=>x.kid===h.kid&&x.kty==='RSA'&&x.use==='sig'&&(!x.alg||x.alg==='RS256'));
+          if(!key||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key,format:'jwk'}),dec(parts[2])))deny('JWT_SIGNATURE');
+          console.log('S12_OWNER_OIDC_RS256_DUAL_PROJECT_DRAFT=PASS');
+          const expiry=new Date(now+30*60*1000).toISOString();
+          const missions=[
+           {
+            mission_id:'a2f6327b-9303-423a-91e2-33ce5dbadd31',
+            project_id:'project-giovanni',repository:'giovannifidel-collab/project-giovanni',
+            exact_main_sha:'4f67bda2e1bf63db12c1d9d7311b57f12b7bc707',
+            target_path:'factory/continuous-loop.mjs',
+            allowed_paths:['factory/continuous-loop.mjs'],
+            acceptance_test_ids:['project:factory-continuous-loop'],
+            objective:'Non-functional one-file behavior-preserving clarity improvement in continuous loop. Independent existing 6 tests must pass in sandbox; no main write.',
+            authority_level:3,one_private_draft_pr_only:true,max_model_calls:2,max_attempts:2,
+            no_synthetic_failure_as_mastery:true,require_independent_test:true,
+            require_private_pr_unmerged:true,requires_fresh_billing_proof:true,
+            no_paid_fallback:true,no_auto_merge:true,no_auto_deploy:true,school_training_eligible:false
+           },
+           {
+            mission_id:'10d37847-331f-4fd1-895e-0b3517c0da21',
+            project_id:'hive-field',repository:'giovannifidel-collab/hive-field',
+            exact_main_sha:'2b51de88dec2e4e4ae01102fac2a3b95a9f0b5fd',
+            target_path:'src/data-v2-adapter.js',
+            allowed_paths:['src/data-v2-adapter.js'],
+            acceptance_test_ids:['project:node-v2-adapter'],
+            objective:'Non-functional one-file behavior-preserving clarity improvement in inert Data V2 adapter. Independent baseline test must pass without network or secrets; no main write.',
+            authority_level:3,one_private_draft_pr_only:true,max_model_calls:2,max_attempts:2,
+            no_synthetic_failure_as_mastery:true,require_independent_test:true,
+            require_private_pr_unmerged:true,requires_fresh_billing_proof:true,
+            no_paid_fallback:true,no_auto_merge:true,no_auto_deploy:true,school_training_eligible:false
+           }
+          ];
+          const receipt={
+           schema:'queen.s12.exact-owner-two-private-draft-missions.v1',
+           stage:'S12',decision:'OWNER_SIGNED_TWO_EXACT_INDEPENDENT_PROJECT_DRAFT_MISSIONS_NO_MODEL_SELF_AUTHORITY',
+           owner:'giovannifidel-collab',
+           run_id:Number(e.GITHUB_RUN_ID),run_attempt:Number(e.GITHUB_RUN_ATTEMPT),
+           relay_signer_main_sha:e.GITHUB_SHA,
+           hive_main_sha:'92f7ce0fa11a50400f57a7f10b7b536be8fae839',
+           s11_terminal_event_id:1546,s12_track_issue:116,
+           s12_source_pr_merged:115,
+           baseline_ci_run:44917513612,source_ci_run:44917410374,
+           scope:'EXACT_TWO_SEPARATE_PRIVATE_DRAFT_PR_ONE_FILE_PER_PROJECT_NO_MAIN_WRITES',
+           missions,mission_count:2,
+           grant_requires_independent_neon_cas:true,
+           grant_requires_fresh_provider_free_plan_attestation:true,
+           model_cannot_issue_authorization:true,
+           no_runtime_actions_by_signer:true,no_neon_write_by_signer:true,
+           no_new_s1_or_s2:true,no_new_scheduler:true,no_cross_project_bulk_write:true,
+           no_auto_merge:true,no_auto_deploy:true,no_school_training:true,
+           no_paid_fallback:true,max_incremental_cost_usd:0,
+           issued_at:new Date(now).toISOString(),expires_at:expiry
+          };
+          const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S12_OWNER_SIGNED_DUAL_PROJECT_DRAFT_GRANT='+JSON.stringify({...receipt,sha256:digest}));
+          console.log('S12_OWNER_GRANT_SIGNER_NO_PROJECT_OR_NEON_WRITE=TRUE');
+          JS
