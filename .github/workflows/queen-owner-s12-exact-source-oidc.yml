@@ -1,7 +1,7 @@
 name: Queen Owner S12 One Exact HIVE Source Release OIDC — NO Product Writes
 on:
   push:
-    branches: [s12/owner-exact-hive-source-release-oidc-20261121, s12/owner-pr117-source-only-oidc-20261121, s12/owner-pr118-trusted-runtime-oidc-20261121]
+    branches: [s12/owner-exact-hive-source-release-oidc-20261121, s12/owner-pr117-source-only-oidc-20261121, s12/owner-pr118-trusted-runtime-oidc-20261121, s12/fix-pr118-owner-signer-source-20261121]
     paths: ['.github/workflows/queen-owner-s12-exact-source-oidc.yml']
   workflow_dispatch:
     inputs:
