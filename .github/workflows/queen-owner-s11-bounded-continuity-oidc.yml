@@ -1,0 +1,162 @@
+name: Queen Owner S11 EXACT Bounded Continuity Source Release + One Terminal CAS (NO AUTOMATIC RELEASE)
+on:
+  push:
+    branches: [s11/owner-bounded-continuity-exact-oidc-20261121]
+    paths: ['.github/workflows/queen-owner-s11-bounded-continuity-oidc.yml']
+  workflow_dispatch:
+    inputs:
+      approve_exact_s11_bounded_source_release_and_one_terminal_neon_cas:
+        description: 'Owner authorizes HIVE PR113 exact SHA and ONE S11 bounded terminal only after genuine mission E2E; HIVE L0-L2, $0, no new scheduler/provider, no cross-project write, no auto merge/deploy or School training'
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+concurrency:
+  group: queen-owner-s11-exact-source-only-release
+  cancel-in-progress: false
+jobs:
+  source-only-ci:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Exact one-file diff, sign JS syntax and Owner invariant checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only origin/main...HEAD)" = .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('.github/workflows/queen-owner-s11-bounded-continuity-oidc.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          start=s.index(marker)+len(marker)
+          stop=s.index("\n          JS",start)
+          code="\n".join(line[10:] if line.startswith("          ") else line for line in s[start:stop].splitlines())
+          Path('/tmp/s11-owner-signer.mjs').write_text(code+"\n")
+          PY
+          node --check /tmp/s11-owner-signer.mjs
+          grep -Fq 'S11_OWNER_OIDC_RS256_EXACT_SOURCE_AND_TERMINAL=PASS' .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
+          grep -Fq 'S11_OWNER_SIGNER_NO_PROJECT_OR_NEON_MUTATION=TRUE' .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
+          grep -Fq 'no_new_scheduler:true' .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
+          grep -Fq 'requires_two_s11_specific_live_checkpoints:true' .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
+          echo S11_OWNER_SIGNER_SOURCE_ONLY_CI=PASS
+  sign-exact-owner-boundary:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      OWNER_APPROVAL: ${{ inputs.approve_exact_s11_bounded_source_release_and_one_terminal_neon_cas }}
+    steps:
+      - name: Owner fresh identity and exact PR113 source/policy/CI preflight (READ ONLY)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/main
+          if [ "$OWNER_APPROVAL" != true ]; then
+            echo "::error title=S11 Owner non autorizzato::Spunta la checkbox S11 e avvia una sola volta su main."
+            exit 43
+          fi
+          test -n "$GH_TOKEN"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = b79f2911e4dee35adcdce74ce5053d6500a290fe
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$ptr" = b79f2911e4dee35adcdce74ce5053d6500a290fe
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/113 |
+            jq -e '.state=="open" and .draft==true and .head.sha=="db75b822149edbaec5a90327003147490fdd62c3" and .base.sha=="b79f2911e4dee35adcdce74ce5053d6500a290fe" and .changed_files==4' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44899922651 |
+            jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="db75b822149edbaec5a90327003147490fdd62c3" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/issues/102 |
+            jq -e '.state=="closed" and .state_reason=="completed"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/issues/114 |
+            jq -e '.state=="open"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44300225140 |
+            jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+          world="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\n' | base64 -d)"
+          age="$(( $(date -u +%s) - $(date -u -d "$(jq -r .generated_at <<<"$world")" +%s) ))"
+          test "$age" -ge 0 && test "$age" -le 1800
+          jq -e '.policy=="authoritative-source-first" and .coverage.source_available>=8 and .coverage.runtimes_reachable>=7' <<<"$world" >/dev/null
+          for run in 44897832863 44898722750 44899594681; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$run" |
+              jq -e '.status=="completed" and .conclusion=="success" and .event=="repository_dispatch" and .run_attempt==1' >/dev/null
+          done
+          echo S11_FRESH_OWNER_EXACT_SOURCE_WORLD_AND_PREVIOUS_S10=PASS
+          echo S11_NO_RELEASE_OR_NEON_WRITE_IN_SIGNER=TRUE
+      - name: Verify fresh GitHub Owner RS256 OIDC and issue ONE exact, expiring authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash} from 'node:crypto';
+          import {appendFileSync} from 'node:fs';
+          const e=process.env;
+          const reject=x=>{throw Error('S11_OWNER_OIDC_DENY_'+x)};
+          const aud='hive-queen-s11-exact-source-release-and-terminal-neon-cas-v1';
+          if(e.OWNER_APPROVAL!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)reject('NO_APPROVAL');
+          const link=e.ACTIONS_ID_TOKEN_REQUEST_URL+(e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(aud);
+          const response=await fetch(link,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!response.ok)reject('ISSUER');
+          const parts=(await response.json()).value?.split('.')||[];
+          if(parts.length!==3)reject('PARTS');
+          const dec=x=>Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-x.length%4)%4),'base64');
+          const h=JSON.parse(dec(parts[0])),c=JSON.parse(dec(parts[1]));
+          if(h.alg!=='RS256'||!h.kid||h.jwk||h.jku||h.x5u||h.crit)reject('HEADER');
+          const claim={iss:'https://token.actions.githubusercontent.com',aud,
+           repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+           repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+           event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',ref:'refs/heads/main',
+           runner_environment:'github-hosted',
+           workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-s11-bounded-continuity-oidc.yml@refs/heads/main'};
+          for(const [k,v] of Object.entries(claim))if(String(c[k])!==v)reject('CLAIM_'+k);
+          const now=Date.now();
+          if(c.sha!==e.GITHUB_SHA||Number(c.run_id)!==Number(e.GITHUB_RUN_ID)||Number(c.run_attempt)!==1||
+             !Number.isSafeInteger(c.exp)||!Number.isSafeInteger(c.iat)||c.exp<=c.iat||
+             c.exp-c.iat>900||c.exp*1000<=now||now-c.iat*1000>300000||c.iat*1000>now+30000)reject('TIME');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)reject('JWKS');
+          const k=(await jwks.json()).keys?.find(x=>x.kid===h.kid&&x.kty==='RSA'&&x.use==='sig'&&(!x.alg||x.alg==='RS256'));
+          if(!k||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key:k,format:'jwk'}),dec(parts[2])))reject('SIGNATURE');
+          appendFileSync(e.GITHUB_ENV,'S11_OWNER_SIGNED=TRUE\nS11_OWNER_EXPIRES='+String(Math.floor(now/1000)+900)+'\n');
+          console.log('S11_OWNER_OIDC_RS256_EXACT_SOURCE_AND_TERMINAL=PASS');
+          const receipt={
+           schema:'queen.s11.exact-owner-bounded-source-and-terminal-authorization.v1',
+           stage:'S11',
+           decision:'OWNER_AUTHORIZES_EXACT_SOURCE_RELEASE_AND_ONE_BOUNDED_S11_TERMINAL_NEON_CAS_WITH_INDEPENDENT_MISSION_E2E',
+           run_id:Number(e.GITHUB_RUN_ID),run_attempt:Number(e.GITHUB_RUN_ATTEMPT),
+           relay_signer_sha:e.GITHUB_SHA,
+           hive_base_sha:'b79f2911e4dee35adcdce74ce5053d6500a290fe',
+           hive_pr:113,hive_pr_source_head:'db75b822149edbaec5a90327003147490fdd62c3',
+           s11_independent_source_ci_run:44899922651,
+           standing_hive_owner_grant_id:'85294f2b-f816-4564-b3e8-5c275d0f682d',
+           standing_hive_owner_grant_ci_run:44300225140,
+           existing_s10_neon_receipt_id:1493,
+           existing_s10_neon_sha256:'9bb45ee76a3eae40daf72454f2b062316a7e52bda576df07266659987eb60eeb',
+           exact_scope:'HIVE_ONLY_LEVELS_0_1_2_ONE_EXISTING_S1_TWO_OR_MORE_INDEPENDENT_S11_MISSION_CHECKPOINTS',
+           permitted_neon_terminal_event_type:'queen.s11.bounded_continuity.owner_signed.certified',
+           permitted_terminal_receipts:1,
+           no_new_s1:true,no_new_s2:true,no_new_scheduler:true,no_paid_fallback:true,
+           no_new_provider:true,no_general_s7_fleet:true,no_general_s8_project_writes:true,
+           no_auto_merge:true,no_auto_deploy:true,no_school_training:true,
+           owner_authority_l3_to_l5_retained:true,
+           requires_two_s11_specific_live_checkpoints:true,
+           requires_signed_s11_mission_provenance:true,
+           requires_independent_postwrite_neon_readback:true,
+           zero_unauthorized_cost:true,
+           issued_at:new Date(now).toISOString(),expires_at:new Date(now+45*60*1000).toISOString(),
+           no_neon_or_project_write_by_signer:true
+          };
+          const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S11_OWNER_SIGNED_EXACT_SOURCE_AND_NEON_CAS_AUTHORIZATION='+JSON.stringify({...receipt,sha256:digest}));
+          console.log('S11_OWNER_SIGNER_NO_PROJECT_OR_NEON_MUTATION=TRUE');
+          
+          JS
