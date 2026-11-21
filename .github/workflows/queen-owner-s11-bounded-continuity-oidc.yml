@@ -1,7 +1,7 @@
 name: Queen Owner S11 EXACT Bounded Continuity Source Release + One Terminal CAS (NO AUTOMATIC RELEASE)
 on:
   push:
-    branches: [s11/owner-bounded-continuity-exact-oidc-20261121]
+    branches: [s11/owner-bounded-continuity-exact-oidc-20261121, s11/terminal-after-live-owner-oidc-20261121]
     paths: ['.github/workflows/queen-owner-s11-bounded-continuity-oidc.yml']
   workflow_dispatch:
     inputs:
