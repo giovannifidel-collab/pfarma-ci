@@ -1,0 +1,123 @@
+name: Queen S12 — One Exact Private Project Draft PR (Owner + Neon + Free Model)
+on:
+  push:
+    branches: [s12/one-project-draft-runner-source-20261121]
+    paths: ['.github/workflows/queen-s12-one-project-draft-runner.yml']
+  workflow_dispatch:
+    inputs:
+      project_id:
+        type: choice
+        description: 'Exactly one original Owner-scoped private project'
+        options: [project-giovanni, hive-field]
+        required: true
+      approve_one_s12_private_draft:
+        type: boolean
+        description: 'Owner approves exactly ONE private DRAFT PR with no merge or deploy; fresh signed Owner grant and free quota are separately required'
+        default: false
+        required: true
+permissions: {contents: read}
+concurrency:
+  group: queen-s12-one-project-draft
+  cancel-in-progress: false
+jobs:
+  bounded-source-only-ci:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: One exact workflow and fail-closed existing S8 architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only origin/main...HEAD)" = .github/workflows/queen-s12-one-project-draft-runner.yml
+          grep -Fq 'approve_one_s12_private_draft' .github/workflows/queen-s12-one-project-draft-runner.yml
+          grep -Fq 'S12_NEW_TRUSTED_OWNER_GRANT_REQUIRED=TRUE' .github/workflows/queen-s12-one-project-draft-runner.yml
+          grep -Fq 'persist-credentials: false' .github/workflows/queen-s12-one-project-draft-runner.yml
+          grep -Fq 'cloudflare/functions/api/queen-s12-project-proposal.js' .github/workflows/queen-s12-one-project-draft-runner.yml
+          echo S12_ONE_BOUNDED_SOURCE_ONLY_CI=PASS
+          echo S12_NO_OWNER_SIGNING_NO_MODEL_NO_NEON_OR_PROJECT_WRITE=TRUE
+  private-one-project-draft:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_one_s12_private_draft == true && github.actor == 'giovannifidel-collab'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 22
+    permissions: {contents: read, id-token: write}
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      S12_PROJECT_ID: ${{ inputs.project_id }}
+    steps:
+      - name: Resolve current approved HIVE source and exact private project lock
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/main
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          case "$S12_PROJECT_ID" in
+            project-giovanni)
+              repo=giovannifidel-collab/project-giovanni
+              sha=4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
+              ;;
+            hive-field)
+              repo=giovannifidel-collab/hive-field
+              sha=2b51de88dec2e4e4ae01102fac2a3b95a9f0b5fd
+              ;;
+            *) echo S12_PROJECT_NOT_IN_OWNER_SCOPE; exit 41 ;;
+          esac
+          hive="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$hive" = "$ptr"
+          test "$(gh api "repos/$repo/branches/main" --jq .commit.sha)" = "$sha"
+          # Require a reviewed, merged S12 trusted-runner source, not a PR branch.
+          gh api "repos/giovannifidel-collab/hive-alveare/contents/ops/queen/s12/s12-trusted-project-draft.mjs?ref=$hive" --jq .sha | grep -Eq '^[0-9a-f]{40}$'
+          echo "hive_sha=$hive" >> "$GITHUB_OUTPUT"
+          echo "project_repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "project_sha=$sha" >> "$GITHUB_OUTPUT"
+          echo S12_SOURCE_AND_CURRENT_HEAD_VALIDATED=PASS
+          echo S12_NEW_TRUSTED_OWNER_GRANT_REQUIRED=TRUE
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ steps.source.outputs.hive_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: hive-source
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.source.outputs.project_repo }}
+          ref: ${{ steps.source.outputs.project_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: project-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Source-only security tests before any model or project action
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check hive-source/ops/queen/s12/s12-trusted-project-draft.mjs
+          node --test hive-source/ops/queen/s12/tests/s12-trusted-project-draft.test.mjs
+          echo S12_INDEPENDENT_RUNNER_GATES=PASS
+      - name: One real Owner-authorized proposal, independent Docker and private DRAFT PR
+        shell: bash
+        run: node hive-source/ops/queen/s12/s12-trusted-project-draft.mjs
+      - name: No terminal certificate until independent Neon CAS
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$RUNNER_TEMP/s12-$S12_PROJECT_ID-draft-receipt.json"
+          jq -e '.neon_terminal_certified==false and .test_status=="PASS_NETWORKLESS_READONLY" and .auto_merge==false and .auto_deploy==false' "$RUNNER_TEMP/s12-$S12_PROJECT_ID-draft-receipt.json"
+          echo S12_DRAFT_SOURCE_AND_CI_VERIFIED_NOT_YET_TERMINAL=TRUE
+      - name: Erase all private source, model and independent test artifacts
+        if: always()
+        shell: bash
+        run: rm -rf hive-source project-source "$RUNNER_TEMP/s12-project-giovanni-draft-receipt.json" "$RUNNER_TEMP/s12-hive-field-draft-receipt.json" "$RUNNER_TEMP/s12-project-giovanni-isolated-tests.log" "$RUNNER_TEMP/s12-hive-field-isolated-tests.log"
