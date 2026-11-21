@@ -1,7 +1,7 @@
 name: Queen Owner S12 Two Exact Project Draft Missions (NO Automatic Project Writes)
 on:
   push:
-    branches: [s12/owner-two-project-draft-mission-oidc-20261121]
+    branches: [s12/owner-two-project-draft-mission-oidc-20261121, s12/owner-two-project-draft-current-hive-20261121]
     paths: ['.github/workflows/queen-owner-s12-two-project-draft-oidc.yml']
   workflow_dispatch:
     inputs:
@@ -66,13 +66,20 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$GITHUB_RUN_ATTEMPT" = 1
           test -n "$GH_TOKEN"
-          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 92f7ce0fa11a50400f57a7f10b7b536be8fae839
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = d599697f47e570c0dbcf7dc22365cb2e77716de2
           ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
-          test "$ptr" = 92f7ce0fa11a50400f57a7f10b7b536be8fae839
+          test "$ptr" = d599697f47e570c0dbcf7dc22365cb2e77716de2
           test "$(gh api repos/giovannifidel-collab/project-giovanni/branches/main --jq .commit.sha)" = 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
           test "$(gh api repos/giovannifidel-collab/hive-field/branches/main --jq .commit.sha)" = 2b51de88dec2e4e4ae01102fac2a3b95a9f0b5fd
           gh api repos/giovannifidel-collab/hive-alveare/pulls/115 |
             jq -e '.state=="closed" and .merged==true and .merge_commit_sha=="92f7ce0fa11a50400f57a7f10b7b536be8fae839" and .changed_files==4' >/dev/null
+          # New bounded Workers AI source follows the previously certified S12 contract.
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/117 |
+            jq -e '.state=="closed" and .merged==true and .merge_commit_sha=="d599697f47e570c0dbcf7dc22365cb2e77716de2" and .changed_files==3' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1334 |
+            jq -e '.state=="closed" and .merged==true and .changed_files==1' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44921948341 |
+            jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
           gh api repos/giovannifidel-collab/hive-alveare/issues/116 |
             jq -e '.state=="open"' >/dev/null
           gh api repos/giovannifidel-collab/hive-alveare/issues/114 |
@@ -154,10 +161,10 @@ jobs:
            owner:'giovannifidel-collab',
            run_id:Number(e.GITHUB_RUN_ID),run_attempt:Number(e.GITHUB_RUN_ATTEMPT),
            relay_signer_main_sha:e.GITHUB_SHA,
-           hive_main_sha:'92f7ce0fa11a50400f57a7f10b7b536be8fae839',
+           hive_main_sha:'d599697f47e570c0dbcf7dc22365cb2e77716de2',
            s11_terminal_event_id:1546,s12_track_issue:116,
-           s12_source_pr_merged:115,
-           baseline_ci_run:44917513612,source_ci_run:44917410374,
+           s12_source_pr_merged:117,s12_source_contract_pr_merged:115,
+           baseline_ci_run:44917513612,source_ci_run:44921948341,source_contract_ci_run:44917410374,
            scope:'EXACT_TWO_SEPARATE_PRIVATE_DRAFT_PR_ONE_FILE_PER_PROJECT_NO_MAIN_WRITES',
            missions,mission_count:2,
            grant_requires_independent_neon_cas:true,
