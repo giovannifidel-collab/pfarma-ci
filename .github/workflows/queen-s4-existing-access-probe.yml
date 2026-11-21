@@ -1,0 +1,38 @@
+name: Queen S4 Existing Runtime Access Probe
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s4-existing-access-probe.yml']
+permissions:
+  contents: read
+jobs:
+  check-existing-auth:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      HIVE_BASE_URL: ${{ secrets.HIVE_BASE_URL }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Probe existing Queen read-only endpoint using only Cloudflare Access
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${HIVE_BASE_URL:-https://hive-alveare.pages.dev}"; base="${base%/}"
+          test -n "${CF_ACCESS_CLIENT_ID:-}"
+          test -n "${CF_ACCESS_CLIENT_SECRET:-}"
+          code="$(curl --silent --show-error --max-time 45 -o "$RUNNER_TEMP/queen-s4-auth-probe.json" -w '%{http_code}' \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            "$base/api/queen-state")"
+          echo "S4_EXISTING_CF_ACCESS_HTTP=$code"
+          if [ "$code" = '200' ] && jq -e '.ok == true and .state.canonical != null' "$RUNNER_TEMP/queen-s4-auth-probe.json" >/dev/null; then
+            echo 'S4_EXISTING_CF_ACCESS_TO_NEON=PASS'
+          else
+            echo 'S4_EXISTING_CF_ACCESS_TO_NEON=UNAVAILABLE'
+            exit 42
+          fi
+      - name: Purge response
+        if: always()
+        run: rm -f "$RUNNER_TEMP/queen-s4-auth-probe.json"
