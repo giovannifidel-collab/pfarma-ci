@@ -68,6 +68,8 @@ jobs:
           grep -Fq 'S12_OWNER_SIGNER_PR117_NO_MUTATIONS=TRUE' .github/workflows/queen-owner-s12-exact-source-oidc.yml
           grep -Fq 'S12_OWNER_OIDC_RS256_TRUSTED_RUNTIME_SOURCE=PASS' .github/workflows/queen-owner-s12-exact-source-oidc.yml
           grep -Fq 'S12_OWNER_SIGNER_PR118_NO_MUTATIONS=TRUE' .github/workflows/queen-owner-s12-exact-source-oidc.yml
+          grep -Fq 'repos/giovannifidel-collab/hive-alveare/pulls/118' .github/workflows/queen-owner-s12-exact-source-oidc.yml
+          grep -Fq 'APPROVE_LEGACY_PR117' .github/workflows/queen-owner-s12-exact-source-oidc.yml
           echo S12_OWNER_SIGNER_ISOLATED_NO_PRIVILEGES_IN_CI=PASS
   one-source-owner-rs256:
     if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_source_pr115_only == true
@@ -273,12 +275,16 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       OWNER_APPROVE: ${{ inputs.approve_exact_s12_hive_trusted_runtime_pr118_only }}
+      APPROVE_LEGACY_PR115: ${{ inputs.approve_exact_s12_hive_source_pr115_only }}
+      APPROVE_LEGACY_PR117: ${{ inputs.approve_exact_s12_hive_model_bridge_pr117_only }}
     steps:
       - name: Verify Owner exact source, canonical S1/S2 unchanged, source-only independent CI and PR118
         shell: bash
         run: |
           set -euo pipefail
           test "$OWNER_APPROVE" = true
+          test "$APPROVE_LEGACY_PR115" = false
+          test "$APPROVE_LEGACY_PR117" = false
           test "$GITHUB_ACTOR" = giovannifidel-collab
           test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
@@ -288,7 +294,7 @@ jobs:
           test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = d599697f47e570c0dbcf7dc22365cb2e77716de2
           ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
           test "$ptr" = d599697f47e570c0dbcf7dc22365cb2e77716de2
-          gh api repos/giovannifidel-collab/hive-alveare/pulls/117 |
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/118 |
             jq -e '.state=="open" and .draft==true and .base.sha=="d599697f47e570c0dbcf7dc22365cb2e77716de2" and .head.sha=="2acb60aa08daf74844f82226c1faf19de82dcf4b" and .changed_files==11' >/dev/null
           gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44936698566 |
             jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="2acb60aa08daf74844f82226c1faf19de82dcf4b" and .run_attempt==1' >/dev/null
