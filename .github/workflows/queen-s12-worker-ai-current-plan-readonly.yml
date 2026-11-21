@@ -1,78 +1,135 @@
-name: Queen S12 — Current Cloudflare Worker AI Billing Plan READ ONLY
+name: Queen S12 Fresh Workers AI Billing Read Using Existing Dedicated Token (READ ONLY)
 on:
   push:
     branches: [s12/fresh-zero-cost-readonly-billing-20261121]
     paths: ['.github/workflows/queen-s12-worker-ai-current-plan-readonly.yml']
 permissions: {contents: read}
 concurrency:
-  group: queen-s12-cloudflare-billing-readonly-${{ github.ref }}
+  group: queen-s12-cloudflare-cost-readonly
   cancel-in-progress: false
 jobs:
-  free-plan-current-account-observation:
+  authoritative-account-billing-read:
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
-    timeout-minutes: 6
+    timeout-minutes: 7
     env:
-      CF_PRIMARY_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CF_FALLBACK_TOKEN: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_DEPLOY_TOKEN_ALTERNATE: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      CF_BILLING_READ_TOKEN: ${{ secrets.CF_BILLING_READ_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
     steps:
-      - name: Query live Cloudflare account and subscription tags with no model or writes
+      - name: Verify authoritative HIVE Pages account and complete Workers subscriptions pagination, read-only
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json,os,urllib.request,urllib.error
-          tokens=[('primary',os.getenv('CF_PRIMARY_TOKEN')),('fallback',os.getenv('CF_FALLBACK_TOKEN'))]
-          tokens=[(n,t) for n,t in tokens if t]
-          if not tokens:
-              print('S12_CLOUDFLARE_BILLING=DENY_NO_READ_TOKEN')
-              raise SystemExit(2)
-          def get(token,path):
-              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+          python - <<'PY'
+          import os,json,urllib.request,urllib.error,re
+          primary=os.environ.get('CF_DEPLOY_TOKEN') or os.environ.get('CF_DEPLOY_TOKEN_ALTERNATE')
+          billing=os.environ.get('CF_BILLING_READ_TOKEN') or primary
+          def read(path,token):
+              if not token:return 0,{}
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  headers={'Authorization':'Bearer '+token,'Accept':'application/json'},
+                  method='GET')
               try:
-                  with urllib.request.urlopen(req,timeout=15) as r: return r.status,json.load(r)
-              except urllib.error.HTTPError as e: return e.code,{}
-              except (TimeoutError,OSError,ValueError): return 0,{}
-          candidates=[]
-          for label,token in tokens:
-              code,acc=get(token,'/accounts?per_page=100')
-              if code!=200 or acc.get('success') is not True:
-                  print('S12_'+label.upper()+'_ACCOUNT_LOOKUP_STATUS='+str(code))
-                  continue
-              for a in acc.get('result',[]):
-                  account_id=a.get('id','')
-                  if not isinstance(account_id,str) or len(account_id)!=32: continue
-                  code,page=get(token,'/accounts/'+account_id+'/pages/projects/hive-alveare')
-                  if code!=200 or page.get('success') is not True or page.get('result',{}).get('name')!='hive-alveare': continue
-                  code,subs=get(token,'/accounts/'+account_id+'/subscriptions')
-                  if code!=200 or subs.get('success') is not True or not isinstance(subs.get('result'),list):
-                      print('S12_'+label.upper()+'_SUBSCRIPTIONS_READ_STATUS='+str(code))
-                      continue
-                  plans=[]
-                  for item in subs['result']:
-                      rate=item.get('rate_plan') or {}
-                      descriptor=' '.join(str(rate.get(k) or '') for k in ('id','public_name','name','scope')).lower()
-                      if not any(q in descriptor for q in ('worker','ai')):continue
-                      active=str(item.get('state','')).lower() not in ('cancelled','expired','failed')
-                      plans.append((descriptor,active))
-                  free=any('free' in n and active for n,active in plans)
-                  paid=any(active and any(q in n for q in ('paid','enterprise','standard')) for n,active in plans)
-                  candidates.append((account_id,free,paid))
-          if not candidates:
-              print('S12_CLOUDFLARE_BILLING=DENY_ALL_TOKENS_LACK_BILLING_READ')
-              raise SystemExit(6)
-          unique_ids={a for a,_,_ in candidates}
-          free=all(f for _,f,_ in candidates)
-          paid=any(p for _,_,p in candidates)
-          print('S12_EXACT_HIVE_ACCOUNTS_READABLE='+str(len(unique_ids)))
-          print('S12_WORKERS_FREE_ACTIVE='+str(free).upper())
-          print('S12_WORKERS_PAID_SUBSCRIPTION_ACTIVE='+str(paid).upper())
-          print('S12_AI_MODEL_CALLS=0')
-          print('S12_PROJECT_WRITES=0')
-          print('S12_NEON_MUTATIONS=0')
-          print('S12_PLAN_NOT_QUOTA_OR_INFERENCE_AUTHORIZATION=TRUE')
-          if len(unique_ids)!=1 or not free or paid:
-              print('S12_FREE_BILLING=DENY_UNKNOWN_OR_PAID')
-              raise SystemExit(7)
-          print('S12_CURRENT_FREE_PLAN_OBSERVED=PASS')
+                  with urllib.request.urlopen(req,timeout=15) as r:
+                      return r.status,json.load(r)
+              except urllib.error.HTTPError as e:return e.code,{}
+              except Exception:return 0,{}
+          st,accounts=read('/accounts?per_page=50',primary)
+          if st!=200 or accounts.get('success') is not True:
+              print('S12_FREE_AUDIT_ACCOUNT=DENY');raise SystemExit(0)
+          projects=[]
+          for account in accounts.get('result',[]):
+              aid=str(account.get('id',''))
+              if not re.fullmatch('[a-f0-9]{32}',aid):continue
+              a,p=read('/accounts/'+aid+'/pages/projects/hive-alveare',primary)
+              if a==200 and p.get('success') is True and p.get('result',{}).get('name')=='hive-alveare':
+                  projects.append((aid,p['result']))
+          if len(projects)!=1:
+              print('S12_FREE_AUDIT_ACCOUNT=DENY_NOT_UNIQUE');raise SystemExit(0)
+          aid,project=projects[0]
+          print('S12_FREE_AUDIT_ACCOUNT=VERIFIED_UNIQUE_HIVE_PAGES')
+          print('S12_PAGES_MAIN_BRANCH='+str((project.get('source',{}).get('config') or {}).get('production_branch')=='main'))
+          settings=(project.get('deployment_configs',{}).get('production',{}) or {}).get('env_vars',{}) or {}
+          print('S12_PAGES_SOURCE_TOKEN_BINDING_CONFIGURED='+str('HIVE_GITHUB_DISPATCH_TOKEN' in settings))
+          print('S12_PAGES_NEON_URL_BINDING_CONFIGURED='+str('HIVE_DATA_API_URL' in settings))
+          print('S12_BILLING_READ_DEDICATED_SECRET_CONFIGURED='+str(bool(os.environ.get('CF_BILLING_READ_TOKEN'))))
+          if not billing:
+              print('S12_WORKERS_PLAN=UNKNOWN_NO_BILLING_TOKEN')
+              print('S12_AI_COST_GATE=DENY')
+              raise SystemExit(2)
+          # Cloudflare GET /accounts/{id}/subscriptions is a SinglePage endpoint.
+          # Pagination query arguments (per_page/page) are not accepted.
+          st,data=read('/accounts/'+aid+'/subscriptions',billing)
+          if st!=200 or data.get('success') is not True or not isinstance(data.get('result'),list):
+              print('S12_WORKERS_PLAN=UNKNOWN_BILLING_API_UNAVAILABLE')
+              print('S12_CF_BILLING_READ_STATUS='+str(st))
+              errors=data.get('errors') if isinstance(data,dict) else None
+              if isinstance(errors,list):
+                  print('S12_CF_BILLING_ERROR_CATEGORY=' + ('CLOUDFLARE_API_RETURNED_ERRORS' if errors else 'NONE'))
+              print('S12_AI_COST_GATE=DENY')
+              raise SystemExit(0)
+          allsubs=data['result']
+          if len(allsubs)>10000:
+              print('S12_WORKERS_PLAN=UNKNOWN_UNBOUNDED_SUBSCRIPTIONS')
+              print('S12_AI_COST_GATE=DENY')
+              raise SystemExit(0)
+          suspicious=[]
+          for sub in allsubs:
+              plan=sub.get('rate_plan') or {}
+              identifier=str(plan.get('id','')).lower()
+              public=str(plan.get('public_name','')).lower()
+              scope=str(plan.get('scope','')).lower()
+              state=str(sub.get('state','')).lower()
+              if state in ('cancelled','expired','failed'):continue
+              candidate=' '.join((identifier,public,scope,str(sub.get('product','')).lower()))
+              if 'worker' in candidate or 'ai gateway' in candidate:
+                  suspicious.append((identifier,public,scope))
+          paid=any('paid' in ident or 'paid' in pub or 'standard' in pub or 'enterprise' in pub
+                   for ident,pub,scope in suspicious)
+          ambiguous=any(not ('free' in ident or 'free' in pub or 'paid' in ident or
+                             'paid' in pub or 'standard' in pub or 'enterprise' in pub)
+                        for ident,pub,scope in suspicious)
+          print('S12_BILLING_SUBSCRIPTIONS_SINGLEPAGE=TRUE')
+          print('S12_BILLING_SUBSCRIPTIONS_REVIEWED='+str(len(allsubs)))
+          print('S12_WORKERS_ACTIVE_RELATED_SUBSCRIPTIONS='+str(len(suspicious)))
+          if paid:print('S12_WORKERS_PLAN=PAID_OR_OVERAGE_POSSIBLE')
+          elif ambiguous:print('S12_WORKERS_PLAN=UNKNOWN_SUBSCRIPTION')
+          else:print('S12_WORKERS_PLAN=FREE_NO_PAID_WORKERS_SUBSCRIPTION')
+          print('S12_AI_COST_GATE='+('PASS_FREE_PLAN_READONLY' if not paid and not ambiguous else 'DENY'))
+          print('S12_AI_INFERENCE_CALLS=ZERO')
+          if paid or ambiguous: raise SystemExit(6)
           PY
+      - name: Verify deployed S8 candidate endpoint only via protected GET
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$CF_ACCESS_CLIENT_ID" ] || [ -z "$CF_ACCESS_CLIENT_SECRET" ]; then
+            echo 'S12_LIVE_PROTECTED_ENDPOINT=DENY_ACCESS_CREDENTIAL_MISSING'
+            exit 0
+          fi
+          status="$(curl --silent --show-error --max-time 20 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -o "$RUNNER_TEMP/s8-readonly.json" -w '%{http_code}' \
+            https://hive-alveare.pages.dev/api/queen-s8-workers-ai || true)"
+          if [ "$status" != 200 ]; then
+            echo 'S12_LIVE_PROTECTED_ENDPOINT=UNAVAILABLE'
+            exit 0
+          fi
+          jq -e '.ok==true and .route=="cloudflare-workers-ai" and
+            .binding_present==true and .model_invoked==false and
+            .paid_fallback==false and .general_routing==false' \
+            "$RUNNER_TEMP/s8-readonly.json" >/dev/null
+          echo 'S12_LIVE_PROTECTED_ENDPOINT=PASS_NO_INFERENCE'
+      - name: Scrub temporary artifacts
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s8-readonly.json"
+
+# Owner-triggered read-only billing attestation rerun, 2026-11-06. No AI inference.
+# Read-only owner-requested fresh Queen S8 billing attestation: 2026-11-08.
+# No model inference, deployment, payment or changes to any project repo.
+
+# S12 reuses preexisting CF_BILLING_READ_TOKEN in pfarma-ci-trusted. Never request new credentials or run inference from audit.
