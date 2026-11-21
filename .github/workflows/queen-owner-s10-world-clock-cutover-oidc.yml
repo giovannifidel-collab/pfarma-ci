@@ -1,7 +1,7 @@
 name: Queen Owner S10 ONE Existing Pages and Worker Manual Redirect Recovery OIDC
 on:
   push:
-    branches: [release/s10-oidc-existing-pages-token-20261119, fix/s10-owner-broker-live-one-clock-20261120, fix/s10-owner-single-pages-clock-recovery-20261120, fix/s10-owner-pr1315-broker-transport-diagnostic-oidc-20261120, fix/s10-owner-dual-cloudflare-manual-redirect-oidc-20261120, fix/s10-owner-g0-scope-ratification-20261120, fix/s10-g0-no-silent-skip-manual-20261120, fix/s10-owner-g8-bounded-terminal-cas-20261121, fix/s10-g8-preflight-explicit-fail-20261121]
+    branches: [release/s10-oidc-existing-pages-token-20261119, fix/s10-owner-broker-live-one-clock-20261120, fix/s10-owner-single-pages-clock-recovery-20261120, fix/s10-owner-pr1315-broker-transport-diagnostic-oidc-20261120, fix/s10-owner-dual-cloudflare-manual-redirect-oidc-20261120, fix/s10-owner-g0-scope-ratification-20261120, fix/s10-g0-no-silent-skip-manual-20261120, fix/s10-owner-g8-bounded-terminal-cas-20261121, fix/s10-g8-preflight-explicit-fail-20261121, fix/s10-g8-retry-transient-world-coverage-20261121]
     paths: [.github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml]
   workflow_dispatch:
     inputs:
@@ -52,6 +52,8 @@ jobs:
           grep -Fq 'S10_G8_OWNER_OIDC_RS256_BOUNDED_NEON_CAS=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'S10_G8_NEON_CAS_NOT_EXECUTED_IN_SIGNER=TRUE' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'S10_G8_PREFLIGHT_DENIED_GATE=' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
+          grep -Fq 'S10_G8_WORLD_FULL_EIGHT_SOURCES_SEVEN_RUNTIMES=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
+          grep -Fq 'S10_G8_WORLD_TRANSIENT_COVERAGE_RETRY=' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'S10_G8_NO_TERMINAL_CERTIFICATION_OR_NEON_WRITE=TRUE' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'S10_OWNER_OIDC_RS256_EXISTING_PAGES=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
           grep -Fq 'S10_CLOCK_TWO_GENUINE_WORLD_OBSERVATIONS=PASS' .github/workflows/queen-owner-s10-world-clock-cutover-oidc.yml
@@ -580,12 +582,36 @@ jobs:
           w="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/hive-world-sync.yml --jq .content | tr -d '\n' | base64 -d)"
           grep -Fq 'repository_dispatch:' <<< "$w"
           ! grep -Eq '^  schedule:' <<< "$w"
-          s10_gate="FRESH_WORLD_SOURCE_TIMESTAMP"
-          world="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\n' | base64 -d)"
-          gen="$(jq -r '.generated_at // empty' <<< "$world")"
-          age="$(( $(date -u +%s) - $(date -u -d "$gen" +%s) ))"
-          test "$age" -ge 0 && test "$age" -le 1800
-          jq -e '.policy=="authoritative-source-first" and .coverage.source_backed_projects>=8 and .coverage.source_available>=8 and .coverage.runtimes_reachable>=7' <<< "$world" >/dev/null
+          s10_gate="FRESH_WORLD_SOURCE_AND_FULL_COVERAGE"
+          # An authentic World Sync writes a snapshot before the last runtime finishes.
+          # Retry READS only, briefly, when coverage is transiently 7/8 or 6/7.
+          # Never lower any threshold or fabricate a fresh timestamp.
+          s10_world_ready=FALSE
+          for s10_probe in $(seq 1 12); do
+            world="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\n' | base64 -d)" || {
+              echo "::error title=S10.G8 World read failed::Authenticated GitHub World source unreadable; no OIDC signature or Neon write."
+              exit 53
+            }
+            if jq -e '.policy=="authoritative-source-first" and .coverage.source_backed_projects>=8 and .coverage.source_available>=8 and .coverage.runtime_checks>=7 and .coverage.runtimes_reachable>=7' <<< "$world" >/dev/null; then
+              gen="$(jq -r '.generated_at // empty' <<< "$world")"
+              if world_seconds="$(date -u -d "$gen" +%s 2>/dev/null)"; then
+                age="$(( $(date -u +%s) - world_seconds ))"
+                if [ "$age" -ge 0 ] && [ "$age" -le 1800 ]; then
+                  s10_world_ready=TRUE
+                  echo "S10_G8_REAL_WORLD_AGE_SECONDS=$age"
+                  echo "S10_G8_WORLD_FULL_EIGHT_SOURCES_SEVEN_RUNTIMES=PASS"
+                  break
+                fi
+              fi
+            fi
+            observed="$(jq -r '[.coverage.source_available // 0,.coverage.runtimes_reachable // 0] | @tsv' <<< "$world" 2>/dev/null || printf 'UNAVAILABLE')"
+            echo "S10_G8_WORLD_TRANSIENT_COVERAGE_RETRY=$s10_probe/12 OBSERVED_SOURCE_RUNTIME_COUNTS=$observed"
+            if [ "$s10_probe" -lt 12 ]; then sleep 12; fi
+          done
+          if [ "$s10_world_ready" != TRUE ]; then
+            echo "::error title=S10.G8 World cannot be accepted::Original World is stale or lacks 8/8 source and 7/7 runtime coverage after bounded read-only retries; no OIDC signature and no Neon write."
+            exit 54
+          fi
           s10_gate="ZERO_PAID_FALLBACK_GRAPH"
           graph="$(gh api repos/giovannifidel-collab/hive-alveare/contents/ops/queen/core/CAPABILITY_GRAPH.v1.json --jq .content | tr -d '\n' | base64 -d)"
           jq -e '.policy.paid_fallback==false' <<< "$graph" >/dev/null
