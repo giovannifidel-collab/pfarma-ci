@@ -9,7 +9,8 @@ on:
         description: 'Authorize ONE exact HIVE PR115 source merge; S12 not certified, no project writes, model calls, releases, School training, new scheduler, or paid fallback'
         required: false
         type: boolean
-        default: false      approve_exact_s12_hive_model_bridge_pr117_only:
+        default: false
+      approve_exact_s12_hive_model_bridge_pr117_only:
         description: 'Owner authorizes exact HIVE PR117 source-only bounded Workers AI bridge; no model call, project writes, merge, deploy, S1, School or paid fallback'
         required: false
         type: boolean
