@@ -1,0 +1,43 @@
+name: Queen S8 Cloudflare Pages Modern Compiler Dry Run
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-pages-modern-compiler.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-pages-modern-compiler.yml']
+permissions: {contents: read}
+jobs:
+  compile-source-locked-private-hive:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      PRIVATE_SHA: 23aef9f2509315568e09d37cbf9554b72a7c0898
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.PRIVATE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Compile actual HIVE Pages Functions using current Wrangler, no deploy
+        shell: bash
+        working-directory: private-source/cloudflare
+        run: |
+          set -euo pipefail
+          test "$(git -C .. rev-parse HEAD)" = "$PRIVATE_SHA"
+          npx --yes wrangler@4.123.0 pages functions build functions \
+            --outdir "$RUNNER_TEMP/queen-s8-wrangler-dryrun"
+          test -n "$(find "$RUNNER_TEMP/queen-s8-wrangler-dryrun" -maxdepth 2 -type f -print -quit)"
+          echo 'S8_MODERN_WRANGLER_PAGES_FUNCTIONS_BUILD=PASS'
+          echo 'S8_CLOUDFLARE_DEPLOY_PERFORMED=FALSE'
+      - name: Remove private source, artifacts and Wrangler state
+        if: always()
+        shell: bash
+        run: |
+          rm -rf private-source "$RUNNER_TEMP/queen-s8-wrangler-dryrun"
+          echo 'S8_NO_CLOUDFLARE_MUTATIONS=TRUE'
