@@ -1,0 +1,84 @@
+name: Queen S12 — Two Project Exact Live Baselines (READ ONLY / NO AUTHORIZATION)
+on:
+  push:
+    branches: [s12/dual-project-readonly-verifier-20261121]
+    paths: ['.github/workflows/queen-s12-two-project-baseline-source-ci.yml']
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s12-two-project-baseline-source-ci.yml']
+permissions:
+  contents: read
+concurrency:
+  group: queen-s12-two-project-readonly-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  current-exact-private-head-and-isolated-tests:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project_id: project-giovanni
+            repository: giovannifidel-collab/project-giovanni
+            exact_sha: 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
+            test_kind: factory-test
+          - project_id: hive-field
+            repository: giovannifidel-collab/hive-field
+            exact_sha: 2b51de88dec2e4e4ae01102fac2a3b95a9f0b5fd
+            test_kind: node-test
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      PROJECT_REPOSITORY: ${{ matrix.repository }}
+      PROJECT_ID: ${{ matrix.project_id }}
+      EXACT_PROJECT_SHA: ${{ matrix.exact_sha }}
+      TEST_KIND: ${{ matrix.test_kind }}
+    steps:
+      - name: Live GitHub HEAD preflight, authenticated owner-scoped read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          live="$(gh api "repos/$PROJECT_REPOSITORY/branches/main" --jq .commit.sha)"
+          test "$live" = "$EXACT_PROJECT_SHA"
+          echo "S12_CURRENT_HEAD=$live"
+          echo "S12_PROJECT_ID=$PROJECT_ID"
+          echo S12_PER_PROJECT_OWNER_CODE_GRANT_NOT_ISSUED=TRUE
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.exact_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: project-source
+      - name: Validate exact HEAD with project-specific immutable tests in secretless, networkless container
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C project-source rev-parse HEAD)" = "$EXACT_PROJECT_SHA"
+          test -f project-source/package.json
+          if [ "$TEST_KIND" = factory-test ] && [ "$PROJECT_ID" = project-giovanni ]; then
+            test -f project-source/factory/plan.mjs
+            CMD='node --test factory/continuous-loop.test.mjs factory/lean-coach-core-regression.test.mjs'
+          elif [ "$TEST_KIND" = node-test ] && [ "$PROJECT_ID" = hive-field ]; then
+            test -f project-source/src/data-v2-adapter.test.mjs
+            CMD='node --test src/data-v2-adapter.test.mjs'
+          else
+            echo S12_UNSUPPORTED_PROJECT=DENY;exit 41
+          fi
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 90 --memory 384m --user 65534:65534 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/project-source,target=/project,readonly" \
+            --workdir /project node:22-alpine sh -c "$CMD" >"$RUNNER_TEMP/s12-project-test.log" 2>&1 ||
+            { cat "$RUNNER_TEMP/s12-project-test.log"; echo S12_PROJECT_BASELINE_FAIL=TRUE; exit 45; }
+          cat "$RUNNER_TEMP/s12-project-test.log" | tail -n 18
+          test "$(gh api "repos/$PROJECT_REPOSITORY/branches/main" --jq .commit.sha)" = "$EXACT_PROJECT_SHA"
+          echo S12_REAL_PRIVATE_PROJECT_TESTS=PASS
+          echo S12_NETWORK_NONE_SECRETS_NONE_READONLY=PASS
+          echo S12_NO_MODEL_NO_PROJECT_WRITES_NO_SCHOOL_NO_DEPLOY=TRUE
+          echo S12_BASELINE_IS_NOT_OWNER_APPROVAL=TRUE
+      - name: Remove all private checkout traces
+        if: always()
+        shell: bash
+        run: rm -rf project-source "$RUNNER_TEMP/s12-project-test.log"
