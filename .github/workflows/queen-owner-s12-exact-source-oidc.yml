@@ -1,22 +1,22 @@
 name: Queen Owner S12 One Exact HIVE Source Release OIDC — NO Product Writes
 on:
   push:
-    branches: [s12/owner-exact-hive-source-release-oidc-20261121, s12/owner-pr117-source-only-oidc-20261121, s12/owner-pr118-trusted-runtime-oidc-20261121, s12/fix-pr118-owner-signer-source-20261121]
+    branches: [s12/owner-exact-hive-source-release-oidc-20261121, s12/owner-pr117-source-only-oidc-20261121, s12/owner-pr118-trusted-runtime-oidc-20261121, s12/fix-pr118-owner-signer-source-20261121, s12/owner-pr118-priority-checkbox-20261121]
     paths: ['.github/workflows/queen-owner-s12-exact-source-oidc.yml']
   workflow_dispatch:
     inputs:
       approve_exact_s12_hive_source_pr115_only:
-        description: 'Authorize ONE exact HIVE PR115 source merge; S12 not certified, no project writes, model calls, releases, School training, new scheduler, or paid fallback'
+        description: 'OBSOLETE PR115: historical source approval; ignored when PR118 is selected'
         required: false
         type: boolean
         default: false
       approve_exact_s12_hive_model_bridge_pr117_only:
-        description: 'Owner authorizes exact HIVE PR117 source-only bounded Workers AI bridge; no model call, project writes, merge, deploy, S1, School or paid fallback'
+        description: 'OBSOLETE PR117: historical source approval; ignored when PR118 is selected'
         required: false
         type: boolean
         default: false
       approve_exact_s12_hive_trusted_runtime_pr118_only:
-        description: 'Owner authorizes exact HIVE PR118 trusted runtime source and tests only; NO AI invocation or private project write, merge, deploy or paid fallback'
+        description: 'ACTIVE S12: approve ONLY HIVE PR118 exact source (legacy options ignored); no model/project write, deployment or merge by signer'
         required: false
         type: boolean
         default: false
@@ -69,10 +69,25 @@ jobs:
           grep -Fq 'S12_OWNER_OIDC_RS256_TRUSTED_RUNTIME_SOURCE=PASS' .github/workflows/queen-owner-s12-exact-source-oidc.yml
           grep -Fq 'S12_OWNER_SIGNER_PR118_NO_MUTATIONS=TRUE' .github/workflows/queen-owner-s12-exact-source-oidc.yml
           grep -Fq 'repos/giovannifidel-collab/hive-alveare/pulls/118' .github/workflows/queen-owner-s12-exact-source-oidc.yml
-          grep -Fq 'APPROVE_LEGACY_PR117' .github/workflows/queen-owner-s12-exact-source-oidc.yml
+          # When PR118 is explicitly selected, obsolete source signers cannot run.
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('.github/workflows/queen-owner-s12-exact-source-oidc.yml').read_text()
+          legacy1="if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_source_pr115_only == true"
+          legacy2="if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_model_bridge_pr117_only == true"
+          priority=" && inputs.approve_exact_s12_hive_trusted_runtime_pr118_only != true"
+          assert s.count(legacy1+priority)==1 and s.count(legacy2+priority)==1, 'both legacy jobs must be excluded when PR118 is selected'
+          assert "if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_trusted_runtime_pr118_only == true" in s
+          assert ('APPROVE_'+'LEGACY_PR115') not in s
+          assert ('APPROVE_'+'LEGACY_PR117') not in s
+          assert 'repos/giovannifidel-collab/hive-alveare/pulls/118' in s
+          assert '2acb60aa08daf74844f82226c1faf19de82dcf4b' in s
+          assert 'S12_OWNER_OIDC_RS256_TRUSTED_RUNTIME_SOURCE=PASS' in s
+          print('S12_PR118_OWNER_PRIORITY_GATES=PASS')
+          PY
           echo S12_OWNER_SIGNER_ISOLATED_NO_PRIVILEGES_IN_CI=PASS
   one-source-owner-rs256:
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_source_pr115_only == true
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_source_pr115_only == true && inputs.approve_exact_s12_hive_trusted_runtime_pr118_only != true
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 7
@@ -173,7 +188,7 @@ jobs:
           console.log('S12_OWNER_SIGNER_NO_RELEASE_OR_NEON_WRITE=TRUE');
           JS
   pr117-bounded-model-bridge-source-only-owner-rs256:
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_model_bridge_pr117_only == true
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_model_bridge_pr117_only == true && inputs.approve_exact_s12_hive_trusted_runtime_pr118_only != true
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 7
@@ -275,16 +290,12 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
       OWNER_APPROVE: ${{ inputs.approve_exact_s12_hive_trusted_runtime_pr118_only }}
-      APPROVE_LEGACY_PR115: ${{ inputs.approve_exact_s12_hive_source_pr115_only }}
-      APPROVE_LEGACY_PR117: ${{ inputs.approve_exact_s12_hive_model_bridge_pr117_only }}
     steps:
       - name: Verify Owner exact source, canonical S1/S2 unchanged, source-only independent CI and PR118
         shell: bash
         run: |
           set -euo pipefail
           test "$OWNER_APPROVE" = true
-          test "$APPROVE_LEGACY_PR115" = false
-          test "$APPROVE_LEGACY_PR117" = false
           test "$GITHUB_ACTOR" = giovannifidel-collab
           test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
