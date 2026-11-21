@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-21T22:32:39.065Z",
+  "generated_at": "2026-11-21T22:32:59.129Z",
   "state_fingerprint": "8b74f1e7484129951e6896f415abcd025c3bf9b1958e8a592c498b9e01123ebe",
   "policy": "authoritative-source-first",
   "privacy": "sanitized allowlist; gio-OS private source never materialized in global HIVE sync; no credentials or user data published",
   "cadence_minutes": 15,
   "coverage": {
-    "source_backed_projects": 7,
-    "source_available": 7,
-    "runtime_checks": 6,
-    "runtimes_reachable": 6
+    "source_backed_projects": 8,
+    "source_available": 8,
+    "runtime_checks": 7,
+    "runtimes_reachable": 7
   },
   "projects": {
     "hive": {
@@ -212,6 +212,30 @@
       },
       "runtime": [],
       "sync_depth": "control-state"
+    },
+    "hive-field": {
+      "source": {
+        "kind": "github-private",
+        "repo": "giovannifidel-collab/hive-field",
+        "ref": "main",
+        "available": true,
+        "sha": "2b51de88dec2e4e4ae01102fac2a3b95a9f0b5fd",
+        "observed_at": "2026-11-21T22:32:59.129Z",
+        "version": "9.14.0",
+        "progress": null,
+        "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
+      },
+      "runtime": [
+        {
+          "url": "https://hive-field-v8.vercel.app/",
+          "role": "primary",
+          "reachable": true,
+          "http_status": 200,
+          "latency_ms": 164,
+          "observed_at": "2026-11-21T22:32:59.129Z"
+        }
+      ],
+      "sync_depth": "source+runtime+field-control-state"
     }
   }
 }
