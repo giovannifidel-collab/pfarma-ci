@@ -10,6 +10,11 @@ on:
         required: true
         type: boolean
         default: false
+      approve_exact_s11_terminal_after_independent_live_e2e:
+        description: 'Owner: register ONE S11 HIVE L0-L2 terminal CAS after 14 genuine World/S1/Neon checkpoints; no source release, project writes, School training or paid fallback'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -44,9 +49,21 @@ jobs:
           grep -Fq 'S11_OWNER_SIGNER_NO_PROJECT_OR_NEON_MUTATION=TRUE' .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
           grep -Fq 'no_new_scheduler:true' .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
           grep -Fq 'requires_two_s11_specific_live_checkpoints:true' .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('.github/workflows/queen-owner-s11-bounded-continuity-oidc.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          start=s.rindex(marker)+len(marker)
+          stop=s.index("\n          JS",start)
+          code="\n".join(line[10:] if line.startswith("          ") else line for line in s[start:stop].splitlines())
+          Path('/tmp/s11-terminal-owner-signer.mjs').write_text(code+"\n")
+          PY
+          node --check /tmp/s11-terminal-owner-signer.mjs
+          grep -Fq 'S11_TERMINAL_OWNER_OIDC_RS256_EXACT_LIVE=PASS' .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
+          grep -Fq 'S11_TERMINAL_NO_NEON_WRITE_IN_SIGNER=TRUE' .github/workflows/queen-owner-s11-bounded-continuity-oidc.yml
           echo S11_OWNER_SIGNER_SOURCE_ONLY_CI=PASS
   sign-exact-owner-boundary:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s11_bounded_source_release_and_one_terminal_neon_cas == true
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 7
@@ -159,4 +176,126 @@ jobs:
           console.log('S11_OWNER_SIGNED_EXACT_SOURCE_AND_NEON_CAS_AUTHORIZATION='+JSON.stringify({...receipt,sha256:digest}));
           console.log('S11_OWNER_SIGNER_NO_PROJECT_OR_NEON_MUTATION=TRUE');
           
+          JS
+  sign-exact-s11-terminal-after-live-checkpoints:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s11_terminal_after_independent_live_e2e == true
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      OWNER_APPROVAL: ${{ inputs.approve_exact_s11_terminal_after_independent_live_e2e }}
+    steps:
+      - name: Verify fresh exact Owner checkbox, S11 current source, authenticated World and original S1 checkpoint runs — read only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$OWNER_APPROVAL" = true
+          test -n "$GH_TOKEN"
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 4843357722b322a3cbece897567426cca83d6a22
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$ptr" = 4843357722b322a3cbece897567426cca83d6a22
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/113 |
+            jq -e '.state=="closed" and .merged==true and .merge_commit_sha=="4843357722b322a3cbece897567426cca83d6a22" and .changed_files==4' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/pulls/1325 |
+            jq -e '.state=="closed" and .merged==true and .merge_commit_sha=="eb0da9dd1a9e12c5f2a6e3bdaecb0d18db7a072a" and .changed_files==1' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44899922651 |
+            jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/44901638959 |
+            jq -e '.status=="completed" and .conclusion=="success" and .event=="workflow_dispatch" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/issues/102 |
+            jq -e '.state=="closed" and .state_reason=="completed"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/issues/114 |
+            jq -e '.state=="open"' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+          for run in 44902174381 44903078923 44914109770; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$run" |
+              jq -e '.status=="completed" and .conclusion=="success" and .event=="repository_dispatch" and .path==".github/workflows/hive-world-sync.yml" and .run_attempt==1' >/dev/null
+          done
+          for run in 44902204960 44903112847 44914149211; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$run" |
+              jq -e '.status=="completed" and .conclusion=="success" and .event=="repository_dispatch" and .path==".github/workflows/queen-s1-event-ingress.yml" and .run_attempt==1' >/dev/null
+          done
+          world="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-world-state.json --jq .content | tr -d '\n' | base64 -d)"
+          age="$(( $(date -u +%s) - $(date -u -d "$(jq -r .generated_at <<<"$world")" +%s) ))"
+          test "$age" -ge 0 && test "$age" -le 1800
+          jq -e '.policy=="authoritative-source-first" and .coverage.source_available>=8 and .coverage.runtimes_reachable>=7' <<<"$world" >/dev/null
+          echo S11_TERMINAL_REAL_SOURCE_WORLD_RUNS_S1_OWNER_AND_GATES=PASS
+          echo S11_TERMINAL_NEON_CYCLE_IDS_STILL_REQUIRE_SEPARATE_LIVE_DB_READBACK=TRUE
+      - name: Fresh owner GitHub RS256 OIDC grant for one terminal Neon CAS (without writing to Neon)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash} from 'node:crypto';
+          import {appendFileSync} from 'node:fs';
+          const e=process.env;
+          const reject=x=>{throw Error('S11_OWNER_OIDC_DENY_'+x)};
+          const aud='hive-queen-s11-postlive-bounded-terminal-cas-v1';
+          if(e.OWNER_APPROVAL!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)reject('NO_APPROVAL');
+          const link=e.ACTIONS_ID_TOKEN_REQUEST_URL+(e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+'audience='+encodeURIComponent(aud);
+          const response=await fetch(link,{headers:{Authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!response.ok)reject('ISSUER');
+          const parts=(await response.json()).value?.split('.')||[];
+          if(parts.length!==3)reject('PARTS');
+          const dec=x=>Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-x.length%4)%4),'base64');
+          const h=JSON.parse(dec(parts[0])),c=JSON.parse(dec(parts[1]));
+          if(h.alg!=='RS256'||!h.kid||h.jwk||h.jku||h.x5u||h.crit)reject('HEADER');
+          const claim={iss:'https://token.actions.githubusercontent.com',aud,
+           repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+           repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+           event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',ref:'refs/heads/main',
+           runner_environment:'github-hosted',
+           workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-s11-bounded-continuity-oidc.yml@refs/heads/main'};
+          for(const [k,v] of Object.entries(claim))if(String(c[k])!==v)reject('CLAIM_'+k);
+          const now=Date.now();
+          if(c.sha!==e.GITHUB_SHA||Number(c.run_id)!==Number(e.GITHUB_RUN_ID)||Number(c.run_attempt)!==1||
+             !Number.isSafeInteger(c.exp)||!Number.isSafeInteger(c.iat)||c.exp<=c.iat||
+             c.exp-c.iat>900||c.exp*1000<=now||now-c.iat*1000>300000||c.iat*1000>now+30000)reject('TIME');
+          const jwks=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!jwks.ok)reject('JWKS');
+          const k=(await jwks.json()).keys?.find(x=>x.kid===h.kid&&x.kty==='RSA'&&x.use==='sig'&&(!x.alg||x.alg==='RS256'));
+          if(!k||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key:k,format:'jwk'}),dec(parts[2])))reject('SIGNATURE');
+          appendFileSync(e.GITHUB_ENV,'S11_OWNER_SIGNED=TRUE\nS11_OWNER_EXPIRES='+String(Math.floor(now/1000)+900)+'\n');
+          console.log('S11_TERMINAL_OWNER_OIDC_RS256_EXACT_LIVE=PASS');
+          const receipt={
+            schema:'queen.s11.postlive-bounded-terminal-neon-cas-authorization.v1',
+            stage:'S11',decision:'OWNER_AUTHORIZES_ONE_EXACT_TERMINAL_NEON_CAS_ONLY_AFTER_INDEPENDENT_LIVE_E2E',
+            run_id:Number(e.GITHUB_RUN_ID),run_attempt:Number(e.GITHUB_RUN_ATTEMPT),
+            signer_relay_main_sha:e.GITHUB_SHA,
+            hive_exact_main_sha:'4843357722b322a3cbece897567426cca83d6a22',
+            hive_source_pr:113,hive_source_merge_sha:'4843357722b322a3cbece897567426cca83d6a22',
+            relay_pointer_pr:1325,relay_pointer_merge_sha:'eb0da9dd1a9e12c5f2a6e3bdaecb0d18db7a072a',
+            prior_owner_source_signer_run_id:44901638959,
+            prior_owner_source_receipt_sha256:'2b371fd3915cf02ebcb6de489fd9f754bf0c5a7452457f59be76052a82e9b953',
+            independent_s11_source_ci_run_id:44899922651,
+            mission_issue:114,
+            mission_id:'s11-owner-44901638959-hive-continuity-observe',
+            checkpoint_event_ids:[1517,1519,1543],
+            checkpoint_world_runs:[44902174381,44903078923,44914109770],
+            checkpoint_original_s1_runs:[44902204960,44903112847,44914149211],
+            original_s10_neon_terminal_event_id:1493,
+            original_s10_terminal_sha256:'9bb45ee76a3eae40daf72454f2b062316a7e52bda576df07266659987eb60eeb',
+            standing_hive_owner_grant_id:'85294f2b-f816-4564-b3e8-5c275d0f682d',
+            exact_scope:'HIVE_ONLY_L0_L1_L2_BOUND_OBSERVATIONAL_CONTINUITY_NOT_GENERAL_AUTONOMY',
+            permitted_neon_event_type:'queen.s11.bounded_continuity.owner_signed.certified',
+            permitted_neon_inserts:1,independent_neon_checkpoint_readback_required:true,
+            no_new_s1:true,no_new_s2:true,no_new_scheduler:true,
+            no_general_compute_fleet:true,no_general_s8_writes:true,
+            no_project_writes:true,no_auto_merge:true,no_auto_deploy:true,no_school_training:true,
+            no_new_paid_provider:true,no_paid_fallback:true,zero_unauthorized_cost:true,
+            owner_retains_l3_to_l5:true,
+            all_provider_invoices_independently_audited:false,
+            no_neon_write_by_signer:true,
+            issued_at:new Date(now).toISOString(),
+            expires_at:new Date(now+45*60*1000).toISOString()
+          };
+          const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S11_TERMINAL_OWNER_SIGNED_NEON_CAS_AUTHORIZATION='+JSON.stringify({...receipt,sha256:digest}));
+          console.log('S11_TERMINAL_NO_NEON_WRITE_IN_SIGNER=TRUE');
           JS
