@@ -1,0 +1,104 @@
+name: Queen S12 — Fresh Free-Neuron Daily Usage (READ ONLY)
+on:
+  push:
+    branches: [s12/fresh-neuron-use-readonly-20261121]
+    paths: ['.github/workflows/queen-s12-fresh-neuron-use-readonly.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s12-readonly-free-neurons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  independent-account-and-analytics-cost-gate:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 7
+    env:
+      DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      ALT_DEPLOY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+      BILLING: ${{ secrets.CF_BILLING_READ_TOKEN }}
+    steps:
+      - name: Read exact HIVE Pages plan and AI neurons; fail closed on missing Analytics Read
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error,datetime
+          deploy=os.getenv('DEPLOY') or os.getenv('ALT_DEPLOY')
+          billing=os.getenv('BILLING')
+          tokens=[('deploy',os.getenv('DEPLOY')),('fallback',os.getenv('ALT_DEPLOY')),('billing',billing)]
+          if not deploy or not billing:
+              print('S12_FREE_NEURONS=DENY_EXISTING_READ_TOKEN_MISSING');raise SystemExit(2)
+          def call(path,token,payload=None):
+              if not token:return 0,{}
+              headers={'Authorization':'Bearer '+token,'Accept':'application/json'}
+              data=None
+              if payload is not None:
+                  headers['Content-Type']='application/json'
+                  data=json.dumps(payload).encode()
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  data=data,method='POST' if data else 'GET',headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=18) as res:return res.status,json.load(res)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.loads(e.read().decode('utf-8'))
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          code,accounts=call('/accounts?per_page=100',deploy)
+          if code!=200 or accounts.get('success') is not True:
+              print('S12_FREE_NEURONS=DENY_HIVE_ACCOUNT_NOT_VERIFIED');raise SystemExit(3)
+          ids=[]
+          for a in accounts.get('result',[]):
+              account=str(a.get('id',''))
+              if len(account)!=32:continue
+              c,p=call('/accounts/'+account+'/pages/projects/hive-alveare',deploy)
+              if c==200 and p.get('success') is True and p.get('result',{}).get('name')=='hive-alveare':
+                  ids.append(account)
+          if len(ids)!=1:
+              print('S12_FREE_NEURONS=DENY_MULTIPLE_ACCOUNTS');raise SystemExit(4)
+          aid=ids[0]
+          code,subs=call('/accounts/'+aid+'/subscriptions',billing)
+          if code!=200 or subs.get('success') is not True or not isinstance(subs.get('result'),list):
+              print('S12_FREE_NEURONS=DENY_BILLING_READ_UNKNOWN');raise SystemExit(5)
+          billed=[]
+          for item in subs['result']:
+              plan=item.get('rate_plan') or {}
+              n=' '.join(str(plan.get(k) or '') for k in ('id','name','public_name','scope')).lower()
+              if ('worker' in n or 'ai gateway' in n) and str(item.get('state','')).lower() not in ('expired','cancelled','failed'):
+                  billed.append(n)
+          paid=any(any(t in n for t in ('paid','standard','enterprise','bundled')) for n in billed)
+          ambiguous=any(not any(t in n for t in ('free','paid','standard','enterprise','bundled')) for n in billed)
+          if paid or ambiguous:
+              print('S12_FREE_NEURONS=DENY_WORKERS_PLAN_UNVERIFIED');raise SystemExit(6)
+          utc=datetime.datetime.now(datetime.timezone.utc)
+          start=utc.replace(hour=0,minute=0,second=0,microsecond=0).isoformat(timespec='seconds').replace('+00:00','Z')
+          end=utc.isoformat(timespec='seconds').replace('+00:00','Z')
+          query='query($tag:String!,$start:Time!,$end:Time!){viewer{accounts(filter:{accountTag:$tag}){aiInferenceAdaptiveGroups(limit:100,filter:{datetime_geq:$start,datetime_leq:$end}){sum{totalNeurons}}}}}'
+          request={'query':query,'variables':{'tag':aid,'start':start,'end':end}}
+          metrics=None
+          for label,t in tokens:
+              if not t:continue
+              status,result=call('/graphql',t,request)
+              if status!=200 or result.get('errors'):
+                  print('S12_'+label.upper()+'_ANALYTICS_READ='+('UNAUTHORIZED' if status in (401,403) else 'SCHEMA_OR_ACCESS_UNKNOWN'))
+                  continue
+              accs=((result.get('data') or {}).get('viewer') or {}).get('accounts') or []
+              if len(accs)!=1:continue
+              groups=accs[0].get('aiInferenceAdaptiveGroups')
+              if not isinstance(groups,list):continue
+              vals=[((g.get('sum') or {}).get('totalNeurons')) for g in groups]
+              if any(not isinstance(x,(int,float)) or x<0 for x in vals):continue
+              metrics=sum(vals)
+              print('S12_ANALYTICS_TOKEN_REUSED='+label)
+              break
+          if metrics is None:
+              print('S12_FREE_NEURONS=DENY_DAILY_USAGE_UNVERIFIED');raise SystemExit(7)
+          print('S12_FREE_PLAN=VERIFIED')
+          print('S12_AI_NEURONS_USED_SINCE_UTC_MIDNIGHT='+str(round(metrics,2)))
+          print('S12_NO_MODEL_INFERENCE=TRUE')
+          print('S12_NO_WRITES=TRUE')
+          if metrics>5000:
+              print('S12_FREE_NEURONS=DENY_NOT_ENOUGH_CERTIFIED_HEADROOM')
+              raise SystemExit(8)
+          print('S12_FREE_NEURONS=PASS_READONLY_PROVISIONAL_CAP')
+          print('S12_COST_ATTESTATION_NOT_NEON_OWNER_PERMISSION=TRUE')
+          PY
