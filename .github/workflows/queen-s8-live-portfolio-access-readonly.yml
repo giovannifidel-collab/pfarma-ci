@@ -1,0 +1,186 @@
+name: Queen S8 Live Portfolio Access Read-Only Proof
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-live-portfolio-access-readonly.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/queen-s8-live-portfolio-access-readonly.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s8-portfolio-edge-live-readonly
+  cancel-in-progress: false
+jobs:
+  authenticated-no-write-edge-proof:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    env:
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Diagnose authoritative Queen Pages deployment (Cloudflare GET only)
+        shell: bash
+        env:
+          CF_DEPLOY_AUDIT_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_DEPLOY_AUDIT_SECONDARY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,urllib.request,urllib.error
+          token=os.getenv("CF_DEPLOY_AUDIT_PRIMARY") or os.getenv("CF_DEPLOY_AUDIT_SECONDARY")
+          expected="296677c77946b91ca1c8f9da70d41d87b975c5e4"
+          if not token:
+              print("S8_PAGES_DIAGNOSTIC=DENY_NO_CLOUDFLARE_AUDIT_CREDENTIAL")
+              raise SystemExit(0)
+          def get(path):
+              request=urllib.request.Request("https://api.cloudflare.com/client/v4"+path,
+                  headers={"Authorization":"Bearer "+token,"Accept":"application/json"},method="GET")
+              try:
+                  with urllib.request.urlopen(request,timeout=12) as response:
+                      return response.status,json.load(response)
+              except urllib.error.HTTPError as err:
+                  return err.code,{}
+              except Exception:return 0,{}
+          s,accounts=get("/accounts?per_page=50")
+          if s!=200 or accounts.get("success") is not True:
+              print("S8_PAGES_DIAGNOSTIC=DENY_ACCOUNT_UNVERIFIED");raise SystemExit(0)
+          matched=[]
+          for account in accounts.get("result",[]):
+              aid=account.get("id","")
+              if not isinstance(aid,str) or len(aid)!=32:continue
+              st,p=get("/accounts/"+aid+"/pages/projects/hive-alveare")
+              if st==200 and p.get("success") is True and (p.get("result") or {}).get("name")=="hive-alveare":
+                  matched.append((aid,p["result"]))
+          print("S8_PAGES_PROJECT_COUNT="+str(len(matched)))
+          if len(matched)!=1:
+              print("S8_PAGES_DIAGNOSTIC=DENY_PROJECT_NOT_UNIQUE");raise SystemExit(0)
+          account_id,p=matched[0]
+          branch=((p.get("source") or {}).get("config") or {}).get("production_branch")
+          latest=p.get("latest_deployment") or {}
+          actual=((latest.get("deployment_trigger") or {}).get("metadata") or {}).get("commit_hash")
+          stage=(latest.get("latest_stage") or {}).get("status")
+          print("S8_PAGES_MAIN_BRANCH="+str(branch=="main"))
+          print("S8_PAGES_LATEST_DEPLOYMENT_STATUS="+str(stage in ("success","active","completed")))
+          print("S8_PAGES_LATEST_STAGE_ENUM="+str(stage)[:32])
+          print("S8_PAGES_LATEST_PRIVATE_SHA_MATCH="+str(actual==expected))
+          deploy_id=latest.get("id","")
+          if stage=="failure" and isinstance(deploy_id,str) and len(deploy_id)==36:
+              st,log_data=get("/accounts/"+account_id+"/pages/projects/hive-alveare/deployments/"+deploy_id+"/history/logs")
+              print("S8_PAGES_FAILURE_LOG_API_STATUS="+str(st))
+              if st==200 and log_data.get("success") is True:
+                  import re
+                  candidates=[]
+                  for entry in ((log_data.get("result") or {}).get("data") or []):
+                      line=str(entry.get("line",""))
+                      if not re.search(r"error|failed|cannot|resolve|missing|unexpected|exception",line,re.I):continue
+                      if re.search(r"secret|token|password|authorization|private.key|bearer|credential|api.key",line,re.I):continue
+                      line=re.sub(r"https?://\\S+","[url]",line)
+                      line=re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+","[email]",line)
+                      line=re.sub(r"[a-f0-9]{32,}","[sha]",line,flags=re.I)
+                      candidates.append(line.strip()[:220])
+                  print("S8_PAGES_SANITIZED_FAILURE_LINES="+str(len(candidates)))
+                  for i,line in enumerate(candidates[-6:]):
+                      print("S8_PAGES_FAILURE_"+str(i)+"="+line)
+          from collections import Counter
+          from urllib.parse import urlencode
+          observed=0
+          stage_counts=Counter()
+          last_success=None
+          for page in range(1,11):
+              st,deployments=get("/accounts/"+account_id+
+                  "/pages/projects/hive-alveare/deployments?"+
+                  urlencode({"per_page":20,"page":page}))
+              if st!=200 or deployments.get("success") is not True:
+                  print("S8_PAGES_DEPLOYMENT_PAGE_READ="+str(st))
+                  break
+              records=deployments.get("result") or []
+              if not isinstance(records,list) or not records:break
+              observed+=len(records)
+              for item in records:
+                  state=str((item.get("latest_stage") or {}).get("status","unknown"))[:24]
+                  stage_counts[state]+=1
+                  if item.get("environment")!="production" or state!="success":
+                      continue
+                  candidate=((item.get("deployment_trigger") or {}).get("metadata") or {}).get("commit_hash","")
+                  if isinstance(candidate,str) and len(candidate)==40 and all(c in "0123456789abcdef" for c in candidate):
+                      last_success=candidate
+                      break
+              if last_success or len(records)<20:break
+          print("S8_PAGES_DEPLOYMENT_RECORDS_SCANNED="+str(observed))
+          print("S8_PAGES_STAGE_COUNTS="+str(dict(stage_counts)))
+          if last_success:
+              print("S8_PAGES_HISTORIC_SUCCESS_PRODUCTION_SHA="+last_success)
+              print("S8_PAGES_ROLLBACK_UNVERIFIED=TRUE")
+          else:
+              print("S8_PAGES_HISTORIC_SUCCESS=NOT_FOUND_IN_SCANNED_RECORDS")
+              print("S8_PAGES_RELEASE=DENY_WITHOUT_VERIFIED_ROLLBACK")
+          print("S8_PAGES_DIAGNOSTIC=READONLY_ONLY_NO_REDEPLOY")
+          PY
+      - name: Read live Queen portfolio; no deployment, inference or products accessed
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          url='https://hive-alveare.pages.dev/api/queen-s8-portfolio'
+          status="$(curl --silent --show-error --max-time 25 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            -H 'Accept: application/json' \
+            -o "$RUNNER_TEMP/queen-s8-edge.json" -w '%{http_code}' "$url")"
+          echo "S8_PORTFOLIO_HTTP_STATUS=$status"
+          test "$status" = 200 || { echo 'S8_PORTFOLIO_EDGE=DENY_NOT_DEPLOYED_OR_ACCESS_FAILURE'; exit 1; }
+          jq -e '
+            .ok==true and .stage=="S8" and
+            .component=="queen-portfolio-awareness" and
+            .project_count==10 and (.projects|length)==10 and
+            .private_source_current_head_rechecked==false and
+            .source_snapshot_staleness_must_be_revalidated==true and
+            .default_dispatch=="DENY" and
+            .general_autonomous_project_routing==false and
+            .model_calls_authorized==false and
+            .external_actions_authorized==false and
+            .product_writes==false and
+            .auto_merge==false and .auto_deploy==false and
+            .school_training_eligible==false and
+            .paid_fallback==false and
+            ([.projects[] |
+              select(.can_call_model==false and
+                     .can_write_branch==false and
+                     .can_merge==false and .can_deploy==false and
+                     .can_train_school==false)] |length)==10
+          ' "$RUNNER_TEMP/queen-s8-edge.json" >/dev/null
+          echo 'S8_PORTFOLIO_EDGE=LIVE_READONLY_CONFIRMED'
+          echo 'S8_OTHER_PROJECT_MUTATIONS=ZERO'
+          echo 'S8_MODEL_CALLS=ZERO'
+      - name: Verify unauthenticated request does not reveal protected portfolio
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl --silent --show-error --max-time 25 \
+            -o "$RUNNER_TEMP/queen-s8-anon.html" -w '%{http_code}' \
+            https://hive-alveare.pages.dev/api/queen-s8-portfolio)"
+          case "$code" in
+            301|302|303|307|308|401|403) echo 'S8_PORTFOLIO_ACCESS_BOUNDARY=PASS';;
+            *) echo 'S8_PORTFOLIO_ACCESS_BOUNDARY=DENY_UNEXPECTED_STATUS'; exit 1;;
+          esac
+      - name: Verify S7 and S8 no-model endpoint unaffected
+        shell: bash
+        run: |
+          set -euo pipefail
+          for endpoint in queen-s7-e2e queen-s8-workers-ai; do
+            curl --fail --silent --show-error --max-time 25 \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              "https://hive-alveare.pages.dev/api/$endpoint" \
+              -o "$RUNNER_TEMP/$endpoint.json"
+          done
+          jq -e '.ok==true and .stage=="S7" and .default_dispatch=="DENY" and .general_routing==false' \
+            "$RUNNER_TEMP/queen-s7-e2e.json" >/dev/null
+          jq -e '.ok==true and .stage=="S8" and .model_invoked==false and .default_dispatch=="DENY" and .paid_fallback==false' \
+            "$RUNNER_TEMP/queen-s8-workers-ai.json" >/dev/null
+          echo 'S8_LIVE_S7_AND_INFERENCE_DENIAL_REGRESSION=PASS'
+      - name: Clean all temporary API responses
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/queen-s8-edge.json" "$RUNNER_TEMP/queen-s8-anon.html" "$RUNNER_TEMP/queen-s7-e2e.json" "$RUNNER_TEMP/queen-s8-workers-ai.json"
