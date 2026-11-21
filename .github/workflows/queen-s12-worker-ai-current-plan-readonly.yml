@@ -22,54 +22,57 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json,os,urllib.request,urllib.error
-          token=os.getenv('CF_PRIMARY_TOKEN') or os.getenv('CF_FALLBACK_TOKEN')
-          if not token:
+          tokens=[('primary',os.getenv('CF_PRIMARY_TOKEN')),('fallback',os.getenv('CF_FALLBACK_TOKEN'))]
+          tokens=[(n,t) for n,t in tokens if t]
+          if not tokens:
               print('S12_CLOUDFLARE_BILLING=DENY_NO_READ_TOKEN')
               raise SystemExit(2)
-          def fetch(path):
-              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
-                  headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+          def get(token,path):
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
               try:
-                  with urllib.request.urlopen(req,timeout=15) as r:
-                      return r.status,json.load(r)
-              except (urllib.error.HTTPError,TimeoutError,OSError,ValueError):
-                  return 0,{}
-          code,resp=fetch('/accounts?per_page=100')
-          if code!=200 or resp.get('success') is not True:
-              print('S12_CLOUDFLARE_BILLING=DENY_ACCOUNT_DISCOVERY')
-              raise SystemExit(3)
-          ids=[]
-          for a in resp.get('result',[]):
-              aid=a.get('id','')
-              if not isinstance(aid,str) or len(aid)!=32:continue
-              code,ret=fetch('/accounts/'+aid+'/pages/projects/hive-alveare')
-              if code==200 and ret.get('success') is True and ret.get('result',{}).get('name')=='hive-alveare':
-                  ids.append(aid)
-          if len(ids)!=1:
-              print('S12_CLOUDFLARE_BILLING=DENY_EXACT_HIVE_ACCOUNT')
-              raise SystemExit(4)
-          code,info=fetch('/accounts/'+ids[0]+'/subscriptions')
-          if code!=200 or info.get('success') is not True or not isinstance(info.get('result'),list):
-              print('S12_CLOUDFLARE_BILLING=DENY_SUBSCRIPTIONS_NOT_PROVEN')
-              raise SystemExit(5)
-          plans=[]
-          for i in info['result']:
-              p=i.get('rate_plan') or {}
-              n=' '.join(str(p.get(k) or '') for k in ('id','public_name','name','scope')).lower()
-              if not any(x in n for x in ('worker','ai')):continue
-              active=str(i.get('state','')).lower() not in ('cancelled','expired','failed')
-              plans.append((n,active))
-          has_free=any('free' in n and active for n,active in plans)
-          has_paid=any(active and any(q in n for q in ('paid','enterprise','standard')) for n,active in plans)
-          print('S12_HIVE_ACCOUNT_EXACT=PASS')
-          print('S12_WORKERS_FREE_ACTIVE='+str(has_free).upper())
-          print('S12_WORKERS_PAID_SUBSCRIPTION_ACTIVE='+str(has_paid).upper())
+                  with urllib.request.urlopen(req,timeout=15) as r: return r.status,json.load(r)
+              except urllib.error.HTTPError as e: return e.code,{}
+              except (TimeoutError,OSError,ValueError): return 0,{}
+          candidates=[]
+          for label,token in tokens:
+              code,acc=get(token,'/accounts?per_page=100')
+              if code!=200 or acc.get('success') is not True:
+                  print('S12_'+label.upper()+'_ACCOUNT_LOOKUP_STATUS='+str(code))
+                  continue
+              for a in acc.get('result',[]):
+                  account_id=a.get('id','')
+                  if not isinstance(account_id,str) or len(account_id)!=32: continue
+                  code,page=get(token,'/accounts/'+account_id+'/pages/projects/hive-alveare')
+                  if code!=200 or page.get('success') is not True or page.get('result',{}).get('name')!='hive-alveare': continue
+                  code,subs=get(token,'/accounts/'+account_id+'/subscriptions')
+                  if code!=200 or subs.get('success') is not True or not isinstance(subs.get('result'),list):
+                      print('S12_'+label.upper()+'_SUBSCRIPTIONS_READ_STATUS='+str(code))
+                      continue
+                  plans=[]
+                  for item in subs['result']:
+                      rate=item.get('rate_plan') or {}
+                      descriptor=' '.join(str(rate.get(k) or '') for k in ('id','public_name','name','scope')).lower()
+                      if not any(q in descriptor for q in ('worker','ai')):continue
+                      active=str(item.get('state','')).lower() not in ('cancelled','expired','failed')
+                      plans.append((descriptor,active))
+                  free=any('free' in n and active for n,active in plans)
+                  paid=any(active and any(q in n for q in ('paid','enterprise','standard')) for n,active in plans)
+                  candidates.append((account_id,free,paid))
+          if not candidates:
+              print('S12_CLOUDFLARE_BILLING=DENY_ALL_TOKENS_LACK_BILLING_READ')
+              raise SystemExit(6)
+          unique_ids={a for a,_,_ in candidates}
+          free=all(f for _,f,_ in candidates)
+          paid=any(p for _,_,p in candidates)
+          print('S12_EXACT_HIVE_ACCOUNTS_READABLE='+str(len(unique_ids)))
+          print('S12_WORKERS_FREE_ACTIVE='+str(free).upper())
+          print('S12_WORKERS_PAID_SUBSCRIPTION_ACTIVE='+str(paid).upper())
           print('S12_AI_MODEL_CALLS=0')
           print('S12_PROJECT_WRITES=0')
           print('S12_NEON_MUTATIONS=0')
           print('S12_PLAN_NOT_QUOTA_OR_INFERENCE_AUTHORIZATION=TRUE')
-          if not has_free or has_paid:
-              print('S12_FREE_BILLING=DENY_PLAN_UNSAFE_OR_UNKNOWN')
-              raise SystemExit(6)
+          if len(unique_ids)!=1 or not free or paid:
+              print('S12_FREE_BILLING=DENY_UNKNOWN_OR_PAID')
+              raise SystemExit(7)
           print('S12_CURRENT_FREE_PLAN_OBSERVED=PASS')
           PY
