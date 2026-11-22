@@ -1,7 +1,7 @@
 name: Queen S12 — One Exact Private Project Draft PR (Owner + Neon + Free Model)
 on:
   push:
-    branches: [s12/one-project-draft-runner-source-20261121]
+    branches: [s12/one-project-draft-runner-source-20261121, s12/runner-safe-deny-diagnostics-20261122]
     paths: ['.github/workflows/queen-s12-one-project-draft-runner.yml']
   workflow_dispatch:
     inputs:
@@ -35,6 +35,9 @@ jobs:
           test "$(git diff --name-only origin/main...HEAD)" = .github/workflows/queen-s12-one-project-draft-runner.yml
           grep -Fq 'approve_one_s12_private_draft' .github/workflows/queen-s12-one-project-draft-runner.yml
           grep -Fq 'S12_NEW_TRUSTED_OWNER_GRANT_REQUIRED=TRUE' .github/workflows/queen-s12-one-project-draft-runner.yml
+          grep -Fq 'S12_TRUSTED_OWNER_INTAKE_HTTP=' .github/workflows/queen-s12-one-project-draft-runner.yml
+          grep -Fq 'S12_TRUSTED_OWNER_INTAKE_REASON=' .github/workflows/queen-s12-one-project-draft-runner.yml
+          grep -Fq "deny('TRUSTED_NEON_GATE_FAILED')" .github/workflows/queen-s12-one-project-draft-runner.yml
           grep -Fq 'persist-credentials: false' .github/workflows/queen-s12-one-project-draft-runner.yml
           grep -Fq 'cloudflare/functions/api/queen-s12-project-proposal.js' .github/workflows/queen-s12-one-project-draft-runner.yml
           echo S12_ONE_BOUNDED_SOURCE_ONLY_CI=PASS
@@ -132,7 +135,13 @@ jobs:
             'X-Queen-CI-OIDC':oidc,'content-type':'application/json'},
            body:JSON.stringify(body)});
           const j=await r.json().catch(()=>null);
-          if(!r.ok||j?.ok!==true||j?.decision!=='TRUSTED_OWNER_NEON_LEASE_ONLY')deny('TRUSTED_NEON_GATE_FAILED');
+          if(!r.ok||j?.ok!==true||j?.decision!=='TRUSTED_OWNER_NEON_LEASE_ONLY'){
+            // Safe diagnostics only: never print tokens, OIDC, Access headers or raw responses.
+            const reason=typeof j?.reason==='string'&&/^[a-z0-9_-]{1,96}$/i.test(j.reason)?j.reason:'unknown_or_nonjson';
+            console.error('S12_TRUSTED_OWNER_INTAKE_HTTP='+r.status);
+            console.error('S12_TRUSTED_OWNER_INTAKE_REASON='+reason);
+            deny('TRUSTED_NEON_GATE_FAILED');
+          }
           console.log('S12_REGISTER_OWNER_OIDC_NEON_GATE=PASS');
           JS
       - name: Independently verify Cloudflare Workers Free plan and current daily neurons
