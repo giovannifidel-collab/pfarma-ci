@@ -66,9 +66,9 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$GITHUB_RUN_ATTEMPT" = 1
           test -n "$GH_TOKEN"
-          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = d599697f47e570c0dbcf7dc22365cb2e77716de2
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 4eb89a081a10ce6c066a80ad749c70946f68a75d
           ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
-          test "$ptr" = d599697f47e570c0dbcf7dc22365cb2e77716de2
+          test "$ptr" = 4eb89a081a10ce6c066a80ad749c70946f68a75d
           test "$(gh api repos/giovannifidel-collab/project-giovanni/branches/main --jq .commit.sha)" = 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
           test "$(gh api repos/giovannifidel-collab/hive-field/branches/main --jq .commit.sha)" = 2b51de88dec2e4e4ae01102fac2a3b95a9f0b5fd
           gh api repos/giovannifidel-collab/hive-alveare/pulls/115 |
@@ -76,6 +76,11 @@ jobs:
           # New bounded Workers AI source follows the previously certified S12 contract.
           gh api repos/giovannifidel-collab/hive-alveare/pulls/117 |
             jq -e '.state=="closed" and .merged==true and .merge_commit_sha=="d599697f47e570c0dbcf7dc22365cb2e77716de2" and .changed_files==3' >/dev/null
+          # PR118 exact 11-file trusted runtime source was Owner-approved and merged.
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/118 |
+            jq -e '.state=="closed" and .merged==true and .merge_commit_sha=="4eb89a081a10ce6c066a80ad749c70946f68a75d" and .head.sha=="2acb60aa08daf74844f82226c1faf19de82dcf4b" and .changed_files==11' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44936698566 |
+            jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="2acb60aa08daf74844f82226c1faf19de82dcf4b" and .run_attempt==1' >/dev/null
           gh api repos/giovannifidel-collab/pfarma-ci/pulls/1334 |
             jq -e '.state=="closed" and .merged==true and .changed_files==1' >/dev/null
           gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44921948341 |
@@ -161,7 +166,7 @@ jobs:
            owner:'giovannifidel-collab',
            run_id:Number(e.GITHUB_RUN_ID),run_attempt:Number(e.GITHUB_RUN_ATTEMPT),
            relay_signer_main_sha:e.GITHUB_SHA,
-           hive_main_sha:'d599697f47e570c0dbcf7dc22365cb2e77716de2',
+           hive_main_sha:'4eb89a081a10ce6c066a80ad749c70946f68a75d',
            s11_terminal_event_id:1546,s12_track_issue:116,
            s12_source_pr_merged:117,s12_source_contract_pr_merged:115,
            baseline_ci_run:44917513612,source_ci_run:44921948341,source_contract_ci_run:44917410374,
