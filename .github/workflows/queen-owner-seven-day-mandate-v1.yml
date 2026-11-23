@@ -1,0 +1,137 @@
+name: Queen Owner Seven-Day Mandate — Authenticated Scoped Delegation
+on:
+  push:
+    branches: [s12/owner-seven-day-signer-source-20261123]
+    paths: ['.github/workflows/queen-owner-seven-day-mandate-v1.yml']
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-owner-seven-day-mandate-v1.yml']
+  workflow_dispatch:
+    inputs:
+      approve_seven_day_owner_mandate:
+        description: 'Owner: authorize one revocable seven-day bounded S12 operational receipt; not unlimited rights, paid services, main merge, deploy, School or terminal CAS'
+        type: boolean
+        required: true
+        default: false
+      revoke_existing_mandate:
+        description: 'Owner: REVOKE previous mandate instead of creating a new one'
+        type: boolean
+        required: false
+        default: false
+      existing_owner_run_id:
+        description: 'Only for revocation: original Owner registration run ID'
+        type: string
+        required: false
+        default: '0'
+permissions: {contents: read}
+concurrency:
+  group: queen-owner-seven-day-mandate
+  cancel-in-progress: false
+jobs:
+  source-only-ci:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Exactly one new manual workflow, no secrets on source checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only origin/main...HEAD)" = '.github/workflows/queen-owner-seven-day-mandate-v1.yml'
+          grep -Fq 'approve_seven_day_owner_mandate:' .github/workflows/queen-owner-seven-day-mandate-v1.yml
+          grep -Fq 'hive-queen-owner-seven-day-v1' .github/workflows/queen-owner-seven-day-mandate-v1.yml
+          grep -Fq 'environment: pfarma-ci-trusted' .github/workflows/queen-owner-seven-day-mandate-v1.yml
+          grep -Fq "github.event_name == 'workflow_dispatch'" .github/workflows/queen-owner-seven-day-mandate-v1.yml
+          grep -Fq 'no_auto_merge' .github/workflows/queen-owner-seven-day-mandate-v1.yml
+          echo S12_OWNER_7DAY_SIGNER_SOURCE_ONLY=PASS
+  sign-owner:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: pfarma-ci-trusted
+    permissions: {contents: read, id-token: write}
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      OWNER_APPROVE: ${{ inputs.approve_seven_day_owner_mandate }}
+      OWNER_REVOKE: ${{ inputs.revoke_existing_mandate }}
+      OWNER_REVOKED_RUN: ${{ inputs.existing_owner_run_id }}
+    steps:
+      - name: Require one exact authenticated Owner decision and aligned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          if [ "$OWNER_APPROVE" = true ] && [ "$OWNER_REVOKE" != true ]; then
+            echo OWNER_MANDATE_INTENT=REGISTER
+          elif [ "$OWNER_APPROVE" != true ] && [ "$OWNER_REVOKE" = true ]; then
+            [[ "$OWNER_REVOKED_RUN" =~ ^[1-9][0-9]*$ ]]
+            echo OWNER_MANDATE_INTENT=REVOKE
+          else
+            echo S12_DENY_CONFLICTING_OWNER_DECISION
+            exit 3
+          fi
+          gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq '.commit.sha' > "$RUNNER_TEMP/mandate-hive-sha"
+          gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n' > "$RUNNER_TEMP/mandate-relay-sha"
+          cmp "$RUNNER_TEMP/mandate-hive-sha" "$RUNNER_TEMP/mandate-relay-sha" || { echo S12_DENY_SOURCE_UNALIGNED; exit 4; }
+          curl --fail --silent --show-error --max-time 20 \
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+            https://hive-alveare.pages.dev/api/queen-owner-seven-day-mandate |
+            jq -e '.ok==true and .route=="owner-seven-day-mandate-v1" and .grants_provider_credentials==false' >/dev/null
+          echo S12_7DAY_OWNER_SOURCE_AND_ACCESS_GATE=PASS
+      - name: Fresh GitHub OIDC signed seven-day grant or revocation, Neon readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const e=process.env;
+          const deny=x=>{throw Error('S12_OWNER_MANDATE_DENY_'+x)};
+          if(!e.ACTIONS_ID_TOKEN_REQUEST_URL||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN||
+             !e.CF_ACCESS_CLIENT_ID||!e.CF_ACCESS_CLIENT_SECRET)deny('OIDC_ACCESS_MISSING');
+          const req=e.ACTIONS_ID_TOKEN_REQUEST_URL;
+          const r=await fetch(req+(req.includes('?')?'&':'?')+
+           'audience='+encodeURIComponent('hive-queen-owner-seven-day-v1'),
+           {headers:{authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!r.ok)deny('OIDC_ISSUER');
+          const token=(await r.json()).value;
+          if(typeof token!=='string'||token.length<300)deny('OIDC_TOKEN');
+          const approve=e.OWNER_APPROVE==='true',revoke=e.OWNER_REVOKE==='true';
+          if(approve===revoke)deny('EXACT_OWNER_DECISION');
+          const body={action:approve?'register':'revoke',
+            run_id:Number(e.GITHUB_RUN_ID),run_attempt:Number(e.GITHUB_RUN_ATTEMPT),
+            public_sha:e.GITHUB_SHA};
+          if(approve)body.approve_days=7;
+          else {const id=Number(e.OWNER_REVOKED_RUN);
+            if(!Number.isSafeInteger(id)||id<=0)deny('REVOKE_TARGET');
+            body.expected_owner_run_id=id;}
+          const response=await fetch('https://hive-alveare.pages.dev/api/queen-owner-seven-day-mandate',{
+           method:'POST',redirect:'error',
+           headers:{'CF-Access-Client-Id':e.CF_ACCESS_CLIENT_ID,
+            'CF-Access-Client-Secret':e.CF_ACCESS_CLIENT_SECRET,
+            'X-Queen-CI-OIDC':token,'content-type':'application/json'},
+           body:JSON.stringify(body)});
+          const x=await response.json().catch(()=>null);
+          if(!response.ok||x?.ok!==true)deny('TRUSTED_NEON_OWNER_GATE');
+          if(approve){
+            if(x.decision!=='AUTHENTICATED_SEVEN_DAY_OWNER_POLICY_RECEIPT'||
+               x.owner_run_id!==body.run_id||x.grants_provider_credentials!==false||
+               x.no_auto_merge!==true||x.no_auto_deploy!==true||
+               x.independent_runtime_gate_required!==true||
+               !Number.isFinite(Date.parse(x.expires_at)))deny('RECEIPT_READBACK');
+            console.log('S12_SEVEN_DAY_OWNER_MANDATE_NEON=ACTIVE');
+            console.log('S12_SEVEN_DAY_EXPIRES_AT='+x.expires_at);
+          }else{
+            if(x.decision!=='MANDATE_REVOKED'||x.original_run_id!==body.expected_owner_run_id)
+              deny('REVOCATION_READBACK');
+            console.log('S12_SEVEN_DAY_OWNER_MANDATE_NEON=REVOKED');
+          }
+          console.log('S12_NO_PROVIDER_ROOT_RIGHTS_OR_AUTO_MERGE_DEPLOY=TRUE');
+          JS
