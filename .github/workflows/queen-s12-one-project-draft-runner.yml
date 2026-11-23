@@ -1,7 +1,7 @@
 name: Queen S12 — One Exact Private Project Draft PR (Owner + Neon + Free Model)
 on:
   push:
-    branches: [s12/one-project-draft-runner-source-20261121, s12/runner-safe-deny-diagnostics-20261122]
+    branches: [s12/one-project-draft-runner-source-20261121, s12/runner-safe-deny-diagnostics-20261122, s12/runner-owner-signature-consistency-20261123]
     paths: ['.github/workflows/queen-s12-one-project-draft-runner.yml']
   workflow_dispatch:
     inputs:
@@ -37,6 +37,8 @@ jobs:
           grep -Fq 'S12_NEW_TRUSTED_OWNER_GRANT_REQUIRED=TRUE' .github/workflows/queen-s12-one-project-draft-runner.yml
           grep -Fq 'S12_TRUSTED_OWNER_INTAKE_HTTP=' .github/workflows/queen-s12-one-project-draft-runner.yml
           grep -Fq 'S12_TRUSTED_OWNER_INTAKE_REASON=' .github/workflows/queen-s12-one-project-draft-runner.yml
+          grep -Fq 'S12_OWNER_SIGNER_PROPAGATION_CONFIRMED=PASS' .github/workflows/queen-s12-one-project-draft-runner.yml
+          grep -Fq 'S12_SIGNER_GITHUB_SOURCE_OR_OIDC_INVALID_DENY' .github/workflows/queen-s12-one-project-draft-runner.yml
           grep -Fq "deny('TRUSTED_NEON_GATE_FAILED')" .github/workflows/queen-s12-one-project-draft-runner.yml
           grep -Fq 'persist-credentials: false' .github/workflows/queen-s12-one-project-draft-runner.yml
           grep -Fq 'cloudflare/functions/api/queen-s12-project-proposal.js' .github/workflows/queen-s12-one-project-draft-runner.yml
@@ -110,6 +112,43 @@ jobs:
           node --check hive-source/ops/queen/s12/s12-trusted-project-draft.mjs
           node --test hive-source/ops/queen/s12/tests/s12-trusted-project-draft.test.mjs
           echo S12_INDEPENDENT_RUNNER_GATES=PASS
+      - name: Verify latest current-SHA Owner signer completed and allow GitHub run-index propagation
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The preceding Owner signer is completed at most seconds before this runner.
+          # GitHub's REST workflow-runs listing can briefly lag its run-detail/job API.
+          # NEVER accept an incomplete, stale, wrong-SHA, nonmanual or foreign signer.
+          signer_id=''
+          for attempt in $(seq 1 18); do
+            response="$(gh api -H 'Cache-Control: no-cache' \
+              'repos/giovannifidel-collab/pfarma-ci/actions/runs?event=workflow_dispatch&per_page=100' 2>/dev/null)" || response=''
+            if test -n "$response"; then
+              signer_id="$(jq -r --arg sha "$GITHUB_SHA" \
+                '[.workflow_runs[] | select(.path==".github/workflows/queen-owner-s12-two-project-draft-oidc.yml" and .head_sha==$sha and .head_branch=="main" and .event=="workflow_dispatch" and .status=="completed" and .conclusion=="success" and .run_attempt==1 and .actor.login=="giovannifidel-collab" and .triggering_actor.login=="giovannifidel-collab" and .repository.full_name=="giovannifidel-collab/pfarma-ci")] | sort_by(.created_at) | last | .id // empty' <<<"$response")"
+            fi
+            if test -n "$signer_id" && test "$signer_id" -gt 0; then
+              signer="$(gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$signer_id")"
+              created="$(jq -r .created_at <<<"$signer")"
+              age="$(( $(date -u +%s) - $(date -u -d "$created" +%s) ))"
+              if test "$age" -ge 0 && test "$age" -le 1200 &&
+                jq -e --arg sha "$GITHUB_SHA" \
+                '.event=="workflow_dispatch" and .path==".github/workflows/queen-owner-s12-two-project-draft-oidc.yml" and .head_sha==$sha and .head_branch=="main" and .status=="completed" and .conclusion=="success" and .run_attempt==1 and .actor.login=="giovannifidel-collab" and .triggering_actor.login=="giovannifidel-collab"' <<<"$signer" >/dev/null; then
+                  # Keep the original trusted Worker OIDC + Neon proof as final authority.
+                  # This wait is for cross-endpoint visibility only, not an Owner bypass.
+                  sleep 20
+                  echo S12_OWNER_SIGNER_PROPAGATION_CONFIRMED=PASS
+                  break
+              fi
+            fi
+            signer_id=''
+            sleep 5
+          done
+          if test -z "$signer_id"; then
+            echo S12_SIGNER_GITHUB_SOURCE_OR_OIDC_INVALID_DENY
+            exit 42
+          fi
+          echo S12_NEW_FRESH_OWNER_OIDC_AND_NEON_CAS_STILL_REQUIRED=TRUE
       - name: Fresh GitHub Owner OIDC registers exactly one trusted Neon execution lease
         shell: bash
         run: |
