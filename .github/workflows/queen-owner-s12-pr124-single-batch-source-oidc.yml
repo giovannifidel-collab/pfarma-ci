@@ -5,8 +5,8 @@ on:
     paths: ['.github/workflows/queen-owner-s12-pr124-single-batch-source-oidc.yml']
   workflow_dispatch:
     inputs:
-      approve_exact_s12_hive_proof_diagnostics_pr124_only:
-        description: 'Owner: exact HIVE PR124 six-file exact bounded Owner V3 batch source source only; no AI, private writes, deploy, merge or paid fallback'
+      approve_exact_s12_hive_single_batch_v3_source_pr124_only:
+        description: 'Owner: exact HIVE PR124 six-file V3 bounded batch source release only; no AI, private writes, deploy, merge or paid fallback'
         required: true
         type: boolean
         default: false
@@ -46,14 +46,14 @@ jobs:
           grep -Fq 'changed_files==6' .github/workflows/queen-owner-s12-pr124-single-batch-source-oidc.yml
           echo S12_OWNER_PR124_DIAGNOSTICS_SIGNER_SOURCE_CI=PASS
   pr124-safe-proof-diagnostics-source-only-owner-rs256:
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_proof_diagnostics_pr124_only == true
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_s12_hive_single_batch_v3_source_pr124_only == true
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 7
     permissions: {contents: read, actions: read, id-token: write}
     env:
       GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
-      OWNER_APPROVE: ${{ inputs.approve_exact_s12_hive_proof_diagnostics_pr124_only }}
+      OWNER_APPROVE: ${{ inputs.approve_exact_s12_hive_single_batch_v3_source_pr124_only }}
     steps:
       - name: Verify Owner exact source, canonical S1/S2 unchanged, source-only independent CI and PR124
         shell: bash
@@ -125,8 +125,8 @@ jobs:
           if(!key||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),createPublicKey({key,format:'jwk'}),dec(parts[2])))deny('JWT_SIGNATURE');
           console.log('S12_OWNER_OIDC_RS256_TRUSTED_RUNTIME_SOURCE=PASS');
           const receipt={
-           schema:'queen.s12.exact-owner-proof-diagnostics-source-release.v1',stage:'S12',
-           decision:'OWNER_AUTHORIZES_EXACT_HIVE_PR124_SINGLE_BATCH_V3_SOURCE_SOURCE_ONLY_NO_MODEL_OR_PRODUCT_RIGHTS',
+           schema:'queen.s12.exact-owner-single-batch-v3-source-release.v1',stage:'S12',
+           decision:'OWNER_AUTHORIZES_EXACT_HIVE_PR124_SINGLE_BATCH_V3_SOURCE_ONLY_NO_MODEL_OR_PRODUCT_RIGHTS',
            run_id:Number(e.GITHUB_RUN_ID),run_attempt:1,relay_signer_main_sha:e.GITHUB_SHA,
            hive_base_sha:'ec2dea75e89ffe6d3dc8aa8cb44300e9f98b615f',
            hive_pr:124,hive_pr_head:'004d5a1514281ae1102c86dfb0af99411cd15db3',
@@ -134,7 +134,7 @@ jobs:
            existing_s8_worker_untouched:true,s11_terminal_neon_event:1546,
            s12_dual_project_owner_grant_event:1557,stage_tracker_issue:116,
            existing_provider:'cloudflare-pages-workers-ai',
-           existing_pages_extension_only:true,one_new_trusted_intake_function:false,
+           existing_pages_extension_only:true,one_new_trusted_intake_function:true,
            no_neon_write_by_signer:true,no_project_writes:true,no_live_model_invocation_by_signer:true,
            no_new_event_loop:true,no_new_scheduler:true,no_new_provider:true,
            no_auto_merge:true,no_auto_deploy:true,no_school_training:true,no_paid_fallback:true,
