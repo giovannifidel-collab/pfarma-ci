@@ -35,6 +35,7 @@ jobs:
           grep -Fq 'S12_BATCH_V3_OWNER_OIDC_AND_NEON_REGISTER=PASS' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'S12_BATCH_V3_OWNER_FREE_COST=PASS' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'S12_GENERATION: "3"' .github/workflows/queen-owner-s12-single-batch-v3.yml
+          grep -Fq 'S12_BATCH_V3_ONE_PROJECT_EXACT_LEASE=PASS' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'S12_BATCH_V3_ONE_PRIVATE_DRAFT_RECEIPT=PASS' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'environment: pfarma-ci-trusted' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'fail-fast: false' .github/workflows/queen-owner-s12-single-batch-v3.yml
@@ -45,7 +46,7 @@ jobs:
           src=Path('.github/workflows/queen-owner-s12-single-batch-v3.yml').read_text()
           marker="          node --input-type=module <<'JS'\n"
           blocks=src.split(marker)
-          assert len(blocks)==3, 'exactly two JS signing scripts'
+          assert len(blocks)==4, 'exactly three bounded JS OIDC scripts'
           for i,block in enumerate(blocks[1:]):
               assert '\n          JS' in block
               code=block.split('\n          JS',1)[0]
@@ -283,6 +284,38 @@ jobs:
           node --check hive-source/ops/queen/s12/s12-trusted-project-draft.mjs
           node --test hive-source/ops/queen/s12/tests/s12-single-batch-v3.test.mjs
           echo S12_BATCH_V3_RUNNER_SECURITY_TESTS=PASS
+      - name: Activate exact one-project V3 Neon lease under the same Owner OIDC batch
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const e=process.env,deny=x=>{throw Error('S12_BATCH_V3_DENY_'+x)};
+          const req=e.ACTIONS_ID_TOKEN_REQUEST_URL,token=e.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+          if(!req||!token||!e.CF_ACCESS_CLIENT_ID||!e.CF_ACCESS_CLIENT_SECRET)
+           deny('OWNER_BATCH_OIDC_NOT_AVAILABLE');
+          const r=await fetch(req+(req.includes('?')?'&':'?')+
+           'audience='+encodeURIComponent('hive-queen-s12-single-batch-v3-v1'),
+           {headers:{authorization:'Bearer '+token}});
+          if(!r.ok)deny('OIDC_ISSUER');
+          const oidc=(await r.json()).value;
+          if(typeof oidc!=='string'||oidc.length<300)deny('OIDC_INVALID');
+          const body={action:'activate',run_id:Number(e.GITHUB_RUN_ID),
+           run_attempt:Number(e.GITHUB_RUN_ATTEMPT),public_sha:e.GITHUB_SHA,
+           project_id:e.S12_PROJECT_ID};
+          const response=await fetch('https://hive-alveare.pages.dev/api/queen-s12-batch-v3',{
+           method:'POST',redirect:'error',headers:{
+            'CF-Access-Client-Id':e.CF_ACCESS_CLIENT_ID,
+            'CF-Access-Client-Secret':e.CF_ACCESS_CLIENT_SECRET,
+            'X-Queen-CI-OIDC':oidc,'content-type':'application/json'},
+           body:JSON.stringify(body)});
+          const data=await response.json().catch(()=>null);
+          if(!response.ok||data?.ok!==true||
+            data.decision!=='V3_ONE_EXACT_PROJECT_LEASE_ACTIVATED'||
+            data.project_id!==e.S12_PROJECT_ID||data.no_auto_merge!==true||
+            data.no_auto_deploy!==true||data.no_school_training!==true)
+           deny('ONE_PROJECT_ACTIVATION_NEON_DENIED');
+          console.log('S12_BATCH_V3_ONE_PROJECT_EXACT_LEASE=PASS');
+          JS
       - name: Actual single free coding-model proposal, baseline and candidate Docker, one private DRAFT PR
         shell: bash
         run: node hive-source/ops/queen/s12/s12-trusted-project-draft.mjs
