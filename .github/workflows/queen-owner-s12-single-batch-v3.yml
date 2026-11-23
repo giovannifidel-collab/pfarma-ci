@@ -84,7 +84,7 @@ jobs:
           test "$hive" = "$ptr"
           gh api repos/giovannifidel-collab/hive-alveare/pulls/125 | jq -e --arg sha "$hive" '.state=="closed" and .merged==true and .merge_commit_sha==$sha and .head.sha=="4c6cdf29a70912724dace81961b202bfeb72d5fe" and .changed_files==5' >/dev/null
           gh api repos/giovannifidel-collab/hive-alveare/actions/runs/45156831435 |
-            jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .head_sha=="4c6cdf29a70912724dace81961b202bfeb72d5fe"' >/dev/null/dev/null
+            jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1 and .head_sha=="4c6cdf29a70912724dace81961b202bfeb72d5fe"' >/dev/null
           test "$(gh api repos/giovannifidel-collab/project-giovanni/branches/main --jq .commit.sha)" = 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
           field_main="$(gh api repos/giovannifidel-collab/hive-field/branches/main --jq .commit.sha)"
           # Only these exact Git blobs are approved; unrelated UI changes are tolerated.
