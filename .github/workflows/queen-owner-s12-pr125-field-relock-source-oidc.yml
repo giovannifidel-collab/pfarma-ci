@@ -1,7 +1,7 @@
 name: Queen Owner S12 PR125 One Owner Batch V3 SOURCE Release OIDC — NO Product Rights
 on:
   push:
-    branches: [s12/owner-pr125-final-immutable-field-blob-20261123]
+    branches: [s12/fix-pr125-signed-receipt-id-20261123]
     paths: ['.github/workflows/queen-owner-s12-pr125-field-relock-source-oidc.yml']
   workflow_dispatch:
     inputs:
