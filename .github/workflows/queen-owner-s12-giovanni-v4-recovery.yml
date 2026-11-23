@@ -38,6 +38,20 @@ jobs:
           grep -Fq 'S12_V4_OWNER_TERMINAL_NEON=PASS' .github/workflows/queen-owner-s12-giovanni-v4-recovery.yml
           grep -Fq 'S12_GENERATION: "4"' .github/workflows/queen-owner-s12-giovanni-v4-recovery.yml
           grep -Fq 'environment: pfarma-ci-trusted' .github/workflows/queen-owner-s12-giovanni-v4-recovery.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          source=Path('.github/workflows/queen-owner-s12-giovanni-v4-recovery.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          blocks=source.split(marker)[1:]
+          assert len(blocks)==2, 'two exact OIDC inline signer blocks required'
+          for i,block in enumerate(blocks,1):
+              code=block.split('\n          JS',1)[0]
+              code='\n'.join(line[10:] if line.startswith('          ') else line for line in code.splitlines())
+              r=subprocess.run(['node','--check','--input-type=module'],input=code,text=True,capture_output=True)
+              assert r.returncode==0, 'inline JS signer syntax '+str(i)
+          PY
+          echo S12_V4_EXACT_TWO_OWNER_OIDC_SIGNER_SCRIPTS=PASS
           echo S12_V4_ONE_WORKFLOW_SOURCE_ONLY=PASS
   one-owner-giovanni-v4-and-terminal:
     if: github.event_name == 'workflow_dispatch' && inputs.approve_one_giovanni_v4_and_conditional_terminal == true && github.actor == 'giovannifidel-collab'
