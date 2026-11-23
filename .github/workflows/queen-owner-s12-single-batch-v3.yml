@@ -8,8 +8,8 @@ on:
     paths: ['.github/workflows/queen-owner-s12-single-batch-v3.yml']
   workflow_dispatch:
     inputs:
-      approve_exact_two_project_batch:
-        description: 'Owner: one 30-minute free-only two-project V3 batch; two exact private DRAFT PRs, no main writes, deploy, merge or School; final terminal acceptance separate'
+      approve_s12_two_projects_and_conditional_terminal:
+        description: 'Owner: ONE free-only two-project V3 batch and ONE CONDITIONAL terminal acceptance, strictly after both private draft PRs, tests, Neon receipts and independent readback; no merge/deploy/School/paid'
         required: true
         type: boolean
         default: false
@@ -31,12 +31,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git diff --name-only origin/main...HEAD)" = '.github/workflows/queen-owner-s12-single-batch-v3.yml'
-          grep -Fq 'approve_exact_two_project_batch' .github/workflows/queen-owner-s12-single-batch-v3.yml
+          grep -Fq 'approve_s12_two_projects_and_conditional_terminal' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'S12_BATCH_V3_OWNER_OIDC_AND_NEON_REGISTER=PASS' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'S12_BATCH_V3_OWNER_FREE_COST=PASS' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'S12_GENERATION: "3"' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'S12_BATCH_V3_ONE_PROJECT_EXACT_LEASE=PASS' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'S12_BATCH_V3_ONE_PRIVATE_DRAFT_RECEIPT=PASS' .github/workflows/queen-owner-s12-single-batch-v3.yml
+          grep -Fq 'S12_OWNER_SIGNED_CONDITIONAL_TERMINAL_CAS=' .github/workflows/queen-owner-s12-single-batch-v3.yml
+          grep -Fq 'conditional-owner-terminal-attestation:' .github/workflows/queen-owner-s12-single-batch-v3.yml
+          grep -Fq 'S12_TERMINAL_SIGNER_NO_NEON_OR_PROJECT_WRITES=TRUE' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'environment: pfarma-ci-trusted' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'fail-fast: false' .github/workflows/queen-owner-s12-single-batch-v3.yml
           grep -Fq 'no_auto_merge' .github/workflows/queen-owner-s12-single-batch-v3.yml
@@ -46,7 +49,7 @@ jobs:
           src=Path('.github/workflows/queen-owner-s12-single-batch-v3.yml').read_text()
           marker="          node --input-type=module <<'JS'\n"
           blocks=src.split(marker)
-          assert len(blocks)==4, 'exactly three bounded JS OIDC scripts'
+          assert len(blocks)==5, 'exactly four bounded JS OIDC scripts including terminal signer'
           for i,block in enumerate(blocks[1:]):
               assert '\n          JS' in block
               code=block.split('\n          JS',1)[0]
@@ -59,7 +62,7 @@ jobs:
   register-owner-batch:
     outputs:
       field_sha: ${{ steps.owner_register.outputs.field_sha }}
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_exact_two_project_batch == true && github.actor == 'giovannifidel-collab'
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_s12_two_projects_and_conditional_terminal == true && github.actor == 'giovannifidel-collab'
     runs-on: ubuntu-latest
     environment: pfarma-ci-trusted
     timeout-minutes: 17
@@ -416,3 +419,125 @@ jobs:
           rm -rf -- project-source hive-source
           rm -f "$RUNNER_TEMP"/s12-*-draft-receipt.json "$RUNNER_TEMP"/s12-*-isolated-tests.log
           echo S12_NO_PRIVATE_SOURCE_ARTIFACTS=TRUE
+  conditional-owner-terminal-attestation:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_s12_two_projects_and_conditional_terminal == true
+    needs: [register-owner-batch, two-project-independent-drafts]
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 9
+    permissions: {contents: read, id-token: write}
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      OWNER_APPROVAL: ${{ inputs.approve_s12_two_projects_and_conditional_terminal }}
+      S12_APPROVED_FIELD_SHA: ${{ needs.register-owner-batch.outputs.field_sha }}
+    steps:
+      - name: Verify two independently tested unmerged private PRs and exact signed source baseline
+        id: drafts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$OWNER_APPROVAL" = true
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          [[ "$S12_APPROVED_FIELD_SHA" =~ ^[a-f0-9]{40}$ ]]
+          hive="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$hive" = "$ptr"
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/126 |
+            jq -e --arg sha "$hive" '.state=="closed" and .merged==true and .merge_commit_sha==$sha and .head.sha=="6c9596a47f5541a28e9ee44f2628c39b0dcdb213" and .changed_files==5' >/dev/null
+          verify_one() {
+            local repo="$1" branch="$2" sha="$3" file="$4" output="$5"
+            local prs number pr changed commit
+            prs="$(gh api "repos/$repo/pulls?state=open&per_page=100")"
+            number="$(jq -r --arg b "$branch" '[.[] | select(.draft==true and .state=="open" and .head.ref==$b and .base.ref=="main")] | if length==1 then .[0].number else empty end' <<< "$prs")"
+            test -n "$number" && test "$number" -gt 0
+            pr="$(gh api "repos/$repo/pulls/$number")"
+            jq -e --arg repo "$repo" --arg b "$branch" '.state=="open" and .draft==true and .merged==false and .base.ref=="main" and .head.ref==$b and .head.repo.full_name==$repo and .changed_files==1' <<< "$pr" >/dev/null
+            changed="$(gh api "repos/$repo/pulls/$number/files?per_page=100")"
+            jq -e --arg file "$file" 'length==1 and .[0].filename==$file and .[0].status=="modified"' <<< "$changed" >/dev/null
+            commit="$(gh api "repos/$repo/commits/$(jq -r .head.sha <<< "$pr")")"
+            jq -e --arg sha "$sha" '.parents|length==1 and .[0].sha==$sha' <<< "$commit" >/dev/null
+            printf '%s=%s\n' "$output" "$number" >> "$GITHUB_OUTPUT"
+            printf '%s_head=%s\n' "$output" "$(jq -r .head.sha <<< "$pr")" >> "$GITHUB_OUTPUT"
+          }
+          verify_one giovannifidel-collab/project-giovanni queen/s12/a2f6327b-9303-423a-91e2-33ce5dbadd31 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707 factory/continuous-loop.mjs project_g_pr
+          verify_one giovannifidel-collab/hive-field queen/s12/10d37847-331f-4fd1-895e-0b3517c0da21 "$S12_APPROVED_FIELD_SHA" src/data-v2-adapter.js field_pr
+          echo "hive_sha=$hive" >> "$GITHUB_OUTPUT"
+          echo S12_TERMINAL_BOTH_PRIVATE_DRAFTS_GITHUB_READBACK=PASS
+      - name: Verify new same-workflow GitHub Owner RS256 OIDC and sign exactly one conditional terminal Neon CAS
+        env:
+          S12_HIVE_SHA: ${{ steps.drafts.outputs.hive_sha }}
+          S12_PROJECT_G_PR: ${{ steps.drafts.outputs.project_g_pr }}
+          S12_PROJECT_G_HEAD: ${{ steps.drafts.outputs.project_g_pr_head }}
+          S12_FIELD_PR: ${{ steps.drafts.outputs.field_pr }}
+          S12_FIELD_HEAD: ${{ steps.drafts.outputs.field_pr_head }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import {createPublicKey,verify,createHash} from 'node:crypto';
+          const e=process.env,deny=x=>{throw Error('S12_CONDITIONAL_TERMINAL_DENY_'+x)};
+          const aud='hive-queen-s12-single-batch-v3-v1';
+          if(e.OWNER_APPROVAL!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||
+             !e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)deny('OWNER_NOT_AUTHENTICATED');
+          const req=e.ACTIONS_ID_TOKEN_REQUEST_URL+
+           (e.ACTIONS_ID_TOKEN_REQUEST_URL.includes('?')?'&':'?')+
+           'audience='+encodeURIComponent(aud);
+          const res=await fetch(req,{headers:{authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!res.ok)deny('ISSUER');
+          const parts=(await res.json()).value?.split('.')||[];
+          if(parts.length!==3)deny('JWT_PARTS');
+          const dec=x=>Buffer.from(x.replace(/-/g,'+').replace(/_/g,'/')+
+           '='.repeat((4-x.length%4)%4),'base64');
+          const h=JSON.parse(dec(parts[0])),c=JSON.parse(dec(parts[1]));
+          if(h.alg!=='RS256'||!h.kid||h.jwk||h.jku||h.x5u||h.crit)deny('HEADER');
+          const expected={iss:'https://token.actions.githubusercontent.com',aud,
+           repository:'giovannifidel-collab/pfarma-ci',repository_id:'1308677897',
+           repository_owner_id:'305755860',actor:'giovannifidel-collab',actor_id:'305755860',
+           event_name:'workflow_dispatch',environment:'pfarma-ci-trusted',ref:'refs/heads/main',
+           runner_environment:'github-hosted',
+           workflow_ref:'giovannifidel-collab/pfarma-ci/.github/workflows/queen-owner-s12-single-batch-v3.yml@refs/heads/main'};
+          for(const [k,v] of Object.entries(expected))if(String(c[k])!==v)deny('CLAIM_'+k);
+          const now=Date.now();
+          if(c.sha!==e.GITHUB_SHA||Number(c.run_id)!==Number(e.GITHUB_RUN_ID)||
+             Number(c.run_attempt)!==1||!Number.isSafeInteger(c.exp)||!Number.isSafeInteger(c.iat)||
+             c.exp<=c.iat||c.exp-c.iat>900||c.exp*1000<=now||
+             now-c.iat*1000>300000||c.iat*1000>now+30000)deny('TIME');
+          const keyRes=await fetch('https://token.actions.githubusercontent.com/.well-known/jwks');
+          if(!keyRes.ok)deny('JWKS');
+          const key=(await keyRes.json()).keys?.find(x=>x.kid===h.kid&&x.kty==='RSA'&&
+            x.use==='sig'&&(!x.alg||x.alg==='RS256'));
+          if(!key||!verify('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),
+            createPublicKey({key,format:'jwk'}),dec(parts[2])))deny('SIGNATURE');
+          console.log('S12_TERMINAL_OWNER_RS256_SAME_ONE_BATCH=PASS');
+          const receipt={
+           schema:'queen.s12.v3.one-owner-conditional-two-draft-terminal.v1',
+           stage:'S12',decision:'OWNER_AUTHORIZES_ONE_CONDITIONAL_INDEPENDENT_NEON_TERMINAL_CAS_AFTER_TWO_V3_DRAFTS',
+           owner:'giovannifidel-collab',run_id:Number(e.GITHUB_RUN_ID),run_attempt:1,
+           relay_signer_main_sha:e.GITHUB_SHA,hive_main_sha:e.S12_HIVE_SHA,
+           project_g_source_sha:'4f67bda2e1bf63db12c1d9d7311b57f12b7bc707',
+           project_g_pr:Number(e.S12_PROJECT_G_PR),project_g_head:e.S12_PROJECT_G_HEAD,
+           field_source_sha:e.S12_APPROVED_FIELD_SHA,
+           field_pr:Number(e.S12_FIELD_PR),field_head:e.S12_FIELD_HEAD,
+           project_g_mission_id:'a2f6327b-9303-423a-91e2-33ce5dbadd31',
+           field_mission_id:'10d37847-331f-4fd1-895e-0b3517c0da21',
+           s11_terminal_neon_event_id:1546,s12_tracker_issue:116,
+           permitted_terminal_event_type:'queen.s12.dual_project.owner_signed.certified',
+           max_terminal_events:1,max_terminal_meta_cas:1,
+           requires_independent_neon_project_receipts:true,
+           requires_independent_neon_cost_world_memory_school_readback:true,
+           both_private_drafts_unmerged:true,one_file_each:true,
+           both_own_model_calls_verified_by_neon_required:true,
+           no_auto_merge:true,no_auto_deploy:true,no_school_training:true,
+           no_paid_fallback:true,no_new_event_loop:true,no_new_scheduler:true,
+           no_model_invocation_by_signer:true,no_neon_write_by_signer:true,
+           terminal_certified:false,
+           issued_at:new Date(now).toISOString(),expires_at:new Date(now+45*60*1000).toISOString()
+          };
+          const digest=createHash('sha256').update(JSON.stringify(receipt)).digest('hex');
+          console.log('S12_OWNER_SIGNED_CONDITIONAL_TERMINAL_CAS='+JSON.stringify({...receipt,sha256:digest}));
+          console.log('S12_TERMINAL_SIGNER_NO_NEON_OR_PROJECT_WRITES=TRUE');
+          JS
