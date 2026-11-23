@@ -1,7 +1,7 @@
 name: Queen Owner S12 Two Exact Project Draft Missions (NO Automatic Project Writes)
 on:
   push:
-    branches: [s12/owner-two-project-draft-mission-oidc-20261121, s12/owner-two-project-draft-current-hive-20261121, s12/owner-dual-sign-pr119-main-20261122, s12/owner-dual-sign-pr120-main-20261123, s12/owner-dual-sign-pr121-main-20261123]
+    branches: [s12/owner-two-project-draft-mission-oidc-20261121, s12/owner-two-project-draft-current-hive-20261121, s12/owner-dual-sign-pr119-main-20261122, s12/owner-dual-sign-pr120-main-20261123, s12/owner-dual-sign-pr121-main-20261123, s12/owner-dual-sign-pr122-main-20261123]
     paths: ['.github/workflows/queen-owner-s12-two-project-draft-oidc.yml']
   workflow_dispatch:
     inputs:
@@ -66,9 +66,9 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$GITHUB_RUN_ATTEMPT" = 1
           test -n "$GH_TOKEN"
-          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 0dea26d01cc1424addb6354ddef1a04e07a1e39f
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = 155189e007f342cc61ffea6b8351ebace265d782
           ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
-          test "$ptr" = 0dea26d01cc1424addb6354ddef1a04e07a1e39f
+          test "$ptr" = 155189e007f342cc61ffea6b8351ebace265d782
           test "$(gh api repos/giovannifidel-collab/project-giovanni/branches/main --jq .commit.sha)" = 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
           test "$(gh api repos/giovannifidel-collab/hive-field/branches/main --jq .commit.sha)" = 2b51de88dec2e4e4ae01102fac2a3b95a9f0b5fd
           gh api repos/giovannifidel-collab/hive-alveare/pulls/115 |
@@ -96,6 +96,13 @@ jobs:
           gh api repos/giovannifidel-collab/hive-alveare/actions/runs/45083150885 |
             jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="1d3f8b77c0517841e2efe856bb5e098555729230" and .run_attempt==1' >/dev/null
           gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/45085249913 |
+            jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+          # PR122 model V2: immutable V1 lease + exact source-only Owner OIDC, inherited PR121 retained.
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/122 |
+            jq -e '.state=="closed" and .merged==true and .merge_commit_sha=="155189e007f342cc61ffea6b8351ebace265d782" and .head.sha=="97ecaf5d192944fd47747686c796004555ae96da" and .changed_files==5' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/actions/runs/45087511721 |
+            jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="97ecaf5d192944fd47747686c796004555ae96da" and .run_attempt==1' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/45088149680 |
             jq -e '.status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
           gh api repos/giovannifidel-collab/hive-alveare/actions/runs/44936698566 |
             jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="2acb60aa08daf74844f82226c1faf19de82dcf4b" and .run_attempt==1' >/dev/null
@@ -184,7 +191,7 @@ jobs:
            owner:'giovannifidel-collab',
            run_id:Number(e.GITHUB_RUN_ID),run_attempt:Number(e.GITHUB_RUN_ATTEMPT),
            relay_signer_main_sha:e.GITHUB_SHA,
-           hive_main_sha:'0dea26d01cc1424addb6354ddef1a04e07a1e39f',
+           hive_main_sha:'155189e007f342cc61ffea6b8351ebace265d782',
            s11_terminal_event_id:1546,s12_track_issue:116,
            s12_source_pr_merged:117,s12_source_contract_pr_merged:115,
            baseline_ci_run:44917513612,source_ci_run:44921948341,source_contract_ci_run:44917410374,
