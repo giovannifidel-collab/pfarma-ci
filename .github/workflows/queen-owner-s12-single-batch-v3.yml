@@ -210,7 +210,8 @@ jobs:
            return data;
           };
           const reg=await send('register');
-          if(reg.decision!=='OWNER_V3_ONE_BATCH_TWO_PROJECTS_NEON_REGISTERED')
+          if(reg.decision!=='OWNER_V3_ONE_BATCH_TWO_PROJECTS_NEON_REGISTERED'||
+           reg.no_auto_merge!==true||reg.no_auto_deploy!==true||reg.no_school_training!==true)
            deny('REGISTER_WRONG_DECISION');
           console.log('S12_BATCH_V3_OWNER_OIDC_AND_NEON_REGISTER=PASS');
           const cost=JSON.parse(fs.readFileSync(e.RUNNER_TEMP+'/s12-independent-free-quota.json','utf8'));
