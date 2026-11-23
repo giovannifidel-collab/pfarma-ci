@@ -44,6 +44,7 @@ jobs:
           grep -Fq 'S12_OWNER_SIGNER_PR125_NO_MUTATIONS=TRUE' .github/workflows/queen-owner-s12-pr125-field-relock-source-oidc.yml
           grep -Fq 'pulls/125' .github/workflows/queen-owner-s12-pr125-field-relock-source-oidc.yml
           grep -Fq 'changed_files==5' .github/workflows/queen-owner-s12-pr125-field-relock-source-oidc.yml
+          grep -Fq 'hive_pr:125,hive_pr_head:' .github/workflows/queen-owner-s12-pr125-field-relock-source-oidc.yml
           echo S12_OWNER_PR125_DIAGNOSTICS_SIGNER_SOURCE_CI=PASS
       - name: Read exact private Field baseline without modifying it
         uses: actions/checkout@v4
@@ -158,7 +159,7 @@ jobs:
            decision:'OWNER_AUTHORIZES_EXACT_HIVE_PR125_SINGLE_BATCH_V3_SOURCE_ONLY_NO_MODEL_OR_PRODUCT_RIGHTS',
            run_id:Number(e.GITHUB_RUN_ID),run_attempt:1,relay_signer_main_sha:e.GITHUB_SHA,
            hive_base_sha:'cd1ebe02ec1958c28ea17ab740ef1394a7eed68b',
-           hive_pr:124,hive_pr_head:'4c6cdf29a70912724dace81961b202bfeb72d5fe',
+           hive_pr:125,hive_pr_head:'4c6cdf29a70912724dace81961b202bfeb72d5fe',
            source_ci:45156831435,exact_changed_files:5,
            field_approved_anchor_commit:'d8d01fa1a3287d6d94dc5b90ceb0e00d37beca01',
            field_exact_source_blob:'2d0bb73da119d2db23a2a07b3262c58be188e5c9',
