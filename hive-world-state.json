@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-24T15:43:12.751Z",
+  "generated_at": "2026-11-24T15:54:27.443Z",
   "state_fingerprint": "4a2aafb35a52c890c9d2446eb7b884bc49ee0baa0437a3b9ebae492c10a1d25f",
   "policy": "authoritative-source-first",
   "privacy": "sanitized allowlist; gio-OS private source never materialized in global HIVE sync; no credentials or user data published",
@@ -220,7 +220,7 @@
         "ref": "main",
         "available": true,
         "sha": "1aace444e2374ae3a2f0c33e247a3ff745b66f56",
-        "observed_at": "2026-11-24T15:43:12.751Z",
+        "observed_at": "2026-11-24T15:54:27.443Z",
         "version": "9.14.0",
         "progress": null,
         "provenance": "AUTHENTICATED_PRIVATE_CHECKOUT"
@@ -231,8 +231,8 @@
           "role": "primary",
           "reachable": true,
           "http_status": 200,
-          "latency_ms": 295,
-          "observed_at": "2026-11-24T15:43:12.751Z"
+          "latency_ms": 227,
+          "observed_at": "2026-11-24T15:54:27.443Z"
         }
       ],
       "sync_depth": "source+runtime+field-control-state"
