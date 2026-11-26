@@ -84,10 +84,30 @@ jobs:
           endpoint='https://bd171fa4.hive-alveare.pages.dev/api/queen-state?view=school-evolution'
           code="$(curl --silent --show-error --max-time 25 -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" -o "$RUNNER_TEMP/s13-preview.json" -w '%{http_code}' "$endpoint")"
           echo "S13_PREVIEW_HTTP=$code"
-          test "$code" = 200
+          if [ "$code" != 200 ]; then
+            python3 - "$RUNNER_TEMP/s13-preview.json" <<'PY'
+          import sys,json,re
+          try:
+              d=json.load(open(sys.argv[1]))
+              e=str(d.get("error",""))
+              if e=="HIVE_DATA_API_URL is not configured": category="PREVIEW_NEON_BINDING_MISSING"
+              elif e=="Authentication required": category="PREVIEW_ACCESS_JWT_MISSING"
+              elif re.fullmatch(r"Neon Data API [0-9]{3}",e): category="PREVIEW_NEON_DATA_API_"+e.rsplit(" ",1)[1]
+              elif d.get("reason") in ["terminal_provenance_mismatch","rejected_history_mismatch","format_rejection_mismatch","giovanni_proof_mismatch","field_proof_mismatch","canonical_school_unavailable"]: category="PREVIEW_EVIDENCE_GATE_DENIED"
+              else: category="PREVIEW_OTHER_JSON_ERROR"
+          except Exception: category="PREVIEW_NON_JSON_ERROR"
+          print("S13_SANITIZED_PREVIEW_DIAGNOSIS="+category)
+          PY
+            main_code="$(curl --silent --show-error --max-time 25 -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" -o "$RUNNER_TEMP/s13-main.json" -w '%{http_code}' 'https://hive-alveare.pages.dev/api/queen-state')"
+            echo "S13_EXISTING_MAIN_STATE_HTTP=$main_code"
+            if [ "$main_code" = 200 ]; then
+              jq -e '.ok==true and .state.school.value.student_id=="queen-qomega-genesis"' "$RUNNER_TEMP/s13-main.json" >/dev/null && echo S13_MAIN_CANONICAL_SCHOOL_READBACK=PASS
+            fi
+            exit 44
+          fi
           jq -e '.ok==true and .stage=="S13" and .status=="EVIDENCE_REVIEW_READY_NOT_CERTIFIED" and .student_id=="queen-qomega-genesis" and .provenance.terminal_event==2916 and .provenance.giovanni_event==2915 and .provenance.field_event==2094 and (.curriculum_candidates|length)==4 and (.curriculum_candidates|all(.score==null and .mastery_eligible==false and .training_eligible==false and .auto_execute==false)) and .mastery_write==false and .training_eligible==false and .teacher_certification==false and .paid_fallback==false and .terminal_certified==false' "$RUNNER_TEMP/s13-preview.json" >/dev/null
           echo S13_AUTHENTICATED_PREVIEW_FOUR_PROVISIONAL_LESSONS=PASS
           echo S13_PROTECTED_READ_ONLY_NO_CERTIFICATION=TRUE
       - name: Remove response
         if: always()
-        run: rm -f "$RUNNER_TEMP/s13-preview.json"
+        run: rm -f "$RUNNER_TEMP/s13-preview.json" "$RUNNER_TEMP/s13-main.json"
