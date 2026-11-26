@@ -111,3 +111,46 @@ jobs:
       - name: Remove response
         if: always()
         run: rm -f "$RUNNER_TEMP/s13-preview.json" "$RUNNER_TEMP/s13-main.json"
+  isolated-school-evidence-rls:
+    if: github.actor == 'giovannifidel-collab' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    env:
+      HIVE_RLS_SHA: 79cb3c905a2f3e461580969a4c39b01b54765eb3
+    steps:
+      - name: Verify exact isolated migration candidate
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/133 |
+            jq -e --arg sha "$HIVE_RLS_SHA" '.state=="open" and .draft==true and .head.sha==$sha and .changed_files==2' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/133/files --jq '.[].filename' |
+            sort | diff -u <(printf '%s\n' 'db/025_hive_school_evidence_rls.sql' 'ops/queen/school/tests/s13-rls-isolated.sql') -
+          echo S13_RLS_EXACT_SCOPE=PASS
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.HIVE_RLS_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-rls
+      - name: Disposable PostgreSQL without network or live credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-rls rev-parse HEAD)" = "$HIVE_RLS_SHA"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 90 --memory 384m --user postgres \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/private-rls,target=/project,readonly" \
+            --entrypoint sh postgres:18 -ec 'initdb -D /tmp/pg -A trust >/dev/null; pg_ctl -D /tmp/pg -l /tmp/pg.log -o "-k /tmp -c listen_addresses=" -w start >/dev/null; psql -X -h /tmp -U postgres -d postgres -v ON_ERROR_STOP=1 -f /project/ops/queen/school/tests/s13-rls-isolated.sql' \
+            >"$RUNNER_TEMP/s13-rls.log" 2>&1 || { echo S13_RLS_ISOLATED_FAILURE; grep -E 'ERROR:|FATAL:|PANIC:' "$RUNNER_TEMP/s13-rls.log" | tail -n 6; exit 1; }
+          grep -Fq 'S13_SCHOOL_RLS_ISOLATED_PASS' "$RUNNER_TEMP/s13-rls.log"
+          echo S13_SCHOOL_RLS_ISOLATED_PASS
+          echo S13_NO_LIVE_SQL_NO_MASTERY_WRITE=TRUE
+      - name: Clean isolated test files
+        if: always()
+        run: rm -rf -- private-rls "$RUNNER_TEMP/s13-rls.log"
