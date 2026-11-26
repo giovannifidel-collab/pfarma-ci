@@ -1,0 +1,341 @@
+name: Queen Owner S12 — Exact Giovanni V6 Recovery + Conditional Terminal
+on:
+  push:
+    branches: [s12/giovanni-v6-owner-recovery-20261126]
+    paths: ['.github/workflows/queen-owner-s12-giovanni-v6-recovery.yml']
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-owner-s12-giovanni-v6-recovery.yml']
+  workflow_dispatch:
+    inputs:
+      approve_one_giovanni_v6_and_conditional_terminal:
+        description: 'Owner: ONE authenticated free-only Giovanni V6 recovery; one documentation comment only; preserve already verified Field #14; conditional terminal only after 6/6+1/1 independent PR and Neon proof. No merge/deploy/School/paid.'
+        required: true
+        type: boolean
+        default: false
+permissions: {contents: read}
+concurrency:
+  group: queen-owner-s12-giovanni-v6
+  cancel-in-progress: false
+jobs:
+  source-only-ci:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: One workflow exact source-only boundary and signed Owner guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only origin/main...HEAD)" = '.github/workflows/queen-owner-s12-giovanni-v6-recovery.yml'
+          grep -Fq 'approve_one_giovanni_v6_and_conditional_terminal:' .github/workflows/queen-owner-s12-giovanni-v6-recovery.yml
+          grep -Fq 'hive-queen-s12-giovanni-recovery-v6-v1' .github/workflows/queen-owner-s12-giovanni-v6-recovery.yml
+          grep -Fq 'S12_V6_OWNER_AUTHENTICATED_GIOVANNI_GRANT=PASS' .github/workflows/queen-owner-s12-giovanni-v6-recovery.yml
+          grep -Fq 'S12_V6_GIOVANNI_INDEPENDENT_NEON_RECEIPT=PASS' .github/workflows/queen-owner-s12-giovanni-v6-recovery.yml
+          grep -Fq 'S12_V6_OWNER_TERMINAL_NEON=PASS' .github/workflows/queen-owner-s12-giovanni-v6-recovery.yml
+          grep -Fq 'S12_GENERATION: "6"' .github/workflows/queen-owner-s12-giovanni-v6-recovery.yml
+          grep -Fq 'environment: pfarma-ci-trusted' .github/workflows/queen-owner-s12-giovanni-v6-recovery.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          source=Path('.github/workflows/queen-owner-s12-giovanni-v6-recovery.yml').read_text()
+          marker="          node --input-type=module <<'JS'\n"
+          blocks=source.split(marker)[1:]
+          assert len(blocks)==2, 'two exact OIDC inline signer blocks required'
+          for i,block in enumerate(blocks,1):
+              code=block.split('\n          JS',1)[0]
+              code='\n'.join(line[10:] if line.startswith('          ') else line for line in code.splitlines())
+              r=subprocess.run(['node','--check','--input-type=module'],input=code,text=True,capture_output=True)
+              assert r.returncode==0, 'inline JS signer syntax '+str(i)
+          PY
+          echo S12_V6_EXACT_TWO_OWNER_OIDC_SIGNER_SCRIPTS=PASS
+          grep -Fq 'S12_V6_EDGE_DENIAL_CODE=' .github/workflows/queen-owner-s12-giovanni-v6-recovery.yml
+          echo S12_V6_ONE_WORKFLOW_SOURCE_ONLY=PASS
+  one-owner-giovanni-v6-and-terminal:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_one_giovanni_v6_and_conditional_terminal == true && github.actor == 'giovannifidel-collab'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 35
+    permissions: {contents: read, id-token: write}
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      S12_PROJECT_ID: project-giovanni
+      S12_GENERATION: "6"
+      S12_SOURCE_SHA: 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
+      OWNER_APPROVAL: ${{ inputs.approve_one_giovanni_v6_and_conditional_terminal }}
+    steps:
+      - name: Exact signed Owner, HIVE source/deployed route, original Giovanni and reused Field source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$OWNER_APPROVAL" = true
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/main
+          test -n "$GH_TOKEN" && test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          hive="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$hive" = "$ptr"
+          test "$(gh api repos/giovannifidel-collab/project-giovanni/branches/main --jq .commit.sha)" = "$S12_SOURCE_SHA"
+          gh api repos/giovannifidel-collab/hive-field/pulls/14 |
+            jq -e '.state=="open" and .draft==true and .merged==false and .changed_files==1 and .base.ref=="main" and .head.ref=="queen/s12/10d37847-331f-4fd1-895e-0b3517c0da21"' >/dev/null
+          for route in queen-s12-giovanni-v6 queen-s12-project-proposal; do
+            live="$(curl --fail --silent --show-error --max-time 20 \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              "https://hive-alveare.pages.dev/api/$route")"
+            if [ "$route" = queen-s12-giovanni-v6 ]; then
+              jq -e '.ok==true and .route=="s12-v6-exact-giovanni-recovery" and .default_dispatch=="DENY" and .model_invoked==false' <<< "$live" >/dev/null
+            else
+              jq -e '.ok==true and .default_dispatch=="DENY" and .paid_fallback==false' <<< "$live" >/dev/null
+            fi
+          done
+          echo "hive_sha=$hive" >> "$GITHUB_OUTPUT"
+          echo S12_V6_HIVE_RELAY_AND_TRUSTED_PAGES=PASS
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ steps.source.outputs.hive_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: hive-source
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: project-source
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Inherited independent V6 security checks before Workers AI
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check hive-source/ops/queen/s12/s12-trusted-project-draft.mjs
+          (cd hive-source && node --test ops/queen/s12/tests/s12-v4-giovanni.test.mjs ops/queen/s12/tests/s12-v5-giovanni.test.mjs ops/queen/s12/tests/s12-v6-giovanni.test.mjs)
+          echo S12_V6_INHERITED_OWNER_AND_SCOPE_TESTS=PASS
+      - name: Independently verify Cloudflare Workers Free plan and current daily neurons
+        shell: bash
+        env:
+          DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ALT_DEPLOY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+          BILLING: ${{ secrets.CF_BILLING_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error,datetime
+          deploy=os.getenv('DEPLOY') or os.getenv('ALT_DEPLOY')
+          billing=os.getenv('BILLING')
+          tokens=[('deploy',os.getenv('DEPLOY')),('fallback',os.getenv('ALT_DEPLOY')),('billing',billing)]
+          if not deploy or not billing:
+              print('S12_FREE_NEURONS=DENY_EXISTING_READ_TOKEN_MISSING');raise SystemExit(2)
+          def call(path,token,payload=None):
+              if not token:return 0,{}
+              headers={'Authorization':'Bearer '+token,'Accept':'application/json'}
+              data=None
+              if payload is not None:
+                  headers['Content-Type']='application/json'
+                  data=json.dumps(payload).encode()
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  data=data,method='POST' if data else 'GET',headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=18) as res:return res.status,json.load(res)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.loads(e.read().decode('utf-8'))
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          code,accounts=call('/accounts?per_page=100',deploy)
+          if code!=200 or accounts.get('success') is not True:
+              print('S12_FREE_NEURONS=DENY_HIVE_ACCOUNT_NOT_VERIFIED');raise SystemExit(3)
+          ids=[]
+          for a in accounts.get('result',[]):
+              account=str(a.get('id',''))
+              if len(account)!=32:continue
+              c,p=call('/accounts/'+account+'/pages/projects/hive-alveare',deploy)
+              if c==200 and p.get('success') is True and p.get('result',{}).get('name')=='hive-alveare':
+                  ids.append(account)
+          if len(ids)!=1:
+              print('S12_FREE_NEURONS=DENY_MULTIPLE_ACCOUNTS');raise SystemExit(4)
+          aid=ids[0]
+          code,subs=call('/accounts/'+aid+'/subscriptions',billing)
+          if code!=200 or subs.get('success') is not True or not isinstance(subs.get('result'),list):
+              print('S12_FREE_NEURONS=DENY_BILLING_READ_UNKNOWN');raise SystemExit(5)
+          billed=[]
+          for item in subs['result']:
+              plan=item.get('rate_plan') or {}
+              n=' '.join(str(plan.get(k) or '') for k in ('id','name','public_name','scope')).lower()
+              if ('worker' in n or 'ai gateway' in n) and str(item.get('state','')).lower() not in ('expired','cancelled','failed'):
+                  billed.append(n)
+          paid=any(any(t in n for t in ('paid','standard','enterprise','bundled')) for n in billed)
+          ambiguous=any(not any(t in n for t in ('free','paid','standard','enterprise','bundled')) for n in billed)
+          if paid or ambiguous:
+              print('S12_FREE_NEURONS=DENY_WORKERS_PLAN_UNVERIFIED');raise SystemExit(6)
+          utc=datetime.datetime.now(datetime.timezone.utc)
+          start=utc.replace(hour=0,minute=0,second=0,microsecond=0).isoformat(timespec='seconds').replace('+00:00','Z')
+          end=utc.isoformat(timespec='seconds').replace('+00:00','Z')
+          query='query($tag:String!,$start:Time!,$end:Time!){viewer{accounts(filter:{accountTag:$tag}){aiInferenceAdaptiveGroups(limit:100,filter:{datetime_geq:$start,datetime_leq:$end}){sum{totalNeurons}}}}}'
+          request={'query':query,'variables':{'tag':aid,'start':start,'end':end}}
+          metrics=None
+          for label,t in tokens:
+              if not t:continue
+              status,result=call('/graphql',t,request)
+              if status!=200 or result.get('errors'):
+                  print('S12_'+label.upper()+'_ANALYTICS_READ='+('UNAUTHORIZED' if status in (401,403) else 'SCHEMA_OR_ACCESS_UNKNOWN'))
+                  continue
+              accs=((result.get('data') or {}).get('viewer') or {}).get('accounts') or []
+              if len(accs)!=1:continue
+              groups=accs[0].get('aiInferenceAdaptiveGroups')
+              if not isinstance(groups,list):continue
+              vals=[((g.get('sum') or {}).get('totalNeurons')) for g in groups]
+              if any(not isinstance(x,(int,float)) or x<0 for x in vals):continue
+              metrics=sum(vals)
+              print('S12_ANALYTICS_TOKEN_REUSED='+label)
+              break
+          if metrics is None:
+              print('S12_FREE_NEURONS=DENY_DAILY_USAGE_UNVERIFIED');raise SystemExit(7)
+          print('S12_FREE_PLAN=VERIFIED')
+          print('S12_AI_NEURONS_USED_SINCE_UTC_MIDNIGHT='+str(round(metrics,2)))
+          print('S12_NO_MODEL_INFERENCE=TRUE')
+          print('S12_NO_WRITES=TRUE')
+          if metrics>5000:
+              print('S12_FREE_NEURONS=DENY_NOT_ENOUGH_CERTIFIED_HEADROOM')
+              raise SystemExit(8)
+          print('S12_FREE_NEURONS=PASS_READONLY_PROVISIONAL_CAP')
+          print('S12_COST_ATTESTATION_NOT_NEON_OWNER_PERMISSION=TRUE')
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'],'s12-independent-free-quota.json').write_text(json.dumps({'used_neurons':float(metrics),'free_plan_verified':True,'workers_paid_absent':True,'account_verified':True,'analytics_verified':True}))
+          PY
+      - name: One fresh RS256 Owner OIDC registration + free quota Neon readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const e=process.env,deny=x=>{throw Error('S12_V6_DENY_'+x)};
+          if(e.OWNER_APPROVAL!=='true'||!e.ACTIONS_ID_TOKEN_REQUEST_URL||
+             !e.ACTIONS_ID_TOKEN_REQUEST_TOKEN||
+             !e.CF_ACCESS_CLIENT_ID||!e.CF_ACCESS_CLIENT_SECRET)deny('OWNER_SIGNING_UNAVAILABLE');
+          const u=e.ACTIONS_ID_TOKEN_REQUEST_URL;
+          const t=await fetch(u+(u.includes('?')?'&':'?')+
+            'audience='+encodeURIComponent('hive-queen-s12-giovanni-recovery-v6-v1'),
+            {headers:{authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!t.ok)deny('OIDC_ISSUER');
+          const oidc=(await t.json()).value;
+          if(typeof oidc!=='string'||oidc.length<300)deny('OIDC_INVALID');
+          const base={run_id:Number(e.GITHUB_RUN_ID),run_attempt:Number(e.GITHUB_RUN_ATTEMPT),
+            public_sha:e.GITHUB_SHA};
+          const send=async(action,rest={})=>{
+            const response=await fetch('https://hive-alveare.pages.dev/api/queen-s12-giovanni-v6',{
+              method:'POST',redirect:'error',headers:{
+                'CF-Access-Client-Id':e.CF_ACCESS_CLIENT_ID,
+                'CF-Access-Client-Secret':e.CF_ACCESS_CLIENT_SECRET,
+                'X-Queen-CI-OIDC':oidc,'content-type':'application/json'},
+              body:JSON.stringify({action,...base,...rest})});
+            const answer=await response.json().catch(()=>null);
+            if(!response.ok||answer?.ok!==true){
+              // Never log tokens, headers, original responses, payloads or JWT claims.
+              // Only known public fail-closed machine codes and numeric HTTP status.
+              const allowed=new Set([
+                'invalid_oidc','owner_run_not_verified','mandate_not_active',
+                'source_pointer_mismatch','predecessor_or_field_invalid',
+                'v6_grant_exists','v6_failed_predecessor_invalid','v5_failed_predecessor_invalid','giovanni_head_changed','neon_cas_conflict',
+                'bad_cost','grant_missing_or_consumed','draft_unverified',
+                'terminal_preconditions_failed','terminal_already_recorded',
+                'unauthorized_action','cloudflare_access_required',
+                'invalid_body','invalid_json',
+                'trusted_owner_mandate_neon_or_github_unavailable'
+              ]);
+              const code=typeof answer?.reason==='string'&&allowed.has(answer.reason)
+                ?answer.reason:'unclassified_fail_closed_denial';
+              console.error('S12_V6_EDGE_HTTP_STATUS='+Number(response.status));
+              console.error('S12_V6_EDGE_DENIAL_CODE='+code);
+              deny('TRUSTED_'+action.toUpperCase()+'_GATE');
+            }
+            return answer;
+          };
+          const register=await send('register');
+          if(register.decision!=='S12_V6_GIOVANNI_ONLY_GRANT_REGISTERED'||
+              register.field_pr_preserved!==true||register.no_auto_merge!==true)
+             deny('REGISTER_READBACK');
+          console.log('S12_V6_OWNER_AUTHENTICATED_GIOVANNI_GRANT=PASS');
+          const c=JSON.parse(fs.readFileSync(e.RUNNER_TEMP+'/s12-independent-free-quota.json','utf8'));
+          if(c.free_plan_verified!==true||c.workers_paid_absent!==true||
+             c.account_verified!==true||c.analytics_verified!==true||
+             !Number.isFinite(c.used_neurons)||c.used_neurons<0||c.used_neurons>5000)
+             deny('FREE_QUOTA_CERT_INVALID');
+          const result=await send('attest_cost',c);
+          if(result.decision!=='S12_V6_FRESH_FREE_QUOTA_ATTESTED')
+             deny('FRESH_COST_NEON_READBACK');
+          console.log('S12_V6_OWNER_FRESH_FREE_COST=PASS');
+          JS
+      - name: One genuine Workers AI V6 proposal, 6 independent networkless Docker tests, exactly one Giovanni private DRAFT PR
+        shell: bash
+        run: node hive-source/ops/queen/s12/s12-trusted-project-draft.mjs
+      - name: Independently validate Giovanni PR and produce conditional Owner terminal CAS
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const e=process.env,deny=x=>{throw Error('S12_V6_DENY_'+x)};
+          if(e.OWNER_APPROVAL!=='true')deny('CONDITIONAL_TERMINAL_NOT_SIGNED');
+          const u=e.ACTIONS_ID_TOKEN_REQUEST_URL;
+          if(!u||!e.ACTIONS_ID_TOKEN_REQUEST_TOKEN)deny('FRESH_OIDC_UNAVAILABLE');
+          const jwtReq=await fetch(u+(u.includes('?')?'&':'?')+
+           'audience='+encodeURIComponent('hive-queen-s12-giovanni-recovery-v6-v1'),{
+            headers:{authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN}});
+          if(!jwtReq.ok)deny('OIDC_ISSUER');
+          const token=(await jwtReq.json()).value;
+          if(typeof token!=='string'||token.length<300)deny('OIDC_INVALID');
+          const receipt=JSON.parse(fs.readFileSync(
+            e.RUNNER_TEMP+'/s12-project-giovanni-draft-receipt.json','utf8'));
+          if(receipt.lease_generation!==6||receipt.project_id!=='project-giovanni'||
+             receipt.test_status!=='PASS_NETWORKLESS_READONLY'||receipt.test_count!==6||
+             receipt.model_calls!==1||receipt.auto_merge!==false||receipt.auto_deploy!==false||
+             receipt.neon_terminal_certified!==false)deny('RUNNER_RECEIPT_INVALID');
+          const base={run_id:Number(e.GITHUB_RUN_ID),run_attempt:Number(e.GITHUB_RUN_ATTEMPT),
+            public_sha:e.GITHUB_SHA};
+          const send=async(action,extra={})=>{
+            const r=await fetch('https://hive-alveare.pages.dev/api/queen-s12-giovanni-v6',{
+             method:'POST',redirect:'error',headers:{
+              'CF-Access-Client-Id':e.CF_ACCESS_CLIENT_ID,
+              'CF-Access-Client-Secret':e.CF_ACCESS_CLIENT_SECRET,
+              'X-Queen-CI-OIDC':token,'content-type':'application/json'},
+             body:JSON.stringify({action,...base,...extra})});
+            const x=await r.json().catch(()=>null);
+            if(!r.ok||x?.ok!==true)deny('NEON_'+action.toUpperCase()+'_NOT_VERIFIED');
+            return x;
+          };
+          const g=await send('complete',{project_id:'project-giovanni',
+           draft_pr_number:receipt.draft_pr_number,
+           proposal_sha256:receipt.content_sha256,tests_passed:true,test_count:6});
+          if(g.decision!=='S12_V6_GIOVANNI_DRAFT_INDEPENDENTLY_VERIFIED'||
+             g.field_pr!==14||!Number.isSafeInteger(g.event_id))deny('GIOVANNI_READBACK');
+          console.log('S12_V6_GIOVANNI_INDEPENDENT_NEON_RECEIPT=PASS');
+          const terminal=await send('terminal',{approve_conditional_terminal:true,
+           project_id:'project-giovanni',giovanni_pr:receipt.draft_pr_number,field_pr:14});
+          if(terminal.decision!=='S12_OWNER_TERMINAL_CERTIFIED'||
+             terminal.terminal_certified!==true||
+             terminal.giovanni_pr!==receipt.draft_pr_number||terminal.field_pr!==14||
+             !Number.isSafeInteger(terminal.event_id))deny('TERMINAL_READBACK');
+          console.log('S12_V6_OWNER_TERMINAL_NEON=PASS');
+          console.log('S12_NO_PROJECT_MAIN_MERGE_NO_DEPLOY_NO_SCHOOL_NO_PAID=TRUE');
+          JS
+      - name: Remove any private source and sensitive test output
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- hive-source project-source
+          rm -f "$RUNNER_TEMP"/s12-*-draft-receipt.json \
+                "$RUNNER_TEMP"/s12-*-isolated-tests.log \
+                "$RUNNER_TEMP"/s12-independent-free-quota.json
+          echo S12_PRIVATE_SOURCE_CLEANED=TRUE
