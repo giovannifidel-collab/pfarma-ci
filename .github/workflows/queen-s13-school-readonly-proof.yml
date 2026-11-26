@@ -1,0 +1,93 @@
+name: Queen S13 School — Exact private source and protected preview READ ONLY
+on:
+  push:
+    branches: [s13/school-readonly-exact-proof-20261126]
+    paths: ['.github/workflows/queen-s13-school-readonly-proof.yml']
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-s13-school-readonly-proof.yml']
+permissions: {contents: read}
+concurrency:
+  group: queen-s13-school-readonly-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  exact-private-source:
+    if: github.actor == 'giovannifidel-collab' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      HIVE_SHA: 7e4b7035f0b0c3fe597912222587163befdcbf0d
+    steps:
+      - name: Verify exact PR and scope
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/132 |
+            jq -e --arg sha "$HIVE_SHA" '.state=="open" and .draft==true and .head.sha==$sha and .base.sha=="b8276ed16a9b1c67d33e7cf8330d0197e186f11a" and .changed_files==5' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/132/files --jq '.[].filename' |
+            sort | diff -u <(printf '%s\n' '.github/workflows/hive-school.yml' 'cloudflare/functions/api/queen-state.js' 'ops/queen/school/S13_EVOLUTION_CONTRACT.v1.json' 'ops/queen/school/s12-evidence-review.mjs' 'ops/queen/school/tests/s12-evidence-review.test.mjs') -
+          echo S13_EXACT_PRIVATE_FIVE_FILE_SCOPE=PASS
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.HIVE_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - name: Secretless networkless exact School regression and S13 negative tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = "$HIVE_SHA"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 90 --memory 384m --user 65534:65534 \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" \
+            --workdir /tmp node:22-alpine sh -ec 'node --check /project/cloudflare/functions/api/queen-state.js; node /project/ops/queen/school/validate-school.mjs' \
+            >"$RUNNER_TEMP/s13-legacy.log" 2>&1
+          grep -Fq '"validation": "PASS"' "$RUNNER_TEMP/s13-legacy.log"
+          echo S13_CANONICAL_SCHOOL_REGRESSION=PASS
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 90 --memory 384m --user 65534:65534 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" \
+            --workdir /project node:22-alpine node --test ops/queen/school/tests/s12-evidence-review.test.mjs \
+            >"$RUNNER_TEMP/s13-tests.log" 2>&1
+          grep -Eq '^# tests 14$' "$RUNNER_TEMP/s13-tests.log"
+          grep -Eq '^# pass 14$' "$RUNNER_TEMP/s13-tests.log"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/s13-tests.log"
+          echo S13_EXACT_SOURCE_14_OF_14=PASS
+          echo S13_NO_MODEL_NO_TRAINING_NO_WRITES_NO_DEPLOY=TRUE
+      - name: Remove private source and test outputs
+        if: always()
+        shell: bash
+        run: rm -rf -- private-hive "$RUNNER_TEMP/s13-legacy.log" "$RUNNER_TEMP/s13-tests.log"
+  authenticated-preview-readback:
+    if: github.actor == 'giovannifidel-collab' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    steps:
+      - name: Exact preview deployment and authenticated GET only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET"
+          gh api repos/giovannifidel-collab/hive-alveare/commits/7e4b7035f0b0c3fe597912222587163befdcbf0d/check-runs |
+            jq -e '.check_runs | any(.name=="Cloudflare Pages" and .conclusion=="success" and (.output.summary|contains("https://bd171fa4.hive-alveare.pages.dev")))' >/dev/null
+          endpoint='https://bd171fa4.hive-alveare.pages.dev/api/queen-state?view=school-evolution'
+          code="$(curl --silent --show-error --max-time 25 -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" -o "$RUNNER_TEMP/s13-preview.json" -w '%{http_code}' "$endpoint")"
+          echo "S13_PREVIEW_HTTP=$code"
+          test "$code" = 200
+          jq -e '.ok==true and .stage=="S13" and .status=="EVIDENCE_REVIEW_READY_NOT_CERTIFIED" and .student_id=="queen-qomega-genesis" and .provenance.terminal_event==2916 and .provenance.giovanni_event==2915 and .provenance.field_event==2094 and (.curriculum_candidates|length)==4 and (.curriculum_candidates|all(.score==null and .mastery_eligible==false and .training_eligible==false and .auto_execute==false)) and .mastery_write==false and .training_eligible==false and .teacher_certification==false and .paid_fallback==false and .terminal_certified==false' "$RUNNER_TEMP/s13-preview.json" >/dev/null
+          echo S13_AUTHENTICATED_PREVIEW_FOUR_PROVISIONAL_LESSONS=PASS
+          echo S13_PROTECTED_READ_ONLY_NO_CERTIFICATION=TRUE
+      - name: Remove response
+        if: always()
+        run: rm -f "$RUNNER_TEMP/s13-preview.json"
