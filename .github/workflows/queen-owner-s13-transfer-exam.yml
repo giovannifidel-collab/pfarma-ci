@@ -1,0 +1,243 @@
+name: Queen Owner S13 — One contextual transfer exam, independent scoring
+on:
+  push:
+    branches: [s13/owner-transfer-exam-20261127]
+    paths: ['.github/workflows/queen-owner-s13-transfer-exam.yml']
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-owner-s13-transfer-exam.yml']
+  workflow_dispatch:
+    inputs:
+      approve_one_free_s13_transfer_exam:
+        description: 'Owner: ONE free-only contextual transfer exam, independent scoring, no mastery/training/product writes.'
+        required: true
+        type: boolean
+        default: false
+permissions: {contents: read}
+concurrency:
+  group: queen-owner-s13-transfer-exam
+  cancel-in-progress: false
+jobs:
+  source-ci:
+    if: (github.event_name == 'push' || github.event_name == 'pull_request') && github.actor == 'giovannifidel-collab' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    env:
+      HIVE_EXAM_SHA: fb1a385207261fd53aec77dc00b686153276175c
+    steps:
+      - name: Exact private PR source boundary
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/134 |
+            jq -e --arg sha "$HIVE_EXAM_SHA" '.head.sha==$sha and .changed_files==4 and .state=="open" and .draft==true' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/134/files --jq '.[].filename' |
+            sort | diff -u <(printf '%s\n' 'cloudflare/functions/api/queen-s13-exam.js' 'ops/queen/s12/s12-github-oidc.mjs' 'ops/queen/school/s13-transfer-exam.mjs' 'ops/queen/school/tests/s13-transfer-exam.test.mjs') -
+          echo S13_EXAM_EXACT_FOUR_FILE_SCOPE=PASS
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.HIVE_EXAM_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - name: Independently test existing School and S13 exam without secrets or network
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = "$HIVE_EXAM_SHA"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 90 --memory 384m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /tmp node:22-alpine sh -ec 'node --check /project/cloudflare/functions/api/queen-s13-exam.js; node /project/ops/queen/school/validate-school.mjs; node --test /project/ops/queen/school/tests/s12-evidence-review.test.mjs /project/ops/queen/school/tests/s13-transfer-exam.test.mjs /project/ops/queen/s12/tests/s12-v4-giovanni.test.mjs /project/ops/queen/s12/tests/s12-v5-giovanni.test.mjs /project/ops/queen/s12/tests/s12-v6-giovanni.test.mjs' >"$RUNNER_TEMP/s13-source.log" 2>&1 || { grep -E '^# (tests|pass|fail)|^not ok' "$RUNNER_TEMP/s13-source.log" | tail -n 12; exit 1; }
+          grep -Fq '"validation": "PASS"' "$RUNNER_TEMP/s13-source.log"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/s13-source.log"
+          grep -E '^# (tests|pass|fail)' "$RUNNER_TEMP/s13-source.log"
+          echo S13_EXAM_INDEPENDENT_SOURCE_REGRESSION=PASS
+      - name: Production authenticated S13 evidence review, no inference
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 25 -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" 'https://hive-alveare.pages.dev/api/queen-state?view=school-evolution' -o "$RUNNER_TEMP/s13-live.json"
+          jq -e '.ok==true and .status=="EVIDENCE_REVIEW_READY_NOT_CERTIFIED" and .provenance.terminal_event==2916 and (.curriculum_candidates|length)==4 and .mastery_write==false and .training_eligible==false and .terminal_certified==false' "$RUNNER_TEMP/s13-live.json" >/dev/null
+          echo S13_PRODUCTION_FOUR_LESSONS_READBACK=PASS
+      - name: Remove transient private source
+        if: always()
+        run: rm -rf private-hive "$RUNNER_TEMP/s13-source.log" "$RUNNER_TEMP/s13-live.json"
+  owner-one-exam:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_one_free_s13_transfer_exam == true && github.actor == 'giovannifidel-collab'
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 12
+    permissions: {contents: read, id-token: write}
+    env:
+      GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      OWNER_APPROVAL: ${{ inputs.approve_one_free_s13_transfer_exam }}
+    steps:
+      - name: Owner and canonical exact source/deploy proof
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$OWNER_APPROVAL" = true
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/main
+          hive="$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)"
+          ptr="$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')"
+          test "$hive" = "$ptr"
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/134 | jq -e '.merged==true and .head.sha=="fb1a385207261fd53aec77dc00b686153276175c" and .changed_files==4' >/dev/null
+          gh api "repos/giovannifidel-collab/hive-alveare/commits/$hive/check-runs" | jq -e '.check_runs|any(.name=="Cloudflare Pages" and .conclusion=="success")' >/dev/null
+          curl --fail --silent --show-error --max-time 25 -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" 'https://hive-alveare.pages.dev/api/queen-s13-exam' |
+            jq -e '.ok==true and .version=="s13-transfer-v1" and .default_dispatch=="DENY" and .paid_fallback==false and .mastery_write==false' >/dev/null
+          echo "hive_sha=$hive" >> "$GITHUB_OUTPUT"
+          echo S13_OWNER_CANONICAL_SOURCE_AND_RUNTIME=PASS
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ steps.source.outputs.hive_sha }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify independent grader and locked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = '${{ steps.source.outputs.hive_sha }}'
+          for f in ops/queen/school/s13-transfer-exam.mjs cloudflare/functions/api/queen-s13-exam.js ops/queen/s12/s12-github-oidc.mjs; do
+            test "$(git -C private-hive hash-object "$f")" = "$(gh api "repos/giovannifidel-collab/hive-alveare/contents/$f?ref=fb1a385207261fd53aec77dc00b686153276175c" --jq .sha)"
+          done
+          node --test private-hive/ops/queen/school/tests/s13-transfer-exam.test.mjs
+          echo S13_INDEPENDENT_GRADER_LOCKED=PASS
+      - name: Independently verify Cloudflare Workers Free plan and current daily neurons
+        shell: bash
+        env:
+          DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ALT_DEPLOY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+          BILLING: ${{ secrets.CF_BILLING_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error,datetime
+          deploy=os.getenv('DEPLOY') or os.getenv('ALT_DEPLOY')
+          billing=os.getenv('BILLING')
+          tokens=[('deploy',os.getenv('DEPLOY')),('fallback',os.getenv('ALT_DEPLOY')),('billing',billing)]
+          if not deploy or not billing:
+              print('S13_FREE_NEURONS=DENY_EXISTING_READ_TOKEN_MISSING');raise SystemExit(2)
+          def call(path,token,payload=None):
+              if not token:return 0,{}
+              headers={'Authorization':'Bearer '+token,'Accept':'application/json'}
+              data=None
+              if payload is not None:
+                  headers['Content-Type']='application/json'
+                  data=json.dumps(payload).encode()
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  data=data,method='POST' if data else 'GET',headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=18) as res:return res.status,json.load(res)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.loads(e.read().decode('utf-8'))
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          code,accounts=call('/accounts?per_page=100',deploy)
+          if code!=200 or accounts.get('success') is not True:
+              print('S13_FREE_NEURONS=DENY_HIVE_ACCOUNT_NOT_VERIFIED');raise SystemExit(3)
+          ids=[]
+          for a in accounts.get('result',[]):
+              account=str(a.get('id',''))
+              if len(account)!=32:continue
+              c,p=call('/accounts/'+account+'/pages/projects/hive-alveare',deploy)
+              if c==200 and p.get('success') is True and p.get('result',{}).get('name')=='hive-alveare':
+                  ids.append(account)
+          if len(ids)!=1:
+              print('S13_FREE_NEURONS=DENY_MULTIPLE_ACCOUNTS');raise SystemExit(4)
+          aid=ids[0]
+          code,subs=call('/accounts/'+aid+'/subscriptions',billing)
+          if code!=200 or subs.get('success') is not True or not isinstance(subs.get('result'),list):
+              print('S13_FREE_NEURONS=DENY_BILLING_READ_UNKNOWN');raise SystemExit(5)
+          billed=[]
+          for item in subs['result']:
+              plan=item.get('rate_plan') or {}
+              n=' '.join(str(plan.get(k) or '') for k in ('id','name','public_name','scope')).lower()
+              if ('worker' in n or 'ai gateway' in n) and str(item.get('state','')).lower() not in ('expired','cancelled','failed'):
+                  billed.append(n)
+          paid=any(any(t in n for t in ('paid','standard','enterprise','bundled')) for n in billed)
+          ambiguous=any(not any(t in n for t in ('free','paid','standard','enterprise','bundled')) for n in billed)
+          if paid or ambiguous:
+              print('S13_FREE_NEURONS=DENY_WORKERS_PLAN_UNVERIFIED');raise SystemExit(6)
+          utc=datetime.datetime.now(datetime.timezone.utc)
+          start=utc.replace(hour=0,minute=0,second=0,microsecond=0).isoformat(timespec='seconds').replace('+00:00','Z')
+          end=utc.isoformat(timespec='seconds').replace('+00:00','Z')
+          query='query($tag:String!,$start:Time!,$end:Time!){viewer{accounts(filter:{accountTag:$tag}){aiInferenceAdaptiveGroups(limit:100,filter:{datetime_geq:$start,datetime_leq:$end}){sum{totalNeurons}}}}}'
+          request={'query':query,'variables':{'tag':aid,'start':start,'end':end}}
+          metrics=None
+          for label,t in tokens:
+              if not t:continue
+              status,result=call('/graphql',t,request)
+              if status!=200 or result.get('errors'):
+                  print('S13_'+label.upper()+'_ANALYTICS_READ='+('UNAUTHORIZED' if status in (401,403) else 'SCHEMA_OR_ACCESS_UNKNOWN'))
+                  continue
+              accs=((result.get('data') or {}).get('viewer') or {}).get('accounts') or []
+              if len(accs)!=1:continue
+              groups=accs[0].get('aiInferenceAdaptiveGroups')
+              if not isinstance(groups,list):continue
+              vals=[((g.get('sum') or {}).get('totalNeurons')) for g in groups]
+              if any(not isinstance(x,(int,float)) or x<0 for x in vals):continue
+              metrics=sum(vals)
+              print('S13_ANALYTICS_TOKEN_REUSED='+label)
+              break
+          if metrics is None:
+              print('S13_FREE_NEURONS=DENY_DAILY_USAGE_UNVERIFIED');raise SystemExit(7)
+          print('S13_FREE_PLAN=VERIFIED')
+          print('S13_AI_NEURONS_USED_SINCE_UTC_MIDNIGHT='+str(round(metrics,2)))
+          print('S13_NO_MODEL_INFERENCE=TRUE')
+          print('S13_NO_WRITES=TRUE')
+          if metrics>5000:
+              print('S13_FREE_NEURONS=DENY_NOT_ENOUGH_CERTIFIED_HEADROOM')
+              raise SystemExit(8)
+          print('S13_FREE_NEURONS=PASS_READONLY_PROVISIONAL_CAP')
+          print('S13_COST_ATTESTATION_NOT_NEON_OWNER_PERMISSION=TRUE')
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'],'s13-independent-free-quota.json').write_text(json.dumps({'used_neurons':float(metrics),'free_plan_verified':True,'workers_paid_absent':True,'account_verified':True,'analytics_verified':True,'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat()}))
+          PY
+      - name: Fresh Owner OIDC, one model response and independent deterministic grading
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import {randomBytes,createHash} from 'node:crypto';
+          import {buildExam,scoreExam} from './private-hive/ops/queen/school/s13-transfer-exam.mjs';
+          const e=process.env,deny=x=>{throw Error('S13_DENY_'+x);};
+          const u=new URL(e.ACTIONS_ID_TOKEN_REQUEST_URL);u.searchParams.set('audience','hive-queen-s13-transfer-exam-v1');
+          const tokenRes=await fetch(u,{headers:{authorization:'Bearer '+e.ACTIONS_ID_TOKEN_REQUEST_TOKEN},redirect:'error'});
+          if(!tokenRes.ok)deny('OIDC_REQUEST');
+          const token=(await tokenRes.json()).value;
+          const nonce=randomBytes(32).toString('hex'),quota=JSON.parse(fs.readFileSync(e.RUNNER_TEMP+'/s13-independent-free-quota.json','utf8'));
+          const body={action:'exam',run_id:Number(e.GITHUB_RUN_ID),run_attempt:1,public_sha:e.GITHUB_SHA,nonce,free_quota:quota};
+          const res=await fetch('https://hive-alveare.pages.dev/api/queen-s13-exam',{method:'POST',redirect:'manual',headers:{'content-type':'application/json','CF-Access-Client-Id':e.CF_ACCESS_CLIENT_ID,'CF-Access-Client-Secret':e.CF_ACCESS_CLIENT_SECRET,'X-Queen-CI-OIDC':token},body:JSON.stringify(body)});
+          const data=await res.json().catch(()=>null);
+          if(!res.ok||data?.ok!==true){console.log('S13_EXAM_HTTP='+res.status);console.log('S13_EXAM_DENIAL='+(/^[a-z0-9_]{3,80}$/.test(data?.reason||'')?data.reason:'unknown'));deny('RUNTIME');}
+          const x=data.receipt,hash=s=>createHash('sha256').update(s).digest('hex');
+          if(x?.status!=='ANSWERED_UNGRADED'||x.owner_run_id!==body.run_id||x.public_sha!==body.public_sha||x.hive_sha!=='${{ steps.source.outputs.hive_sha }}'||x.nonce!==nonce||x.model_calls_used!==1||x.owner_oidc_verified!==true||x.paid_fallback!==false||x.mastery_write!==false||x.training_eligible!==false||x.question_sha256!==hash(JSON.stringify(buildExam(nonce).questions))||! /^[a-f0-9]{64}$/.test(x.response_sha256||'')||data.independent_grading_required!==true)deny('RECEIPT');
+          const grade=scoreExam(nonce,x.answers);
+          if(!grade.ok)deny('INVALID_ANSWERS');
+          console.log('S13_GENUINE_MODEL_ONE_CALL=PASS');
+          console.log('S13_RESPONSE_SHA256='+x.response_sha256);
+          console.log('S13_CONTEXTUAL_TRANSFER_GRADE='+JSON.stringify(grade));
+          if(!grade.passed)deny('INDEPENDENT_EXAM_FAILED');
+          console.log('S13_INDEPENDENT_CONTEXTUAL_TRANSFER_EXAM=PASS');
+          console.log('S13_NO_MASTERY_OR_TRAINING_NO_TERMINAL_CERTIFICATE=TRUE');
+          JS
+      - name: Clean private source and quota record
+        if: always()
+        run: rm -rf private-hive "$RUNNER_TEMP/s13-independent-free-quota.json"
