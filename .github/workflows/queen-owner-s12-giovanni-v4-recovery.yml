@@ -52,6 +52,7 @@ jobs:
               assert r.returncode==0, 'inline JS signer syntax '+str(i)
           PY
           echo S12_V4_EXACT_TWO_OWNER_OIDC_SIGNER_SCRIPTS=PASS
+          grep -Fq 'S12_V4_EDGE_DENIAL_CODE=' .github/workflows/queen-owner-s12-giovanni-v4-recovery.yml
           echo S12_V4_ONE_WORKFLOW_SOURCE_ONLY=PASS
   one-owner-giovanni-v4-and-terminal:
     if: github.event_name == 'workflow_dispatch' && inputs.approve_one_giovanni_v4_and_conditional_terminal == true && github.actor == 'giovannifidel-collab'
@@ -240,7 +241,25 @@ jobs:
                 'X-Queen-CI-OIDC':oidc,'content-type':'application/json'},
               body:JSON.stringify({action,...base,...rest})});
             const answer=await response.json().catch(()=>null);
-            if(!response.ok||answer?.ok!==true)deny('TRUSTED_'+action.toUpperCase()+'_GATE');
+            if(!response.ok||answer?.ok!==true){
+              // Never log tokens, headers, original responses, payloads or JWT claims.
+              // Only known public fail-closed machine codes and numeric HTTP status.
+              const allowed=new Set([
+                'invalid_oidc','owner_run_not_verified','mandate_not_active',
+                'source_pointer_mismatch','predecessor_or_field_invalid',
+                'v4_grant_exists','giovanni_head_changed','neon_cas_conflict',
+                'bad_cost','grant_missing_or_consumed','draft_unverified',
+                'terminal_preconditions_failed','terminal_already_recorded',
+                'unauthorized_action','cloudflare_access_required',
+                'invalid_body','invalid_json',
+                'trusted_owner_mandate_neon_or_github_unavailable'
+              ]);
+              const code=typeof answer?.reason==='string'&&allowed.has(answer.reason)
+                ?answer.reason:'unclassified_fail_closed_denial';
+              console.error('S12_V4_EDGE_HTTP_STATUS='+Number(response.status));
+              console.error('S12_V4_EDGE_DENIAL_CODE='+code);
+              deny('TRUSTED_'+action.toUpperCase()+'_GATE');
+            }
             return answer;
           };
           const register=await send('register');
