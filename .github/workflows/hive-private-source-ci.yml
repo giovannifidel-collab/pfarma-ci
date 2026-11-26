@@ -131,6 +131,35 @@ jobs:
         run: |
           set -euo pipefail
           for f in private-source/db/[0-9][0-9][0-9]_*.sql; do
+            if [ "$(basename "$f")" = '025_hive_school_evidence_rls.sql' ]; then
+              # The production Access policies are an existing external prerequisite.
+              # Reproduce their shape only in this disposable local CI database.
+              psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $fixture$
+          BEGIN
+            IF current_database() <> 'hive_test' OR current_user <> 'postgres' THEN
+              RAISE EXCEPTION 'Disposable CI database required';
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='hive_meta')
+               OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='hive_meta' AND c.relrowsecurity) THEN
+              RAISE EXCEPTION 'Unexpected fixture drift';
+            END IF;
+          END
+          $fixture$;
+          CREATE SCHEMA auth;
+          CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $jwt$
+            SELECT COALESCE(NULLIF(current_setting('request.jwt.claims',true),''),'{}')::jsonb
+          $jwt$;
+          ALTER TABLE public.hive_meta ENABLE ROW LEVEL SECURITY;
+          CREATE POLICY hive_cloudflare_owner ON public.hive_meta FOR ALL TO PUBLIC
+            USING (auth.jwt()->>'iss'='https://fixture.example.invalid' AND auth.jwt()->>'email'='owner@example.invalid')
+            WITH CHECK (auth.jwt()->>'iss'='https://fixture.example.invalid' AND auth.jwt()->>'email'='owner@example.invalid');
+          CREATE POLICY hive_cloudflare_service_token ON public.hive_meta FOR ALL TO PUBLIC
+            USING (auth.jwt()->>'iss'='https://fixture.example.invalid' AND auth.jwt()->>'type'='app' AND COALESCE(auth.jwt()->>'sub','')='' AND COALESCE(auth.jwt()->>'common_name','') LIKE '%.access')
+            WITH CHECK (auth.jwt()->>'iss'='https://fixture.example.invalid' AND auth.jwt()->>'type'='app' AND COALESCE(auth.jwt()->>'sub','')='' AND COALESCE(auth.jwt()->>'common_name','') LIKE '%.access');
+          SQL
+              echo 'S13_EPHEMERAL_ACCESS_POLICY_FIXTURE=PASS'
+            fi
             echo "Applying $f"
             psql -h localhost -U postgres -d hive_test -v ON_ERROR_STOP=1 -f "$f"
           done
