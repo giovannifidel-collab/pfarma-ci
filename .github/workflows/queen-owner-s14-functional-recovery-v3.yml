@@ -1,0 +1,271 @@
+name: Queen Owner S14 — Recovery V3 structured JSON, two real functional sandbox tasks
+on:
+  push:
+    branches: [s14/functional-recovery-v3-20261127]
+    paths: ['.github/workflows/queen-owner-s14-functional-recovery-v3.yml']
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/queen-owner-s14-functional-recovery-v3.yml']
+  workflow_dispatch:
+    inputs:
+      approve_s14_recovery_v3_two_free_sandbox_proposals:
+        description: 'Owner: NEW independent V3 exam after immutable failed runs 45988587785 and 46013080313; at most TWO free Queen calls; no target writes, merge, deploy or training.'
+        required: true
+        type: boolean
+        default: false
+permissions: {contents: read, actions: read}
+concurrency:
+  group: queen-s14-final-functional-one-shot
+  cancel-in-progress: false
+jobs:
+  integrated-exact-proof:
+    if: github.actor == 'giovannifidel-collab' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && inputs.approve_s14_recovery_v3_two_free_sandbox_proposals == true))
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 15
+    env:
+      HIVE_BASE: 6ffa92e8864113ba3351d007f9a2161069071347
+      HIVE_HARNESS: 451953c57f88b654a13a2ed62fce6ca7321224ed
+      G_SHA: 4f67bda2e1bf63db12c1d9d7311b57f12b7bc707
+      F_SHA: 564d3cc0a9f134db718c3110f83cc3a0431fd662
+    steps:
+      - name: Exact immutable private source boundary and canonical deployment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/135 |
+            jq -e --arg sha "$HIVE_HARNESS" '.state=="open" and .draft==true and .head.sha==$sha and .changed_files==6' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/135/files --jq '.[].filename' |
+            sort | diff -u <(printf '%s\n' 'ops/queen/s14/S14_FINAL_CONTRACT.v1.json' 'ops/queen/s14/holdouts/field.test.mjs' 'ops/queen/s14/holdouts/giovanni.test.mjs' 'ops/queen/s14/s14-functional-proof.mjs' 'ops/queen/s14/s14-functional-proof.test.mjs' 'ops/queen/s14/s14-sandbox-runner.mjs') -
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$HIVE_BASE"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = "$HIVE_BASE"
+          gh api "repos/giovannifidel-collab/hive-alveare/commits/$HIVE_BASE/check-runs" | jq -e '.check_runs|any(.name=="Cloudflare Pages" and .conclusion=="success")' >/dev/null
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/.github/workflows/queen-s1-event-ingress.yml --jq .sha)" = a0b75a09ab2ff8e37a49d6c4ebfcd2b3c1322ffe
+          gh api repos/giovannifidel-collab/hive-alveare/pulls/137 | jq -e '.merged==true and .merge_commit_sha=="6ffa92e8864113ba3351d007f9a2161069071347" and .head.sha=="79b2543a26d0fccb1f24609e977a681e06772092" and .changed_files==2' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/46025800173 | jq -e '.status=="completed" and .conclusion=="success" and .head_sha=="8e99114c6f3c57178193cf4dadae8458612322d2"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/45988587785 | jq -e '.status=="completed" and .conclusion=="failure" and .run_attempt==1 and .event=="workflow_dispatch" and .actor.login=="giovannifidel-collab" and .path==".github/workflows/queen-owner-s14-final-functional.yml"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/45988587785/jobs | jq -e '.jobs|any(.id==140470383242 and .conclusion=="failure" and (.steps|any(.name=="Two actual Queen functional proposals in isolated sandboxes" and .conclusion=="failure")))' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/46013080313 | jq -e '.status=="completed" and .conclusion=="failure" and .run_attempt==1 and .event=="workflow_dispatch" and .actor.login=="giovannifidel-collab" and .path==".github/workflows/queen-owner-s14-functional-recovery-v2.yml"' >/dev/null
+          gh api repos/giovannifidel-collab/pfarma-ci/actions/runs/46013080313/jobs | jq -e '.jobs|any(.id==140553240781 and .conclusion=="failure" and (.steps|any(.name=="Two actual Queen functional proposals in isolated sandboxes" and .conclusion=="failure")))' >/dev/null
+          echo S14_V1_V2_FAILED_EXAMS_PRESERVED_NO_REUSE=PASS
+          echo S14_CANONICAL_SOURCE_DEPLOY_S1_LOCK=PASS
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: ${{ env.HIVE_HARNESS }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/project-giovanni
+          ref: ${{ env.G_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: giovanni-source
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-field
+          ref: ${{ env.F_SHA }}
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: field-source
+      - name: S1 S2 S9 S10 S11 S12 S13 and S14 scope regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = "$HIVE_HARNESS"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 90 --memory 512m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /tmp node:22-alpine sh -ec 'node /project/ops/queen/core/validate-s1-core.mjs; node /project/ops/queen/school/validate-school.mjs; cd /project; node --test ops/queen/s9/tests/*.test.mjs ops/queen/s10/tests/*.test.mjs ops/queen/s11/tests/*.test.mjs ops/queen/s12/tests/*.test.mjs ops/queen/school/tests/*.test.mjs ops/queen/autopilot/s8/tests/s8-trusted-mission-intake.test.mjs ops/queen/autopilot/s8/tests/s8-full-scope-gates.test.mjs ops/queen/s14/s14-functional-proof.test.mjs' >"$RUNNER_TEMP/s14-regression.log" 2>&1 || { grep -E '^# (tests|pass|fail)|^not ok' "$RUNNER_TEMP/s14-regression.log" | tail -n 15; exit 1; }
+          grep -Fq 'S1_EVENT_ROUTER_BOUNDED=PASS' "$RUNNER_TEMP/s14-regression.log"
+          grep -Fq '"validation": "PASS"' "$RUNNER_TEMP/s14-regression.log"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/s14-regression.log"
+          grep -E '^# (tests|pass|fail)' "$RUNNER_TEMP/s14-regression.log"
+          echo S14_CANONICAL_REGRESSION=PASS
+      - name: Ten source observations and authority boundaries
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          manifest=private-hive/ops/queen/s9/S9_4_PROJECT_SOURCE_LOCK.v1.json
+          jq -e '(.project_sources|length)==10 and ([.project_sources[]|select(.access=="MISSION_SCOPED_ONLY")]|length)==6 and ([.project_sources[]|select(.access=="DENY")]|length)==4 and .authority_ceiling.project_writes==false and .authority_ceiling.production_writes==false' "$manifest" >/dev/null
+          observed=0; drift=0
+          while IFS=$'\t' read -r repo ref historical access; do
+            sha="$(gh api --paginate "repos/$repo/branches?per_page=100" | jq -sr --arg ref "$ref" '[.[][]|select(.name==$ref)|.commit.sha]|if length==1 then .[0] else error("branch missing") end')"
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+            observed=$((observed+1))
+            if [ "$sha" != "$historical" ]; then drift=$((drift+1)); fi
+          done < <(jq -r '.project_sources[]|[.repository,.ref,.sha,.access]|@tsv' "$manifest")
+          test "$observed" = 10
+          echo "S14_PORTFOLIO_OBSERVED=$observed"
+          echo "S14_PORTFOLIO_HISTORICAL_DRIFT=$drift"
+          echo S14_SIX_MISSION_SCOPED_FOUR_DENY_UNCHANGED=PASS
+      - name: Protected fresh World, School and standing grant gate
+        shell: bash
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$HIVE_RUNTIME_BEARER_TOKEN"
+          headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          curl --fail --silent --show-error --max-time 30 "${headers[@]}" 'https://hive-alveare.pages.dev/api/world-state' -o "$RUNNER_TEMP/s14-world.json"
+          jq -e '.ok==true and .data.policy=="authoritative-source-first" and .data.generated_at==.data.relay_generated_at and .data.coverage.source_available>=8 and .data.coverage.runtimes_reachable>=7' "$RUNNER_TEMP/s14-world.json" >/dev/null
+          age="$(( $(date -u +%s)-$(date -u -d "$(jq -r .data.generated_at "$RUNNER_TEMP/s14-world.json")" +%s) ))"
+          test "$age" -ge 0 && test "$age" -le 1800
+          echo "S14_FRESH_WORLD_AGE_SECONDS=$age"
+          curl --fail --silent --show-error --max-time 25 "${headers[@]}" 'https://hive-alveare.pages.dev/api/queen-state?view=school-evolution' -o "$RUNNER_TEMP/s14-school.json"
+          jq -e '.ok==true and (.curriculum_candidates|length)==4 and .mastery_write==false and .training_eligible==false and .provenance.terminal_event==2916' "$RUNNER_TEMP/s14-school.json" >/dev/null
+          echo S14_PROTECTED_SCHOOL_READBACK=PASS
+          for level in 0 3; do
+            body="$(jq -nc --argjson l "$level" '{project_id:"hive",level:$l,action:"world.observe",policy_blob_sha:"90f4fb35b8610f7738c79af0019cf1cb2582f746"}')"
+            status="$(curl --silent --show-error --max-time 25 "${headers[@]}" -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN" -H 'Content-Type: application/json' --data "$body" -o "$RUNNER_TEMP/s14-standing.json" -w '%{http_code}' 'https://hive-alveare.pages.dev/api/queen-standing-scope')"
+            if [ "$level" = 0 ]; then
+              test "$status" = 200
+              jq -e '.allowed==true and .max_authority_level==2 and .can_write_project==false and .can_deploy==false and .can_pay==false' "$RUNNER_TEMP/s14-standing.json" >/dev/null
+            else
+              test "$status" = 400
+              jq -e '.allowed==false and .can_write_project==false and .can_deploy==false and .can_pay==false' "$RUNNER_TEMP/s14-standing.json" >/dev/null
+            fi
+          done
+          echo S14_L0_ALLOW_L3_DENY=PASS
+          gh api 'repos/giovannifidel-collab/pfarma-ci/actions/runs?event=repository_dispatch&per_page=100' > "$RUNNER_TEMP/s14-dispatches.json"
+          jq -e --argjson now "$(date -u +%s)" '[.workflow_runs[]|select(.path==".github/workflows/queen-s1-event-ingress.yml" and .conclusion=="success" and (($now-(.created_at|fromdateiso8601))<3600))]|length>=2' "$RUNNER_TEMP/s14-dispatches.json" >/dev/null
+          echo S14_MULTIPLE_RECENT_REAL_S1_RUNS=PASS
+      - name: Reproduce functional defects and verify authored harness fixtures only
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node private-hive/ops/queen/s14/s14-sandbox-runner.mjs source "$GITHUB_WORKSPACE"
+          echo S14_NO_MODEL_SOURCE_ONLY=TRUE
+      - name: Owner one-shot exam preflight and replay denial
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          OWNER_APPROVAL: ${{ inputs.approve_s14_recovery_v3_two_free_sandbox_proposals }}
+        run: |
+          set -euo pipefail
+          test "$OWNER_APPROVAL" = true
+          test "$GITHUB_ACTOR" = giovannifidel-collab
+          test "$GITHUB_TRIGGERING_ACTOR" = giovannifidel-collab
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/main
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" |
+            jq -e --arg sha "$GITHUB_SHA" '.event=="workflow_dispatch" and .run_attempt==1 and .head_sha==$sha and .actor.login=="giovannifidel-collab" and .triggering_actor.login=="giovannifidel-collab" and .path==".github/workflows/queen-owner-s14-functional-recovery-v3.yml"' >/dev/null
+          for previous in $(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" | jq -r --argjson current "$GITHUB_RUN_ID" '.workflow_runs[]|select(.path==".github/workflows/queen-owner-s14-functional-recovery-v3.yml" and .id!=$current)|.id'); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$previous/jobs?filter=all" | jq -e '[.jobs[].steps[]?|select(.name=="Two actual Queen functional proposals in isolated sandboxes" and .started_at!=null and .conclusion!="skipped")]|length==0' >/dev/null || { echo S14_DENY_PREVIOUS_MODEL_STEP;exit 41; }
+          done
+          echo S14_EXACT_OWNER_ONE_SHOT_PREFLIGHT=PASS
+      - name: Independently verify Cloudflare Workers Free plan and current daily neurons
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ALT_DEPLOY: ${{ secrets.PFARMA_CLOUDFLARE_API_TOKEN }}
+          BILLING: ${{ secrets.CF_BILLING_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.error,datetime
+          deploy=os.getenv('DEPLOY') or os.getenv('ALT_DEPLOY')
+          billing=os.getenv('BILLING')
+          tokens=[('deploy',os.getenv('DEPLOY')),('fallback',os.getenv('ALT_DEPLOY')),('billing',billing)]
+          if not deploy or not billing:
+              print('S14_FREE_NEURONS=DENY_EXISTING_READ_TOKEN_MISSING');raise SystemExit(2)
+          def call(path,token,payload=None):
+              if not token:return 0,{}
+              headers={'Authorization':'Bearer '+token,'Accept':'application/json'}
+              data=None
+              if payload is not None:
+                  headers['Content-Type']='application/json'
+                  data=json.dumps(payload).encode()
+              req=urllib.request.Request('https://api.cloudflare.com/client/v4'+path,
+                  data=data,method='POST' if data else 'GET',headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=18) as res:return res.status,json.load(res)
+              except urllib.error.HTTPError as e:
+                  try:return e.code,json.loads(e.read().decode('utf-8'))
+                  except:return e.code,{}
+              except Exception:return 0,{}
+          code,accounts=call('/accounts?per_page=100',deploy)
+          if code!=200 or accounts.get('success') is not True:
+              print('S14_FREE_NEURONS=DENY_HIVE_ACCOUNT_NOT_VERIFIED');raise SystemExit(3)
+          ids=[]
+          for a in accounts.get('result',[]):
+              account=str(a.get('id',''))
+              if len(account)!=32:continue
+              c,p=call('/accounts/'+account+'/pages/projects/hive-alveare',deploy)
+              if c==200 and p.get('success') is True and p.get('result',{}).get('name')=='hive-alveare':
+                  ids.append(account)
+          if len(ids)!=1:
+              print('S14_FREE_NEURONS=DENY_MULTIPLE_ACCOUNTS');raise SystemExit(4)
+          aid=ids[0]
+          code,subs=call('/accounts/'+aid+'/subscriptions',billing)
+          if code!=200 or subs.get('success') is not True or not isinstance(subs.get('result'),list):
+              print('S14_FREE_NEURONS=DENY_BILLING_READ_UNKNOWN');raise SystemExit(5)
+          billed=[]
+          for item in subs['result']:
+              plan=item.get('rate_plan') or {}
+              n=' '.join(str(plan.get(k) or '') for k in ('id','name','public_name','scope')).lower()
+              if ('worker' in n or 'ai gateway' in n) and str(item.get('state','')).lower() not in ('expired','cancelled','failed'):
+                  billed.append(n)
+          paid=any(any(t in n for t in ('paid','standard','enterprise','bundled')) for n in billed)
+          ambiguous=any(not any(t in n for t in ('free','paid','standard','enterprise','bundled')) for n in billed)
+          if paid or ambiguous:
+              print('S14_FREE_NEURONS=DENY_WORKERS_PLAN_UNVERIFIED');raise SystemExit(6)
+          utc=datetime.datetime.now(datetime.timezone.utc)
+          start=utc.replace(hour=0,minute=0,second=0,microsecond=0).isoformat(timespec='seconds').replace('+00:00','Z')
+          end=utc.isoformat(timespec='seconds').replace('+00:00','Z')
+          query='query($tag:String!,$start:Time!,$end:Time!){viewer{accounts(filter:{accountTag:$tag}){aiInferenceAdaptiveGroups(limit:100,filter:{datetime_geq:$start,datetime_leq:$end}){sum{totalNeurons}}}}}'
+          request={'query':query,'variables':{'tag':aid,'start':start,'end':end}}
+          metrics=None
+          for label,t in tokens:
+              if not t:continue
+              status,result=call('/graphql',t,request)
+              if status!=200 or result.get('errors'):
+                  print('S14_'+label.upper()+'_ANALYTICS_READ='+('UNAUTHORIZED' if status in (401,403) else 'SCHEMA_OR_ACCESS_UNKNOWN'))
+                  continue
+              accs=((result.get('data') or {}).get('viewer') or {}).get('accounts') or []
+              if len(accs)!=1:continue
+              groups=accs[0].get('aiInferenceAdaptiveGroups')
+              if not isinstance(groups,list):continue
+              vals=[((g.get('sum') or {}).get('totalNeurons')) for g in groups]
+              if any(not isinstance(x,(int,float)) or x<0 for x in vals):continue
+              metrics=sum(vals)
+              print('S14_ANALYTICS_TOKEN_REUSED='+label)
+              break
+          if metrics is None:
+              print('S14_FREE_NEURONS=DENY_DAILY_USAGE_UNVERIFIED');raise SystemExit(7)
+          print('S14_FREE_PLAN=VERIFIED')
+          print('S14_AI_NEURONS_USED_SINCE_UTC_MIDNIGHT='+str(round(metrics,2)))
+          print('S14_NO_MODEL_INFERENCE=TRUE')
+          print('S14_NO_WRITES=TRUE')
+          if metrics>5000:
+              print('S14_FREE_NEURONS=DENY_NOT_ENOUGH_CERTIFIED_HEADROOM')
+              raise SystemExit(8)
+          print('S14_FREE_NEURONS=PASS_READONLY_PROVISIONAL_CAP')
+          print('S14_COST_ATTESTATION_NOT_NEON_OWNER_PERMISSION=TRUE')
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'],'s14-independent-free-quota.json').write_text(json.dumps({'used_neurons':float(metrics),'free_plan_verified':True,'workers_paid_absent':True,'account_verified':True,'analytics_verified':True,'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat()}))
+          PY
+      - name: Two actual Queen functional proposals in isolated sandboxes
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/s14-independent-free-quota.json"
+          jq -e '.free_plan_verified==true and .workers_paid_absent==true and .used_neurons<=5000' "$RUNNER_TEMP/s14-independent-free-quota.json" >/dev/null
+          node private-hive/ops/queen/s14/s14-sandbox-runner.mjs live "$GITHUB_WORKSPACE"
+          echo S14_NO_TARGET_WRITES_NO_TRAINING_NO_NEW_AUTHORITY=TRUE
+      - name: Cleanup all transient private source
+        if: always()
+        run: rm -rf private-hive giovanni-source field-source "$RUNNER_TEMP/s14-regression.log" "$RUNNER_TEMP/s14-world.json" "$RUNNER_TEMP/s14-school.json" "$RUNNER_TEMP/s14-standing.json" "$RUNNER_TEMP/s14-dispatches.json" "$RUNNER_TEMP/s14-independent-free-quota.json"
