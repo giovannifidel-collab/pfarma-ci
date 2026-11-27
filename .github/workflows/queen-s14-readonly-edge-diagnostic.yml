@@ -81,3 +81,21 @@ jobs:
             rm -f "$RUNNER_TEMP/s14-h" "$RUNNER_TEMP/s14-b"
           done
           echo S14_CURL_ZERO_INFERENCE=TRUE
+      - name: Reproduce Node fetch transport with GET only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const headers={'CF-Access-Client-Id':process.env.CF_ACCESS_CLIENT_ID,'CF-Access-Client-Secret':process.env.CF_ACCESS_CLIENT_SECRET,'content-type':'application/json'};
+          for(const [label,path] of [['BINDING','/api/queen-s8-workers-ai'],['QUEEN','/api/queen'],['WORLD','/api/world-state']]){
+            try{
+              const r=await fetch('https://hive-alveare.pages.dev'+path,{headers,method:'GET',redirect:'manual',signal:AbortSignal.timeout(20000)});
+              console.log('S14_NODE_'+label+'_HTTP='+r.status);
+              if(label==='BINDING'&&r.ok){
+                const j=await r.json();
+                console.log('S14_NODE_BINDING_PRESENT='+(j.binding_present===true));
+              }
+            }catch{console.log('S14_NODE_'+label+'_TRANSPORT_ERROR');}
+          }
+          console.log('S14_NODE_ZERO_INFERENCE=TRUE');
+          JS
