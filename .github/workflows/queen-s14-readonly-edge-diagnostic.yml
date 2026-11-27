@@ -1,0 +1,66 @@
+name: Queen S14 — Read-only edge diagnostic (zero inference)
+on:
+  push:
+    branches: [s14/readonly-edge-diagnostic-20261127]
+    paths: ['.github/workflows/queen-s14-readonly-edge-diagnostic.yml']
+permissions: {contents: read}
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: pfarma-ci-trusted
+    timeout-minutes: 4
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - name: Read production binding and authenticated status only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,re
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(NoRedirect)
+          def read(url,headers):
+              req=urllib.request.Request(url,headers=headers,method='GET')
+              try:
+                  with opener.open(req,timeout=15) as r:
+                      try: return r.status,json.load(r)
+                      except Exception: return r.status,{}
+              except urllib.error.HTTPError as e: return e.code,{}
+              except Exception: return 0,{}
+          token=os.environ.get('CF_TOKEN','')
+          h={'Authorization':'Bearer '+token,'Accept':'application/json'}
+          api='https://api.cloudflare.com/client/v4'
+          c,a=read(api+'/accounts?per_page=100',h)
+          print('S14_ACCOUNTS_HTTP='+str(c))
+          matches=[]
+          for account in a.get('result',[]):
+              aid=str(account.get('id',''))
+              if not re.fullmatch('[a-f0-9]{32}',aid):continue
+              code,j=read(api+'/accounts/'+aid+'/pages/projects/hive-alveare',h)
+              if code==200 and j.get('result',{}).get('name')=='hive-alveare':
+                  matches.append(j['result'])
+          print('S14_UNIQUE_PAGES_PROJECT='+str(len(matches)==1))
+          if len(matches)==1:
+              prod=matches[0].get('deployment_configs',{}).get('production',{}) or {}
+              ai=prod.get('ai_bindings',{}) or {}
+              print('S14_PRODUCTION_AI_BINDING_CONFIGURED='+str('AI' in ai))
+              dep=matches[0].get('canonical_deployment') or {}
+              print('S14_CANONICAL_DEPLOYMENT_PRESENT='+str(bool(dep)))
+              print('S14_CANONICAL_SHA_MATCH='+str((dep.get('deployment_trigger',{}).get('metadata') or {}).get('commit_hash')=='f924e9b168996617af5ea5573ce4f7f49f112731'))
+          access={'CF-Access-Client-Id':os.environ.get('CF_ACCESS_CLIENT_ID',''),'CF-Access-Client-Secret':os.environ.get('CF_ACCESS_CLIENT_SECRET',''),'Accept':'application/json'}
+          if not all(access.values()):raise SystemExit('S14_ACCESS_CREDENTIAL_MISSING')
+          host='https://hive-alveare.pages.dev'
+          for label,path in [('BINDING','/api/queen-s8-workers-ai'),('QUEEN_GET','/api/queen'),('WORLD','/api/world-state'),('CONSOLE','/')]:
+              code,j=read(host+path,access)
+              print('S14_'+label+'_HTTP='+str(code))
+              if label=='BINDING' and code==200:
+                  print('S14_LIVE_AI_BINDING_PRESENT='+str(j.get('binding_present') is True))
+                  print('S14_LIVE_MODEL_INVOKED='+str(j.get('model_invoked') is True))
+                  print('S14_LIVE_COST_CERTIFIED='+str(j.get('free_plan_certified') is True))
+          print('S14_ZERO_INFERENCE_REQUESTS=TRUE')
+          print('S14_ZERO_RUNTIME_WRITES=TRUE')
+          PY
