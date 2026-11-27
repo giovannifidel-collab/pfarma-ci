@@ -50,7 +50,7 @@ jobs:
               print('S14_PRODUCTION_AI_BINDING_CONFIGURED='+str('AI' in ai))
               dep=matches[0].get('canonical_deployment') or {}
               print('S14_CANONICAL_DEPLOYMENT_PRESENT='+str(bool(dep)))
-              print('S14_CANONICAL_SHA_MATCH='+str((dep.get('deployment_trigger',{}).get('metadata') or {}).get('commit_hash')=='f924e9b168996617af5ea5573ce4f7f49f112731'))
+              print('S14_CANONICAL_SHA_MATCH='+str((dep.get('deployment_trigger',{}).get('metadata') or {}).get('commit_hash')=='7b8657bfc068e5a9fe27048b827870879e34e0a6'))
           access={'CF-Access-Client-Id':os.environ.get('CF_ACCESS_CLIENT_ID',''),'CF-Access-Client-Secret':os.environ.get('CF_ACCESS_CLIENT_SECRET',''),'Accept':'application/json'}
           if not all(access.values()):raise SystemExit('S14_ACCESS_CREDENTIAL_MISSING')
           host='https://hive-alveare.pages.dev'
@@ -117,7 +117,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/hive-alveare
-          ref: c78f1b1b7c81233f99d94111733bbd49e071b301
+          ref: 79b2543a26d0fccb1f24609e977a681e06772092
           token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           persist-credentials: false
           path: private-hive
@@ -126,8 +126,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C private-hive rev-parse HEAD)" = c78f1b1b7c81233f99d94111733bbd49e071b301
-          git -C private-hive diff --name-only f924e9b168996617af5ea5573ce4f7f49f112731 HEAD | sort | diff -u <(printf '%s\n' cloudflare/functions/api/queen.js ops/queen/s14/queen-informational-model-repair.test.mjs) -
+          test "$(git -C private-hive rev-parse HEAD)" = 79b2543a26d0fccb1f24609e977a681e06772092
+          git -C private-hive diff --name-only 7b8657bfc068e5a9fe27048b827870879e34e0a6 HEAD | sort | diff -u <(printf '%s\n' cloudflare/functions/api/queen.js ops/queen/s14/queen-informational-model-repair.test.mjs) -
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 90 --memory 384m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=32m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /project node:22-alpine node --test ops/queen/s14/queen-informational-model-repair.test.mjs
           echo S14_REPAIR_SOURCE_MOCK_TESTS=PASS
       - name: Clean exact private checkout
