@@ -99,3 +99,17 @@ jobs:
           }
           console.log('S14_NODE_ZERO_INFERENCE=TRUE');
           JS
+      - name: Confirm empty message rejection before model invocation on exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          const headers={'CF-Access-Client-Id':process.env.CF_ACCESS_CLIENT_ID,'CF-Access-Client-Secret':process.env.CF_ACCESS_CLIENT_SECRET,'content-type':'application/json'};
+          // Canonical queen.js returns 400 for empty message before inspecting AI or calling it.
+          const r=await fetch('https://hive-alveare.pages.dev/api/queen',{method:'POST',headers,body:JSON.stringify({message:''}),redirect:'manual',signal:AbortSignal.timeout(20000)});
+          const data=await r.json().catch(()=>null);
+          console.log('S14_NODE_EMPTY_POST_HTTP='+r.status);
+          console.log('S14_NODE_EMPTY_POST_VALIDATION_REACHED='+(r.status===400&&data?.error==='message required'));
+          if(r.status===401)console.log('S14_NODE_EMPTY_POST_AUTH_DENY=TRUE');
+          console.log('S14_NO_NONEMPTY_MODEL_PROMPT_SENT=TRUE');
+          JS
