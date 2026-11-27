@@ -113,3 +113,23 @@ jobs:
           if(r.status===401)console.log('S14_NODE_EMPTY_POST_AUTH_DENY=TRUE');
           console.log('S14_NO_NONEMPTY_MODEL_PROMPT_SENT=TRUE');
           JS
+      - name: Check exact Queen repair source in isolated mock-only tests
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: c78f1b1b7c81233f99d94111733bbd49e071b301
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+          fetch-depth: 0
+      - name: Verify exact repair scope and run isolated tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = c78f1b1b7c81233f99d94111733bbd49e071b301
+          git -C private-hive diff --name-only f924e9b168996617af5ea5573ce4f7f49f112731 HEAD | sort | diff -u <(printf '%s\n' cloudflare/functions/api/queen.js ops/queen/s14/queen-informational-model-repair.test.mjs) -
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 90 --memory 384m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=32m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /project node:22-alpine node --test ops/queen/s14/queen-informational-model-repair.test.mjs
+          echo S14_REPAIR_SOURCE_MOCK_TESTS=PASS
+      - name: Clean exact private checkout
+        if: always()
+        run: rm -rf private-hive
