@@ -64,3 +64,20 @@ jobs:
           print('S14_ZERO_INFERENCE_REQUESTS=TRUE')
           print('S14_ZERO_RUNTIME_WRITES=TRUE')
           PY
+      - name: Compare exact canonical curl transport, no redirects or inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          for pair in 'BINDING|/api/queen-s8-workers-ai' 'QUEEN_GET|/api/queen' 'WORLD|/api/world-state' 'CONSOLE|/'; do
+            label="${pair%%|*}"
+            path="${pair#*|}"
+            code="$(curl --silent --show-error --max-time 25 "${headers[@]}" -D "$RUNNER_TEMP/s14-h" -o "$RUNNER_TEMP/s14-b" -w '%{http_code}' "https://hive-alveare.pages.dev$path" || true)"
+            echo "S14_CURL_${label}_HTTP=$code"
+            if grep -qi '^cf-mitigated: *challenge' "$RUNNER_TEMP/s14-h"; then echo "S14_CURL_${label}_CHALLENGE=TRUE"; fi
+            if [ "$label" = BINDING ] && [ "$code" = 200 ]; then
+              jq -r '"S14_CURL_LIVE_AI_BINDING_PRESENT="+(.binding_present|tostring),"S14_CURL_LIVE_MODEL_INVOKED="+(.model_invoked|tostring),"S14_CURL_LIVE_COST_CERTIFIED="+(.free_plan_certified|tostring)' "$RUNNER_TEMP/s14-b"
+            fi
+            rm -f "$RUNNER_TEMP/s14-h" "$RUNNER_TEMP/s14-b"
+          done
+          echo S14_CURL_ZERO_INFERENCE=TRUE
