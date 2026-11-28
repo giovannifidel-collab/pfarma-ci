@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/hive-alveare
-          ref: 11d43755e29cfcd440ff6008b8af5ad33abbd3cd
+          ref: 61b60206c544933632171274b128f5acd7ebb771
           token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           persist-credentials: false
           path: private-hive
@@ -23,9 +23,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C private-hive rev-parse HEAD)" = 11d43755e29cfcd440ff6008b8af5ad33abbd3cd
-          git -C private-hive diff --name-only b58bab08d908d5e93ee3d4529028c46e2ad3f3e6 HEAD | sort | diff -u <(printf '%s\n' cloudflare/functions/_lib/family-cloud-preflight.js cloudflare/functions/api/queen-command.js ops/queen/s14/family-cloud-preflight.test.mjs) -
-          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 90 --memory 512m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /project node:22-alpine node --test ops/queen/s14/family-cloud-preflight.test.mjs ops/queen/s14/queen-operational-route.test.mjs ops/queen/s14/queen-informational-model-repair.test.mjs ops/queen/s14/s14-functional-proof.test.mjs
+          test "$(git -C private-hive rev-parse HEAD)" = 61b60206c544933632171274b128f5acd7ebb771
+          git -C private-hive diff --name-only 190514172c449a5bfa91b96af6c3794ac27a8fea HEAD | sort | diff -u <(printf '%s\n' cloudflare/functions/_lib/family-cloud-execution.js cloudflare/functions/api/queen-command.js ops/queen/s14/family-cloud-execution.test.mjs) -
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 90 --memory 512m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /project node:22-alpine node --test ops/queen/s14/family-cloud-execution.test.mjs ops/queen/s14/family-cloud-preflight.test.mjs ops/queen/s14/queen-operational-route.test.mjs ops/queen/s14/queen-informational-model-repair.test.mjs ops/queen/s14/s14-functional-proof.test.mjs
           echo QUEEN_OPERATIONAL_ROUTE_SOURCE_CI=PASS
       - name: Enumerate remaining retired-model references for later review only
         shell: bash
