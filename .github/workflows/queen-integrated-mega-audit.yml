@@ -30,7 +30,7 @@ jobs:
           set -euo pipefail
           test "$(git -C private-hive rev-parse HEAD)" = 18ddf0eeab5bb73e2ddd725260550f28ae82fdef
           case "$SUITE" in
-            core) CMD='node ops/queen/core/validate-s1-core.mjs; node ops/queen/school/validate-school.mjs';;
+            core) CMD='cd /tmp; node /project/ops/queen/core/validate-s1-core.mjs; node /project/ops/queen/school/validate-school.mjs';;
             autonomy) CMD='node --test ops/queen/autopilot/tests/*.test.mjs ops/queen/autopilot/s8/tests/*.test.mjs';;
             compute) CMD='node --test ops/queen/compute/s7/tests/*.test.mjs';;
             portfolio) CMD='node --test ops/queen/s9/tests/*.test.mjs';;
@@ -44,6 +44,10 @@ jobs:
           rc=0
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 768m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=128m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /project node:22-alpine sh -ec "$CMD" > "$RUNNER_TEMP/audit.log" 2>&1 || rc=$?
           grep -E '^# (tests|pass|fail|skipped) [0-9]+$' "$RUNNER_TEMP/audit.log" || true
+          if [ "$SUITE" = core ] && [ "$rc" = 0 ]; then
+            grep -Fq 'S1_EVENT_ROUTER_BOUNDED=PASS' "$RUNNER_TEMP/audit.log"
+            grep -Fq '"validation": "PASS"' "$RUNNER_TEMP/audit.log"
+          fi
           echo "MEGA_AUDIT_SUITE=$SUITE EXIT=$rc"
           rm -f "$RUNNER_TEMP/audit.log"
           test "$rc" = 0
