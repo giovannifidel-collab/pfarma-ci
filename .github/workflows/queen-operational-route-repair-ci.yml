@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/hive-alveare
-          ref: b7ad3812264b858b80741e8d6a837ee262c4464b
+          ref: ba0ab7bbf604a1cffd75566ea5861b478257b998
           token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           persist-credentials: false
           path: private-hive
@@ -23,8 +23,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C private-hive rev-parse HEAD)" = b7ad3812264b858b80741e8d6a837ee262c4464b
-          git -C private-hive diff --name-only 31863c109c60e0a4d95d16d15b2b595ae174b222 HEAD | sort | diff -u <(printf '%s\n' cloudflare/functions/_lib/s1-family-cloud-bridge.js cloudflare/functions/api/queen-command.js cloudflare/functions/api/queen-state.js cloudflare/public/queen-brain.js ops/queen/s14/s1-family-cloud-bridge.test.mjs) -
+          test "$(git -C private-hive rev-parse HEAD)" = ba0ab7bbf604a1cffd75566ea5861b478257b998
+          git -C private-hive diff --name-only 585231d00443b240ead9b2369cca674b87ca49e6 HEAD | sort | diff -u <(printf '%s\n' cloudflare/functions/_lib/s1-family-cloud-bridge.js ops/queen/s14/s1-family-cloud-bridge.test.mjs) -
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 90 --memory 512m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /project node:22-alpine node --test ops/queen/s14/s1-family-cloud-bridge.test.mjs ops/queen/s14/family-cloud-execution.test.mjs ops/queen/s14/family-cloud-preflight.test.mjs ops/queen/s14/queen-operational-route.test.mjs ops/queen/s14/queen-informational-model-repair.test.mjs ops/queen/s14/s14-functional-proof.test.mjs
           echo QUEEN_OPERATIONAL_ROUTE_SOURCE_CI=PASS
       - name: Enumerate remaining retired-model references for later review only
