@@ -1,0 +1,37 @@
+name: Family Cloud FC-S1 exact browser recheck (read only)
+on:
+  push:
+    branches: [family-cloud/fc-s1-browser-recheck-20261128]
+    paths: ['.github/workflows/fc-s1-browser-recheck-20261128.yml']
+permissions:
+  contents: read
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-24.04
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: 0d2af1c152f094c9344f8f6cac00ee333c39e948
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-family
+      - name: Verify exact candidate
+        run: test "$(git -C private-family rev-parse HEAD)" = 0d2af1c152f094c9344f8f6cac00ee333c39e948
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install pinned smoke-test runner
+        working-directory: private-family
+        run: npm install --ignore-scripts --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+      - name: Install browsers on supported Ubuntu release
+        working-directory: private-family
+        run: npx playwright install --with-deps chromium webkit
+      - name: Existing exact browser smoke using localhost only and synthetic authentication
+        working-directory: private-family
+        run: node scripts/vercel-rescue-browser-smoke.mjs
+      - name: Clean private checkout
+        if: always()
+        run: rm -rf private-family
