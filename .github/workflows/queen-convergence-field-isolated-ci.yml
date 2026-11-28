@@ -1,0 +1,65 @@
+name: Queen convergence — exact mandate and Field isolation
+on:
+  push:
+    branches: [convergence/owner-integrated-mandate-20261128]
+    paths: ['.github/workflows/queen-convergence-field-isolated-ci.yml']
+permissions:
+  contents: read
+jobs:
+  mandate-policy:
+    runs-on: ubuntu-24.04
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: e65b1e3541424478efaf4d879b268d3df4c01ff9
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - name: Networkless policy and prior mandate regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = e65b1e3541424478efaf4d879b268d3df4c01ff9
+          rc=0
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 90 --memory 512m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /project node:22-alpine node --test ops/queen/s12/tests/convergence-owner-mandate.test.mjs ops/queen/s12/tests/s12-seven-day-owner-mandate.test.mjs > "$RUNNER_TEMP/mandate-tests.log" 2>&1 || rc=$?
+          grep -E '^# (tests|pass|fail|skipped) [0-9]+$' "$RUNNER_TEMP/mandate-tests.log"
+          rm -f "$RUNNER_TEMP/mandate-tests.log"
+          test "$rc" = 0
+      - name: Clean source
+        if: always()
+        run: rm -rf private-hive
+  field-isolation:
+    runs-on: ubuntu-24.04
+    environment: pfarma-ci-trusted
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-field
+          ref: eb153ff0b1fc5d3bcfd362b34eb2e25e60484738
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-field
+      - name: Archive exact source without Git metadata and credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-field rev-parse HEAD)" = eb153ff0b1fc5d3bcfd362b34eb2e25e60484738
+          git -C private-field archive --format=tar HEAD > "$RUNNER_TEMP/field-source.tar"
+          chmod 644 "$RUNNER_TEMP/field-source.tar"
+          echo FIELD_EXACT_SOURCE_ARCHIVE=PASS
+      - name: Run actual Field quality gates without secrets, network, or host write access
+        shell: bash
+        run: |
+          set -euo pipefail
+          rc=0
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 1024m --cpus 2 --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=128m --tmpfs /work:rw,nosuid,nodev,mode=1777,size=512m --mount "type=bind,source=$RUNNER_TEMP/field-source.tar,target=/source.tar,readonly" --workdir /work -e HOME=/tmp -e VERCEL_ENV=test -e HF_CALENDAR_LIVE_QA=false node:22-alpine sh -ec 'tar -xf /source.tar; test ! -e .git; test -z "${SOURCE_TOKEN:-}${CF_TOKEN:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}"; npm run check; npm run build' > "$RUNNER_TEMP/field-isolation.log" 2>&1 || rc=$?
+          echo "FIELD_ISOLATED_QUALITY_GATES_EXIT=$rc"
+          rm -f "$RUNNER_TEMP/field-isolation.log"
+          test "$rc" = 0
+      - name: Cleanup
+        if: always()
+        run: rm -rf private-field "$RUNNER_TEMP/field-source.tar" "$RUNNER_TEMP/field-isolation.log"
