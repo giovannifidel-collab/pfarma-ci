@@ -1,4 +1,4 @@
-name: Queen Family Cloud console real bounded proof
+name: Queen Family Cloud canonical S1 console intake proof
 on:
   push:
     branches: [family-cloud/queen-fcs1-live-proof-20261128]
@@ -16,9 +16,9 @@ jobs:
           GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: |
           set -euo pipefail
-          gh api repos/giovannifidel-collab/hive-alveare/branches/main | jq -e '.commit.sha=="31863c109c60e0a4d95d16d15b2b595ae174b222"' >/dev/null
-          gh api repos/giovannifidel-collab/hive-alveare/commits/31863c109c60e0a4d95d16d15b2b595ae174b222/check-runs | jq -e '.check_runs|any(.name=="Cloudflare Pages" and .conclusion=="success")' >/dev/null
-      - name: One exact console command no target writes
+          gh api repos/giovannifidel-collab/hive-alveare/branches/main | jq -e '.commit.sha=="585231d00443b240ead9b2369cca674b87ca49e6"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/commits/585231d00443b240ead9b2369cca674b87ca49e6/check-runs | jq -e '.check_runs|any(.name=="Cloudflare Pages" and .conclusion=="success")' >/dev/null
+      - name: One exact console command enqueued through S1
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
@@ -30,10 +30,10 @@ jobs:
           umask 077
           code="$(curl -sS --max-time 105 -o /tmp/queen-fc-receipt.json -w '%{http_code}' -X POST 'https://hive-alveare.pages.dev/api/queen-command' -H 'Content-Type: application/json' -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN" --data '{"message":"Verifica Family Cloud FC-S1","project_slug":"family-cloud","source":"queen-fcs1-live-proof"}')"
           echo "QUEEN_FCS1_HTTP=$code"
-          jq -c '{ok,task_id,route,execution:{run_id:.execution.run_id,execution_verified:.execution.execution_verified,project_writes:.execution.project_writes},error_class:(if (.error|type)=="string" then (.error|split(":")[0]|if test("^[a-zA-Z0-9_ -]{1,80}$") then . else "redacted" end) else null end)}' /tmp/queen-fc-receipt.json
+          jq -c '{ok,task_id,route,status,execution_verified,error_class:(if (.error|type)=="string" then (.error|split(":")[0]|if test("^[a-zA-Z0-9_ -]{1,80}$") then . else "redacted" end) else null end)}' /tmp/queen-fc-receipt.json
           test "$code" = 200
-          jq -e '.ok==true and .route=="family-cloud-fcs1-execution" and .execution.execution_verified==true and .execution.project_writes==false and .execution.production_release==false' /tmp/queen-fc-receipt.json >/dev/null
-          echo QUEEN_FCS1_LIVE_PROOF=PASS
+          jq -e '.ok==true and .route=="family-cloud-fcs1-s1-queued" and .status=="queued" and .execution_verified==false and (.task_id|type=="string")' /tmp/queen-fc-receipt.json >/dev/null
+          echo QUEEN_FCS1_S1_INTAKE=PASS
       - name: Cleanup
         if: always()
         run: rm -f /tmp/queen-fc-receipt.json
