@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: giovannifidel-collab/hive-alveare
-          ref: ce28e0217154c7f33c234a591f7f39ff98a8a2b9
+          ref: 92dcea07628ff3b5f688be57917255c7c83494dc
           token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
           persist-credentials: false
           path: private-hive
@@ -23,8 +23,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C private-hive rev-parse HEAD)" = ce28e0217154c7f33c234a591f7f39ff98a8a2b9
-          git -C private-hive diff --name-only b019373878ce8ba86381cf4850beca815a558726 HEAD | sort | diff -u <(printf '%s\n' cloudflare/functions/api/queen-command.js ops/queen/s14/queen-operational-route.test.mjs) -
+          test "$(git -C private-hive rev-parse HEAD)" = 92dcea07628ff3b5f688be57917255c7c83494dc
+          git -C private-hive diff --name-only bbc81e3f52acefa387e9a6e353b6eef0562c86bf HEAD | sort | diff -u <(printf '%s\n' cloudflare/functions/api/queen-command.js ops/queen/s14/queen-operational-route.test.mjs) -
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 90 --memory 512m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /project node:22-alpine node --test ops/queen/s14/queen-operational-route.test.mjs ops/queen/s14/queen-informational-model-repair.test.mjs ops/queen/s14/s14-functional-proof.test.mjs
           echo QUEEN_OPERATIONAL_ROUTE_SOURCE_CI=PASS
       - name: Enumerate remaining retired-model references for later review only
