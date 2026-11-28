@@ -1,0 +1,92 @@
+name: Queen integrated mega audit (read-only)
+on:
+  push:
+    branches: [audit/queen-integrated-capabilities-20261128]
+    paths: ['.github/workflows/queen-integrated-mega-audit.yml']
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    environment: pfarma-ci-trusted
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [core, autonomy, compute, portfolio, continuity, development, learning, live-bridge]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/hive-alveare
+          ref: 18ddf0eeab5bb73e2ddd725260550f28ae82fdef
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-hive
+      - name: Exact source, networkless tests, no credentials
+        shell: bash
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: |
+          set -euo pipefail
+          test "$(git -C private-hive rev-parse HEAD)" = 18ddf0eeab5bb73e2ddd725260550f28ae82fdef
+          case "$SUITE" in
+            core) CMD='node ops/queen/core/validate-s1-core.mjs; node ops/queen/school/validate-school.mjs';;
+            autonomy) CMD='node --test ops/queen/autopilot/tests/*.test.mjs ops/queen/autopilot/s8/tests/*.test.mjs';;
+            compute) CMD='node --test ops/queen/compute/s7/tests/*.test.mjs';;
+            portfolio) CMD='node --test ops/queen/s9/tests/*.test.mjs';;
+            continuity) CMD='node --test ops/queen/s10/tests/*.test.mjs ops/queen/s11/tests/*.test.mjs';;
+            development) CMD='node --test ops/queen/s12/tests/*.test.mjs ops/queen/s14/s14-functional-proof.test.mjs';;
+            learning) CMD='node --test ops/queen/school/tests/*.test.mjs';;
+            live-bridge) CMD='node --test ops/queen/s14/family-cloud-execution.test.mjs ops/queen/s14/family-cloud-preflight.test.mjs ops/queen/s14/queen-informational-model-repair.test.mjs ops/queen/s14/queen-operational-route.test.mjs ops/queen/s14/s1-family-cloud-bridge.test.mjs';;
+            *) exit 1;;
+          esac
+          # Raw private test output stays on the ephemeral runner. Only counts leave it.
+          rc=0
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 768m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=128m --mount "type=bind,source=$GITHUB_WORKSPACE/private-hive,target=/project,readonly" --workdir /project node:22-alpine sh -ec "$CMD" > "$RUNNER_TEMP/audit.log" 2>&1 || rc=$?
+          grep -E '^# (tests|pass|fail|skipped) [0-9]+$' "$RUNNER_TEMP/audit.log" || true
+          echo "MEGA_AUDIT_SUITE=$SUITE EXIT=$rc"
+          rm -f "$RUNNER_TEMP/audit.log"
+          test "$rc" = 0
+      - name: Clean private checkout
+        if: always()
+        run: rm -rf private-hive
+  live-evidence:
+    runs-on: ubuntu-24.04
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    steps:
+      - name: Canonical deployment and historical independent proofs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA=18ddf0eeab5bb73e2ddd725260550f28ae82fdef
+          test "$(gh api repos/giovannifidel-collab/hive-alveare/branches/main --jq .commit.sha)" = "$SHA"
+          test "$(gh api repos/giovannifidel-collab/pfarma-ci/contents/hive-source-ref.txt --jq .content | tr -d '\n' | base64 -d | tr -d '\r\n')" = "$SHA"
+          gh api "repos/giovannifidel-collab/hive-alveare/commits/$SHA/check-runs" | jq -e '.check_runs|any(.name=="Cloudflare Pages" and .conclusion=="success")' >/dev/null
+          for ID in 46085516676 46088552254 46155912924 46155929628 46155952261 46155990396; do
+            gh api "repos/giovannifidel-collab/pfarma-ci/actions/runs/$ID" | jq -e --argjson id "$ID" '.id==$id and .status=="completed" and .conclusion=="success" and .run_attempt==1' >/dev/null
+            echo "MEGA_AUDIT_PRIOR_RUN=$ID PASS"
+          done
+          echo MEGA_AUDIT_CANONICAL_DEPLOYMENT=PASS
+      - name: Protected runtime readback, no inference or mutation
+        shell: bash
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          HIVE_RUNTIME_BEARER_TOKEN: ${{ secrets.HIVE_RUNTIME_BEARER_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for URI in /api/queen-state /api/world-state /api/queen-owner-seven-day-mandate /api/queen-state?view=school-evolution; do
+            code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/runtime-audit.json" -w '%{http_code}' -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN" "https://hive-alveare.pages.dev$URI")"
+            echo "MEGA_AUDIT_RUNTIME=$URI HTTP=$code"
+            test "$code" = 200
+            jq -e '.ok==true' "$RUNNER_TEMP/runtime-audit.json" >/dev/null
+          done
+          rm -f "$RUNNER_TEMP/runtime-audit.json"
+          echo MEGA_AUDIT_RUNTIME_READBACK=PASS
+      - name: Cleanup
+        if: always()
+        run: rm -f "$RUNNER_TEMP/runtime-audit.json"
