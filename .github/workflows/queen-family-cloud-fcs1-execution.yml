@@ -1,0 +1,76 @@
+name: Queen Family Cloud FC-S1 isolated execution
+run-name: Family Cloud FC-S1 ${{ github.event.client_payload.task_id || 'source-ci' }}
+on:
+  push:
+    branches: [family-cloud/queen-execution-fcs1-20261128]
+    paths: ['.github/workflows/queen-family-cloud-fcs1-execution.yml']
+  repository_dispatch:
+    types: [queen_family_cloud_fcs1_verify]
+permissions:
+  contents: read
+concurrency:
+  group: queen-family-cloud-fcs1-${{ github.event.client_payload.task_id || github.sha }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    name: Exact Family Cloud FC-S1 sandbox
+    runs-on: ubuntu-24.04
+    environment: pfarma-ci-trusted
+    timeout-minutes: 5
+    steps:
+      - name: Verify bounded request and no retry
+        shell: bash
+        env:
+          TASK: ${{ github.event.client_payload.task_id }}
+          SHA: ${{ github.event.client_payload.candidate_sha }}
+          BASE: ${{ github.event.client_payload.base_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = repository_dispatch ]; then
+            test "$GITHUB_REF" = refs/heads/main
+            test "$GITHUB_RUN_ATTEMPT" = 1
+            [[ "$TASK" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+            test "$SHA" = 0d2af1c152f094c9344f8f6cac00ee333c39e948
+            test "$BASE" = f9edfc48dc48f76264d8c587aed765d950b18d81
+          else
+            test "$GITHUB_EVENT_NAME" = push
+            test "$GITHUB_REF" = refs/heads/family-cloud/queen-execution-fcs1-20261128
+          fi
+      - name: Verify live exact PR and both branches
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/family-cloud/pulls/875 | jq -e '.state=="open" and .head.sha=="0d2af1c152f094c9344f8f6cac00ee333c39e948" and .base.sha=="f9edfc48dc48f76264d8c587aed765d950b18d81" and .base.ref=="agent/bootstrap-family-cloud"' >/dev/null
+          gh api repos/giovannifidel-collab/family-cloud/branches/main | jq -e '.commit.sha=="b4e796f0202fd1e6ae89029674d69210e9bbbc8d"' >/dev/null
+      - name: Checkout exact candidate without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          repository: giovannifidel-collab/family-cloud
+          ref: 0d2af1c152f094c9344f8f6cac00ee333c39e948
+          token: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+          persist-credentials: false
+          path: private-family
+      - name: Install test dependencies without lifecycle scripts
+        working-directory: private-family
+        run: npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+      - name: Execute isolated exact source regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C private-family rev-parse HEAD)" = 0d2af1c152f094c9344f8f6cac00ee333c39e948
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 512m --user 65534:65534 --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m --mount "type=bind,source=$GITHUB_WORKSPACE/private-family,target=/project,readonly" --workdir /project node:24-bookworm-slim sh -c 'node --import tsx --test tests/vercel-rescue-bootstrap-observer.test.ts'
+          echo FC_S1_SANDBOX_REGRESSION=PASS
+      - name: Recheck current exact branches and candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api repos/giovannifidel-collab/family-cloud/pulls/875 | jq -e '.state=="open" and .head.sha=="0d2af1c152f094c9344f8f6cac00ee333c39e948" and .base.sha=="f9edfc48dc48f76264d8c587aed765d950b18d81"' >/dev/null
+          gh api repos/giovannifidel-collab/family-cloud/branches/main | jq -e '.commit.sha=="b4e796f0202fd1e6ae89029674d69210e9bbbc8d"' >/dev/null
+          echo FC_S1_NO_PROJECT_WRITES=TRUE
+      - name: Clean transient source
+        if: always()
+        run: rm -rf private-family
