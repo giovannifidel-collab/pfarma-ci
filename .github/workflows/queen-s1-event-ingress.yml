@@ -7,6 +7,7 @@ on:
       - convergence/queen-s1-promote-v1
       - convergence/queen-s1-single-ingress-v1
       - convergence/queen-s1-final-pin-v1
+      - convergence/s1-existing-family-executor-20261128
     paths:
       - '.github/workflows/queen-s1-event-ingress.yml'
   repository_dispatch:
@@ -239,9 +240,19 @@ jobs:
               echo "S1_INTERNAL_TRANSITION=$ACTION"
               ;;
             fabric.execute|verification.execute)
-              echo "S1_ACTION_NOT_YET_CANONICAL=$ACTION"
-              echo "S1_FAIL_CLOSED=delegation/verification execution belongs to later convergence gates"
-              exit 40
+              # Existing exact FC-S1 adapter only. Every other execution remains DENY.
+              jq -e --arg c "$CORRELATION" '(.kind=="queen.s1.family-cloud.fcs1") and (.task_id|type=="string") and ("fc-s1-"+.task_id==$c) and ((keys|sort)==["kind","task_id"])' <<<"$DATA" >/dev/null
+              test -n "$CF_ACCESS_CLIENT_ID" && test -n "$CF_ACCESS_CLIENT_SECRET" && test -n "$HIVE_RUNTIME_BEARER_TOKEN"
+              BODY="$(jq -cn --arg action "$ACTION" --arg correlation_id "$CORRELATION" --argjson data "$DATA" '{action:$action,correlation_id:$correlation_id,data:$data}')"
+              CODE="$(curl -sS --max-time 110 -o /tmp/s1-family-result.json -w '%{http_code}' -X POST 'https://hive-alveare.pages.dev/api/queen-state' -H 'Content-Type: application/json' -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" -H "Authorization: Bearer $HIVE_RUNTIME_BEARER_TOKEN" -d "$BODY")"
+              test "$CODE" = 200
+              jq -e --arg a "$ACTION" --argjson d "$DATA" '.ok==true and .action==$a and .kind==$d.kind and .task_id==$d.task_id and .project_writes==false and (.receipt_id!=null)' /tmp/s1-family-result.json >/dev/null
+              if [ "$ACTION" = verification.execute ]; then
+                jq -e '.execution_verified==true and .school_training==false' /tmp/s1-family-result.json >/dev/null
+                echo "scoped_terminal=true" >> "$GITHUB_OUTPUT"
+              fi
+              rm -f /tmp/s1-family-result.json
+              echo "S1_EXISTING_FAMILY_ADAPTER=$ACTION:PASS"
               ;;
             *)
               echo "S1_UNSUPPORTED_ACTION=$ACTION"
@@ -251,7 +262,7 @@ jobs:
           echo "complete=true" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch next event only after completed action
-        if: github.event_name == 'repository_dispatch' && steps.s95.outputs.handled != 'true' && steps.standing.outputs.handled != 'true' && steps.durable.outputs.complete == 'true'
+        if: github.event_name == 'repository_dispatch' && steps.s95.outputs.handled != 'true' && steps.standing.outputs.handled != 'true' && steps.durable.outputs.complete == 'true' && steps.durable.outputs.scoped_terminal != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
