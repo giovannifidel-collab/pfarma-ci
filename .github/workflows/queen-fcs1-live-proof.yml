@@ -16,8 +16,8 @@ jobs:
           GH_TOKEN: ${{ secrets.PFARMA_SOURCE_TOKEN }}
         run: |
           set -euo pipefail
-          gh api repos/giovannifidel-collab/hive-alveare/branches/main | jq -e '.commit.sha=="585231d00443b240ead9b2369cca674b87ca49e6"' >/dev/null
-          gh api repos/giovannifidel-collab/hive-alveare/commits/585231d00443b240ead9b2369cca674b87ca49e6/check-runs | jq -e '.check_runs|any(.name=="Cloudflare Pages" and .conclusion=="success")' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/branches/main | jq -e '.commit.sha=="18ddf0eeab5bb73e2ddd725260550f28ae82fdef"' >/dev/null
+          gh api repos/giovannifidel-collab/hive-alveare/commits/18ddf0eeab5bb73e2ddd725260550f28ae82fdef/check-runs | jq -e '.check_runs|any(.name=="Cloudflare Pages" and .conclusion=="success")' >/dev/null
       - name: One exact console command enqueued through S1
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
